@@ -1,5 +1,5 @@
 import { createBrowserRouter } from "react-router-dom";
-import { AppShell } from "./layout/AppShell";
+import { V2Shell } from "./layout/V2Shell";
 import { HomePage } from "../pages/HomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { PlayerCharacterDetailPage } from "../pages/PlayerCharacterDetailPage";
@@ -16,7 +16,7 @@ import { UniversesPage } from "../pages/UniversesPage";
 export const router = createBrowserRouter([
   {
     path: "/",
-    element: <AppShell />,
+    element: <V2Shell />,
     children: [
       {
         index: true,

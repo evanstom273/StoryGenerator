@@ -1,71 +1,50 @@
 import { Link } from "react-router-dom";
-import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
-import { StoryCard } from "../components/cards/StoryCard";
 import { buttonClasses } from "../components/ui/Button";
-import { Panel } from "../components/ui/Panel";
+import { StoryListRow } from "../components/story/StoryListRow";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 
 export function StoriesPage() {
   const {
     stories,
-    getMessagesForStory,
     getPlayerCharacterById,
     getUniverseById,
   } = useStoryEngine();
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        eyebrow="Stories"
-        title="Story campaigns and active timelines"
-        description="Create campaigns from a universe and a player character, then manage the evolving story timeline without ever locking in a fixed cast up front."
-        actions={
-          <Link to="/stories/new" className={buttonClasses()}>
-            Create Story
-          </Link>
-        }
-      />
-
       {stories.length ? (
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="grid gap-4 lg:grid-cols-2">
-            {stories.map((story) => {
-              const universe = getUniverseById(story.universeId);
-              const playerCharacter = getPlayerCharacterById(story.playerCharacterId);
-
-              return (
-                <StoryCard
-                  key={story.id}
-                  story={story}
-                  universeName={universe?.name ?? "Unknown universe"}
-                  playerCharacterName={playerCharacter?.name ?? "Unknown character"}
-                  messageCount={getMessagesForStory(story.id).length}
-                  actions={
-                    <Link
-                      to={`/stories/${story.id}`}
-                      className={buttonClasses({ variant: "ghost", size: "sm" })}
-                    >
-                      Open
-                    </Link>
-                  }
-                />
-              );
-            })}
-          </div>
-          <Panel className="h-fit">
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-              Workflow
+        <section className="space-y-5">
+          <div className="flex flex-col gap-4 border-b border-white/8 pb-6 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                Stories
+              </div>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink md:text-4xl">
+                Continue a story
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-ink-muted md:text-base">
+                Stories are your active channels. Pick one and keep writing.
+              </p>
             </div>
-            <h2 className="mt-4 text-xl font-semibold tracking-tight text-ink">
-              Universe first. Player character second. Cast emerges later.
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-ink-muted">
-              Stories no longer assume a preselected roster. The workspace is now
-              built around campaign setup, story prompt management, message
-              history, and future dynamic canon participation.
-            </p>
-          </Panel>
+            <Link to="/stories/new" className={buttonClasses()}>
+              New Story
+            </Link>
+          </div>
+
+          <div className="space-y-2">
+            {stories.map((story) => (
+              <StoryListRow
+                key={story.id}
+                story={story}
+                universeName={getUniverseById(story.universeId)?.name ?? "Unknown universe"}
+                playerCharacterName={
+                  getPlayerCharacterById(story.playerCharacterId)?.name ?? "Unknown character"
+                }
+                to={`/stories/${story.id}`}
+              />
+            ))}
+          </div>
         </section>
       ) : (
         <EmptyState
@@ -81,4 +60,3 @@ export function StoriesPage() {
     </div>
   );
 }
-

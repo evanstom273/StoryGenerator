@@ -7,6 +7,8 @@ import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import type { UniverseDraft } from "../types/models";
+import { importUniverseLore } from "../lib/ingestion/importUniverseLore";
+import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 
 const initialFormState: UniverseDraft = {
   name: "",
@@ -18,13 +20,15 @@ export function UniverseFormPage() {
   const { universeId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { createUniverse, getUniverseById, updateUniverse } = useStoryEngine();
+  const { createUniverse, getUniverseById, saveUniverseImport, updateUniverse } =
+    useStoryEngine();
   const existingUniverse = universeId ? getUniverseById(universeId) : undefined;
   const isEditing = Boolean(existingUniverse);
   const isImportMode = location.pathname.endsWith("/import");
   const [formState, setFormState] = useState<UniverseDraft>(initialFormState);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingUniverseId, setPendingUniverseId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!existingUniverse) {
@@ -36,7 +40,31 @@ export function UniverseFormPage() {
       description: existingUniverse.description,
       wikiUrl: existingUniverse.wikiUrl,
     });
+    setPendingUniverseId(null);
   }, [existingUniverse]);
+
+  useDebouncedEffect(
+    () => {
+      if (!existingUniverse || isSubmitting || isImportMode) {
+        return;
+      }
+
+      void updateUniverse(existingUniverse.id, formState).catch((error) => {
+        setErrorMessage(
+          error instanceof Error ? error.message : "Auto-save failed.",
+        );
+      });
+    },
+    800,
+    [
+      existingUniverse?.id,
+      formState.name,
+      formState.description,
+      formState.wikiUrl,
+      isSubmitting,
+      isImportMode,
+    ],
+  );
 
   const pageTitle = useMemo(() => {
     if (isEditing) {
@@ -75,6 +103,11 @@ export function UniverseFormPage() {
       return;
     }
 
+    if (isImportMode && !formState.wikiUrl.trim()) {
+      setErrorMessage("Wiki URL is required to import lore.");
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -87,11 +120,58 @@ export function UniverseFormPage() {
         }
       } else {
         const savedUniverse = await createUniverse(formState);
+
+        if (!isImportMode) {
+          navigate(`/universes/${savedUniverse.id}`);
+          return;
+        }
+
+        setPendingUniverseId(savedUniverse.id);
+
+        const imported = await importUniverseLore(formState.wikiUrl);
+
+        await saveUniverseImport({
+          universeId: savedUniverse.id,
+          sourceUrl: formState.wikiUrl.trim(),
+          title: imported.title,
+          importedText: imported.importedText,
+          importedAt: new Date().toISOString(),
+        });
+
         navigate(`/universes/${savedUniverse.id}`);
       }
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "Unable to save the universe.",
+        error instanceof Error ? error.message : "Unable to complete the import.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleRetryImport() {
+    if (!pendingUniverseId) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      const imported = await importUniverseLore(formState.wikiUrl);
+
+      await saveUniverseImport({
+        universeId: pendingUniverseId,
+        sourceUrl: formState.wikiUrl.trim(),
+        title: imported.title,
+        importedText: imported.importedText,
+        importedAt: new Date().toISOString(),
+      });
+
+      navigate(`/universes/${pendingUniverseId}`);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to import lore text.",
       );
     } finally {
       setIsSubmitting(false);
@@ -105,7 +185,7 @@ export function UniverseFormPage() {
         title={pageTitle}
         description={
           isImportMode
-            ? "Store a universe name, wiki URL, and description now. Lore import remains a placeholder until Step 3."
+            ? "Create a universe from a wiki URL and store clean lore text for AI context."
             : "Create the world that player characters and story campaigns will belong to."
         }
       />
@@ -157,6 +237,26 @@ export function UniverseFormPage() {
             </div>
           ) : null}
 
+          {isImportMode && pendingUniverseId ? (
+            <Panel className="border-amber-300/20 bg-amber-300/10">
+              <div className="text-sm text-amber-100">
+                The universe was created, but the lore import did not finish. Retry the
+                import or open the universe now.
+              </div>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                <Button type="button" onClick={handleRetryImport} disabled={isSubmitting}>
+                  {isSubmitting ? "Retrying..." : "Retry Import"}
+                </Button>
+                <Link
+                  to={`/universes/${pendingUniverseId}`}
+                  className={buttonClasses({ variant: "ghost" })}
+                >
+                  Open Universe
+                </Link>
+              </div>
+            </Panel>
+          ) : null}
+
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting
@@ -179,4 +279,3 @@ export function UniverseFormPage() {
     </div>
   );
 }
-

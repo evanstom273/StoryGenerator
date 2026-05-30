@@ -5,6 +5,7 @@ import type {
   StoryMessage,
 } from "../types/models";
 import { formatDateTime } from "./dates";
+import { serializeStoryExportPdf } from "./storyExportPdf";
 
 function resolveSpeakerLabel(
   message: StoryMessage,
@@ -44,7 +45,7 @@ function toMarkdown(bundle: StoryExportBundle) {
   const transcript = bundle.messages
     .map((message) => {
       const speaker = resolveSpeakerLabel(message, bundle.playerCharacter);
-      return `### ${speaker}\n\n${message.content}\n\n*${formatDateTime(message.timestamp)}*`;
+      return `### ${speaker}\n\n${message.content}\n\nTime: ${formatDateTime(message.timestamp)}`;
     })
     .join("\n\n");
 
@@ -75,6 +76,8 @@ ${bundle.story.currentSummary || "_No summary yet._"}
 
 - Name: ${bundle.playerCharacter.name}
 - Age: ${bundle.playerCharacter.age || "Not specified"}
+- Gender: ${bundle.playerCharacter.gender || "Not specified"}
+- Pronouns: ${bundle.playerCharacter.pronouns || "Not specified"}
 - Appearance: ${bundle.playerCharacter.appearance || "Not specified"}
 - Personality: ${bundle.playerCharacter.personality || "Not specified"}
 - Background: ${bundle.playerCharacter.background || "Not specified"}
@@ -110,6 +113,8 @@ Universe
 Player Character
 - Name: ${bundle.playerCharacter.name}
 - Age: ${bundle.playerCharacter.age || "Not specified"}
+- Gender: ${bundle.playerCharacter.gender || "Not specified"}
+- Pronouns: ${bundle.playerCharacter.pronouns || "Not specified"}
 - Appearance: ${bundle.playerCharacter.appearance || "Not specified"}
 - Personality: ${bundle.playerCharacter.personality || "Not specified"}
 - Background: ${bundle.playerCharacter.background || "Not specified"}
@@ -125,14 +130,16 @@ export function serializeStoryExport(
   bundle: StoryExportBundle,
   format: ExportFormat,
 ) {
-  if (format === "json") {
-    return { content: toJson(bundle), mimeType: "application/json" };
-  }
+  const exporters: Record<
+    ExportFormat,
+    { serialize: (data: StoryExportBundle) => BlobPart; mimeType: string }
+  > = {
+    json: { serialize: toJson, mimeType: "application/json" },
+    markdown: { serialize: toMarkdown, mimeType: "text/markdown" },
+    txt: { serialize: toText, mimeType: "text/plain" },
+    pdf: { serialize: serializeStoryExportPdf, mimeType: "application/pdf" },
+  };
 
-  if (format === "markdown") {
-    return { content: toMarkdown(bundle), mimeType: "text/markdown" };
-  }
-
-  return { content: toText(bundle), mimeType: "text/plain" };
+  const exporter = exporters[format] ?? exporters.txt;
+  return { content: exporter.serialize(bundle), mimeType: exporter.mimeType };
 }
-

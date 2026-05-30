@@ -1,5 +1,10 @@
-export function downloadFile(filename: string, content: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType });
+export function downloadFile(
+  filename: string,
+  content: BlobPart | BlobPart[],
+  mimeType: string,
+) {
+  const parts = Array.isArray(content) ? content : [content];
+  const blob = new Blob(parts, { type: mimeType });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
 
@@ -9,4 +14,3 @@ export function downloadFile(filename: string, content: string, mimeType: string
 
   URL.revokeObjectURL(url);
 }
-

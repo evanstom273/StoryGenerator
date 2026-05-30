@@ -7,7 +7,8 @@ export type StoryMessageSpeakerType =
   | "canon"
   | "narrator"
   | "system";
-export type ExportFormat = "json" | "markdown" | "txt";
+export type ExportFormat = "json" | "markdown" | "txt" | "pdf";
+export type AIProviderType = "openai" | "gemini";
 
 export interface Universe {
   id: EntityId;
@@ -25,6 +26,8 @@ export interface PlayerCharacter {
   id: EntityId;
   name: string;
   age: string;
+  gender: string;
+  pronouns: string;
   appearance: string;
   personality: string;
   background: string;
@@ -55,6 +58,69 @@ export interface StoryMessage {
   speakerType?: StoryMessageSpeakerType;
 }
 
+export interface AISettings {
+  id: "ai-settings";
+  activeProviderType: AIProviderType;
+  apiKeys: Partial<Record<AIProviderType, string>>;
+  defaultModels: Partial<Record<AIProviderType, string>>;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface StoryAIConfig {
+  id: EntityId;
+  storyId: EntityId;
+  providerType: AIProviderType;
+  model?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface UniverseImport {
+  id: EntityId;
+  universeId: EntityId;
+  sourceUrl: string;
+  title: string;
+  importedText: string;
+  importedAt: Timestamp;
+}
+
+export interface StorySummary {
+  id: EntityId;
+  storyId: EntityId;
+  summary: string;
+  generatedAt: Timestamp;
+}
+
+export type StoryStateCharacterState = {
+  canonicalName?: string;
+  displayName?: string;
+  aliases?: string[];
+  pronouns?: string;
+  gender?: string;
+  titleOrRank?: string;
+  relationships?: Record<string, string>;
+  status?: string;
+  notes?: string[];
+};
+
+export type StoryStateData = {
+  updatedAt: Timestamp;
+  characters: Record<string, StoryStateCharacterState>;
+  worldFacts: string[];
+  unresolvedThreads: string[];
+  sceneState?: string[];
+  significantMemories?: string[];
+  relationshipState?: string[];
+};
+
+export interface StoryState {
+  id: EntityId;
+  storyId: EntityId;
+  stateJson: string;
+  updatedAt: Timestamp;
+}
+
 export interface UniverseDraft {
   name: string;
   description: string;
@@ -64,6 +130,8 @@ export interface UniverseDraft {
 export interface PlayerCharacterDraft {
   name: string;
   age: string;
+  gender: string;
+  pronouns: string;
   appearance: string;
   personality: string;
   background: string;
@@ -105,9 +173,33 @@ export interface StoryExportBundle {
   universe: Universe;
   playerCharacter: PlayerCharacter;
   messages: StoryMessage[];
+  storyState?: StoryState;
 }
 
 export interface GuardedDeleteResult {
   ok: boolean;
   reason?: string;
 }
+
+export type StoryEngineBackupV1 = {
+  backupVersion: 1;
+  exportedAt: Timestamp;
+  data: {
+    universes: Universe[];
+    playerCharacters: PlayerCharacter[];
+    stories: Story[];
+    messages: StoryMessage[];
+    universeImports: UniverseImport[];
+    storySummaries: StorySummary[];
+    storyStates: StoryState[];
+    storyAiConfigs: StoryAIConfig[];
+    aiSettings: (Omit<AISettings, "apiKeys"> & { apiKeys?: undefined }) | null;
+  };
+  uiPrefs: {
+    rightSidebarCollapsed: boolean;
+    readerMode: boolean;
+    showChrome: boolean;
+  };
+};
+
+export type StoryEngineBackup = StoryEngineBackupV1;

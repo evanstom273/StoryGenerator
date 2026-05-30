@@ -1,22 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
-import {
-  DownloadIcon,
-  PencilIcon,
-  PlusIcon,
-  TrashIcon,
-} from "../components/icons";
+import { PencilIcon } from "../components/icons";
 import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
+import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
-import { downloadFile } from "../lib/download";
-import { serializeStoryExport } from "../lib/storyExport";
+import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import type {
-  ExportFormat,
   StoryMessage,
   StoryMessageRole,
   StoryMessageSpeakerType,
@@ -36,30 +30,27 @@ const initialComposerState: MessageComposerState = {
   content: "",
 };
 
-function createExportFilename(title: string, format: ExportFormat) {
-  const sanitizedTitle = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  const extension = format === "json" ? "json" : format === "markdown" ? "md" : "txt";
-  return `${sanitizedTitle || "story-engine-story"}.${extension}`;
-}
-
 export function StoryWorkspacePage() {
   const { storyId } = useParams();
-  const navigate = useNavigate();
+  const {
+    rightSidebarCollapsed,
+    setRightSidebarCollapsed,
+    readerMode,
+    setReaderMode,
+    showChrome,
+    setShowChrome,
+    setStorySettingsOpen,
+  } = useUiPrefs();
   const {
     createMessage,
     deleteMessage,
-    deleteStory,
-    exportStory,
     getMessagesForStory,
     getPlayerCharacterById,
     getStoryById,
     getUniverseById,
+    generatePlayerAssistMessage,
+    sendChatMessage,
     updateMessage,
-    updateStory,
   } = useStoryEngine();
   const story = storyId ? getStoryById(storyId) : undefined;
   const universe = story ? getUniverseById(story.universeId) : undefined;
@@ -70,28 +61,38 @@ export function StoryWorkspacePage() {
     () => (story ? getMessagesForStory(story.id) : []),
     [getMessagesForStory, story],
   );
-  const [storyFields, setStoryFields] = useState({
-    title: story?.title ?? "",
-    openingPrompt: story?.openingPrompt ?? "",
-    currentSummary: story?.currentSummary ?? "",
-  });
   const [composerState, setComposerState] = useState(initialComposerState);
   const [editingMessage, setEditingMessage] = useState<StoryMessage | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [isSavingStory, setIsSavingStory] = useState(false);
   const [isSavingMessage, setIsSavingMessage] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [lastChatContent, setLastChatContent] = useState<string | null>(null);
+  const [isGeneratingAssist, setIsGeneratingAssist] = useState(false);
+  const [assistError, setAssistError] = useState<string | null>(null);
+  const [manualMode, setManualMode] = useState(false);
 
   useEffect(() => {
-    if (!story) {
+    setEditingMessage(null);
+    setComposerState(initialComposerState);
+    setChatInput("");
+    setChatError(null);
+    setIsGenerating(false);
+    setLastChatContent(null);
+    setIsGeneratingAssist(false);
+    setAssistError(null);
+    setManualMode(false);
+  }, [storyId]);
+
+  useEffect(() => {
+    if (!readerMode) {
       return;
     }
 
-    setStoryFields({
-      title: story.title,
-      openingPrompt: story.openingPrompt,
-      currentSummary: story.currentSummary,
-    });
-  }, [story]);
+    setManualMode(false);
+    setEditingMessage(null);
+  }, [readerMode]);
 
   if (!story || !universe || !playerCharacter) {
     return (
@@ -118,44 +119,63 @@ export function StoryWorkspacePage() {
   const activeUniverse = universe;
   const activePlayerCharacter = playerCharacter;
 
-  async function handleSaveStoryDetails(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!storyFields.title.trim()) {
-      setPageError("Story title is required.");
+  async function handleSendChat() {
+    if (!chatInput.trim()) {
+      setChatError("Message content is required.");
       return;
     }
 
-    if (!storyFields.openingPrompt.trim()) {
-      setPageError("Opening prompt is required.");
-      return;
-    }
-
-    setIsSavingStory(true);
-    setPageError(null);
+    const content = chatInput;
+    setIsGenerating(true);
+    setChatError(null);
+    setLastChatContent(content);
+    setChatInput("");
 
     try {
-      await updateStory(activeStory.id, storyFields);
+      await sendChatMessage(activeStory.id, content);
     } catch (error) {
-      setPageError(
-        error instanceof Error ? error.message : "Unable to save story details.",
+      setChatError(
+        error instanceof Error ? error.message : "Unable to generate a response.",
       );
+      setChatInput(content);
     } finally {
-      setIsSavingStory(false);
+      setIsGenerating(false);
     }
   }
 
-  async function handleDeleteStory() {
-    const confirmed = window.confirm(
-      "Delete this story and every stored message in its timeline?",
-    );
-
-    if (!confirmed) {
+  async function handleRetryChat() {
+    if (!lastChatContent) {
       return;
     }
 
-    await deleteStory(activeStory.id);
-    navigate("/stories");
+    setIsGenerating(true);
+    setChatError(null);
+
+    try {
+      await sendChatMessage(activeStory.id, lastChatContent);
+    } catch (error) {
+      setChatError(
+        error instanceof Error ? error.message : "Unable to generate a response.",
+      );
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  async function handleGeneratePlayerAssist() {
+    setIsGeneratingAssist(true);
+    setAssistError(null);
+
+    try {
+      const suggestion = await generatePlayerAssistMessage(activeStory.id);
+      setChatInput(suggestion);
+    } catch (error) {
+      setAssistError(
+        error instanceof Error ? error.message : "Unable to generate a player suggestion.",
+      );
+    } finally {
+      setIsGeneratingAssist(false);
+    }
   }
 
   function applyComposerPreset(role: StoryMessageRole, speakerType?: StoryMessageSpeakerType) {
@@ -288,336 +308,294 @@ export function StoryWorkspacePage() {
     }
   }
 
-  async function handleExport(format: ExportFormat) {
-    const bundle = await exportStory(activeStory.id);
-
-    if (!bundle) {
-      setPageError("Unable to assemble export data for this story.");
-      return;
-    }
-
-    const { content, mimeType } = serializeStoryExport(bundle, format);
-    downloadFile(
-      createExportFilename(activeStory.title, format),
-      content,
-      mimeType,
-    );
-  }
-
   return (
-    <div className="space-y-8">
-      <PageHeader
-        eyebrow="Story Workspace"
-        title={activeStory.title}
-        description="This screen holds story metadata, the full timeline of messages, and export actions for local story ownership."
-      />
-
-      <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <div className="space-y-4">
-          <Panel>
-            <form className="space-y-5" onSubmit={handleSaveStoryDetails}>
-              <Field label="Story Title">
-                <TextInput
-                  value={storyFields.title}
-                  onChange={(event) =>
-                    setStoryFields((currentState) => ({
-                      ...currentState,
-                      title: event.target.value,
-                    }))
-                  }
-                />
-              </Field>
-              <Field label="Universe">
-                <TextInput value={activeUniverse.name} readOnly />
-              </Field>
-              <Field label="Player Character">
-                <TextInput value={activePlayerCharacter.name} readOnly />
-              </Field>
-              <Field label="Opening Prompt">
-                <TextAreaInput
-                  value={storyFields.openingPrompt}
-                  onChange={(event) =>
-                    setStoryFields((currentState) => ({
-                      ...currentState,
-                      openingPrompt: event.target.value,
-                    }))
-                  }
-                />
-              </Field>
-              <Field label="Current Summary">
-                <TextAreaInput
-                  value={storyFields.currentSummary}
-                  onChange={(event) =>
-                    setStoryFields((currentState) => ({
-                      ...currentState,
-                      currentSummary: event.target.value,
-                    }))
-                  }
-                  placeholder="Optional summary for the current state of the story."
-                />
-              </Field>
-              <Button type="submit" className="w-full" disabled={isSavingStory}>
-                {isSavingStory ? "Saving..." : "Save Story Details"}
-              </Button>
-            </form>
-          </Panel>
-
-          <Panel>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-              Export Story
-            </div>
-            <div className="mt-4 space-y-3">
-              <Button
-                variant="secondary"
-                className="w-full justify-start rounded-2xl"
-                onClick={() => handleExport("json")}
-              >
-                <DownloadIcon className="h-4 w-4" />
-                Export JSON
-              </Button>
-              <Button
-                variant="secondary"
-                className="w-full justify-start rounded-2xl"
-                onClick={() => handleExport("markdown")}
-              >
-                <DownloadIcon className="h-4 w-4" />
-                Export Markdown
-              </Button>
-              <Button
-                variant="secondary"
-                className="w-full justify-start rounded-2xl"
-                onClick={() => handleExport("txt")}
-              >
-                <DownloadIcon className="h-4 w-4" />
-                Export TXT
-              </Button>
-            </div>
-          </Panel>
-
-          <Panel>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-              Story Controls
-            </div>
-            <div className="mt-4 flex flex-col gap-3">
-              <Link
-                to="/stories"
-                className={buttonClasses({ variant: "ghost", size: "sm" })}
-              >
-                Back to Stories
-              </Link>
-              <Button variant="ghost" size="sm" onClick={handleDeleteStory}>
-                <TrashIcon className="h-4 w-4" />
-                Delete Story
-              </Button>
-            </div>
-          </Panel>
+    <div className="flex min-h-[72vh] flex-col">
+      <div className="border-b border-white/8 pb-5">
+        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+          {activeUniverse.name} · {activePlayerCharacter.name}
         </div>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink">
+          {activeStory.title}
+        </h1>
+        {readerMode ? null : (
+          <div className="mt-3 text-sm leading-7 text-ink-muted">
+            {activeStory.currentSummary || activeStory.openingPrompt}
+          </div>
+        )}
+      </div>
 
-        <div className="flex min-h-[70vh] flex-col gap-4">
-          <Panel>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-              Opening Context
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex items-center gap-2 text-sm text-ink-muted">
+          {messages.length} entries
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setStorySettingsOpen(true)}
+          >
+            Settings
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setRightSidebarCollapsed(!rightSidebarCollapsed)}
+          >
+            {rightSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
+          </Button>
+          <Button
+            size="sm"
+            variant={showChrome ? "secondary" : "ghost"}
+            onClick={() => setShowChrome(!showChrome)}
+          >
+            {showChrome ? "Hide Details" : "Details"}
+          </Button>
+          <Button
+            size="sm"
+            variant={readerMode ? "secondary" : "ghost"}
+            onClick={() => setReaderMode(!readerMode)}
+          >
+            {readerMode ? "Exit Reader" : "Reader Mode"}
+          </Button>
+          {readerMode ? null : (
+            <Button
+              variant={manualMode ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setManualMode((current) => !current)}
+              disabled={isGenerating}
+            >
+              <PencilIcon className="h-4 w-4" />
+              {manualMode ? "Hide Manual" : "Manual Entry"}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
+        {messages.length ? (
+          showChrome ? (
+            <div className="space-y-1">
+              {messages.map((message) => (
+                <StoryMessageBubble
+                  key={message.id}
+                  message={message}
+                  playerCharacterName={activePlayerCharacter.name}
+                  onEdit={populateComposerFromMessage}
+                  onDelete={handleDeleteMessage}
+                />
+              ))}
             </div>
-            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-              {activeStory.openingPrompt}
-            </p>
-          </Panel>
+          ) : (
+            <StoryTranscriptView
+              messages={messages}
+              playerCharacterName={activePlayerCharacter.name}
+              className={readerMode ? "pb-8" : undefined}
+            />
+          )
+        ) : (
+          <EmptyState
+            title="No timeline entries yet"
+            description="Add user turns, canon character lines, narrator beats, or system notes to start the story."
+          />
+        )}
+      </div>
 
-          <Panel className="flex-1">
+      {readerMode ? null : (
+        <Panel className="mt-4" padding="sm">
+          <div className="space-y-5">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                  Conversation Timeline
+                  Chat
                 </div>
                 <div className="mt-2 text-lg font-semibold text-ink">
-                  {messages.length} stored entries
+                  Send a turn and generate the next reply
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              {chatError ? (
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   size="sm"
-                  onClick={() => applyComposerPreset("user")}
+                  onClick={handleRetryChat}
+                  disabled={isGenerating || isGeneratingAssist || !lastChatContent}
                 >
-                  <PlusIcon className="h-4 w-4" />
-                  User Turn
+                  Retry
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => applyComposerPreset("assistant", "canon")}
-                >
-                  <PencilIcon className="h-4 w-4" />
-                  Canon Line
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => applyComposerPreset("assistant", "narrator")}
-                >
-                  <PencilIcon className="h-4 w-4" />
-                  Narrator Beat
-                </Button>
-              </div>
+              ) : null}
             </div>
 
-            {messages.length ? (
-              <div className="mt-6 space-y-4">
-                {messages.map((message) => (
-                  <StoryMessageBubble
-                    key={message.id}
-                    message={message}
-                    playerCharacterName={activePlayerCharacter.name}
-                    onEdit={populateComposerFromMessage}
-                    onDelete={handleDeleteMessage}
-                  />
-                ))}
+            <Field label="Your Message">
+              <TextAreaInput
+                value={chatInput}
+                onChange={(event) => setChatInput(event.target.value)}
+                placeholder="Write what your character does or says next."
+              />
+            </Field>
+
+            {chatError ? (
+              <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                {chatError}
               </div>
-            ) : (
-              <div className="mt-6">
-                <EmptyState
-                  title="No timeline entries yet"
-                  description="Add user turns, canon character lines, narrator beats, or system notes to test the story workspace before AI integration arrives."
-                />
+            ) : null}
+
+            {assistError ? (
+              <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                {assistError}
               </div>
-            )}
-          </Panel>
+            ) : null}
 
-          <Panel className="sticky bottom-4">
-            <form className="space-y-5" onSubmit={handleSubmitMessage}>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                    {editingMessage ? "Edit Timeline Entry" : "Add Timeline Entry"}
-                  </div>
-                  <div className="mt-2 text-lg font-semibold text-ink">
-                    Manual mixed timeline mode
-                  </div>
-                </div>
-                {editingMessage ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingMessage(null);
-                      setComposerState(initialComposerState);
-                    }}
-                  >
-                    Cancel Edit
-                  </Button>
-                ) : null}
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Button onClick={handleSendChat} disabled={isGenerating}>
+                {isGenerating ? "Generating Scene..." : "Send"}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={handleGeneratePlayerAssist}
+                disabled={isGenerating || isGeneratingAssist}
+              >
+                {isGeneratingAssist ? "Generating Response..." : "Generate Response"}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setChatInput("")}
+                disabled={isGenerating || isGeneratingAssist || !chatInput.trim()}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {readerMode ? null : manualMode || editingMessage ? (
+      <Panel className="mt-4" padding="sm">
+        <form className="space-y-5" onSubmit={handleSubmitMessage}>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                {editingMessage ? "Edit Entry" : "Add Entry"}
               </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Role">
-                  <SelectInput
-                    value={composerState.role}
-                    onChange={(event) => {
-                      const role = event.target.value as StoryMessageRole;
-                      setComposerState((currentState) => ({
-                        ...currentState,
-                        role,
-                        speakerType:
-                          role === "user"
-                            ? "player"
-                            : role === "system"
-                              ? "system"
-                              : currentState.speakerType === "player" ||
-                                  currentState.speakerType === "system"
-                                ? "canon"
-                                : currentState.speakerType,
-                        speakerName: role === "assistant" ? currentState.speakerName : "",
-                      }));
-                    }}
-                  >
-                    <option value="user">user</option>
-                    <option value="assistant">assistant</option>
-                    <option value="system">system</option>
-                  </SelectInput>
-                </Field>
-
-                <Field label="Speaker Type">
-                  <SelectInput
-                    value={composerState.speakerType}
-                    onChange={(event) =>
-                      setComposerState((currentState) => ({
-                        ...currentState,
-                        speakerType: event.target.value as StoryMessageSpeakerType,
-                        speakerName:
-                          event.target.value === "canon" ? currentState.speakerName : "",
-                      }))
-                    }
-                    disabled={composerState.role !== "assistant"}
-                  >
-                    {composerState.role === "assistant" ? (
-                      <>
-                        <option value="canon">canon</option>
-                        <option value="narrator">narrator</option>
-                      </>
-                    ) : composerState.role === "system" ? (
-                      <option value="system">system</option>
-                    ) : (
-                      <option value="player">player</option>
-                    )}
-                  </SelectInput>
-                </Field>
+              <div className="mt-2 text-lg font-semibold text-ink">
+                Manual timeline entry
               </div>
+            </div>
+            {editingMessage ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditingMessage(null);
+                  setComposerState(initialComposerState);
+                }}
+              >
+                Cancel
+              </Button>
+            ) : null}
+          </div>
 
-              {composerState.role === "assistant" &&
-              composerState.speakerType === "canon" ? (
-                <Field label="Speaker Name" hint="Required for canon lines">
-                  <TextInput
-                    value={composerState.speakerName}
-                    onChange={(event) =>
-                      setComposerState((currentState) => ({
-                        ...currentState,
-                        speakerName: event.target.value,
-                      }))
-                    }
-                    placeholder="Example: Jake Peralta"
-                  />
-                </Field>
-              ) : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Role">
+              <SelectInput
+                value={composerState.role}
+                onChange={(event) => {
+                  const role = event.target.value as StoryMessageRole;
+                  setComposerState((currentState) => ({
+                    ...currentState,
+                    role,
+                    speakerType:
+                      role === "user"
+                        ? "player"
+                        : role === "system"
+                          ? "system"
+                          : currentState.speakerType === "player" ||
+                              currentState.speakerType === "system"
+                            ? "canon"
+                            : currentState.speakerType,
+                    speakerName: role === "assistant" ? currentState.speakerName : "",
+                  }));
+                }}
+              >
+                <option value="user">user</option>
+                <option value="assistant">assistant</option>
+                <option value="system">system</option>
+              </SelectInput>
+            </Field>
 
-              <Field label="Content">
-                <TextAreaInput
-                  value={composerState.content}
-                  onChange={(event) =>
-                    setComposerState((currentState) => ({
-                      ...currentState,
-                      content: event.target.value,
-                    }))
-                  }
-                  placeholder="Write the next user turn, narrator beat, canon line, or system note."
-                />
-              </Field>
+            <Field label="Speaker Type">
+              <SelectInput
+                value={composerState.speakerType}
+                onChange={(event) =>
+                  setComposerState((currentState) => ({
+                    ...currentState,
+                    speakerType: event.target.value as StoryMessageSpeakerType,
+                    speakerName: event.target.value === "canon" ? currentState.speakerName : "",
+                  }))
+                }
+                disabled={composerState.role !== "assistant"}
+              >
+                {composerState.role === "assistant" ? (
+                  <>
+                    <option value="canon">canon</option>
+                    <option value="narrator">narrator</option>
+                  </>
+                ) : composerState.role === "system" ? (
+                  <option value="system">system</option>
+                ) : (
+                  <option value="player">player</option>
+                )}
+              </SelectInput>
+            </Field>
+          </div>
 
-              {pageError ? (
-                <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
-                  {pageError}
-                </div>
-              ) : null}
+          {composerState.role === "assistant" && composerState.speakerType === "canon" ? (
+            <Field label="Speaker Name" hint="Required for canon lines">
+              <TextInput
+                value={composerState.speakerName}
+                onChange={(event) =>
+                  setComposerState((currentState) => ({
+                    ...currentState,
+                    speakerName: event.target.value,
+                  }))
+                }
+                placeholder="Example: Jake Peralta"
+              />
+            </Field>
+          ) : null}
 
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button type="submit" disabled={isSavingMessage}>
-                  {isSavingMessage
-                    ? "Saving..."
-                    : editingMessage
-                      ? "Save Entry"
-                      : "Add Entry"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => applyComposerPreset("assistant", "narrator")}
-                >
-                  Narrator Preset
-                </Button>
-              </div>
-            </form>
-          </Panel>
-        </div>
-      </div>
+          <Field label="Content">
+            <TextAreaInput
+              value={composerState.content}
+              onChange={(event) =>
+                setComposerState((currentState) => ({
+                  ...currentState,
+                  content: event.target.value,
+                }))
+              }
+              placeholder="Write the next user turn, narrator beat, canon line, or system note."
+            />
+          </Field>
+
+          {pageError ? (
+            <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+              {pageError}
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button type="submit" disabled={isSavingMessage}>
+              {isSavingMessage ? "Saving..." : editingMessage ? "Save Entry" : "Add Entry"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => applyComposerPreset("assistant", "narrator")}
+            >
+              Narrator Preset
+            </Button>
+          </div>
+        </form>
+      </Panel>
+      ) : null}
     </div>
   );
 }

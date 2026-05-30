@@ -17,18 +17,43 @@ import {
   sortByUpdatedAtDesc,
 } from "../../lib/dates";
 import { createEntityId } from "../../lib/ids";
+import { createAIProvider } from "../../lib/ai/providerFactory";
+import {
+  buildStoryChatContext,
+  buildStorySummaryContext,
+} from "../../lib/ai/contextBuilder";
+import { getProviderDefaultModel } from "../../lib/ai/models";
+import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
+import { buildPlayerAssistContext } from "../../lib/ai/playerAssistContext";
+import {
+  buildCharacterGeneratorSystemPrompt,
+  type PlayerCharacterField,
+} from "../../lib/ai/characterGenerator";
+import { extractFirstJsonObject, safeParseJsonObject } from "../../lib/ai/json";
+import {
+  buildStoryStateExtractionPrompt,
+  parseStoryStateData,
+} from "../../lib/ai/storyStateExtractor";
+import { detectPlayerCharacterAuthorshipViolation } from "../../lib/storyText/playerProtection";
 import type {
+  AIProviderType,
+  AISettings,
   GuardedDeleteResult,
   PlayerCharacter,
   PlayerCharacterDraft,
   StorageStatus,
   Story,
+  StoryAIConfig,
+  StoryEngineBackup,
   StoryDraft,
   StoryExportBundle,
   StoryMessage,
   StoryMessageDraft,
+  StoryState,
+  StorySummary,
   Universe,
   UniverseDraft,
+  UniverseImport,
 } from "../../types/models";
 
 interface StoryEngineContextValue {
@@ -39,6 +64,7 @@ interface StoryEngineContextValue {
   playerCharacters: PlayerCharacter[];
   stories: Story[];
   messages: StoryMessage[];
+  aiSettings: AISettings | null;
   getUniverseById: (id: string) => Universe | undefined;
   getPlayerCharacterById: (id: string) => PlayerCharacter | undefined;
   getStoryById: (id: string) => Story | undefined;
@@ -65,6 +91,30 @@ interface StoryEngineContextValue {
   ) => Promise<StoryMessage | null>;
   deleteMessage: (id: string) => Promise<void>;
   exportStory: (storyId: string) => Promise<StoryExportBundle | null>;
+  exportWorkspaceBackup: () => Promise<StoryEngineBackup>;
+  importWorkspaceBackup: (backup: StoryEngineBackup) => Promise<void>;
+  saveAISettings: (next: {
+    activeProviderType: AIProviderType;
+    apiKeys?: Partial<Record<AIProviderType, string>>;
+    defaultModels?: Partial<Record<AIProviderType, string>>;
+  }) => Promise<AISettings>;
+  validateAIConnection: (providerType?: AIProviderType) => Promise<void>;
+  getStoryAIConfig: (storyId: string) => Promise<StoryAIConfig | null>;
+  saveStoryAIConfig: (next: {
+    storyId: string;
+    providerType: AIProviderType;
+    model?: string;
+  }) => Promise<StoryAIConfig>;
+  listUniverseImports: (universeId: string) => Promise<UniverseImport[]>;
+  saveUniverseImport: (next: Omit<UniverseImport, "id">) => Promise<UniverseImport>;
+  listStorySummaries: (storyId: string) => Promise<StorySummary[]>;
+  generatePlayerAssistMessage: (storyId: string) => Promise<string>;
+  generatePlayerCharacterDraft: (
+    universeId: string,
+    fields?: Array<keyof PlayerCharacterDraft>,
+    existing?: Partial<PlayerCharacterDraft>,
+  ) => Promise<Partial<PlayerCharacterDraft>>;
+  sendChatMessage: (storyId: string, content: string) => Promise<void>;
 }
 
 const StoryEngineContext = createContext<StoryEngineContextValue | null>(null);
@@ -105,6 +155,62 @@ export function StoryEngineProvider({
   const [playerCharacters, setPlayerCharacters] = useState<PlayerCharacter[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [messages, setMessages] = useState<StoryMessage[]>([]);
+  const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
+
+  function normalizeAISettings(value: unknown): AISettings | null {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    const record = value as any;
+
+    if (
+      record.id === "ai-settings" &&
+      typeof record.activeProviderType === "string" &&
+      typeof record.apiKeys === "object" &&
+      record.apiKeys !== null &&
+      typeof record.defaultModels === "object" &&
+      record.defaultModels !== null
+    ) {
+      return record as AISettings;
+    }
+
+    if (
+      record.id === "ai-settings" &&
+      typeof record.providerType === "string" &&
+      typeof record.apiKey === "string" &&
+      typeof record.model === "string"
+    ) {
+      const providerType = record.providerType as AIProviderType;
+      const now = new Date().toISOString();
+
+      return {
+        id: "ai-settings",
+        activeProviderType: providerType,
+        apiKeys: { [providerType]: record.apiKey } as Partial<
+          Record<AIProviderType, string>
+        >,
+        defaultModels: { [providerType]: record.model } as Partial<
+          Record<AIProviderType, string>
+        >,
+        createdAt: record.createdAt ?? now,
+        updatedAt: now,
+      };
+    }
+
+    return null;
+  }
+
+  const getNormalizedAISettings = useCallback(async () => {
+    const stored = await repository.getAISettings();
+    const normalized = normalizeAISettings(stored);
+
+    if (normalized && stored && (stored as any).apiKey !== undefined) {
+      await repository.saveAISettings(normalized);
+    }
+
+    return normalized;
+  }, [repository]);
 
   const hydrate = useCallback(
     async (showLoadingState: boolean) => {
@@ -113,18 +219,33 @@ export function StoryEngineProvider({
       }
 
       try {
-        const [nextUniverses, nextPlayerCharacters, nextStories, nextMessages] =
-          await Promise.all([
-            repository.listUniverses(),
-            repository.listPlayerCharacters(),
-            repository.listStories(),
-            repository.listAllMessages(),
-          ]);
+        const [
+          nextUniverses,
+          nextPlayerCharacters,
+          nextStories,
+          nextMessages,
+          nextAISettings,
+        ] = await Promise.all([
+          repository.listUniverses(),
+          repository.listPlayerCharacters(),
+          repository.listStories(),
+          repository.listAllMessages(),
+          getNormalizedAISettings().catch(() => null),
+        ]);
 
         setUniverses(sortByCreatedAtDesc(nextUniverses));
-        setPlayerCharacters(sortByCreatedAtDesc(nextPlayerCharacters));
+        setPlayerCharacters(
+          sortByCreatedAtDesc(
+            nextPlayerCharacters.map((character) => ({
+              ...character,
+              gender: (character as any).gender ?? "",
+              pronouns: (character as any).pronouns ?? "",
+            })),
+          ),
+        );
         setStories(sortByUpdatedAtDesc(nextStories));
         setMessages(sortByTimestampAsc(nextMessages));
+        setAiSettings(nextAISettings);
         setErrorMessage(null);
       } catch (error) {
         setErrorMessage(
@@ -136,12 +257,44 @@ export function StoryEngineProvider({
         }
       }
     },
-    [repository],
+    [getNormalizedAISettings, repository],
   );
 
   useEffect(() => {
     void hydrate(true);
   }, [hydrate]);
+
+  const resolveAIProfile = useCallback(
+    async (providerType: AIProviderType, storyModelOverride?: string) => {
+      const settings = await getNormalizedAISettings();
+
+      if (!settings) {
+        throw new Error("Configure an AI provider in Settings before generating messages.");
+      }
+
+      const apiKey = settings.apiKeys?.[providerType]?.trim() ?? "";
+
+      if (!apiKey) {
+        throw new Error(
+          providerType === "gemini"
+            ? "Set a Gemini API key in Settings before generating scenes."
+            : "Set an OpenAI API key in Settings before generating scenes.",
+        );
+      }
+
+      const resolvedModel =
+        storyModelOverride?.trim() ||
+        settings.defaultModels?.[providerType]?.trim() ||
+        getProviderDefaultModel(providerType);
+
+      if (!resolvedModel) {
+        throw new Error("Set a model in Settings before generating scenes.");
+      }
+
+      return { settings, apiKey, model: resolvedModel };
+    },
+    [getNormalizedAISettings],
+  );
 
   const touchStory = useCallback(
     async (storyId: string) => {
@@ -177,6 +330,7 @@ export function StoryEngineProvider({
       playerCharacters,
       stories,
       messages,
+      aiSettings,
       getUniverseById: (id) => universes.find((universe) => universe.id === id),
       getPlayerCharacterById: (id) =>
         playerCharacters.find((character) => character.id === id),
@@ -254,6 +408,8 @@ export function StoryEngineProvider({
           id: createEntityId("player-character"),
           name: draft.name.trim(),
           age: draft.age.trim(),
+          gender: draft.gender.trim(),
+          pronouns: draft.pronouns.trim(),
           appearance: draft.appearance.trim(),
           personality: draft.personality.trim(),
           background: draft.background.trim(),
@@ -279,6 +435,8 @@ export function StoryEngineProvider({
           ...currentCharacter,
           name: draft.name.trim(),
           age: draft.age.trim(),
+          gender: draft.gender.trim(),
+          pronouns: draft.pronouns.trim(),
           appearance: draft.appearance.trim(),
           personality: draft.personality.trim(),
           background: draft.background.trim(),
@@ -405,8 +563,436 @@ export function StoryEngineProvider({
       exportStory(storyId) {
         return repository.getStoryExportBundle(storyId);
       },
+      exportWorkspaceBackup() {
+        return repository.exportWorkspaceBackup();
+      },
+      async importWorkspaceBackup(backup) {
+        await repository.importWorkspaceBackup(backup);
+        await hydrate(false);
+      },
+      async saveAISettings(next) {
+        const now = new Date().toISOString();
+        const current = await getNormalizedAISettings();
+        const createdAt = current?.createdAt ?? now;
+        const nextApiKeys = next.apiKeys ?? {};
+        const nextDefaultModels = next.defaultModels ?? {};
+        const apiKeys = {
+          ...(current?.apiKeys ?? {}),
+          ...Object.fromEntries(
+            Object.entries(nextApiKeys).filter((entry) => entry[1]?.trim()),
+          ),
+        } as Partial<Record<AIProviderType, string>>;
+        const defaultModels = {
+          ...(current?.defaultModels ?? {}),
+          ...Object.fromEntries(
+            Object.entries(nextDefaultModels).filter((entry) => entry[1]?.trim()),
+          ),
+        } as Partial<Record<AIProviderType, string>>;
+
+        const settings: AISettings = {
+          id: "ai-settings",
+          activeProviderType: next.activeProviderType,
+          apiKeys,
+          defaultModels,
+          createdAt,
+          updatedAt: now,
+        };
+
+        await repository.saveAISettings(settings);
+        setAiSettings(settings);
+
+        return settings;
+      },
+      async validateAIConnection(providerType) {
+        const settings = await getNormalizedAISettings();
+
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings first.");
+        }
+
+        const resolvedProviderType = providerType ?? settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(resolvedProviderType);
+        const provider = createAIProvider(resolvedProviderType);
+        await provider.validateConnection(apiKey, model);
+      },
+      getStoryAIConfig(storyId) {
+        return repository.getStoryAIConfig(storyId);
+      },
+      async saveStoryAIConfig(next) {
+        const now = new Date().toISOString();
+        const record: StoryAIConfig = {
+          id: createEntityId("story-ai-config"),
+          storyId: next.storyId,
+          providerType: next.providerType,
+          model: next.model?.trim() || undefined,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        await repository.saveStoryAIConfig(record);
+
+        return record;
+      },
+      listUniverseImports(universeId) {
+        return repository.listUniverseImports(universeId);
+      },
+      async saveUniverseImport(next) {
+        const record: UniverseImport = {
+          ...next,
+          id: createEntityId("universe-import"),
+        };
+
+        await repository.saveUniverseImport(record);
+
+        return record;
+      },
+      listStorySummaries(storyId) {
+        return repository.listStorySummaries(storyId);
+      },
+      async generatePlayerAssistMessage(storyId) {
+        const story = await repository.getStory(storyId);
+
+        if (!story) {
+          throw new Error("Story not found.");
+        }
+
+        const [universe, playerCharacter, storyConfig] = await Promise.all([
+          repository.getUniverse(story.universeId),
+          repository.getPlayerCharacter(story.playerCharacterId),
+          repository.getStoryAIConfig(storyId),
+        ]);
+
+        if (!universe || !playerCharacter) {
+          throw new Error("Story references missing universe or player character.");
+        }
+
+        const settings = await getNormalizedAISettings();
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings before using Player Assist.");
+        }
+
+        const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+        const provider = createAIProvider(providerType);
+
+        const [imports, summaries, refreshedMessages] = await Promise.all([
+          repository.listUniverseImports(universe.id),
+          repository.listStorySummaries(storyId),
+          repository.listStoryMessages(storyId),
+        ]);
+
+        const recentMessages = sortByTimestampAsc(refreshedMessages).slice(-30);
+        const context = buildPlayerAssistContext({
+          universe,
+          story,
+          playerCharacter,
+          imports,
+          summaries,
+          recentMessages,
+        });
+
+        const suggestion = await provider.generateResponse({
+          apiKey,
+          model,
+          messages: context,
+        });
+
+        return suggestion.content.trim();
+      },
+      async generatePlayerCharacterDraft(universeId, fields, existing) {
+        const universe = await repository.getUniverse(universeId);
+
+        if (!universe) {
+          throw new Error("Universe not found.");
+        }
+
+        const settings = await getNormalizedAISettings();
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings before generating characters.");
+        }
+
+        const providerType = settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(providerType);
+        const provider = createAIProvider(providerType);
+
+        const imports = await repository.listUniverseImports(universeId);
+        const mostRecentImport = imports[0];
+        const importedLoreText = mostRecentImport?.importedText?.slice(0, 12000) ?? "";
+
+        const allowedFields: Array<keyof PlayerCharacterDraft> = [
+          "name",
+          "age",
+          "gender",
+          "pronouns",
+          "appearance",
+          "personality",
+          "background",
+          "goals",
+          "notes",
+        ];
+        const requestedFields = fields?.length ? fields : allowedFields;
+        const generatorFields = requestedFields.filter((field) =>
+          allowedFields.includes(field),
+        ) as PlayerCharacterField[];
+
+        const systemPrompt = buildCharacterGeneratorSystemPrompt({
+          universe,
+          importedLoreText,
+          fields: generatorFields.length ? generatorFields : undefined,
+          existing: existing
+            ? allowedFields.reduce(
+                (acc, key) => {
+                  const value = existing[key];
+                  if (typeof value === "string" && value.trim()) {
+                    acc[key as PlayerCharacterField] = value.trim();
+                  }
+                  return acc;
+                },
+                {} as Partial<Record<PlayerCharacterField, string>>,
+              )
+            : undefined,
+        });
+
+        const response = await provider.generateResponse({
+          apiKey,
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: "Generate the JSON now." },
+          ],
+        });
+
+        const jsonText = extractFirstJsonObject(response.content) ?? response.content.trim();
+        const parsed = safeParseJsonObject<Record<string, unknown>>(jsonText);
+
+        if (!parsed) {
+          throw new Error("Character generator returned invalid JSON.");
+        }
+
+        const draft: Partial<PlayerCharacterDraft> = {};
+
+        for (const key of requestedFields) {
+          if (key === "universeId") {
+            continue;
+          }
+          const value = parsed[key as string];
+          if (typeof value === "string") {
+            (draft as any)[key] = value.trim();
+          }
+        }
+
+        return draft;
+      },
+      async sendChatMessage(storyId, content) {
+        const trimmed = content.trim();
+
+        if (!trimmed) {
+          throw new Error("Message content is required.");
+        }
+
+        const story = await repository.getStory(storyId);
+
+        if (!story) {
+          throw new Error("Story not found.");
+        }
+
+        const [universe, playerCharacter] = await Promise.all([
+          repository.getUniverse(story.universeId),
+          repository.getPlayerCharacter(story.playerCharacterId),
+        ]);
+
+        if (!universe || !playerCharacter) {
+          throw new Error("Story references missing universe or player character.");
+        }
+
+        const existingMessages = await repository.listStoryMessages(storyId);
+        const lastMessage = existingMessages[existingMessages.length - 1];
+
+        const shouldReuseLastUserMessage =
+          lastMessage?.role === "user" &&
+          lastMessage.content.trim() === trimmed &&
+          lastMessage.storyId === storyId;
+
+        const userMessage: StoryMessage = shouldReuseLastUserMessage
+          ? lastMessage
+          : {
+              id: createEntityId("story-message"),
+              storyId,
+              role: "user",
+              content: trimmed,
+              timestamp: new Date().toISOString(),
+              speakerType: "player",
+            };
+
+        if (!shouldReuseLastUserMessage) {
+          await repository.saveStoryMessage(userMessage);
+        }
+
+        const [imports, summaries, refreshedMessages, storyConfig, storyState] = await Promise.all([
+          repository.listUniverseImports(universe.id),
+          repository.listStorySummaries(storyId),
+          repository.listStoryMessages(storyId),
+          repository.getStoryAIConfig(storyId),
+          repository.getStoryState(storyId),
+        ]);
+
+        const settings = await getNormalizedAISettings();
+
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings before generating scenes.");
+        }
+
+        const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+        const provider = createAIProvider(providerType);
+
+        const recentMessages = sortByTimestampAsc(refreshedMessages).slice(-31);
+        const historyMessages =
+          recentMessages.length && recentMessages[recentMessages.length - 1]?.id === userMessage.id
+            ? recentMessages.slice(0, -1)
+            : recentMessages;
+
+        const context = buildStoryChatContext({
+          universe,
+          story,
+          playerCharacter,
+          imports,
+          summaries,
+          storyState,
+          recentMessages: historyMessages,
+          latestUserMessage: userMessage.content,
+        });
+
+        const assistantContent = await provider.generateResponse({
+          apiKey,
+          model,
+          messages: context,
+        });
+
+        const sceneDepth = inferSceneDepth(userMessage.content);
+        const target = getSceneWordTarget(sceneDepth);
+        const wordCount = assistantContent.content.split(/\s+/).filter(Boolean).length;
+        const shouldRewriteForSize = sceneDepth === "light" && wordCount > target.maxWords * 2;
+        const finalAssistantText = shouldRewriteForSize
+          ? (
+              await provider.generateResponse({
+                apiKey,
+                model,
+                messages: [
+                  {
+                    role: "system",
+                    content: [
+                      "Rewrite the following story scene to match a light interaction.",
+                      `Target length: ${target.minWords}-${target.maxWords} words.`,
+                      "Keep character voice and only the essential beats.",
+                      "Do not reintroduce unchanged environments or participants.",
+                      "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
+                      "Not every character needs to speak; keep participation natural.",
+                      "Never speak for the player character. Do not generate suggested player lines or options.",
+                      "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+                    ].join("\n"),
+                  },
+                  {
+                    role: "user",
+                    content: assistantContent.content,
+                  },
+                ],
+              })
+            ).content
+          : assistantContent.content;
+
+        if (
+          detectPlayerCharacterAuthorshipViolation({
+            playerName: playerCharacter.name,
+            text: finalAssistantText,
+          })
+        ) {
+          throw new Error(
+            "Generation blocked: AI attempted to speak or act for the player character. Retry.",
+          );
+        }
+
+        const assistantMessage: StoryMessage = {
+          id: createEntityId("story-message"),
+          storyId,
+          role: "assistant",
+          content: finalAssistantText,
+          timestamp: new Date().toISOString(),
+          speakerType: "narrator",
+        };
+
+        await repository.saveStoryMessage(assistantMessage);
+
+        const updatedMessages = await repository.listStoryMessages(storyId);
+        let summaryForState = story.currentSummary;
+
+        if (updatedMessages.length > 0 && updatedMessages.length % 20 === 0) {
+          const summaryContext = buildStorySummaryContext({
+            storyTitle: story.title,
+            playerCharacterName: playerCharacter.name,
+            messages: updatedMessages,
+          });
+
+          const summaryText = await provider.generateSummary({
+            apiKey,
+            model,
+            storyTitle: story.title,
+            messages: summaryContext,
+            existingSummary: story.currentSummary,
+          });
+
+          await repository.saveStorySummary({
+            id: createEntityId("story-summary"),
+            storyId,
+            summary: summaryText,
+            generatedAt: new Date().toISOString(),
+          });
+
+          await repository.saveStory({
+            ...story,
+            currentSummary: summaryText,
+            updatedAt: new Date().toISOString(),
+          });
+
+          summaryForState = summaryText;
+        }
+
+        if (updatedMessages.length > 0 && updatedMessages.length % 10 === 0) {
+          try {
+            const extractionContext = buildStoryStateExtractionPrompt({
+              playerName: playerCharacter.name,
+              openingPrompt: story.openingPrompt,
+              summaryText: summaryForState,
+              recentMessages: updatedMessages,
+              existingStateJson: storyState?.stateJson,
+            });
+
+            const stateResponse = await provider.generateResponse({
+              apiKey,
+              model,
+              messages: extractionContext,
+            });
+
+            const parsedState = parseStoryStateData(stateResponse.content);
+
+            if (parsedState) {
+              const record: StoryState = {
+                id: `story-state:${storyId}`,
+                storyId,
+                stateJson: JSON.stringify(parsedState),
+                updatedAt: new Date().toISOString(),
+              };
+              await repository.saveStoryState(record);
+            }
+          } catch {}
+        }
+
+        await touchStory(storyId);
+        await hydrate(false);
+      },
     };
   }, [
+    aiSettings,
     errorMessage,
     hydrate,
     loading,
@@ -416,6 +1002,8 @@ export function StoryEngineProvider({
     stories,
     touchStory,
     universes,
+    getNormalizedAISettings,
+    resolveAIProfile,
   ]);
 
   return (

@@ -9,17 +9,22 @@ import { cn } from "../../utils/cn";
 export function Field({
   label,
   hint,
+  action,
   children,
 }: {
   label: string;
   hint?: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <label className="block space-y-2">
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm font-medium text-ink-soft">{label}</span>
-        {hint ? <span className="text-xs text-ink-muted">{hint}</span> : null}
+        <div className="flex items-center gap-2">
+          {hint ? <span className="text-xs text-ink-muted">{hint}</span> : null}
+          {action}
+        </div>
       </div>
       {children}
     </label>
@@ -59,4 +64,3 @@ export function TextAreaInput({
     />
   );
 }
-

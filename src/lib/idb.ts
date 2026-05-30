@@ -1,11 +1,16 @@
 const DATABASE_NAME = "story-engine-db";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 3;
 
 export type StoreName =
   | "universes"
   | "playerCharacters"
   | "stories"
-  | "messages";
+  | "messages"
+  | "aiSettings"
+  | "storyAiConfigs"
+  | "universeImports"
+  | "storySummaries"
+  | "storyStates";
 
 let databasePromise: Promise<IDBDatabase> | null = null;
 
@@ -25,36 +30,75 @@ export function openStoryEngineDatabase() {
   databasePromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const database = request.result;
+      const transaction = request.transaction;
+      const oldVersion = event.oldVersion;
+      const newVersion = event.newVersion ?? DATABASE_VERSION;
 
-      if (!database.objectStoreNames.contains("universes")) {
-        database.createObjectStore("universes", { keyPath: "id" });
+      if (!transaction) {
+        throw new Error("IndexedDB upgrade transaction was not available.");
       }
 
-      if (!database.objectStoreNames.contains("playerCharacters")) {
-        const store = database.createObjectStore("playerCharacters", {
-          keyPath: "id",
-        });
-        store.createIndex("universeId", "universeId", { unique: false });
-      }
+      const ensureStore = <T extends StoreName>(
+        storeName: T,
+        options: IDBObjectStoreParameters,
+      ) => {
+        if (!database.objectStoreNames.contains(storeName)) {
+          return database.createObjectStore(storeName, options);
+        }
+        return transaction.objectStore(storeName);
+      };
 
-      if (!database.objectStoreNames.contains("stories")) {
-        const store = database.createObjectStore("stories", {
-          keyPath: "id",
-        });
-        store.createIndex("universeId", "universeId", { unique: false });
-        store.createIndex("playerCharacterId", "playerCharacterId", {
-          unique: false,
-        });
-      }
+      const ensureIndex = (
+        store: IDBObjectStore,
+        indexName: string,
+        keyPath: string | string[],
+        options: IDBIndexParameters,
+      ) => {
+        if (store.indexNames.contains(indexName)) {
+          return;
+        }
+        store.createIndex(indexName, keyPath, options);
+      };
 
-      if (!database.objectStoreNames.contains("messages")) {
-        const store = database.createObjectStore("messages", {
-          keyPath: "id",
-        });
-        store.createIndex("storyId", "storyId", { unique: false });
-      }
+      ensureStore("universes", { keyPath: "id" });
+
+      const playerCharacters = ensureStore("playerCharacters", { keyPath: "id" });
+      ensureIndex(playerCharacters, "universeId", "universeId", { unique: false });
+
+      const stories = ensureStore("stories", { keyPath: "id" });
+      ensureIndex(stories, "universeId", "universeId", { unique: false });
+      ensureIndex(stories, "playerCharacterId", "playerCharacterId", { unique: false });
+
+      const messages = ensureStore("messages", { keyPath: "id" });
+      ensureIndex(messages, "storyId", "storyId", { unique: false });
+
+      ensureStore("aiSettings", { keyPath: "id" });
+
+      const storyAiConfigs = ensureStore("storyAiConfigs", { keyPath: "id" });
+      ensureIndex(storyAiConfigs, "storyId", "storyId", { unique: false });
+
+      const universeImports = ensureStore("universeImports", { keyPath: "id" });
+      ensureIndex(universeImports, "universeId", "universeId", { unique: false });
+
+      const storySummaries = ensureStore("storySummaries", { keyPath: "id" });
+      ensureIndex(storySummaries, "storyId", "storyId", { unique: false });
+
+      const storyStates = ensureStore("storyStates", { keyPath: "id" });
+      ensureIndex(storyStates, "storyId", "storyId", { unique: false });
+
+      const runMigrations = (fromVersion: number, toVersion: number) => {
+        if (fromVersion < 2 && toVersion >= 2) {
+          return;
+        }
+
+        if (fromVersion < 3 && toVersion >= 3) {
+          return;
+        }
+      };
+
+      runMigrations(oldVersion, newVersion);
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -170,3 +214,15 @@ export async function deleteAllByIndex(
   });
 }
 
+export async function clearStore(storeName: StoreName) {
+  const database = await openStoryEngineDatabase();
+
+  return new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(storeName, "readwrite");
+    transaction.objectStore(storeName).clear();
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () =>
+      reject(transaction.error ?? new Error(`Unable to clear ${storeName}.`));
+  });
+}

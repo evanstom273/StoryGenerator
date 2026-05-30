@@ -11,6 +11,8 @@ import {
   generateStoryPremise,
   suggestStoryTitle,
 } from "../lib/storyPremises";
+import type { AIProviderType } from "../types/models";
+import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
 
 type StoryStartMode = "custom" | "generated";
 
@@ -25,14 +27,23 @@ const initialFormState = {
 export function StoryCreatePage() {
   const navigate = useNavigate();
   const {
+    aiSettings,
     createStory,
     universes,
     getPlayerCharactersForUniverse,
     getPlayerCharacterById,
     getUniverseById,
+    saveStoryAIConfig,
   } = useStoryEngine();
   const [formState, setFormState] = useState(initialFormState);
   const [storyStartMode, setStoryStartMode] = useState<StoryStartMode>("custom");
+  const [storyProviderType, setStoryProviderType] = useState(
+    aiSettings?.activeProviderType ?? "openai",
+  );
+  const [storyModel, setStoryModel] = useState(
+    aiSettings?.defaultModels?.[aiSettings?.activeProviderType ?? "openai"] ??
+      getProviderDefaultModel(aiSettings?.activeProviderType ?? "openai"),
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -98,6 +109,12 @@ export function StoryCreatePage() {
         ...formState,
         currentSummary: formState.currentSummary.trim(),
       });
+
+      await saveStoryAIConfig({
+        storyId: story.id,
+        providerType: storyProviderType,
+        model: storyModel,
+      }).catch(() => null);
 
       navigate(`/stories/${story.id}`);
     } catch (error) {
@@ -208,6 +225,46 @@ export function StoryCreatePage() {
               </SelectInput>
             </Field>
           </div>
+
+          <Panel className="border-dashed border-white/12 bg-white/[0.03]">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+              AI (per story)
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <Field label="Provider Type">
+                <SelectInput
+                  value={storyProviderType}
+                  onChange={(event) => {
+                    const nextProvider = event.target.value as AIProviderType;
+                    setStoryProviderType(nextProvider);
+                    setStoryModel(
+                      aiSettings?.defaultModels?.[nextProvider] ??
+                        getProviderDefaultModel(nextProvider),
+                    );
+                  }}
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="gemini">Gemini</option>
+                </SelectInput>
+              </Field>
+              <Field label="Model">
+                <SelectInput
+                  value={storyModel}
+                  onChange={(event) => setStoryModel(event.target.value)}
+                >
+                  {getProviderModels(storyProviderType).map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+            </div>
+            <p className="mt-4 text-sm leading-7 text-ink-muted">
+              Configure your API key and default model in Settings. This story can
+              pick a provider and model independently.
+            </p>
+          </Panel>
 
           {formState.universeId && !availableCharacters.length ? (
             <Panel className="border-dashed border-white/12 bg-white/[0.03]">
@@ -321,4 +378,3 @@ export function StoryCreatePage() {
     </div>
   );
 }
-
