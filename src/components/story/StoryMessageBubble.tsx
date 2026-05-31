@@ -164,11 +164,13 @@ export function StoryMessageBubble({
     );
   }
 
-  function renderSpeakerBlock(speaker: string, text: string) {
+  function renderInlineSpeakerLine(speaker: string, text: string) {
+    const combined = text.replace(/\s*\n+\s*/g, " ").replace(/\s+/g, " ").trim();
+    const segments = parseActionSegments(combined);
     return (
-      <div className="space-y-1 whitespace-pre-wrap">
-        <div className="font-bold text-accent">{speaker}:</div>
-        {renderTextLines(text)}
+      <div className="whitespace-pre-wrap">
+        <span className="font-bold text-accent">{speaker}:</span>{" "}
+        {renderInlineSegments(segments)}
       </div>
     );
   }
@@ -218,7 +220,7 @@ export function StoryMessageBubble({
                 <div key={index}>
                   {!block.speakerLabel || block.speakerLabel === "Narrator"
                     ? renderTextLines(block.text, { forceItalic: true })
-                    : renderSpeakerBlock(block.speakerLabel, block.text)}
+                    : renderInlineSpeakerLine(block.speakerLabel, block.text)}
                 </div>
               ))
             : (

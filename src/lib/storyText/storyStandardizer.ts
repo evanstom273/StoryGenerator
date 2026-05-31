@@ -225,7 +225,6 @@ export type StoryFormatIssue = {
 function validateStandardText(text: string): StoryFormatIssue[] {
   const issues: StoryFormatIssue[] = [];
   const lines = normalizeNewlines(text).split("\n");
-  let inSpeakerBlock = false;
 
   for (const rawLine of lines) {
     const trimmed = rawLine.trim();
@@ -234,72 +233,39 @@ function validateStandardText(text: string): StoryFormatIssue[] {
     }
 
     if (trimmed === "---" || trimmed === "***") {
-      inSpeakerBlock = false;
       continue;
     }
 
-    const headerOnly = isSpeakerHeaderOnly(trimmed);
-    if (headerOnly) {
-      inSpeakerBlock = true;
-      continue;
-    }
-
-    const inlineSpeaker = trimmed.match(/^([^:\n]{1,48}):\s+(.+)$/);
-    if (inlineSpeaker) {
-      issues.push({
-        code: "inline-speaker-line",
-        detail: "Speaker line should be header-only with body lines below.",
-        line: trimmed,
-      });
-      inSpeakerBlock = true;
-      continue;
-    }
-
-    if (inSpeakerBlock) {
-      const isAction = trimmed.startsWith("*") && trimmed.endsWith("*") && trimmed.length > 2;
-      const isDialogue = trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length > 2;
-
-      if (!isAction && !isDialogue) {
-        inSpeakerBlock = false;
-      } else {
-        if (isAction) {
-          const inner = trimmed.slice(1, -1);
-          if (inner.includes("*") || trimmed.includes("**")) {
-            issues.push({
-              code: "unbalanced-asterisks",
-              detail: "Action line contains stray '*'.",
-              line: trimmed,
-            });
-          }
-          if (inner.includes('"')) {
-            issues.push({
-              code: "action-has-quotes",
-              detail: "Action line must not contain dialogue quotes.",
-              line: trimmed,
-            });
-          }
-        }
-
-        if (isDialogue) {
-          const inner = trimmed.slice(1, -1);
-          if (inner.includes('"')) {
-            issues.push({
-              code: "unbalanced-quotes",
-              detail: "Dialogue line contains stray '\"'.",
-              line: trimmed,
-            });
-          }
-          if (inner.includes("*") || trimmed.includes("**")) {
-            issues.push({
-              code: "dialogue-has-asterisks",
-              detail: "Dialogue line must not contain action markers.",
-              line: trimmed,
-            });
-          }
-        }
-
+    const speakerMatch = trimmed.match(/^([^:\n]{1,48}):\s*(.*)$/);
+    if (speakerMatch) {
+      const remainder = speakerMatch[2] ?? "";
+      if (!remainder.trim()) {
+        issues.push({ code: "empty-speaker-line", detail: "Speaker line has no content.", line: trimmed });
         continue;
       }
+
+      const removedActions = remainder.replace(/\*[^*]+\*/g, "");
+      const removedDialogue = removedActions.replace(/"[^"]+"/g, "");
+      const leftover = removedDialogue.trim();
+      if (leftover) {
+        issues.push({
+          code: "unformatted-speaker-text",
+          detail: "Speaker line contains text outside action/dialogue formatting.",
+          line: trimmed,
+        });
+      }
+
+      const strayAsterisks = removedActions.includes("*") || remainder.includes("**");
+      if (strayAsterisks) {
+        issues.push({ code: "unbalanced-asterisks", detail: "Speaker line has stray '*'.", line: trimmed });
+      }
+
+      const strayQuotes = removedDialogue.includes('"');
+      if (strayQuotes) {
+        issues.push({ code: "unbalanced-quotes", detail: "Speaker line has stray '\"'.", line: trimmed });
+      }
+
+      continue;
     }
 
     if (trimmed.includes("*") || trimmed.includes("**")) {
@@ -353,7 +319,7 @@ export function standardizeAssistantStoryText(args: {
   ]);
 
   let currentSpeaker: string | null = null;
-  let speakerLines: string[] = [];
+  let speakerSegments: string[] = [];
 
   function looksLikeMultiActorAction(action: string) {
     const normalized = normalizeWhitespace(action);
@@ -396,14 +362,12 @@ export function standardizeAssistantStoryText(args: {
     if (!currentSpeaker) {
       return;
     }
-    while (speakerLines.length && speakerLines[speakerLines.length - 1] === "") {
-      speakerLines.pop();
+    const combined = speakerSegments.join(" ").replace(/\s+/g, " ").trim();
+    if (combined) {
+      output.push(`${currentSpeaker}: ${combined}`.trim());
     }
-
-    output.push(`${currentSpeaker}:`);
-    output.push(...speakerLines);
     currentSpeaker = null;
-    speakerLines = [];
+    speakerSegments = [];
   }
 
   function pushNarration(raw: string) {
@@ -418,12 +382,6 @@ export function standardizeAssistantStoryText(args: {
     output.push(cleaned);
   }
 
-  function pushSpeakerBlankLine() {
-    if (!speakerLines.length || speakerLines[speakerLines.length - 1] !== "") {
-      speakerLines.push("");
-    }
-  }
-
   function pushSpeakerAction(rawAction: string) {
     const action = sanitizeActionContent(rawAction);
     if (!action) {
@@ -436,16 +394,16 @@ export function standardizeAssistantStoryText(args: {
       return;
     }
 
-    const previous = speakerLines[speakerLines.length - 1] ?? "";
+    const previous = speakerSegments[speakerSegments.length - 1] ?? "";
     const previousIsAction =
       previous.startsWith("*") && previous.endsWith("*") && previous.length > 2;
     if (previousIsAction) {
       const merged = mergePhrases([stripWrappingAsterisks(previous), action]);
-      speakerLines[speakerLines.length - 1] = wrapAction(merged);
+      speakerSegments[speakerSegments.length - 1] = wrapAction(merged);
       return;
     }
 
-    speakerLines.push(wrapAction(action));
+    speakerSegments.push(wrapAction(action));
   }
 
   function pushSpeakerDialogue(rawDialogue: string) {
@@ -453,7 +411,7 @@ export function standardizeAssistantStoryText(args: {
     if (!dialogue) {
       return;
     }
-    speakerLines.push(wrapDialogue(dialogue));
+    speakerSegments.push(wrapDialogue(dialogue));
   }
 
   function pushSpeakerContent(raw: string) {
@@ -518,8 +476,9 @@ export function standardizeAssistantStoryText(args: {
 
     if (!trimmed) {
       if (currentSpeaker) {
-        pushSpeakerBlankLine();
-      } else if (output.length && output[output.length - 1] !== "") {
+        continue;
+      }
+      if (output.length && output[output.length - 1] !== "") {
         output.push("");
       }
       continue;
@@ -532,7 +491,7 @@ export function standardizeAssistantStoryText(args: {
       }
       flushSpeaker();
       currentSpeaker = headerOnly;
-      speakerLines = [];
+      speakerSegments = [];
       continue;
     }
 
@@ -544,7 +503,7 @@ export function standardizeAssistantStoryText(args: {
       }
       flushSpeaker();
       currentSpeaker = inlineSpeaker.speakerLabel;
-      speakerLines = [];
+      speakerSegments = [];
       pushSpeakerContent(inlineSpeaker.text);
       continue;
     }
@@ -563,7 +522,7 @@ export function standardizeAssistantStoryText(args: {
       if (label && !stopNames.has(label) && !isPlayerLabel(label) && looksLikeVerbToken(token)) {
         flushSpeaker();
         currentSpeaker = label;
-        speakerLines = [];
+        speakerSegments = [];
         pushSpeakerContent(trimmed.slice(label.length).trimStart());
         continue;
       }
