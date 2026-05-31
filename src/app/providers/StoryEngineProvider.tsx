@@ -34,7 +34,10 @@ import {
   buildStoryStateExtractionPrompt,
   parseStoryStateData,
 } from "../../lib/ai/storyStateExtractor";
-import { detectPlayerCharacterAuthorshipViolation } from "../../lib/storyText/playerProtection";
+import {
+  detectPlayerCharacterAuthorshipViolation,
+  getPlayerCharacterAuthorshipViolation,
+} from "../../lib/storyText/playerProtection";
 import { sanitizeAssistantTranscript } from "../../lib/storyText/transcriptSanitizer";
 import type {
   AIProviderType,
@@ -945,10 +948,21 @@ export function StoryEngineProvider({
           playerName: playerCharacter.name,
         }).text;
 
-        const violatesOwnership = detectPlayerCharacterAuthorshipViolation({
+        const initialViolation = getPlayerCharacterAuthorshipViolation({
           playerName: playerCharacter.name,
           text: sanitizedAssistantText,
         });
+        const violatesOwnership = Boolean(initialViolation);
+
+        if (initialViolation) {
+          console.groupCollapsed("ownership-validator:blocked (initial)");
+          console.log("rule", initialViolation.rule);
+          console.log("match", initialViolation.match);
+          console.log("line", initialViolation.line ?? null);
+          console.log("rawAssistantBeforeSanitize", finalAssistantText);
+          console.log("assistantAfterSanitize", sanitizedAssistantText);
+          console.groupEnd();
+        }
 
         const safeAssistantText = violatesOwnership
           ? (
@@ -984,12 +998,18 @@ export function StoryEngineProvider({
           playerName: playerCharacter.name,
         }).text;
 
-        if (
-          detectPlayerCharacterAuthorshipViolation({
-            playerName: playerCharacter.name,
-            text: sanitizedSafeAssistantText,
-          })
-        ) {
+        const finalViolation = getPlayerCharacterAuthorshipViolation({
+          playerName: playerCharacter.name,
+          text: sanitizedSafeAssistantText,
+        });
+        if (finalViolation) {
+          console.groupCollapsed("ownership-validator:blocked (final)");
+          console.log("rule", finalViolation.rule);
+          console.log("match", finalViolation.match);
+          console.log("line", finalViolation.line ?? null);
+          console.log("rawAssistantBeforeSanitize", safeAssistantText);
+          console.log("assistantAfterSanitize", sanitizedSafeAssistantText);
+          console.groupEnd();
           throw new Error(
             "Generation blocked: AI attempted to speak or act for the player character. Retry.",
           );

@@ -4,6 +4,25 @@ function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function stripQuotedSegments(value: string) {
+  return value
+    .replace(/"[^"]*"/g, "")
+    .replace(/“[^”]*”/g, "")
+    .replace(/'[^']*'/g, "");
+}
+
+function getSpeakerLabelIfAny(line: string) {
+  const match = line.match(/^([^:\n]{1,48}):\s*/);
+  if (!match) {
+    return null;
+  }
+  const label = match[1]?.trim();
+  if (!label) {
+    return null;
+  }
+  return label;
+}
+
 function getPlayerNameVariants(playerName: string) {
   const trimmed = playerName.trim();
   if (!trimmed) {
@@ -100,7 +119,13 @@ function looksLikeVerbToken(token: string, auxiliaryVerbs: Set<string>) {
   );
 }
 
-export function detectPlayerCharacterAuthorshipViolation({
+export type PlayerOwnershipViolation = {
+  rule: string;
+  match: string;
+  line?: string;
+};
+
+export function getPlayerCharacterAuthorshipViolation({
   playerName,
   text,
 }: {
@@ -109,7 +134,7 @@ export function detectPlayerCharacterAuthorshipViolation({
 }) {
   const variants = getPlayerNameVariants(playerName);
   if (!variants.length) {
-    return false;
+    return null;
   }
 
   const auxiliaryVerbs = new Set([
@@ -137,14 +162,21 @@ export function detectPlayerCharacterAuthorshipViolation({
     if (!trimmed) {
       continue;
     }
-    if (trimmed.startsWith('"')) {
+
+    const speakerLabel = getSpeakerLabelIfAny(trimmed);
+    if (speakerLabel && !lowerVariants.includes(speakerLabel.toLowerCase())) {
+      continue;
+    }
+
+    const candidate = stripQuotedSegments(trimmed);
+    if (!candidate) {
       continue;
     }
 
     if (pronounWindow > 0) {
-      const pronounMatch = trimmed.match(/^(He|She|They)\s+([a-zA-Z']{2,})\b/);
+      const pronounMatch = candidate.match(/^(He|She|They)\s+([a-zA-Z']{2,})\b/);
       if (pronounMatch && pronounMatch[2] && looksLikeVerbToken(pronounMatch[2], auxiliaryVerbs)) {
-        return true;
+        return { rule: "pronoun-continuation", match: pronounMatch[0], line: trimmed };
       }
       pronounWindow = Math.max(0, pronounWindow - 1);
     }
@@ -152,15 +184,15 @@ export function detectPlayerCharacterAuthorshipViolation({
     if (
       lowerVariants.some((variant) => {
         const escaped = escapeRegex(variant);
-        return new RegExp(`\\b${escaped}\\b`, "i").test(trimmed);
+        return new RegExp(`\\b${escaped}\\b`, "i").test(candidate);
       })
     ) {
       pronounWindow = 2;
     }
 
-    const youMatch = trimmed.match(/^You\s+([a-zA-Z']{2,})\b/);
+    const youMatch = candidate.match(/^You\s+([a-zA-Z']{2,})\b/);
     if (youMatch && youMatch[1] && looksLikeVerbToken(youMatch[1], auxiliaryVerbs)) {
-      return true;
+      return { rule: "second-person", match: youMatch[0], line: trimmed };
     }
   }
 
@@ -168,7 +200,7 @@ export function detectPlayerCharacterAuthorshipViolation({
     const escaped = escapeRegex(variant);
     const headerPattern = new RegExp(`^\\s*${escaped}\\s*(?::|[-—])\\s*`, "im");
     if (headerPattern.test(text)) {
-      return true;
+      return { rule: "speaker-header", match: variant };
     }
   }
 
@@ -182,7 +214,7 @@ export function detectPlayerCharacterAuthorshipViolation({
       return lowerVariants.includes(label.toLowerCase());
     })
   ) {
-    return true;
+    return { rule: "scene-block-speaker", match: playerName };
   }
 
   const punctuationAfterName = new Set([",", "—", "-", ":", "?", "!"]);
@@ -193,18 +225,28 @@ export function detectPlayerCharacterAuthorshipViolation({
       continue;
     }
 
+    const speakerLabel = getSpeakerLabelIfAny(trimmed);
+    if (speakerLabel && !lowerVariants.includes(speakerLabel.toLowerCase())) {
+      continue;
+    }
+
+    const candidate = stripQuotedSegments(trimmed);
+    if (!candidate) {
+      continue;
+    }
+
     for (const variant of variants) {
       const escaped = escapeRegex(variant);
       const prefixPattern = new RegExp(`^\\*?\\s*${escaped}(\\b|\\s)`, "i");
-      const prefixMatch = trimmed.match(prefixPattern);
+      const prefixMatch = candidate.match(prefixPattern);
       if (!prefixMatch) {
         const inlineSubjectPattern = new RegExp(`\\b${escaped}\\b\\s+([a-zA-Z']{2,})\\b`, "i");
-        const inlineMatch = trimmed.match(inlineSubjectPattern);
+        const inlineMatch = candidate.match(inlineSubjectPattern);
         if (!inlineMatch) {
           continue;
         }
 
-        const afterToken = trimmed.slice((inlineMatch.index ?? 0) + (inlineMatch[0]?.length ?? 0));
+        const afterToken = candidate.slice((inlineMatch.index ?? 0) + (inlineMatch[0]?.length ?? 0));
         const nextChar = afterToken.trimStart()[0] ?? "";
         if (punctuationAfterName.has(nextChar)) {
           continue;
@@ -214,13 +256,13 @@ export function detectPlayerCharacterAuthorshipViolation({
         const looksLikeVerb = looksLikeVerbToken(token, auxiliaryVerbs);
 
         if (looksLikeVerb) {
-          return true;
+          return { rule: "inline-subject-verb", match: inlineMatch[0], line: trimmed };
         }
 
         continue;
       }
 
-      const after = trimmed.slice(prefixMatch[0].length);
+      const after = candidate.slice(prefixMatch[0].length);
       const nextChar = after.trimStart()[0] ?? "";
       if (punctuationAfterName.has(nextChar)) {
         continue;
@@ -235,10 +277,20 @@ export function detectPlayerCharacterAuthorshipViolation({
       const looksLikeVerb = looksLikeVerbToken(token, auxiliaryVerbs);
 
       if (looksLikeVerb) {
-        return true;
+        return { rule: "line-start-subject-verb", match: `${variant} ${verbMatch[1]}`, line: trimmed };
       }
     }
   }
 
-  return false;
+  return null;
+}
+
+export function detectPlayerCharacterAuthorshipViolation({
+  playerName,
+  text,
+}: {
+  playerName: string;
+  text: string;
+}) {
+  return Boolean(getPlayerCharacterAuthorshipViolation({ playerName, text }));
 }
