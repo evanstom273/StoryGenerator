@@ -571,6 +571,130 @@ export function sanitizeMessageForDisplay(args: {
   }).text;
 }
 
+function stripForOverlap(value: string) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/^[^:\n]{1,48}:\s*/gm, "")
+    .replace(/["*]/g, "")
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokensForOverlap(value: string) {
+  const stop = new Set([
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "to",
+    "of",
+    "in",
+    "on",
+    "at",
+    "for",
+    "with",
+    "as",
+    "is",
+    "was",
+    "were",
+    "are",
+    "be",
+    "been",
+    "it",
+    "its",
+    "this",
+    "that",
+    "he",
+    "she",
+    "they",
+    "we",
+    "you",
+    "i",
+  ]);
+
+  return stripForOverlap(value)
+    .split(" ")
+    .filter((token) => token.length >= 3 && !stop.has(token));
+}
+
+function bigrams(tokens: string[]) {
+  const grams: string[] = [];
+  for (let i = 0; i < tokens.length - 1; i += 1) {
+    grams.push(`${tokens[i]} ${tokens[i + 1]}`);
+  }
+  return grams;
+}
+
+function overlapRatio(a: string[], b: string[]) {
+  if (!a.length || !b.length) {
+    return 0;
+  }
+  const setA = new Set(a);
+  let intersect = 0;
+  for (const item of b) {
+    if (setA.has(item)) {
+      intersect += 1;
+    }
+  }
+  return intersect / Math.min(a.length, b.length);
+}
+
+function extractAssistantLeadWindow(text: string) {
+  const lines = normalizeNewlines(text).split("\n");
+  const kept: string[] = [];
+  let chars = 0;
+  let nonEmpty = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (kept.length) {
+        break;
+      }
+      continue;
+    }
+
+    kept.push(trimmed);
+    chars += trimmed.length;
+    nonEmpty += 1;
+    if (chars >= 450 || nonEmpty >= 3) {
+      break;
+    }
+  }
+
+  return kept.join(" ");
+}
+
+export function detectSceneStateRenarration(args: {
+  latestUserMessage: string;
+  assistantText: string;
+}) {
+  const lead = extractAssistantLeadWindow(args.assistantText);
+  if (!lead) {
+    return { triggered: false as const, reason: "", snippet: "" };
+  }
+
+  const userTokens = tokensForOverlap(args.latestUserMessage);
+  const leadTokens = tokensForOverlap(lead);
+  const tokenOverlap = overlapRatio(userTokens, leadTokens);
+  const bigramOverlap = overlapRatio(bigrams(userTokens), bigrams(leadTokens));
+
+  const cuePattern =
+    /\b(a few minutes later|minutes later|moments later|later|suddenly|immediately|the situation|it is immediately apparent|bursts into|arrives|arrival|chaos|is clear|was clear)\b/i;
+  const hasCue = cuePattern.test(lead);
+
+  const triggered = (hasCue && (tokenOverlap >= 0.55 || bigramOverlap >= 0.35)) || tokenOverlap >= 0.7;
+  const reason = triggered
+    ? `tokenOverlap=${tokenOverlap.toFixed(2)} bigramOverlap=${bigramOverlap.toFixed(2)} cue=${hasCue}`
+    : "";
+
+  return { triggered, reason, snippet: lead };
+}
+
 export function getNarrationSpeakerLabel(message: StoryMessage) {
   if (message.role !== "assistant") {
     return null;

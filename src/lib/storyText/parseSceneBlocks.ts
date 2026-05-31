@@ -66,8 +66,11 @@ export function parseSceneBlocks(content: string): SceneBlock[] {
     const inlineSpeaker = parseInlineSpeakerLine(line.trim());
     if (inlineSpeaker) {
       flush();
-      currentSpeaker = inlineSpeaker.speakerLabel;
-      buffer.push(inlineSpeaker.text);
+      blocks.push({
+        speakerLabel: inlineSpeaker.speakerLabel,
+        text: inlineSpeaker.text,
+      });
+      currentSpeaker = undefined;
       continue;
     }
 

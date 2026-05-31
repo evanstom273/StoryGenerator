@@ -37,7 +37,10 @@ import {
 import {
   getPlayerCharacterAuthorshipViolation,
 } from "../../lib/storyText/playerProtection";
-import { sanitizeAssistantTranscript } from "../../lib/storyText/transcriptSanitizer";
+import {
+  detectSceneStateRenarration,
+  sanitizeAssistantTranscript,
+} from "../../lib/storyText/transcriptSanitizer";
 import type {
   AIProviderType,
   AISettings,
@@ -952,12 +955,14 @@ export function StoryEngineProvider({
         const formatRewritePrompt = [
           "Rewrite the following story scene into the required Story Engine transcript grammar.",
           "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
+          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
           "Formatting rules (strict):",
           "- Every character line must start with 'Name:'.",
           "- Actions must be wrapped as *...* (asterisks only for actions).",
           '- Dialogue must be wrapped in double quotes like "..."',
           "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration must be standalone italic narration (stored as *...*), never 'Narrator:' labels.",
+          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+          "- Never use narrator labels like 'Narrator:' anywhere.",
           "Mystery rule (strict):",
           "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
           "Information ownership rule (strict):",
@@ -981,13 +986,14 @@ export function StoryEngineProvider({
           "Remove any repetition of the latest player message.",
           "Never use narrator labels like 'Narrator:' anywhere in the output.",
           "Keep continuity, character voice, and natural pacing.",
+          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
           "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
           "Formatting rules:",
           "- Every character line must start with 'Name:'.",
           "- Actions must be wrapped as *...* (asterisks only for actions).",
           '- Dialogue must be wrapped in double quotes like "..."',
           "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration must be standalone italic narration (stored as *...*).",
+          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
           "Mystery rule:",
           "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
           "Information ownership rule:",
@@ -1002,6 +1008,7 @@ export function StoryEngineProvider({
           "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
           `The latest player message is:\n${userMessage.content}`,
           `The player character is: ${playerCharacter.name}.`,
+          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
           "Do not attribute extra details to what the player said.",
           "If NPCs need details, have them ask clarifying questions.",
           "Do not invent diagnoses, causes, or specifics unless already established in prior story events/state or explicitly present in the latest player message.",
@@ -1010,9 +1017,27 @@ export function StoryEngineProvider({
           "- Actions must be wrapped as *...* (asterisks only for actions).",
           '- Dialogue must be wrapped in double quotes like \"...\"',
           "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration must be standalone italic narration (stored as *...*).",
+          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
           "Never use narrator labels like 'Narrator:' anywhere in the output.",
           "Never use asterisks for emphasis.",
+        ].join("\n");
+
+        const sceneStateRewritePrompt = [
+          "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
+          `The latest player message is canon scene state:\n${userMessage.content}`,
+          "Do not restate those facts in new words. Continue from the current moment and show consequences and NPC/world reactions.",
+          "If a character enters/arrives or a reveal is already stated by the player, start after that moment (reactions, responses, new beats).",
+          "Formatting rules:",
+          "- Every character line must start with 'Name:'.",
+          "- Actions must be wrapped as *...* (asterisks only for actions).",
+          '- Dialogue must be wrapped in double quotes like \"...\"',
+          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+          "Never use narrator labels like 'Narrator:' anywhere in the output.",
+          "Never use asterisks for emphasis.",
+          "Ownership rules:",
+          `- The player character is: ${playerCharacter.name}`,
+          "- Never write dialogue/actions/thoughts/decisions for the player character.",
         ].join("\n");
 
         let candidateAssistantText = finalAssistantText;
@@ -1079,6 +1104,29 @@ export function StoryEngineProvider({
                 model,
                 messages: [
                   { role: "system", content: hiddenDialogueRewritePrompt },
+                  { role: "user", content: candidateSanitized.text },
+                ],
+              })
+            ).content;
+            continue;
+          }
+
+          const sceneDup = detectSceneStateRenarration({
+            latestUserMessage: userMessage.content,
+            assistantText: candidateSanitized.text,
+          });
+          if (sceneDup.triggered) {
+            console.groupCollapsed("scene-state:renarration");
+            console.log("reason", sceneDup.reason);
+            console.log("snippet", sceneDup.snippet);
+            console.groupEnd();
+
+            candidateAssistantText = (
+              await provider.generateResponse({
+                apiKey,
+                model,
+                messages: [
+                  { role: "system", content: sceneStateRewritePrompt },
                   { role: "user", content: candidateSanitized.text },
                 ],
               })

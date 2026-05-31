@@ -264,27 +264,17 @@ function validateStandardText(text: string): StoryFormatIssue[] {
       continue;
     }
 
-    if (!(line.startsWith("*") && line.endsWith("*") && line.length > 2)) {
+    if (line.includes("*") || line.includes("**")) {
       issues.push({
-        code: "narration-not-italic",
-        detail: "Narration line must be stored as a full-line action span.",
-        line,
-      });
-      continue;
-    }
-
-    const inner = line.slice(1, -1);
-    if (inner.includes("*")) {
-      issues.push({
-        code: "unbalanced-asterisks",
-        detail: "Narration line contains stray '*'.",
+        code: "narration-has-asterisks",
+        detail: "Narration must not contain action markers (*...*).",
         line,
       });
     }
-    if (inner.includes('"')) {
+    if (line.includes('"')) {
       issues.push({
-        code: "unbalanced-quotes",
-        detail: "Narration line contains stray '\"'.",
+        code: "narration-has-quotes",
+        detail: "Narration must not contain dialogue quotes.",
         line,
       });
     }
@@ -389,7 +379,7 @@ export function standardizeAssistantStoryText(args: {
     if (deferredNarration.length) {
       const combinedNarration = mergePhrases(deferredNarration);
       if (combinedNarration) {
-        output.push(wrapAction(combinedNarration));
+        output.push(combinedNarration);
       }
       deferredNarration = [];
     }
@@ -404,7 +394,7 @@ export function standardizeAssistantStoryText(args: {
     if (!cleaned) {
       return;
     }
-    output.push(wrapAction(cleaned));
+    output.push(cleaned);
   }
 
   function pushSpeakerContent(raw: string) {
