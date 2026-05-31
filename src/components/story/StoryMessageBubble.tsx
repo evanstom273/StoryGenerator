@@ -87,7 +87,6 @@ export function StoryMessageBubble({
   onEdit,
   onDelete,
 }: StoryMessageBubbleProps) {
-  const isNarration = message.speakerType === "narrator" && message.role === "assistant";
   const speakerLabel = resolveSpeakerLabel(
     message.role,
     message.speakerType,
