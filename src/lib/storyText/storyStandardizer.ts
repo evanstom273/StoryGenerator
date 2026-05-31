@@ -321,6 +321,21 @@ export function standardizeAssistantStoryText(args: {
   let currentSpeaker: string | null = null;
   let speakerSegments: string[] = [];
 
+  function collapseAdjacentDialogueFragments(value: string) {
+    let next = value;
+    while (true) {
+      const updated = next.replace(/"([^"]+)"\s*"([^"]+)"/g, (_match, left, right) => {
+        const merged = normalizeWhitespace(`${left ?? ""} ${right ?? ""}`);
+        return `"${merged}"`;
+      });
+      if (updated === next) {
+        break;
+      }
+      next = updated;
+    }
+    return next;
+  }
+
   function looksLikeMultiActorAction(action: string) {
     const normalized = normalizeWhitespace(action);
     const lower = normalized.toLowerCase();
@@ -362,7 +377,9 @@ export function standardizeAssistantStoryText(args: {
     if (!currentSpeaker) {
       return;
     }
-    const combined = speakerSegments.join(" ").replace(/\s+/g, " ").trim();
+    const combined = collapseAdjacentDialogueFragments(
+      speakerSegments.join(" ").replace(/\s+/g, " ").trim(),
+    );
     if (combined) {
       output.push(`${currentSpeaker}: ${combined}`.trim());
     }
@@ -407,7 +424,13 @@ export function standardizeAssistantStoryText(args: {
   }
 
   function pushSpeakerDialogue(rawDialogue: string) {
-    const dialogue = sanitizeDialogueContent(rawDialogue);
+    const quotedMatches = Array.from(rawDialogue.matchAll(/"([^"]+)"/g))
+      .map((match) => match[1] ?? "")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const dialogue = sanitizeDialogueContent(
+      quotedMatches.length ? quotedMatches.join(" ") : rawDialogue,
+    );
     if (!dialogue) {
       return;
     }
@@ -420,15 +443,34 @@ export function standardizeAssistantStoryText(args: {
       return;
     }
 
-    const firstQuoteIndex = trimmed.indexOf('"');
-    if (firstQuoteIndex !== -1) {
-      const beforeQuote = trimmed.slice(0, firstQuoteIndex).trim();
-      const afterQuote = trimmed.slice(firstQuoteIndex).trim();
-      if (beforeQuote) {
-        pushSpeakerAction(beforeQuote);
+    if (trimmed.includes('"')) {
+      const pattern = /(\*[^*]{2,}\*|"[^"]+")/g;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null = null;
+      while ((match = pattern.exec(trimmed))) {
+        const between = trimmed.slice(lastIndex, match.index).trim();
+        if (between && /[A-Za-z0-9]/.test(between)) {
+          if (looksLikeDialogue(between)) {
+            pushSpeakerDialogue(between);
+          } else {
+            pushSpeakerAction(between);
+          }
+        }
+        const segment = match[1] ?? "";
+        if (segment.startsWith("*")) {
+          pushSpeakerAction(segment);
+        } else {
+          pushSpeakerDialogue(segment);
+        }
+        lastIndex = pattern.lastIndex;
       }
-      if (afterQuote) {
-        pushSpeakerDialogue(afterQuote);
+      const tail = trimmed.slice(lastIndex).trim();
+      if (tail && /[A-Za-z0-9]/.test(tail)) {
+        if (looksLikeDialogue(tail)) {
+          pushSpeakerDialogue(tail);
+        } else {
+          pushSpeakerAction(tail);
+        }
       }
       return;
     }
