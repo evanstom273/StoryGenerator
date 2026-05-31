@@ -1,4 +1,5 @@
 import type { StoryMessage } from "../../types/models";
+import { standardizeAssistantStoryText } from "./storyStandardizer";
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -538,13 +539,19 @@ export function sanitizeAssistantTranscript(args: {
   const markdownStripped = stripMarkdownArtifacts(narratorStripped.text);
   const normalizedActions = normalizeThirdPersonActions(markdownStripped.text, args.playerName);
   const emphasisStripped = stripInlineAsteriskEmphasis(normalizedActions);
-  const normalized = normalizeTranscriptWhitespace(emphasisStripped);
+  const standardized = standardizeAssistantStoryText({
+    text: emphasisStripped,
+    playerName: args.playerName,
+  });
+  const normalized = normalizeTranscriptWhitespace(standardized.text);
 
   return {
     text: normalized,
     removedEcho: echoed.removed,
     removedNarratorLabels: narratorStripped.changed,
     removedMarkdownArtifacts: markdownStripped.changed,
+    formatValid: standardized.valid,
+    formatIssues: standardized.issues,
   };
 }
 
