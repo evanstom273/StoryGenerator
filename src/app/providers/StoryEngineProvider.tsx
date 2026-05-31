@@ -960,6 +960,10 @@ export function StoryEngineProvider({
           "- Narration must be standalone italic narration (stored as *...*), never 'Narrator:' labels.",
           "Mystery rule (strict):",
           "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+          "Information ownership rule (strict):",
+          "- Do not invent facts that could only have been communicated by the player character off-screen.",
+          "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
+          "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
           "Ownership rules (strict):",
           `- The player character is: ${playerCharacter.name}`,
           "- Never write dialogue/actions/thoughts/decisions for the player character.",
@@ -986,6 +990,29 @@ export function StoryEngineProvider({
           "- Narration must be standalone italic narration (stored as *...*).",
           "Mystery rule:",
           "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+          "Information ownership rule:",
+          "- Do not invent facts that could only have been communicated by the player character off-screen.",
+          "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
+          "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
+        ].join("\n");
+
+        const hiddenDialogueInferencePattern =
+          /\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
+        const hiddenDialogueRewritePrompt = [
+          "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
+          `The latest player message is:\n${userMessage.content}`,
+          `The player character is: ${playerCharacter.name}.`,
+          "Do not attribute extra details to what the player said.",
+          "If NPCs need details, have them ask clarifying questions.",
+          "Do not invent diagnoses, causes, or specifics unless already established in prior story events/state or explicitly present in the latest player message.",
+          "Formatting rules:",
+          "- Every character line must start with 'Name:'.",
+          "- Actions must be wrapped as *...* (asterisks only for actions).",
+          '- Dialogue must be wrapped in double quotes like \"...\"',
+          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+          "- Narration must be standalone italic narration (stored as *...*).",
+          "Never use narrator labels like 'Narrator:' anywhere in the output.",
+          "Never use asterisks for emphasis.",
         ].join("\n");
 
         let candidateAssistantText = finalAssistantText;
@@ -1038,6 +1065,20 @@ export function StoryEngineProvider({
                 model,
                 messages: [
                   { role: "system", content: ownershipRewritePrompt },
+                  { role: "user", content: candidateSanitized.text },
+                ],
+              })
+            ).content;
+            continue;
+          }
+
+          if (hiddenDialogueInferencePattern.test(candidateSanitized.text)) {
+            candidateAssistantText = (
+              await provider.generateResponse({
+                apiKey,
+                model,
+                messages: [
+                  { role: "system", content: hiddenDialogueRewritePrompt },
                   { role: "user", content: candidateSanitized.text },
                 ],
               })

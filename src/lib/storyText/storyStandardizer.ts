@@ -327,6 +327,44 @@ export function standardizeAssistantStoryText(args: {
   let currentSpeaker: string | null = null;
   let actionParts: string[] = [];
   let dialogueParts: string[] = [];
+  let deferredNarration: string[] = [];
+
+  function looksLikeMultiActorAction(action: string) {
+    const normalized = normalizeWhitespace(action);
+    const lower = normalized.toLowerCase();
+    if (!lower) {
+      return false;
+    }
+
+    if (
+      lower.startsWith("everyone ") ||
+      lower.startsWith("they ") ||
+      lower.startsWith("all ") ||
+      lower.startsWith("both ")
+    ) {
+      return true;
+    }
+
+    if (lower.startsWith("the ")) {
+      if (
+        /\b(officers|senior officers|crew|team|staff|group|everyone|all of them|both of them)\b/i.test(
+          normalized,
+        )
+      ) {
+        return true;
+      }
+    }
+
+    if (
+      /\b(senior officers|the officers|the crew|the command staff|everyone|all of them|both of them)\b/i.test(
+        normalized,
+      )
+    ) {
+      return true;
+    }
+
+    return false;
+  }
 
   function flushSpeaker() {
     if (!currentSpeaker) {
@@ -347,6 +385,14 @@ export function standardizeAssistantStoryText(args: {
     currentSpeaker = null;
     actionParts = [];
     dialogueParts = [];
+
+    if (deferredNarration.length) {
+      const combinedNarration = mergePhrases(deferredNarration);
+      if (combinedNarration) {
+        output.push(wrapAction(combinedNarration));
+      }
+      deferredNarration = [];
+    }
   }
 
   function pushNarration(raw: string) {
@@ -374,7 +420,11 @@ export function standardizeAssistantStoryText(args: {
       const action = beforeQuote ? sanitizeActionContent(beforeQuote) : "";
       const dialogue = afterQuote ? sanitizeDialogueContent(afterQuote) : "";
       if (action) {
-        actionParts.push(action);
+        if (looksLikeMultiActorAction(action)) {
+          deferredNarration.push(action);
+        } else {
+          actionParts.push(action);
+        }
       }
       if (dialogue) {
         dialogueParts.push(dialogue);
@@ -387,13 +437,24 @@ export function standardizeAssistantStoryText(args: {
       const action = sanitizeActionContent(leadingAction[1] ?? "");
       const tail = (leadingAction[2] ?? "").trim();
       if (action) {
-        actionParts.push(action);
+        if (looksLikeMultiActorAction(action)) {
+          deferredNarration.push(action);
+        } else {
+          actionParts.push(action);
+        }
       }
       if (tail) {
         if (looksLikeDialogue(tail)) {
           dialogueParts.push(sanitizeDialogueContent(tail));
         } else {
-          actionParts.push(sanitizeActionContent(tail));
+          const tailAction = sanitizeActionContent(tail);
+          if (tailAction) {
+            if (looksLikeMultiActorAction(tailAction)) {
+              deferredNarration.push(tailAction);
+            } else {
+              actionParts.push(tailAction);
+            }
+          }
         }
       }
       return;
@@ -402,7 +463,11 @@ export function standardizeAssistantStoryText(args: {
     if (trimmed.includes("*")) {
       const cleaned = sanitizeActionContent(trimmed);
       if (cleaned) {
-        actionParts.push(cleaned);
+        if (looksLikeMultiActorAction(cleaned)) {
+          deferredNarration.push(cleaned);
+        } else {
+          actionParts.push(cleaned);
+        }
       }
       return;
     }
@@ -412,7 +477,14 @@ export function standardizeAssistantStoryText(args: {
       return;
     }
 
-    actionParts.push(sanitizeActionContent(trimmed));
+    const cleaned = sanitizeActionContent(trimmed);
+    if (cleaned) {
+      if (looksLikeMultiActorAction(cleaned)) {
+        deferredNarration.push(cleaned);
+      } else {
+        actionParts.push(cleaned);
+      }
+    }
   }
 
   for (const rawLine of lines) {
