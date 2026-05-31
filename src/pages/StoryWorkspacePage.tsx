@@ -375,15 +375,29 @@ export function StoryWorkspacePage() {
         {messages.length ? (
           showChrome ? (
             <div className="space-y-1">
-              {messages.map((message) => (
-                <StoryMessageBubble
-                  key={message.id}
-                  message={message}
-                  playerCharacterName={activePlayerCharacter.name}
-                  onEdit={populateComposerFromMessage}
-                  onDelete={handleDeleteMessage}
-                />
-              ))}
+              {(() => {
+                const nodes: React.ReactNode[] = [];
+                let latestUserMessage: string | null = null;
+
+                for (const message of messages) {
+                  if (message.role === "user") {
+                    latestUserMessage = message.content;
+                  }
+
+                  nodes.push(
+                    <StoryMessageBubble
+                      key={message.id}
+                      message={message}
+                      playerCharacterName={activePlayerCharacter.name}
+                      latestUserMessage={latestUserMessage}
+                      onEdit={populateComposerFromMessage}
+                      onDelete={handleDeleteMessage}
+                    />,
+                  );
+                }
+
+                return nodes;
+              })()}
             </div>
           ) : (
             <StoryTranscriptView

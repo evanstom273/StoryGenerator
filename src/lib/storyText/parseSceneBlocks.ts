@@ -16,6 +16,26 @@ function isSpeakerHeader(line: string) {
   return label ? label : null;
 }
 
+function parseInlineSpeakerLine(line: string) {
+  const match = line.match(/^([^\n:]{1,48})(:|\s[-—])\s+(.+)\s*$/);
+  if (!match) {
+    return null;
+  }
+
+  const label = match[1]?.trim();
+  const remainder = match[3]?.trim();
+
+  if (!label || !remainder) {
+    return null;
+  }
+
+  if (label === "Time") {
+    return null;
+  }
+
+  return { speakerLabel: label, text: remainder };
+}
+
 export function parseSceneBlocks(content: string): SceneBlock[] {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   const blocks: Array<{ speakerLabel?: string; text: string }> = [];
@@ -40,6 +60,17 @@ export function parseSceneBlocks(content: string): SceneBlock[] {
     if (header) {
       flush();
       currentSpeaker = header;
+      continue;
+    }
+
+    const inlineSpeaker = parseInlineSpeakerLine(line.trim());
+    if (inlineSpeaker) {
+      flush();
+      blocks.push({
+        speakerLabel: inlineSpeaker.speakerLabel,
+        text: inlineSpeaker.text,
+      });
+      currentSpeaker = undefined;
       continue;
     }
 

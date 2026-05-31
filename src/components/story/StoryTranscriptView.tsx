@@ -10,12 +10,30 @@ type StoryTranscriptViewProps = {
   className?: string;
 };
 
-function stripSurroundingAsterisks(value: string) {
+function renderInlineContent(value: string) {
   const trimmed = value.trim();
-  if (trimmed.startsWith("*") && trimmed.endsWith("*") && trimmed.length > 2) {
-    return trimmed.slice(1, -1).trim();
+  if (!trimmed) {
+    return null;
   }
-  return trimmed;
+
+  const segments = parseActionSegments(trimmed);
+  if (!segments.some((segment) => segment.type === "action")) {
+    return <span className="text-ink">{trimmed}</span>;
+  }
+
+  return (
+    <span className="text-ink">
+      {segments.map((segment, index) =>
+        segment.type === "action" ? (
+          <span key={index} className="italic text-ink-muted">
+            {segment.text}
+          </span>
+        ) : (
+          <span key={index}>{segment.text}</span>
+        ),
+      )}
+    </span>
+  );
 }
 
 function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
@@ -24,16 +42,15 @@ function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
     return null;
   }
 
-  const isFullLineAction = trimmed.startsWith("*") && trimmed.endsWith("*") && trimmed.length > 2;
-
-  if (isFullLineAction) {
-    return (
-      <div className="italic text-ink-muted">{stripSurroundingAsterisks(trimmed)}</div>
-    );
-  }
-
   if (forceItalic) {
-    return <div className="italic text-ink-muted">{trimmed}</div>;
+    const segments = parseActionSegments(trimmed);
+    return (
+      <div className="italic text-ink-muted">
+        {segments.map((segment, index) => (
+          <span key={index}>{segment.text}</span>
+        ))}
+      </div>
+    );
   }
 
   const segments = parseActionSegments(trimmed);
@@ -61,6 +78,7 @@ export function StoryTranscriptView({
   playerCharacterName,
   className,
 }: StoryTranscriptViewProps) {
+  let latestUserMessage: string | null = null;
   return (
     <div className={cn("space-y-6 text-[16px] leading-8 sm:text-[15px] sm:leading-7", className)}>
       {messages.map((message) => {
@@ -76,6 +94,7 @@ export function StoryTranscriptView({
         }
 
         if (message.role === "user") {
+          latestUserMessage = message.content;
           const lines = message.content.split("\n");
           return (
             <div key={message.id} className="space-y-2">
@@ -91,7 +110,11 @@ export function StoryTranscriptView({
           );
         }
 
-        const sanitized = sanitizeAssistantTranscript({ text: message.content }).text;
+        const sanitized = sanitizeAssistantTranscript({
+          text: message.content,
+          latestUserMessage,
+          playerName: playerCharacterName,
+        }).text;
         const blocks = parseSceneBlocks(sanitized);
         return (
           <div key={message.id} className="space-y-4">
@@ -100,16 +123,20 @@ export function StoryTranscriptView({
               const lines = block.text.split("\n");
               return (
                 <div key={blockIndex} className="space-y-2">
-                  {isNarration ? null : (
-                    <div className="text-sm font-semibold text-accent">
-                      {block.speakerLabel}
+                  {isNarration ? (
+                    <div className="space-y-2">
+                      {lines.map((line, index) => (
+                        <div key={index}>{renderLine(line, { forceItalic: true })}</div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div>
+                      <span className="text-sm font-semibold text-accent">
+                        {block.speakerLabel}:
+                      </span>{" "}
+                      {renderInlineContent(lines.join(" ").replace(/\s+/g, " "))}
                     </div>
                   )}
-                  <div className="space-y-2">
-                    {lines.map((line, index) => (
-                      <div key={index}>{renderLine(line, { forceItalic: isNarration })}</div>
-                    ))}
-                  </div>
                 </div>
               );
             })}

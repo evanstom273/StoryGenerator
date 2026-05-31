@@ -93,7 +93,10 @@ interface StoryEngineContextValue {
   deleteMessage: (id: string) => Promise<void>;
   exportStory: (storyId: string) => Promise<StoryExportBundle | null>;
   exportWorkspaceBackup: () => Promise<StoryEngineBackup>;
-  importWorkspaceBackup: (backup: StoryEngineBackup) => Promise<void>;
+  importWorkspaceBackup: (
+    backup: StoryEngineBackup,
+    options?: { mode?: "merge" | "replace"; conflict?: "skip" | "overwrite" },
+  ) => Promise<void>;
   saveAISettings: (next: {
     activeProviderType: AIProviderType;
     apiKeys?: Partial<Record<AIProviderType, string>>;
@@ -276,11 +279,15 @@ export function StoryEngineProvider({
       const apiKey = settings.apiKeys?.[providerType]?.trim() ?? "";
 
       if (!apiKey) {
-        throw new Error(
-          providerType === "gemini"
-            ? "Set a Gemini API key in Settings before generating scenes."
-            : "Set an OpenAI API key in Settings before generating scenes.",
-        );
+        switch (providerType) {
+          case "gemini":
+            throw new Error("Set a Gemini API key in Settings before generating scenes.");
+          case "openrouter":
+            throw new Error("Set an OpenRouter API key in Settings before generating scenes.");
+          case "openai":
+          default:
+            throw new Error("Set an OpenAI API key in Settings before generating scenes.");
+        }
       }
 
       const resolvedModel =
@@ -567,8 +574,8 @@ export function StoryEngineProvider({
       exportWorkspaceBackup() {
         return repository.exportWorkspaceBackup();
       },
-      async importWorkspaceBackup(backup) {
-        await repository.importWorkspaceBackup(backup);
+      async importWorkspaceBackup(backup, options) {
+        await repository.importWorkspaceBackup(backup, options);
         await hydrate(false);
       },
       async saveAISettings(next) {
@@ -876,7 +883,10 @@ export function StoryEngineProvider({
 
           return {
             ...message,
-            content: sanitizeAssistantTranscript({ text: message.content }).text,
+            content: sanitizeAssistantTranscript({
+              text: message.content,
+              playerName: playerCharacter.name,
+            }).text,
           };
         });
 
@@ -932,6 +942,7 @@ export function StoryEngineProvider({
         const sanitizedAssistantText = sanitizeAssistantTranscript({
           text: finalAssistantText,
           latestUserMessage: userMessage.content,
+          playerName: playerCharacter.name,
         }).text;
 
         const violatesOwnership = detectPlayerCharacterAuthorshipViolation({
@@ -970,6 +981,7 @@ export function StoryEngineProvider({
         const sanitizedSafeAssistantText = sanitizeAssistantTranscript({
           text: safeAssistantText,
           latestUserMessage: userMessage.content,
+          playerName: playerCharacter.name,
         }).text;
 
         if (

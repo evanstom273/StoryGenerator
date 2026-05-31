@@ -8,7 +8,7 @@ export type StoryMessageSpeakerType =
   | "narrator"
   | "system";
 export type ExportFormat = "json" | "markdown" | "txt" | "pdf";
-export type AIProviderType = "openai" | "gemini";
+export type AIProviderType = "openai" | "gemini" | "openrouter";
 
 export interface Universe {
   id: EntityId;
@@ -234,7 +234,7 @@ export type StoryEngineBackupV1 = {
     storySummaries: StorySummary[];
     storyStates: StoryState[];
     storyAiConfigs: StoryAIConfig[];
-    aiSettings: (Omit<AISettings, "apiKeys"> & { apiKeys?: undefined }) | null;
+    aiSettings: (Omit<AISettings, "apiKeys"> & { apiKeys?: Partial<Record<AIProviderType, string>> }) | null;
   };
   uiPrefs: {
     rightSidebarCollapsed: boolean;

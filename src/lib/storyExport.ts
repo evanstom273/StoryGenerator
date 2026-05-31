@@ -7,6 +7,7 @@ import type {
 import { formatDateTime } from "./dates";
 import { serializeStoryExportPdf } from "./storyExportPdf";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
+import { parseActionSegments } from "./storyText/parseActionSegments";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 
 function resolveSpeakerLabel(
@@ -38,9 +39,16 @@ function buildTranscriptLines(bundle: StoryExportBundle) {
     const prefix = speaker ? `${speaker}: ` : "";
     const content =
       message.role === "assistant"
-        ? sanitizeAssistantTranscript({ text: message.content }).text
+        ? sanitizeAssistantTranscript({
+            text: message.content,
+            playerName: bundle.playerCharacter.name,
+          }).text
         : message.content;
-    return `[${formatDateTime(message.timestamp)}] ${prefix}${content}`;
+    const plain = parseActionSegments(content)
+      .map((segment) => segment.text)
+      .join("")
+      .replace(/\*\*/g, "");
+    return `[${formatDateTime(message.timestamp)}] ${prefix}${plain}`;
   });
 }
 
@@ -77,6 +85,7 @@ function toMarkdown(bundle: StoryExportBundle) {
       const sanitized = sanitizeAssistantTranscript({
         text: message.content,
         latestUserMessage,
+        playerName: bundle.playerCharacter.name,
       }).text;
       const blocks = parseSceneBlocks(sanitized);
 
@@ -106,7 +115,7 @@ function toMarkdown(bundle: StoryExportBundle) {
             return formattedLines.join("\n");
           }
 
-          return [`${block.speakerLabel}:`, "", formattedLines.join("\n")].join("\n");
+          return `${block.speakerLabel}: ${formattedLines.join(" ")}`.trim();
         })
         .filter(Boolean)
         .join("\n\n");

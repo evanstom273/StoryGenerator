@@ -29,8 +29,12 @@ export function SettingsPage() {
   const [geminiModel, setGeminiModel] = useState(
     aiSettings?.defaultModels?.gemini ?? getProviderDefaultModel("gemini"),
   );
+  const [openrouterModel, setOpenrouterModel] = useState(
+    aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
+  );
   const [openaiKeyInput, setOpenaiKeyInput] = useState("");
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [openrouterKeyInput, setOpenrouterKeyInput] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -47,6 +51,9 @@ export function SettingsPage() {
     setGeminiModel(
       aiSettings?.defaultModels?.gemini ?? getProviderDefaultModel("gemini"),
     );
+    setOpenrouterModel(
+      aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
+    );
   }, [aiSettings]);
 
   useDebouncedEffect(
@@ -58,7 +65,9 @@ export function SettingsPage() {
       if (
         activeProviderType === aiSettings.activeProviderType &&
         openaiModel === (aiSettings.defaultModels?.openai ?? getProviderDefaultModel("openai")) &&
-        geminiModel === (aiSettings.defaultModels?.gemini ?? getProviderDefaultModel("gemini"))
+        geminiModel === (aiSettings.defaultModels?.gemini ?? getProviderDefaultModel("gemini")) &&
+        openrouterModel ===
+          (aiSettings.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"))
       ) {
         return;
       }
@@ -68,11 +77,12 @@ export function SettingsPage() {
         defaultModels: {
           openai: openaiModel,
           gemini: geminiModel,
+          openrouter: openrouterModel,
         },
       }).catch(() => {});
     },
     800,
-    [aiSettings, isSaving, activeProviderType, openaiModel, geminiModel],
+    [aiSettings, isSaving, activeProviderType, openaiModel, geminiModel, openrouterModel],
   );
 
   useDebouncedEffect(
@@ -83,8 +93,9 @@ export function SettingsPage() {
 
       const openaiKey = openaiKeyInput.trim();
       const geminiKey = geminiKeyInput.trim();
+      const openrouterKey = openrouterKeyInput.trim();
 
-      if (!openaiKey && !geminiKey) {
+      if (!openaiKey && !geminiKey && !openrouterKey) {
         return;
       }
 
@@ -93,15 +104,18 @@ export function SettingsPage() {
         apiKeys: {
           openai: openaiKey ? openaiKey : undefined,
           gemini: geminiKey ? geminiKey : undefined,
+          openrouter: openrouterKey ? openrouterKey : undefined,
         },
         defaultModels: {
           openai: openaiModel,
           gemini: geminiModel,
+          openrouter: openrouterModel,
         },
       })
         .then(() => {
           setOpenaiKeyInput("");
           setGeminiKeyInput("");
+          setOpenrouterKeyInput("");
           setStatusMessage("AI settings saved locally.");
         })
         .catch((error) => {
@@ -111,18 +125,28 @@ export function SettingsPage() {
         });
     },
     900,
-    [isSaving, activeProviderType, openaiModel, geminiModel, openaiKeyInput, geminiKeyInput],
+    [
+      isSaving,
+      activeProviderType,
+      openaiModel,
+      geminiModel,
+      openrouterModel,
+      openaiKeyInput,
+      geminiKeyInput,
+      openrouterKeyInput,
+    ],
   );
 
   const openaiConfigured = Boolean(aiSettings?.apiKeys?.openai?.trim());
   const geminiConfigured = Boolean(aiSettings?.apiKeys?.gemini?.trim());
+  const openrouterConfigured = Boolean(aiSettings?.apiKeys?.openrouter?.trim());
   const providerBadge = useMemo(() => {
-    if (!openaiConfigured && !geminiConfigured) {
+    if (!openaiConfigured && !geminiConfigured && !openrouterConfigured) {
       return <Badge variant="warning">Not configured</Badge>;
     }
 
     return <Badge variant="accent">Configured</Badge>;
-  }, [geminiConfigured, openaiConfigured]);
+  }, [geminiConfigured, openaiConfigured, openrouterConfigured]);
 
   async function handleSave() {
     setIsSaving(true);
@@ -135,14 +159,17 @@ export function SettingsPage() {
         apiKeys: {
           openai: openaiKeyInput.trim() ? openaiKeyInput : undefined,
           gemini: geminiKeyInput.trim() ? geminiKeyInput : undefined,
+          openrouter: openrouterKeyInput.trim() ? openrouterKeyInput : undefined,
         },
         defaultModels: {
           openai: openaiModel,
           gemini: geminiModel,
+          openrouter: openrouterModel,
         },
       });
       setOpenaiKeyInput("");
       setGeminiKeyInput("");
+      setOpenrouterKeyInput("");
       setStatusMessage("AI settings saved locally.");
     } catch (error) {
       setErrorMessage(
@@ -190,8 +217,28 @@ export function SettingsPage() {
       return;
     }
 
+    setBackupStatus(null);
+    setBackupError(null);
+
+    try {
+      const text = await backupFile.text();
+      const parsed = JSON.parse(text);
+      await importWorkspaceBackup(parsed, { mode: "merge", conflict: "skip" });
+      setBackupStatus("Backup imported (merged). Reloading...");
+      window.location.reload();
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : "Unable to import backup.");
+    }
+  }
+
+  async function handleReplaceBackup() {
+    if (!backupFile) {
+      setBackupError("Select a backup file first.");
+      return;
+    }
+
     const confirmed = window.confirm(
-      "Importing a backup will replace all current local data (universes, stories, characters, messages, settings). Continue?",
+      "Replace all current local data (universes, stories, characters, messages, settings) with this backup? Continue?",
     );
 
     if (!confirmed) {
@@ -204,8 +251,8 @@ export function SettingsPage() {
     try {
       const text = await backupFile.text();
       const parsed = JSON.parse(text);
-      await importWorkspaceBackup(parsed);
-      setBackupStatus("Backup imported. Reloading...");
+      await importWorkspaceBackup(parsed, { mode: "replace" });
+      setBackupStatus("Backup imported (replaced). Reloading...");
       window.location.reload();
     } catch (error) {
       setBackupError(error instanceof Error ? error.message : "Unable to import backup.");
@@ -251,6 +298,7 @@ export function SettingsPage() {
               >
                 <option value="openai">OpenAI</option>
                 <option value="gemini">Gemini</option>
+                <option value="openrouter">OpenRouter</option>
               </SelectInput>
             </Field>
 
@@ -317,6 +365,43 @@ export function SettingsPage() {
               </div>
             </Panel>
 
+            <Panel className="border-white/8 bg-black/15">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  OpenRouter
+                </div>
+                <Badge variant={openrouterConfigured ? "accent" : "warning"}>
+                  {openrouterConfigured ? "Key saved" : "No key"}
+                </Badge>
+              </div>
+              <div className="mt-4 space-y-4">
+                <Field label="Default Model">
+                  <SelectInput
+                    value={openrouterModel}
+                    onChange={(event) => setOpenrouterModel(event.target.value)}
+                  >
+                    {getProviderModels("openrouter").map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.label}
+                      </option>
+                    ))}
+                  </SelectInput>
+                </Field>
+                <Field
+                  label="OpenRouter API Key"
+                  hint={openrouterConfigured ? "Saved locally" : "Required"}
+                >
+                  <TextInput
+                    type="password"
+                    value={openrouterKeyInput}
+                    onChange={(event) => setOpenrouterKeyInput(event.target.value)}
+                    placeholder={openrouterConfigured ? "Enter a new key to replace" : "sk-or-..."}
+                    autoComplete="off"
+                  />
+                </Field>
+              </div>
+            </Panel>
+
             {statusMessage ? (
               <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
                 {statusMessage}
@@ -352,7 +437,7 @@ export function SettingsPage() {
           </div>
           <p className="mt-3 text-sm leading-7 text-ink-muted">
             Export a portable JSON backup of your entire local workspace. Importing a
-            backup replaces everything currently stored on this device.
+            backup merges in missing items by default.
           </p>
 
           <div className="mt-4 space-y-4">
@@ -373,6 +458,13 @@ export function SettingsPage() {
               <Button
                 variant="ghost"
                 onClick={handleImportBackup}
+                disabled={!backupFile}
+              >
+                Import Backup (Merge)
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={handleReplaceBackup}
                 disabled={!backupFile}
               >
                 Import Backup (Replace All)

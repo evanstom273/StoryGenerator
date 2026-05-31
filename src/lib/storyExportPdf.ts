@@ -30,12 +30,6 @@ function isActionLine(line: string) {
   return trimmed.startsWith("*") && trimmed.endsWith("*") && trimmed.length > 2;
 }
 
-function stripActionStars(line: string) {
-  const trimmed = line.trim();
-  if (!isActionLine(trimmed)) return line;
-  return trimmed.slice(1, -1).trim();
-}
-
 export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
 
@@ -163,6 +157,7 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
       const sanitized = sanitizeAssistantTranscript({
         text: message.content,
         latestUserMessage,
+        playerName: bundle.playerCharacter.name,
       }).text;
       const blocks = parseSceneBlocks(sanitized);
 
@@ -185,13 +180,12 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
             continue;
           }
 
+          const segments = parseActionSegments(line);
           const action = isActionLine(line);
-          const containsInlineAction = parseActionSegments(line).some(
-            (segment) => segment.type === "action",
-          );
+          const containsInlineAction = segments.some((segment) => segment.type === "action");
           const style: "normal" | "italic" | "bold" =
             isNarration || action || containsInlineAction ? "italic" : "normal";
-          const text = action ? stripActionStars(line) : line.replace(/\*\*/g, "");
+          const text = segments.map((segment) => segment.text).join("").replace(/\*\*/g, "");
           writeParagraph(text, 11, style);
         }
       }
@@ -204,9 +198,10 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
           continue;
         }
 
-        const action = isActionLine(line);
-        const text = action ? stripActionStars(line) : line.replace(/\*\*/g, "");
-        writeParagraph(text, 11, action ? "italic" : "normal");
+        const segments = parseActionSegments(line);
+        const containsInlineAction = segments.some((segment) => segment.type === "action");
+        const text = segments.map((segment) => segment.text).join("").replace(/\*\*/g, "");
+        writeParagraph(text, 11, containsInlineAction ? "italic" : "normal");
       }
     }
 

@@ -9,6 +9,7 @@ import { Button } from "../ui/Button";
 interface StoryMessageBubbleProps {
   message: StoryMessage;
   playerCharacterName: string;
+  latestUserMessage?: string | null;
   onEdit: (message: StoryMessage) => void;
   onDelete: (message: StoryMessage) => void;
 }
@@ -84,6 +85,7 @@ function resolveAvatarClass(label: string, speakerType: StoryMessageSpeakerType 
 export function StoryMessageBubble({
   message,
   playerCharacterName,
+  latestUserMessage,
   onEdit,
   onDelete,
 }: StoryMessageBubbleProps) {
@@ -105,7 +107,11 @@ export function StoryMessageBubble({
 
   const sanitizedContent =
     message.role === "assistant"
-      ? sanitizeAssistantTranscript({ text: message.content }).text
+      ? sanitizeAssistantTranscript({
+          text: message.content,
+          latestUserMessage,
+          playerName: playerCharacterName,
+        }).text
       : message.content;
 
   function renderInlineSegments(
@@ -132,33 +138,12 @@ export function StoryMessageBubble({
     });
   }
 
-  function parseActionLine(line: string) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("*") && trimmed.endsWith("*") && trimmed.length > 2) {
-      const inner = trimmed.slice(1, -1).trim();
-      if (inner) {
-        return inner;
-      }
-    }
-
-    return null;
-  }
-
   function renderTextLines(text: string, { forceItalic }: { forceItalic?: boolean } = {}) {
     const lines = text.replace(/\r\n/g, "\n").split("\n");
 
     return (
       <div className="space-y-1 whitespace-pre-wrap">
         {lines.map((line, index) => {
-          const actionLine = parseActionLine(line);
-          if (actionLine) {
-            return (
-              <div key={index} className="italic text-ink-muted">
-                {actionLine}
-              </div>
-            );
-          }
-
           if (!line.trim()) {
             return <div key={index} className="h-2" />;
           }
@@ -175,6 +160,17 @@ export function StoryMessageBubble({
 
           return <div key={index}>{renderInlineSegments(segments)}</div>;
         })}
+      </div>
+    );
+  }
+
+  function renderInlineSpeakerLine(speaker: string, text: string) {
+    const combined = text.replace(/\s*\n+\s*/g, " ").replace(/\s+/g, " ").trim();
+    const segments = parseActionSegments(combined);
+    return (
+      <div className="whitespace-pre-wrap">
+        <span className="font-bold text-accent">{speaker}:</span>{" "}
+        {renderInlineSegments(segments)}
       </div>
     );
   }
@@ -218,18 +214,13 @@ export function StoryMessageBubble({
             </div>
           </div>
         </div>
-        <div className="mt-2 space-y-3 text-sm leading-7 text-ink-soft">
+        <div className="mt-2 space-y-3 text-sm leading-7 text-ink">
           {message.role === "assistant"
             ? parseSceneBlocks(sanitizedContent).map((block, index) => (
                 <div key={index}>
-                  {block.speakerLabel && block.speakerLabel !== "Narrator" ? (
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">
-                      {block.speakerLabel}
-                    </div>
-                  ) : null}
-                  {renderTextLines(block.text, {
-                    forceItalic: !block.speakerLabel || block.speakerLabel === "Narrator",
-                  })}
+                  {!block.speakerLabel || block.speakerLabel === "Narrator"
+                    ? renderTextLines(block.text, { forceItalic: true })
+                    : renderInlineSpeakerLine(block.speakerLabel, block.text)}
                 </div>
               ))
             : (

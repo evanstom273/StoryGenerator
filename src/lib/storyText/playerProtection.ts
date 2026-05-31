@@ -4,6 +4,81 @@ function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function getPlayerNameVariants(playerName: string) {
+  const trimmed = playerName.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  const firstToken = tokens[0] ?? "";
+  const lastToken = tokens.length > 1 ? tokens[tokens.length - 1] : "";
+  const variants = new Set<string>();
+  variants.add(trimmed);
+  if (firstToken && firstToken.length >= 2) {
+    variants.add(firstToken);
+  }
+  if (lastToken && lastToken.length >= 2) {
+    variants.add(lastToken);
+  }
+  return Array.from(variants);
+}
+
+function looksLikeVerbToken(token: string, auxiliaryVerbs: Set<string>) {
+  const lower = token.toLowerCase();
+  const irregularVerbs = new Set([
+    "am",
+    "be",
+    "been",
+    "being",
+    "do",
+    "did",
+    "done",
+    "go",
+    "went",
+    "gone",
+    "come",
+    "came",
+    "run",
+    "ran",
+    "sit",
+    "sat",
+    "stand",
+    "stood",
+    "say",
+    "said",
+    "see",
+    "saw",
+    "hear",
+    "heard",
+    "take",
+    "took",
+    "taken",
+    "give",
+    "gave",
+    "given",
+    "make",
+    "made",
+    "get",
+    "got",
+    "gotten",
+    "feel",
+    "felt",
+    "nod",
+    "nods",
+    "shake",
+    "shook",
+  ]);
+
+  return (
+    auxiliaryVerbs.has(lower) ||
+    irregularVerbs.has(lower) ||
+    lower.endsWith("ed") ||
+    lower.endsWith("ing") ||
+    lower.endsWith("s")
+  );
+}
+
 export function detectPlayerCharacterAuthorshipViolation({
   playerName,
   text,
@@ -11,22 +86,12 @@ export function detectPlayerCharacterAuthorshipViolation({
   playerName: string;
   text: string;
 }) {
-  const escaped = escapeRegex(playerName.trim());
-  if (!escaped) {
+  const variants = getPlayerNameVariants(playerName);
+  if (!variants.length) {
     return false;
   }
 
-  const headerPattern = new RegExp(`^\\s*${escaped}\\s*(?::|[-—])\\s*`, "im");
-  if (headerPattern.test(text)) {
-    return true;
-  }
-
-  const blocks = parseSceneBlocks(text);
-  if (blocks.some((block) => block.speakerLabel?.trim() === playerName.trim())) {
-    return true;
-  }
-
-  const forbiddenLeadingVerbs = new Set([
+  const auxiliaryVerbs = new Set([
     "is",
     "was",
     "are",
@@ -40,66 +105,7 @@ export function detectPlayerCharacterAuthorshipViolation({
     "should",
     "might",
     "must",
-    "says",
-    "said",
-    "asks",
-    "asked",
-    "replies",
-    "replied",
-    "answers",
-    "answered",
-    "whispers",
-    "whispered",
-    "mutters",
-    "muttered",
-    "thinks",
-    "thought",
-    "feels",
-    "felt",
-    "decides",
-    "decided",
-    "walks",
-    "walked",
-    "steps",
-    "stepped",
-    "enters",
-    "entered",
-    "leaves",
-    "left",
-    "sits",
-    "sat",
-    "stands",
-    "stood",
-    "turns",
-    "turned",
-    "leans",
-    "leaned",
-    "reaches",
-    "reached",
-    "takes",
-    "took",
-    "grabs",
-    "grabbed",
-    "pushes",
-    "pushed",
-    "pulls",
-    "pulled",
-    "runs",
-    "ran",
-    "smiles",
-    "smiled",
-    "laughs",
-    "laughed",
-    "nods",
-    "nodded",
-    "looks",
-    "looked",
-    "glances",
-    "glanced",
   ]);
-
-  const normalizedName = playerName.trim();
-  const linePrefix = new RegExp(`^\\*?\\s*${escapeRegex(normalizedName)}\\b\\s+([a-zA-Z']+)`, "i");
 
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   for (const line of lines) {
@@ -107,15 +113,89 @@ export function detectPlayerCharacterAuthorshipViolation({
     if (!trimmed) {
       continue;
     }
+    if (trimmed.startsWith('"')) {
+      continue;
+    }
+    const youMatch = trimmed.match(/^You\s+([a-zA-Z']{2,})\b/);
+    if (youMatch && youMatch[1] && looksLikeVerbToken(youMatch[1], auxiliaryVerbs)) {
+      return true;
+    }
+  }
 
-    const match = trimmed.match(linePrefix);
-    if (!match) {
+  for (const variant of variants) {
+    const escaped = escapeRegex(variant);
+    const headerPattern = new RegExp(`^\\s*${escaped}\\s*(?::|[-—])\\s*`, "im");
+    if (headerPattern.test(text)) {
+      return true;
+    }
+  }
+
+  const blocks = parseSceneBlocks(text);
+  const lowerVariants = variants.map((value) => value.toLowerCase());
+  if (
+    blocks.some((block) => {
+      const label = block.speakerLabel?.trim();
+      if (!label) {
+        return false;
+      }
+      return lowerVariants.includes(label.toLowerCase());
+    })
+  ) {
+    return true;
+  }
+
+  const punctuationAfterName = new Set([",", "—", "-", ":", "?", "!"]);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
       continue;
     }
 
-    const verb = match[1]?.toLowerCase();
-    if (verb && forbiddenLeadingVerbs.has(verb)) {
-      return true;
+    for (const variant of variants) {
+      const escaped = escapeRegex(variant);
+      const prefixPattern = new RegExp(`^\\*?\\s*${escaped}(\\b|\\s)`, "i");
+      const prefixMatch = trimmed.match(prefixPattern);
+      if (!prefixMatch) {
+        const inlineSubjectPattern = new RegExp(`\\b${escaped}\\b\\s+([a-zA-Z']{2,})\\b`, "i");
+        const inlineMatch = trimmed.match(inlineSubjectPattern);
+        if (!inlineMatch) {
+          continue;
+        }
+
+        const afterToken = trimmed.slice((inlineMatch.index ?? 0) + (inlineMatch[0]?.length ?? 0));
+        const nextChar = afterToken.trimStart()[0] ?? "";
+        if (punctuationAfterName.has(nextChar)) {
+          continue;
+        }
+
+        const token = inlineMatch[1]?.toLowerCase() ?? "";
+        const looksLikeVerb = looksLikeVerbToken(token, auxiliaryVerbs);
+
+        if (looksLikeVerb) {
+          return true;
+        }
+
+        continue;
+      }
+
+      const after = trimmed.slice(prefixMatch[0].length);
+      const nextChar = after.trimStart()[0] ?? "";
+      if (punctuationAfterName.has(nextChar)) {
+        continue;
+      }
+
+      const verbMatch = after.trimStart().match(/^([a-zA-Z']{2,})\b/);
+      if (!verbMatch) {
+        continue;
+      }
+
+      const token = verbMatch[1]?.toLowerCase() ?? "";
+      const looksLikeVerb = looksLikeVerbToken(token, auxiliaryVerbs);
+
+      if (looksLikeVerb) {
+        return true;
+      }
     }
   }
 

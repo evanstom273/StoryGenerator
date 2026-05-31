@@ -58,7 +58,10 @@ export interface StoryEngineRepository {
   saveStoryState(record: StoryState): Promise<StoryState>;
   exportWorkspaceBackup(): Promise<StoryEngineBackup>;
   clearWorkspace(): Promise<void>;
-  importWorkspaceBackup(backup: StoryEngineBackup): Promise<void>;
+  importWorkspaceBackup(
+    backup: StoryEngineBackup,
+    options?: { mode?: "merge" | "replace"; conflict?: "skip" | "overwrite" },
+  ): Promise<void>;
 }
 
 export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
@@ -233,7 +236,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         }
 
         const { apiKeys: _ignored, ...rest } = aiSettings;
-        return rest;
+        return { ...rest, apiKeys: {} };
       })();
 
       const readPref = (key: string, fallback: boolean) => {
@@ -260,7 +263,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           storySummaries,
           storyStates,
           storyAiConfigs,
-          aiSettings: sanitizedAISettings as any,
+          aiSettings: sanitizedAISettings,
         },
         uiPrefs: {
           rightSidebarCollapsed: readPref("story-engine:v2:right-collapsed", true),
@@ -282,36 +285,152 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         clearStore("aiSettings"),
       ]);
     },
-    async importWorkspaceBackup(backup) {
-      if (!backup || backup.backupVersion !== 1) {
+    async importWorkspaceBackup(backup, options) {
+      const version = Number((backup as any)?.backupVersion);
+      if (!backup || version !== 1) {
         throw new Error("Unsupported backup format.");
       }
 
-      await Promise.all([
-        clearStore("messages"),
-        clearStore("stories"),
-        clearStore("playerCharacters"),
-        clearStore("universes"),
-        clearStore("universeImports"),
-        clearStore("storySummaries"),
-        clearStore("storyStates"),
-        clearStore("storyAiConfigs"),
-        clearStore("aiSettings"),
-      ]);
+      const mode = options?.mode ?? "merge";
+      const conflict = options?.conflict ?? "skip";
 
-      const data = backup.data;
+      const data = ((backup as any).data ?? {}) as Partial<StoryEngineBackup["data"]>;
 
-      await Promise.all([
-        ...data.universes.map((record) => putInStore("universes", record)),
-        ...data.playerCharacters.map((record) => putInStore("playerCharacters", record)),
-        ...data.stories.map((record) => putInStore("stories", record)),
-        ...data.messages.map((record) => putInStore("messages", record)),
-        ...data.universeImports.map((record) => putInStore("universeImports", record)),
-        ...data.storySummaries.map((record) => putInStore("storySummaries", record)),
-        ...data.storyStates.map((record) => putInStore("storyStates", record)),
-        ...data.storyAiConfigs.map((record) => putInStore("storyAiConfigs", record)),
-        ...(data.aiSettings ? [putInStore("aiSettings", data.aiSettings as any)] : []),
-      ]);
+      const universes = Array.isArray(data.universes) ? data.universes : [];
+      const playerCharacters = Array.isArray(data.playerCharacters) ? data.playerCharacters : [];
+      const stories = Array.isArray(data.stories) ? data.stories : [];
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      const universeImports = Array.isArray(data.universeImports) ? data.universeImports : [];
+      const storySummaries = Array.isArray(data.storySummaries) ? data.storySummaries : [];
+      const storyStates = Array.isArray(data.storyStates) ? data.storyStates : [];
+      const storyAiConfigs = Array.isArray(data.storyAiConfigs) ? data.storyAiConfigs : [];
+      const aiSettingsRecord = data.aiSettings ?? null;
+
+      function assertHasId(store: string, record: unknown) {
+        const id = (record as any)?.id;
+        if (typeof id !== "string" || !id.trim()) {
+          throw new Error(`Backup import failed: ${store} record missing id.`);
+        }
+      }
+
+      for (const record of universes) assertHasId("universes", record);
+      for (const record of playerCharacters) assertHasId("playerCharacters", record);
+      for (const record of stories) assertHasId("stories", record);
+      for (const record of messages) assertHasId("messages", record);
+      for (const record of universeImports) assertHasId("universeImports", record);
+      for (const record of storySummaries) assertHasId("storySummaries", record);
+      for (const record of storyStates) assertHasId("storyStates", record);
+      for (const record of storyAiConfigs) assertHasId("storyAiConfigs", record);
+      if (aiSettingsRecord) assertHasId("aiSettings", aiSettingsRecord);
+
+      const normalizedAISettings = (() => {
+        if (!aiSettingsRecord || typeof aiSettingsRecord !== "object") {
+          return null;
+        }
+        const record = aiSettingsRecord as any;
+        return {
+          ...record,
+          apiKeys: typeof record.apiKeys === "object" && record.apiKeys !== null ? record.apiKeys : {},
+          defaultModels:
+            typeof record.defaultModels === "object" && record.defaultModels !== null
+              ? record.defaultModels
+              : {},
+        } as any;
+      })();
+
+      if (mode === "replace") {
+        await Promise.all([
+          clearStore("messages"),
+          clearStore("stories"),
+          clearStore("playerCharacters"),
+          clearStore("universes"),
+          clearStore("universeImports"),
+          clearStore("storySummaries"),
+          clearStore("storyStates"),
+          clearStore("storyAiConfigs"),
+          clearStore("aiSettings"),
+        ]);
+
+        await Promise.all([
+          ...universes.map((record) => putInStore("universes", record)),
+          ...playerCharacters.map((record) => putInStore("playerCharacters", record)),
+          ...stories.map((record) => putInStore("stories", record)),
+          ...messages.map((record) => putInStore("messages", record)),
+          ...universeImports.map((record) => putInStore("universeImports", record)),
+          ...storySummaries.map((record) => putInStore("storySummaries", record)),
+          ...storyStates.map((record) => putInStore("storyStates", record)),
+          ...storyAiConfigs.map((record) => putInStore("storyAiConfigs", record)),
+          ...(normalizedAISettings ? [putInStore("aiSettings", normalizedAISettings)] : []),
+        ]);
+      } else {
+        const [
+          existingUniverses,
+          existingPlayerCharacters,
+          existingStories,
+          existingMessages,
+          existingUniverseImports,
+          existingStorySummaries,
+          existingStoryStates,
+          existingStoryAiConfigs,
+        ] = await Promise.all([
+          getAllFromStore<Universe>("universes"),
+          getAllFromStore<PlayerCharacter>("playerCharacters"),
+          getAllFromStore<Story>("stories"),
+          getAllFromStore<StoryMessage>("messages"),
+          getAllFromStore<UniverseImport>("universeImports"),
+          getAllFromStore<StorySummary>("storySummaries"),
+          getAllFromStore<StoryState>("storyStates"),
+          getAllFromStore<StoryAIConfig>("storyAiConfigs"),
+        ]);
+
+        const existingByStore = {
+          universes: new Set(existingUniverses.map((record) => record.id)),
+          playerCharacters: new Set(existingPlayerCharacters.map((record) => record.id)),
+          stories: new Set(existingStories.map((record) => record.id)),
+          messages: new Set(existingMessages.map((record) => record.id)),
+          universeImports: new Set(existingUniverseImports.map((record) => record.id)),
+          storySummaries: new Set(existingStorySummaries.map((record) => record.id)),
+          storyStates: new Set(existingStoryStates.map((record) => record.id)),
+          storyAiConfigs: new Set(existingStoryAiConfigs.map((record) => record.id)),
+        };
+
+        function shouldWrite(store: keyof typeof existingByStore, id: string) {
+          if (conflict === "overwrite") {
+            return true;
+          }
+          return !existingByStore[store].has(id);
+        }
+
+        await Promise.all([
+          ...universes
+            .filter((record) => shouldWrite("universes", record.id))
+            .map((record) => putInStore("universes", record)),
+          ...playerCharacters
+            .filter((record) => shouldWrite("playerCharacters", record.id))
+            .map((record) => putInStore("playerCharacters", record)),
+          ...stories
+            .filter((record) => shouldWrite("stories", record.id))
+            .map((record) => putInStore("stories", record)),
+          ...messages
+            .filter((record) => shouldWrite("messages", record.id))
+            .map((record) => putInStore("messages", record)),
+          ...universeImports
+            .filter((record) => shouldWrite("universeImports", record.id))
+            .map((record) => putInStore("universeImports", record)),
+          ...storySummaries
+            .filter((record) => shouldWrite("storySummaries", record.id))
+            .map((record) => putInStore("storySummaries", record)),
+          ...storyStates
+            .filter((record) => shouldWrite("storyStates", record.id))
+            .map((record) => putInStore("storyStates", record)),
+          ...storyAiConfigs
+            .filter((record) => shouldWrite("storyAiConfigs", record.id))
+            .map((record) => putInStore("storyAiConfigs", record)),
+          ...(normalizedAISettings
+            ? [putInStore("aiSettings", normalizedAISettings)]
+            : []),
+        ]);
+      }
 
       const writePref = (key: string, value: boolean) => {
         try {
@@ -319,9 +438,19 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         } catch {}
       };
 
-      writePref("story-engine:v2:right-collapsed", backup.uiPrefs.rightSidebarCollapsed);
-      writePref("story-engine:v2:reader-mode", backup.uiPrefs.readerMode);
-      writePref("story-engine:v2:show-chrome", backup.uiPrefs.showChrome);
+      const prefs = (backup as any).uiPrefs ?? {};
+      writePref(
+        "story-engine:v2:right-collapsed",
+        typeof prefs.rightSidebarCollapsed === "boolean" ? prefs.rightSidebarCollapsed : true,
+      );
+      writePref(
+        "story-engine:v2:reader-mode",
+        typeof prefs.readerMode === "boolean" ? prefs.readerMode : false,
+      );
+      writePref(
+        "story-engine:v2:show-chrome",
+        typeof prefs.showChrome === "boolean" ? prefs.showChrome : false,
+      );
     },
   };
 }
