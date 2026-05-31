@@ -936,6 +936,8 @@ export function StoryEngineProvider({
                       '- Dialogue must be wrapped in double quotes like "..."',
                       "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
                       "- Narration must be standalone italic narration (stored as *...*), never 'Narrator:' labels.",
+                      "Mystery rule:",
+                      "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
                     ].join("\n"),
                   },
                   {
@@ -956,6 +958,8 @@ export function StoryEngineProvider({
           '- Dialogue must be wrapped in double quotes like "..."',
           "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
           "- Narration must be standalone italic narration (stored as *...*), never 'Narrator:' labels.",
+          "Mystery rule (strict):",
+          "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
           "Ownership rules (strict):",
           `- The player character is: ${playerCharacter.name}`,
           "- Never write dialogue/actions/thoughts/decisions for the player character.",
@@ -965,130 +969,95 @@ export function StoryEngineProvider({
           "- Never use asterisks for emphasis.",
         ].join("\n");
 
+        const ownershipRewritePrompt = [
+          "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
+          `The player character is: ${playerCharacter.name}.`,
+          "Never include a speaker header for the player character.",
+          "Never narrate actions/thoughts for the player character.",
+          "Remove any repetition of the latest player message.",
+          "Never use narrator labels like 'Narrator:' anywhere in the output.",
+          "Keep continuity, character voice, and natural pacing.",
+          "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+          "Formatting rules:",
+          "- Every character line must start with 'Name:'.",
+          "- Actions must be wrapped as *...* (asterisks only for actions).",
+          '- Dialogue must be wrapped in double quotes like "..."',
+          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+          "- Narration must be standalone italic narration (stored as *...*).",
+          "Mystery rule:",
+          "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+        ].join("\n");
+
         let candidateAssistantText = finalAssistantText;
-        let candidateSanitized = sanitizeAssistantTranscript({
-          text: candidateAssistantText,
-          latestUserMessage: userMessage.content,
-          playerName: playerCharacter.name,
-        });
+        let finalSanitizedText: string | null = null;
 
-        for (let attempt = 0; attempt < 2 && !candidateSanitized.formatValid; attempt += 1) {
-          console.groupCollapsed("story-format:invalid");
-          console.log("issues", candidateSanitized.formatIssues);
-          console.log("rawAssistantBeforeSanitize", candidateAssistantText);
-          console.log("assistantAfterSanitize", candidateSanitized.text);
-          console.groupEnd();
-
-          candidateAssistantText = (
-            await provider.generateResponse({
-              apiKey,
-              model,
-              messages: [
-                { role: "system", content: formatRewritePrompt },
-                { role: "user", content: candidateAssistantText },
-              ],
-            })
-          ).content;
-          candidateSanitized = sanitizeAssistantTranscript({
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const candidateSanitized = sanitizeAssistantTranscript({
             text: candidateAssistantText,
             latestUserMessage: userMessage.content,
             playerName: playerCharacter.name,
           });
-        }
 
-        if (!candidateSanitized.formatValid) {
-          throw new Error("Generation blocked: invalid story formatting. Retry.");
-        }
+          if (!candidateSanitized.formatValid) {
+            console.groupCollapsed("story-format:invalid");
+            console.log("issues", candidateSanitized.formatIssues);
+            console.log("rawAssistantBeforeSanitize", candidateAssistantText);
+            console.log("assistantAfterSanitize", candidateSanitized.text);
+            console.groupEnd();
 
-        const sanitizedAssistantText = candidateSanitized.text;
-
-        const initialViolation = getPlayerCharacterAuthorshipViolation({
-          playerName: playerCharacter.name,
-          text: sanitizedAssistantText,
-        });
-        const violatesOwnership = Boolean(initialViolation);
-
-        if (initialViolation) {
-          console.groupCollapsed("ownership-validator:blocked (initial)");
-          console.log("rule", initialViolation.rule);
-          console.log("match", initialViolation.match);
-          console.log("line", initialViolation.line ?? null);
-          console.log("rawAssistantBeforeSanitize", finalAssistantText);
-          console.log("assistantAfterSanitize", sanitizedAssistantText);
-          console.groupEnd();
-        }
-
-        const safeAssistantText = violatesOwnership
-          ? (
+            candidateAssistantText = (
               await provider.generateResponse({
                 apiKey,
                 model,
                 messages: [
-                  {
-                    role: "system",
-                    content: [
-                      "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
-                      `The player character is: ${playerCharacter.name}.`,
-                      "Never include a speaker header for the player character.",
-                      "Never narrate actions/thoughts for the player character.",
-                      "Remove any repetition of the latest player message.",
-                      "Never use narrator labels like 'Narrator:' anywhere in the output.",
-                      "Keep continuity, character voice, and natural pacing.",
-                      "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
-                      "Formatting rules:",
-                      "- Every character line must start with 'Name:'.",
-                      "- Actions must be wrapped as *...* (asterisks only for actions).",
-                      '- Dialogue must be wrapped in double quotes like "..."',
-                      "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-                      "- Narration must be standalone italic narration (stored as *...*).",
-                    ].join("\n"),
-                  },
-                  {
-                    role: "user",
-                    content: sanitizedAssistantText,
-                  },
+                  { role: "system", content: formatRewritePrompt },
+                  { role: "user", content: candidateAssistantText },
                 ],
               })
-            ).content
-          : sanitizedAssistantText;
+            ).content;
+            continue;
+          }
 
-        const sanitizedSafeAssistantText = sanitizeAssistantTranscript({
-          text: safeAssistantText,
-          latestUserMessage: userMessage.content,
-          playerName: playerCharacter.name,
-        });
+          const violation = getPlayerCharacterAuthorshipViolation({
+            playerName: playerCharacter.name,
+            text: candidateSanitized.text,
+          });
 
-        if (!sanitizedSafeAssistantText.formatValid) {
-          console.groupCollapsed("story-format:invalid (post-ownership-rewrite)");
-          console.log("issues", sanitizedSafeAssistantText.formatIssues);
-          console.log("rawAssistantBeforeSanitize", safeAssistantText);
-          console.log("assistantAfterSanitize", sanitizedSafeAssistantText.text);
-          console.groupEnd();
-          throw new Error("Generation blocked: invalid story formatting. Retry.");
+          if (violation) {
+            console.groupCollapsed("ownership-validator:blocked (loop)");
+            console.log("rule", violation.rule);
+            console.log("match", violation.match);
+            console.log("line", violation.line ?? null);
+            console.log("rawAssistantBeforeSanitize", candidateAssistantText);
+            console.log("assistantAfterSanitize", candidateSanitized.text);
+            console.groupEnd();
+
+            candidateAssistantText = (
+              await provider.generateResponse({
+                apiKey,
+                model,
+                messages: [
+                  { role: "system", content: ownershipRewritePrompt },
+                  { role: "user", content: candidateSanitized.text },
+                ],
+              })
+            ).content;
+            continue;
+          }
+
+          finalSanitizedText = candidateSanitized.text;
+          break;
         }
 
-        const finalViolation = getPlayerCharacterAuthorshipViolation({
-          playerName: playerCharacter.name,
-          text: sanitizedSafeAssistantText.text,
-        });
-        if (finalViolation) {
-          console.groupCollapsed("ownership-validator:blocked (final)");
-          console.log("rule", finalViolation.rule);
-          console.log("match", finalViolation.match);
-          console.log("line", finalViolation.line ?? null);
-          console.log("rawAssistantBeforeSanitize", safeAssistantText);
-          console.log("assistantAfterSanitize", sanitizedSafeAssistantText.text);
-          console.groupEnd();
-          throw new Error(
-            "Generation blocked: AI attempted to speak or act for the player character. Retry.",
-          );
+        if (!finalSanitizedText) {
+          throw new Error("Unable to generate a response. Please try again.");
         }
 
         const assistantMessage: StoryMessage = {
           id: createEntityId("story-message"),
           storyId,
           role: "assistant",
-          content: sanitizedSafeAssistantText.text,
+          content: finalSanitizedText,
           timestamp: new Date().toISOString(),
           speakerType: "narrator",
         };

@@ -148,6 +148,7 @@ export function buildStoryChatContext({
       "The Opening Prompt is canon and defines the authoritative starting state. Expand the player's setup rather than replacing it.",
       "Do not automatically introduce cases, missions, mysteries, assignments, emergencies, villains, or conflicts simply because the story has started.",
       "Character interaction alone is a valid scene.",
+      "If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation. React, investigate, speculate, and ask questions, but do not resolve the mystery unless the player explicitly provides the answer.",
       "You are generating a collaborative story scene inside the universe above.",
       "Assume the scene persists between messages. Do not reintroduce unchanged environments or participants.",
       playerStateHint
