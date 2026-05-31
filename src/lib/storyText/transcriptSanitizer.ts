@@ -482,10 +482,20 @@ function removeEchoBlocks(text: string, latestUserMessage: string | null | undef
     return { text, removed: false };
   }
 
-  const raw = normalizeNewlines(text);
+  const userRaw = normalizeNewlines(latestUserMessage ?? "").trim();
+  let raw = normalizeNewlines(text);
+  let removed = false;
+
+  if (userRaw.length >= 12) {
+    const trimmedStart = raw.trimStart();
+    if (trimmedStart.startsWith(userRaw)) {
+      removed = true;
+      raw = trimmedStart.slice(userRaw.length).replace(/^\s+/, "");
+    }
+  }
+
   const blocks = raw.split(/\n{2,}/g);
   const kept: string[] = [];
-  let removed = false;
 
   for (const block of blocks) {
     const blockNorm = normalizeWhitespace(stripQuoteWrapper(block));

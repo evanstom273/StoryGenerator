@@ -21,6 +21,27 @@ function getPlayerNameVariants(playerName: string) {
   if (lastToken && lastToken.length >= 2) {
     variants.add(lastToken);
   }
+
+  const quotedMatches = trimmed.matchAll(/"([^"]{2,64})"/g);
+  for (const match of quotedMatches) {
+    const value = match[1]?.trim() ?? "";
+    if (!value) continue;
+    variants.add(value);
+    for (const token of value.split(/\s+/).filter(Boolean)) {
+      if (token.length >= 2) variants.add(token);
+    }
+  }
+
+  const parenMatches = trimmed.matchAll(/\(([^)]{2,64})\)/g);
+  for (const match of parenMatches) {
+    const value = match[1]?.trim() ?? "";
+    if (!value) continue;
+    variants.add(value);
+    for (const token of value.split(/\s+/).filter(Boolean)) {
+      if (token.length >= 2) variants.add(token);
+    }
+  }
+
   return Array.from(variants);
 }
 
@@ -108,6 +129,9 @@ export function detectPlayerCharacterAuthorshipViolation({
   ]);
 
   const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const lowerVariants = variants.map((value) => value.toLowerCase());
+  let pronounWindow = 0;
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) {
@@ -116,6 +140,24 @@ export function detectPlayerCharacterAuthorshipViolation({
     if (trimmed.startsWith('"')) {
       continue;
     }
+
+    if (pronounWindow > 0) {
+      const pronounMatch = trimmed.match(/^(He|She|They)\s+([a-zA-Z']{2,})\b/);
+      if (pronounMatch && pronounMatch[2] && looksLikeVerbToken(pronounMatch[2], auxiliaryVerbs)) {
+        return true;
+      }
+      pronounWindow = Math.max(0, pronounWindow - 1);
+    }
+
+    if (
+      lowerVariants.some((variant) => {
+        const escaped = escapeRegex(variant);
+        return new RegExp(`\\b${escaped}\\b`, "i").test(trimmed);
+      })
+    ) {
+      pronounWindow = 2;
+    }
+
     const youMatch = trimmed.match(/^You\s+([a-zA-Z']{2,})\b/);
     if (youMatch && youMatch[1] && looksLikeVerbToken(youMatch[1], auxiliaryVerbs)) {
       return true;
@@ -131,7 +173,6 @@ export function detectPlayerCharacterAuthorshipViolation({
   }
 
   const blocks = parseSceneBlocks(text);
-  const lowerVariants = variants.map((value) => value.toLowerCase());
   if (
     blocks.some((block) => {
       const label = block.speakerLabel?.trim();
