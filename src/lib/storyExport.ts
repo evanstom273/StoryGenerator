@@ -6,6 +6,8 @@ import type {
 } from "../types/models";
 import { formatDateTime } from "./dates";
 import { serializeStoryExportPdf } from "./storyExportPdf";
+import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
+import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 
 function resolveSpeakerLabel(
   message: StoryMessage,
@@ -20,7 +22,7 @@ function resolveSpeakerLabel(
   }
 
   if (message.speakerType === "narrator") {
-    return "Narrator";
+    return "";
   }
 
   if (message.role === "system" || message.speakerType === "system") {
@@ -33,7 +35,12 @@ function resolveSpeakerLabel(
 function buildTranscriptLines(bundle: StoryExportBundle) {
   return bundle.messages.map((message) => {
     const speaker = resolveSpeakerLabel(message, bundle.playerCharacter);
-    return `[${formatDateTime(message.timestamp)}] ${speaker}: ${message.content}`;
+    const prefix = speaker ? `${speaker}: ` : "";
+    const content =
+      message.role === "assistant"
+        ? sanitizeAssistantTranscript({ text: message.content }).text
+        : message.content;
+    return `[${formatDateTime(message.timestamp)}] ${prefix}${content}`;
   });
 }
 
@@ -42,10 +49,69 @@ function toJson(bundle: StoryExportBundle) {
 }
 
 function toMarkdown(bundle: StoryExportBundle) {
+  let latestUserMessage: string | null = null;
+
   const transcript = bundle.messages
     .map((message) => {
-      const speaker = resolveSpeakerLabel(message, bundle.playerCharacter);
-      return `### ${speaker}\n\n${message.content}\n\nTime: ${formatDateTime(message.timestamp)}`;
+      if (message.role === "user") {
+        latestUserMessage = message.content;
+        return [
+          `${bundle.playerCharacter.name}:`,
+          "",
+          message.content,
+          "",
+          `Time: ${formatDateTime(message.timestamp)}`,
+        ].join("\n");
+      }
+
+      if (message.role === "system" || message.speakerType === "system") {
+        return [
+          "System:",
+          "",
+          message.content,
+          "",
+          `Time: ${formatDateTime(message.timestamp)}`,
+        ].join("\n");
+      }
+
+      const sanitized = sanitizeAssistantTranscript({
+        text: message.content,
+        latestUserMessage,
+      }).text;
+      const blocks = parseSceneBlocks(sanitized);
+
+      const blockText = blocks
+        .map((block) => {
+          const isNarration = !block.speakerLabel || block.speakerLabel === "Narrator";
+          const lines = block.text.split("\n").map((line) => line.trim());
+
+          const formattedLines = lines
+            .filter(Boolean)
+            .map((line) => {
+              const isActionLine =
+                line.startsWith("*") && line.endsWith("*") && line.length > 2;
+
+              if (isActionLine) {
+                return line;
+              }
+
+              if (isNarration) {
+                return `*${line.replace(/^\*+|\*+$/g, "")}*`;
+              }
+
+              return line;
+            });
+
+          if (isNarration) {
+            return formattedLines.join("\n");
+          }
+
+          return [`${block.speakerLabel}:`, "", formattedLines.join("\n")].join("\n");
+        })
+        .filter(Boolean)
+        .join("\n\n");
+
+      return [blockText, "", `Time: ${formatDateTime(message.timestamp)}`].join("\n");
     })
     .join("\n\n");
 

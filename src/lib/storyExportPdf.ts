@@ -1,6 +1,9 @@
 import { jsPDF } from "jspdf";
 import type { PlayerCharacter, StoryExportBundle, StoryMessage } from "../types/models";
 import { formatDateTime } from "./dates";
+import { parseActionSegments } from "./storyText/parseActionSegments";
+import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
+import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 
 function resolveSpeakerLabel(message: StoryMessage, playerCharacter: PlayerCharacter) {
   if (message.role === "user") {
@@ -12,7 +15,7 @@ function resolveSpeakerLabel(message: StoryMessage, playerCharacter: PlayerChara
   }
 
   if (message.speakerType === "narrator") {
-    return "Narrator";
+    return "";
   }
 
   if (message.role === "system" || message.speakerType === "system") {
@@ -138,27 +141,73 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
 
   writeHeading("Transcript", 14);
 
+  let latestUserMessage: string | null = null;
+
   for (const message of bundle.messages) {
     const speaker = resolveSpeakerLabel(message, bundle.playerCharacter);
     const timestamp = formatDateTime(message.timestamp);
 
-    doc.setFont("times", "bold");
-    doc.setFontSize(12);
-    ensureSpace(24);
-    doc.text(speaker, marginX, y);
-    y += 18;
+    if (message.role === "user") {
+      latestUserMessage = message.content;
+    }
 
-    const lines = (message.content || "").replace(/\r\n/g, "\n").split("\n");
-    for (const rawLine of lines) {
-      const line = rawLine ?? "";
-      if (!line.trim()) {
-        y += 10;
-        continue;
+    if (speaker) {
+      doc.setFont("times", "bold");
+      doc.setFontSize(12);
+      ensureSpace(24);
+      doc.text(speaker, marginX, y);
+      y += 18;
+    }
+
+    if (message.role === "assistant") {
+      const sanitized = sanitizeAssistantTranscript({
+        text: message.content,
+        latestUserMessage,
+      }).text;
+      const blocks = parseSceneBlocks(sanitized);
+
+      for (const block of blocks) {
+        const isNarration = !block.speakerLabel || block.speakerLabel === "Narrator";
+
+        if (!isNarration && block.speakerLabel) {
+          doc.setFont("times", "bold");
+          doc.setFontSize(12);
+          ensureSpace(18);
+          doc.text(block.speakerLabel, marginX, y);
+          y += 18;
+        }
+
+        const lines = block.text.replace(/\r\n/g, "\n").split("\n");
+        for (const rawLine of lines) {
+          const line = rawLine ?? "";
+          if (!line.trim()) {
+            y += 10;
+            continue;
+          }
+
+          const action = isActionLine(line);
+          const containsInlineAction = parseActionSegments(line).some(
+            (segment) => segment.type === "action",
+          );
+          const style: "normal" | "italic" | "bold" =
+            isNarration || action || containsInlineAction ? "italic" : "normal";
+          const text = action ? stripActionStars(line) : line.replace(/\*\*/g, "");
+          writeParagraph(text, 11, style);
+        }
       }
+    } else {
+      const lines = (message.content || "").replace(/\r\n/g, "\n").split("\n");
+      for (const rawLine of lines) {
+        const line = rawLine ?? "";
+        if (!line.trim()) {
+          y += 10;
+          continue;
+        }
 
-      const action = isActionLine(line);
-      const text = action ? stripActionStars(line) : line;
-      writeParagraph(text, 11, action ? "italic" : "normal");
+        const action = isActionLine(line);
+        const text = action ? stripActionStars(line) : line.replace(/\*\*/g, "");
+        writeParagraph(text, 11, action ? "italic" : "normal");
+      }
     }
 
     doc.setFont("times", "normal");

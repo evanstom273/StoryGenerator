@@ -20,7 +20,7 @@ function formatRecentMessages(messages: StoryMessage[], playerName: string) {
           : message.speakerType === "canon"
             ? `Canon (${message.speakerName?.trim() || "Unknown"}):`
             : message.speakerType === "narrator"
-              ? "Narrator:"
+              ? "Narration:"
               : "Assistant:";
       return `${prefix}\n${message.content}`;
     })
@@ -67,7 +67,11 @@ export function buildStoryStateExtractionPrompt({
       '  "unresolvedThreads": string[],',
       '  "sceneState"?: string[],',
       '  "significantMemories"?: string[],',
-      '  "relationshipState"?: string[]',
+      '  "relationshipState"?: string[],',
+      '  "relationships"?: { "<name>": { "<otherName>": { "trust"?: "low"|"medium"|"high"|"unknown", "respect"?: "low"|"medium"|"high"|"unknown", "friendship"?: "low"|"medium"|"high"|"unknown", "loyalty"?: "low"|"medium"|"high"|"unknown", "fear"?: "low"|"medium"|"high"|"unknown", "attraction"?: "low"|"medium"|"high"|"unknown", "rivalry"?: "low"|"medium"|"high"|"unknown", "hostility"?: "low"|"medium"|"high"|"unknown" } } },',
+      '  "npcs"?: { "<name>": { "description"?: string, "role"?: string, "firstSeen"?: string, "lastSeen"?: string, "significance"?: "minor"|"recurring"|"major", "memories"?: string[] } },',
+      '  "locations"?: { "<name>": { "description"?: string, "tags"?: string[], "notes"?: string[], "lastSeen"?: string } },',
+      '  "summaries"?: { "characterSummaries"?: { "<name>": string }, "relationshipSummary"?: string, "worldSummary"?: string }',
       "}",
       "Rules:",
       "- Include identity changes (preferred name, alias, undercover identity, pronouns).",
@@ -76,6 +80,9 @@ export function buildStoryStateExtractionPrompt({
       "- Put short-term scene specifics (current location/participants/active situation) in sceneState.",
       "- Put only lasting, story-changing events in significantMemories (diagnoses, deaths, betrayals, promotions, major injuries, identity changes).",
       "- relationshipState should be a consolidated set of relationship facts that affect future behavior.",
+      "- Use relationships for structured relationship metrics between characters (including recurring NPCs).",
+      "- Use npcs to track recurring NPCs and what they remember.",
+      "- Use locations to track important recurring places.",
       "- Keep lists short and deduplicated.",
       "- If nothing changed, return the previous state with a refreshed updatedAt.",
       "- Never generate dialogue or actions for the player character; this is metadata only.",
@@ -130,6 +137,22 @@ export function parseStoryStateData(text: string): StoryStateData | null {
     return null;
   }
 
+  if (parsed.relationships && typeof parsed.relationships !== "object") {
+    return null;
+  }
+
+  if (parsed.npcs && typeof parsed.npcs !== "object") {
+    return null;
+  }
+
+  if (parsed.locations && typeof parsed.locations !== "object") {
+    return null;
+  }
+
+  if (parsed.summaries && typeof parsed.summaries !== "object") {
+    return null;
+  }
+
   return parsed;
 }
 
@@ -175,6 +198,114 @@ export function formatStoryLongTermMemoryForPrompt(storyStateData: StoryStateDat
     lines.push("Relationship State:");
     for (const fact of storyStateData.relationshipState.slice(0, 12)) {
       lines.push(`- ${fact}`);
+    }
+  }
+
+  if (storyStateData.relationships && Object.keys(storyStateData.relationships).length) {
+    const relationshipLines: string[] = [];
+
+    const subjectNames = Object.keys(storyStateData.relationships).slice(0, 12);
+    for (const subject of subjectNames) {
+      const targets = storyStateData.relationships[subject];
+      if (!targets || typeof targets !== "object") {
+        continue;
+      }
+
+      for (const targetName of Object.keys(targets).slice(0, 8)) {
+        const metrics = targets[targetName];
+        if (!metrics || typeof metrics !== "object") {
+          continue;
+        }
+
+        const parts: string[] = [];
+        const pushMetric = (label: string, value: unknown) => {
+          if (typeof value !== "string" || value === "unknown") {
+            return;
+          }
+          parts.push(`${label} ${value}`);
+        };
+
+        pushMetric("trust", (metrics as any).trust);
+        pushMetric("respect", (metrics as any).respect);
+        pushMetric("friendship", (metrics as any).friendship);
+        pushMetric("loyalty", (metrics as any).loyalty);
+        pushMetric("fear", (metrics as any).fear);
+        pushMetric("attraction", (metrics as any).attraction);
+        pushMetric("rivalry", (metrics as any).rivalry);
+        pushMetric("hostility", (metrics as any).hostility);
+
+        if (!parts.length) {
+          continue;
+        }
+
+        relationshipLines.push(`- ${subject} → ${targetName}: ${parts.join(", ")}`);
+      }
+    }
+
+    if (relationshipLines.length) {
+      lines.push("");
+      lines.push("Relationships:");
+      lines.push(...relationshipLines.slice(0, 16));
+    }
+  }
+
+  if (storyStateData.npcs && Object.keys(storyStateData.npcs).length) {
+    lines.push("");
+    lines.push("Recurring NPCs:");
+    for (const name of Object.keys(storyStateData.npcs).slice(0, 12)) {
+      const npc = storyStateData.npcs[name];
+      if (!npc || typeof npc !== "object") {
+        continue;
+      }
+      const parts: string[] = [];
+      if (typeof (npc as any).role === "string" && (npc as any).role.trim()) {
+        parts.push((npc as any).role.trim());
+      }
+      if (typeof (npc as any).significance === "string") {
+        parts.push((npc as any).significance);
+      }
+      if (typeof (npc as any).description === "string" && (npc as any).description.trim()) {
+        parts.push((npc as any).description.trim());
+      }
+      lines.push(`- ${name}${parts.length ? ` — ${parts.join("; ")}` : ""}`);
+    }
+  }
+
+  if (storyStateData.locations && Object.keys(storyStateData.locations).length) {
+    lines.push("");
+    lines.push("Persistent Locations:");
+    for (const name of Object.keys(storyStateData.locations).slice(0, 12)) {
+      const location = storyStateData.locations[name];
+      if (!location || typeof location !== "object") {
+        continue;
+      }
+      const parts: string[] = [];
+      if (
+        typeof (location as any).description === "string" &&
+        (location as any).description.trim()
+      ) {
+        parts.push((location as any).description.trim());
+      }
+      const tags = (location as any).tags;
+      if (Array.isArray(tags) && tags.length) {
+        parts.push(`tags: ${tags.slice(0, 4).join(", ")}`);
+      }
+      lines.push(`- ${name}${parts.length ? ` — ${parts.join("; ")}` : ""}`);
+    }
+  }
+
+  if (storyStateData.summaries && typeof storyStateData.summaries === "object") {
+    const worldSummary = (storyStateData.summaries as any).worldSummary;
+    const relationshipSummary = (storyStateData.summaries as any).relationshipSummary;
+    if (typeof worldSummary === "string" && worldSummary.trim()) {
+      lines.push("");
+      lines.push("World Summary:");
+      lines.push(`- ${worldSummary.trim()}`);
+    }
+    if (typeof relationshipSummary === "string" && relationshipSummary.trim()) {
+      lines.push("");
+      lines.push("Relationship Summary:");
+      lines.push(`- ${relationshipSummary.trim()}`);
     }
   }
 

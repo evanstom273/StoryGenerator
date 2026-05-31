@@ -2,6 +2,7 @@ import type { StoryMessage } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
+import { sanitizeAssistantTranscript } from "../../lib/storyText/transcriptSanitizer";
 
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
@@ -61,7 +62,7 @@ export function StoryTranscriptView({
   className,
 }: StoryTranscriptViewProps) {
   return (
-    <div className={cn("space-y-6 text-[15px] leading-7", className)}>
+    <div className={cn("space-y-6 text-[16px] leading-8 sm:text-[15px] sm:leading-7", className)}>
       {messages.map((message) => {
         if (message.role === "system") {
           return (
@@ -90,7 +91,8 @@ export function StoryTranscriptView({
           );
         }
 
-        const blocks = parseSceneBlocks(message.content);
+        const sanitized = sanitizeAssistantTranscript({ text: message.content }).text;
+        const blocks = parseSceneBlocks(sanitized);
         return (
           <div key={message.id} className="space-y-4">
             {blocks.map((block, blockIndex) => {
@@ -99,7 +101,7 @@ export function StoryTranscriptView({
               return (
                 <div key={blockIndex} className="space-y-2">
                   {isNarration ? null : (
-                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                    <div className="text-sm font-semibold text-accent">
                       {block.speakerLabel}
                     </div>
                   )}

@@ -112,6 +112,47 @@ export type StoryStateData = {
   sceneState?: string[];
   significantMemories?: string[];
   relationshipState?: string[];
+  relationships?: Record<
+    string,
+    Record<
+      string,
+      {
+        trust?: "low" | "medium" | "high" | "unknown";
+        respect?: "low" | "medium" | "high" | "unknown";
+        friendship?: "low" | "medium" | "high" | "unknown";
+        loyalty?: "low" | "medium" | "high" | "unknown";
+        fear?: "low" | "medium" | "high" | "unknown";
+        attraction?: "low" | "medium" | "high" | "unknown";
+        rivalry?: "low" | "medium" | "high" | "unknown";
+        hostility?: "low" | "medium" | "high" | "unknown";
+      }
+    >
+  >;
+  npcs?: Record<
+    string,
+    {
+      description?: string;
+      role?: string;
+      firstSeen?: string;
+      lastSeen?: string;
+      significance?: "minor" | "recurring" | "major";
+      memories?: string[];
+    }
+  >;
+  locations?: Record<
+    string,
+    {
+      description?: string;
+      tags?: string[];
+      notes?: string[];
+      lastSeen?: string;
+    }
+  >;
+  summaries?: {
+    characterSummaries?: Record<string, string>;
+    relationshipSummary?: string;
+    worldSummary?: string;
+  };
 };
 
 export interface StoryState {

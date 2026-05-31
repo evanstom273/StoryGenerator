@@ -35,6 +35,7 @@ import {
   parseStoryStateData,
 } from "../../lib/ai/storyStateExtractor";
 import { detectPlayerCharacterAuthorshipViolation } from "../../lib/storyText/playerProtection";
+import { sanitizeAssistantTranscript } from "../../lib/storyText/transcriptSanitizer";
 import type {
   AIProviderType,
   AISettings,
@@ -828,6 +829,22 @@ export function StoryEngineProvider({
           await repository.saveStoryMessage(userMessage);
         }
 
+        {
+          const afterSaveMessages = await repository.listStoryMessages(storyId);
+          const last = afterSaveMessages[afterSaveMessages.length - 1];
+          const prev = afterSaveMessages[afterSaveMessages.length - 2];
+
+          if (
+            prev &&
+            last &&
+            prev.role === "user" &&
+            last.role === "user" &&
+            prev.content.trim() === last.content.trim()
+          ) {
+            await repository.deleteStoryMessage(prev.id);
+          }
+        }
+
         const [imports, summaries, refreshedMessages, storyConfig, storyState] = await Promise.all([
           repository.listUniverseImports(universe.id),
           repository.listStorySummaries(storyId),
@@ -852,6 +869,17 @@ export function StoryEngineProvider({
             ? recentMessages.slice(0, -1)
             : recentMessages;
 
+        const sanitizedHistoryMessages = historyMessages.map((message) => {
+          if (message.role !== "assistant") {
+            return message;
+          }
+
+          return {
+            ...message,
+            content: sanitizeAssistantTranscript({ text: message.content }).text,
+          };
+        });
+
         const context = buildStoryChatContext({
           universe,
           story,
@@ -859,7 +887,7 @@ export function StoryEngineProvider({
           imports,
           summaries,
           storyState,
-          recentMessages: historyMessages,
+          recentMessages: sanitizedHistoryMessages,
           latestUserMessage: userMessage.content,
         });
 
@@ -901,10 +929,53 @@ export function StoryEngineProvider({
             ).content
           : assistantContent.content;
 
+        const sanitizedAssistantText = sanitizeAssistantTranscript({
+          text: finalAssistantText,
+          latestUserMessage: userMessage.content,
+        }).text;
+
+        const violatesOwnership = detectPlayerCharacterAuthorshipViolation({
+          playerName: playerCharacter.name,
+          text: sanitizedAssistantText,
+        });
+
+        const safeAssistantText = violatesOwnership
+          ? (
+              await provider.generateResponse({
+                apiKey,
+                model,
+                messages: [
+                  {
+                    role: "system",
+                    content: [
+                      "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
+                      `The player character is: ${playerCharacter.name}.`,
+                      "Never include a speaker header for the player character.",
+                      "Never narrate actions/thoughts for the player character.",
+                      "Remove any repetition of the latest player message.",
+                      "Never use narrator labels like 'Narrator:' anywhere in the output.",
+                      "Keep continuity, character voice, and natural pacing.",
+                      "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+                    ].join("\n"),
+                  },
+                  {
+                    role: "user",
+                    content: sanitizedAssistantText,
+                  },
+                ],
+              })
+            ).content
+          : sanitizedAssistantText;
+
+        const sanitizedSafeAssistantText = sanitizeAssistantTranscript({
+          text: safeAssistantText,
+          latestUserMessage: userMessage.content,
+        }).text;
+
         if (
           detectPlayerCharacterAuthorshipViolation({
             playerName: playerCharacter.name,
-            text: finalAssistantText,
+            text: sanitizedSafeAssistantText,
           })
         ) {
           throw new Error(
@@ -916,7 +987,7 @@ export function StoryEngineProvider({
           id: createEntityId("story-message"),
           storyId,
           role: "assistant",
-          content: finalAssistantText,
+          content: sanitizedSafeAssistantText,
           timestamp: new Date().toISOString(),
           speakerType: "narrator",
         };

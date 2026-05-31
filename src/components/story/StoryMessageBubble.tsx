@@ -2,6 +2,7 @@ import type { StoryMessage, StoryMessageSpeakerType } from "../../types/models";
 import { formatDateTime } from "../../lib/dates";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
+import { sanitizeAssistantTranscript } from "../../lib/storyText/transcriptSanitizer";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
 
@@ -27,7 +28,7 @@ function resolveSpeakerLabel(
   }
 
   if (speakerType === "narrator") {
-    return "Narrator";
+    return "";
   }
 
   if (role === "system" || speakerType === "system") {
@@ -44,7 +45,7 @@ function getInitials(label: string) {
     .filter(Boolean);
 
   if (!parts.length) {
-    return "?";
+    return "";
   }
 
   if (parts.length === 1) {
@@ -86,6 +87,7 @@ export function StoryMessageBubble({
   onEdit,
   onDelete,
 }: StoryMessageBubbleProps) {
+  const isNarration = message.speakerType === "narrator" && message.role === "assistant";
   const speakerLabel = resolveSpeakerLabel(
     message.role,
     message.speakerType,
@@ -101,6 +103,11 @@ export function StoryMessageBubble({
       : message.speakerType === "narrator"
         ? "border-white/8 bg-white/[0.02]"
         : "border-transparent bg-transparent";
+
+  const sanitizedContent =
+    message.role === "assistant"
+      ? sanitizeAssistantTranscript({ text: message.content }).text
+      : message.content;
 
   function renderInlineSegments(
     segments: ReturnType<typeof parseActionSegments>,
@@ -191,9 +198,11 @@ export function StoryMessageBubble({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="truncate text-sm font-semibold text-ink">
-              {speakerLabel}
-            </div>
+            {speakerLabel ? (
+              <div className="truncate text-sm font-semibold text-ink">
+                {speakerLabel}
+              </div>
+            ) : null}
             <div className="text-xs uppercase tracking-[0.18em] text-ink-muted">
               {message.role}
             </div>
@@ -212,7 +221,7 @@ export function StoryMessageBubble({
         </div>
         <div className="mt-2 space-y-3 text-sm leading-7 text-ink-soft">
           {message.role === "assistant"
-            ? parseSceneBlocks(message.content).map((block, index) => (
+            ? parseSceneBlocks(sanitizedContent).map((block, index) => (
                 <div key={index}>
                   {block.speakerLabel && block.speakerLabel !== "Narrator" ? (
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">
@@ -225,7 +234,7 @@ export function StoryMessageBubble({
                 </div>
               ))
             : (
-                renderTextLines(message.content)
+                renderTextLines(sanitizedContent)
               )}
         </div>
         <div className="mt-2 flex gap-2 group-hover:hidden">
