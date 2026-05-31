@@ -35,7 +35,6 @@ import {
   parseStoryStateData,
 } from "../../lib/ai/storyStateExtractor";
 import {
-  detectPlayerCharacterAuthorshipViolation,
   getPlayerCharacterAuthorshipViolation,
 } from "../../lib/storyText/playerProtection";
 import { sanitizeAssistantTranscript } from "../../lib/storyText/transcriptSanitizer";
