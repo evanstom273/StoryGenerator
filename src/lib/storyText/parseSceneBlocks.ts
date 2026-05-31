@@ -55,22 +55,34 @@ export function parseSceneBlocks(content: string): SceneBlock[] {
   }
 
   for (const line of lines) {
-    const header = isSpeakerHeader(line.trim());
+    const trimmed = line.trim();
+    if (trimmed === "---" || trimmed === "***") {
+      flush();
+      currentSpeaker = undefined;
+      buffer.push("");
+      continue;
+    }
+
+    const header = isSpeakerHeader(trimmed);
 
     if (header) {
+      if (currentSpeaker === header) {
+        continue;
+      }
       flush();
       currentSpeaker = header;
       continue;
     }
 
-    const inlineSpeaker = parseInlineSpeakerLine(line.trim());
+    const inlineSpeaker = parseInlineSpeakerLine(trimmed);
     if (inlineSpeaker) {
+      if (currentSpeaker && currentSpeaker === inlineSpeaker.speakerLabel) {
+        buffer.push(inlineSpeaker.text);
+        continue;
+      }
       flush();
-      blocks.push({
-        speakerLabel: inlineSpeaker.speakerLabel,
-        text: inlineSpeaker.text,
-      });
-      currentSpeaker = undefined;
+      currentSpeaker = inlineSpeaker.speakerLabel;
+      buffer.push(inlineSpeaker.text);
       continue;
     }
 

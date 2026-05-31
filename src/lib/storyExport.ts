@@ -115,7 +115,7 @@ function toMarkdown(bundle: StoryExportBundle) {
             return formattedLines.join("\n");
           }
 
-          return `${block.speakerLabel}: ${formattedLines.join(" ")}`.trim();
+          return [`${block.speakerLabel}:`, ...formattedLines].join("\n").trim();
         })
         .filter(Boolean)
         .join("\n\n");

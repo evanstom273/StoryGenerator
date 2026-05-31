@@ -10,32 +10,6 @@ type StoryTranscriptViewProps = {
   className?: string;
 };
 
-function renderInlineContent(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const segments = parseActionSegments(trimmed);
-  if (!segments.some((segment) => segment.type === "action")) {
-    return <span className="text-ink">{trimmed}</span>;
-  }
-
-  return (
-    <span className="text-ink">
-      {segments.map((segment, index) =>
-        segment.type === "action" ? (
-          <span key={index} className="italic text-ink-muted">
-            {segment.text}
-          </span>
-        ) : (
-          <span key={index}>{segment.text}</span>
-        ),
-      )}
-    </span>
-  );
-}
-
 function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -130,11 +104,19 @@ export function StoryTranscriptView({
                       ))}
                     </div>
                   ) : (
-                    <div>
-                      <span className="text-sm font-semibold text-accent">
+                    <div className="space-y-2">
+                      <div className="text-sm font-semibold text-accent">
                         {block.speakerLabel}:
-                      </span>{" "}
-                      {renderInlineContent(lines.join(" ").replace(/\s+/g, " "))}
+                      </div>
+                      <div className="space-y-2">
+                        {lines.map((line, index) =>
+                          line.trim() ? (
+                            <div key={index}>{renderLine(line, { forceItalic: false })}</div>
+                          ) : (
+                            <div key={index} className="h-2" />
+                          ),
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
