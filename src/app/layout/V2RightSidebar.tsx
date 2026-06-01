@@ -69,7 +69,7 @@ export function V2RightSidebar({
     }
 
     const { content, mimeType } = serializeStoryExport(bundle, format);
-    downloadFile(createExportFilename(story.title, format), content, mimeType);
+    await downloadFile(createExportFilename(story.title, format), content, mimeType);
   }
 
   async function handleDeleteStory() {

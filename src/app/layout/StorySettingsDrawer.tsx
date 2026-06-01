@@ -161,7 +161,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     }
 
     const { content, mimeType } = serializeStoryExport(bundle, format);
-    downloadFile(createExportFilename(story.title, format), content, mimeType);
+    await downloadFile(createExportFilename(story.title, format), content, mimeType);
   }
 
   async function handleSaveStoryDetails(event: React.FormEvent<HTMLFormElement>) {

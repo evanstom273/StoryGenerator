@@ -204,7 +204,7 @@ export function SettingsPage() {
     try {
       const backup = await exportWorkspaceBackup();
       const content = JSON.stringify(backup, null, 2);
-      downloadFile("story-engine-backup.json", content, "application/json");
+      await downloadFile("story-engine-backup.json", content, "application/json");
       setBackupStatus("Backup exported.");
     } catch (error) {
       setBackupError(error instanceof Error ? error.message : "Unable to export backup.");
