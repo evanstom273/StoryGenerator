@@ -251,11 +251,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       />
       <div
         className={cn(
-          "absolute inset-y-0 right-0 flex w-[min(92vw,28rem)] flex-col border-l border-white/10 bg-app-elevated shadow-hero transition-transform duration-200",
+          "absolute inset-y-0 right-0 flex w-[min(92vw,28rem)] flex-col border-l border-divider bg-app-elevated shadow-hero transition-transform duration-200",
           storySettingsOpen ? "translate-x-0" : "translate-x-full",
         )}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-white/8 px-4 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-divider px-4 py-4">
           <div className="min-w-0">
             <div className="truncate text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Story Settings
@@ -300,7 +300,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Provider</div>
                     <select
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-accent/20"
+                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
                       value={aiProviderType}
                       onChange={(event) => {
                         const nextProvider = event.target.value as AIProviderType;
@@ -320,7 +320,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Model</div>
                     <select
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-accent/20"
+                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
                       value={aiModel}
                       onChange={(event) => setAiModel(event.target.value)}
                     >
@@ -346,7 +346,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Title</div>
                     <input
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-accent/20"
+                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
                       value={storyFields.title}
                       onChange={(event) =>
                         setStoryFields((current) => ({ ...current, title: event.target.value }))
@@ -356,7 +356,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Opening Prompt</div>
                     <textarea
-                      className="min-h-[110px] w-full resize-y rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-accent/20"
+                      className="min-h-[110px] w-full resize-y rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
                       value={storyFields.openingPrompt}
                       onChange={(event) =>
                         setStoryFields((current) => ({
@@ -369,7 +369,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Current Summary</div>
                     <textarea
-                      className="min-h-[100px] w-full resize-y rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-accent/20"
+                      className="min-h-[100px] w-full resize-y rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
                       value={storyFields.currentSummary}
                       onChange={(event) =>
                         setStoryFields((current) => ({

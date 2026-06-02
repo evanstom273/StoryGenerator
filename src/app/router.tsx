@@ -5,6 +5,14 @@ import { NotFoundPage } from "../pages/NotFoundPage";
 import { PlayerCharacterDetailPage } from "../pages/PlayerCharacterDetailPage";
 import { PlayerCharacterFormPage } from "../pages/PlayerCharacterFormPage";
 import { PlayerCharactersPage } from "../pages/PlayerCharactersPage";
+import { DeveloperBugsPage } from "../pages/DeveloperBugsPage";
+import { DeveloperBugFormPage } from "../pages/DeveloperBugFormPage";
+import { DeveloperFeatureRequestFormPage } from "../pages/DeveloperFeatureRequestFormPage";
+import { DeveloperFeatureRequestsPage } from "../pages/DeveloperFeatureRequestsPage";
+import { DeveloperNotesExportPage } from "../pages/DeveloperNotesExportPage";
+import { DeveloperNotesPage } from "../pages/DeveloperNotesPage";
+import { DeveloperTestingNoteFormPage } from "../pages/DeveloperTestingNoteFormPage";
+import { DeveloperTestingNotesPage } from "../pages/DeveloperTestingNotesPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { StoryCreatePage } from "../pages/StoryCreatePage";
 import { StoriesPage } from "../pages/StoriesPage";
@@ -73,6 +81,50 @@ export const router = createBrowserRouter([
       {
         path: "settings",
         element: <SettingsPage />,
+      },
+      {
+        path: "developer-notes",
+        element: <DeveloperNotesPage />,
+      },
+      {
+        path: "developer-notes/bugs",
+        element: <DeveloperBugsPage />,
+      },
+      {
+        path: "developer-notes/bugs/new",
+        element: <DeveloperBugFormPage />,
+      },
+      {
+        path: "developer-notes/bugs/:bugId/edit",
+        element: <DeveloperBugFormPage />,
+      },
+      {
+        path: "developer-notes/features",
+        element: <DeveloperFeatureRequestsPage />,
+      },
+      {
+        path: "developer-notes/features/new",
+        element: <DeveloperFeatureRequestFormPage />,
+      },
+      {
+        path: "developer-notes/features/:featureId/edit",
+        element: <DeveloperFeatureRequestFormPage />,
+      },
+      {
+        path: "developer-notes/testing",
+        element: <DeveloperTestingNotesPage />,
+      },
+      {
+        path: "developer-notes/testing/new",
+        element: <DeveloperTestingNoteFormPage />,
+      },
+      {
+        path: "developer-notes/testing/:noteId/edit",
+        element: <DeveloperTestingNoteFormPage />,
+      },
+      {
+        path: "developer-notes/export",
+        element: <DeveloperNotesExportPage />,
       },
       {
         path: "*",

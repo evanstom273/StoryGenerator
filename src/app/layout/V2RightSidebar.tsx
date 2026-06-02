@@ -92,7 +92,7 @@ export function V2RightSidebar({
   return (
     <aside className={cn("h-full", className)}>
       <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between gap-3 border-b border-white/8 px-4 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-divider px-4 py-4">
           <div className="min-w-0">
             <div className="truncate text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               {story ? "Story Info" : "Workspace"}

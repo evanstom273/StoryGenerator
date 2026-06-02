@@ -125,6 +125,7 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
   writeBullet("Name", bundle.playerCharacter.name);
   writeBullet("Age", bundle.playerCharacter.age || "Not specified");
   writeBullet("Gender", bundle.playerCharacter.gender || "Not specified");
+  writeBullet("Species", bundle.playerCharacter.species || "Not specified");
   writeBullet("Pronouns", bundle.playerCharacter.pronouns || "Not specified");
   writeBullet("Appearance", bundle.playerCharacter.appearance || "Not specified");
   writeBullet("Personality", bundle.playerCharacter.personality || "Not specified");

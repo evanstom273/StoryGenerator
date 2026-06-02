@@ -4,7 +4,11 @@
 
 :root {
   color-scheme: dark;
-  background-color: #090d16;
+  background-color: #0a0a0a;
+  --theme-primary-rgb: 139 92 246;
+  --theme-secondary-rgb: 167 139 250;
+  --theme-glow-rgb: 196 181 253;
+  --theme-primary-hover-rgb: 155 115 255;
 }
 
 @layer base {
@@ -20,10 +24,7 @@
   body {
     @apply min-h-screen bg-app font-sans text-ink antialiased;
     margin: 0;
-    background:
-      radial-gradient(circle at top, rgba(139, 92, 246, 0.18), transparent 34%),
-      radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.12), transparent 26%),
-      linear-gradient(180deg, #090d16 0%, #0d1220 100%);
+    background: linear-gradient(180deg, #0a0a0a 0%, #090909 100%);
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -46,7 +47,7 @@
   }
 
   ::selection {
-    background: rgba(139, 92, 246, 0.35);
+    background: rgb(var(--theme-primary-rgb) / 0.35);
     color: #ffffff;
   }
 }

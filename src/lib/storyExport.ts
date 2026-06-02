@@ -152,6 +152,7 @@ ${bundle.story.currentSummary || "_No summary yet._"}
 - Name: ${bundle.playerCharacter.name}
 - Age: ${bundle.playerCharacter.age || "Not specified"}
 - Gender: ${bundle.playerCharacter.gender || "Not specified"}
+- Species: ${bundle.playerCharacter.species || "Not specified"}
 - Pronouns: ${bundle.playerCharacter.pronouns || "Not specified"}
 - Appearance: ${bundle.playerCharacter.appearance || "Not specified"}
 - Personality: ${bundle.playerCharacter.personality || "Not specified"}
@@ -189,6 +190,7 @@ Player Character
 - Name: ${bundle.playerCharacter.name}
 - Age: ${bundle.playerCharacter.age || "Not specified"}
 - Gender: ${bundle.playerCharacter.gender || "Not specified"}
+- Species: ${bundle.playerCharacter.species || "Not specified"}
 - Pronouns: ${bundle.playerCharacter.pronouns || "Not specified"}
 - Appearance: ${bundle.playerCharacter.appearance || "Not specified"}
 - Personality: ${bundle.playerCharacter.personality || "Not specified"}

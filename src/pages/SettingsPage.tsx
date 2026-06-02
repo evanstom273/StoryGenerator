@@ -6,10 +6,23 @@ import { Field, SelectInput, TextInput } from "../components/forms/Fields";
 import { Button } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
+import { UI_PREFS_KEYS, readStoredTextSize, writeStoredTextSize } from "../app/ui/UiPrefsContext";
+import { useChangelog } from "../app/versioning/ChangelogContext";
+import { APP_NAME, APP_VERSION } from "../app/versioning/version";
+import { useTheme } from "../app/theming/ThemeContext";
+import { themes, type ThemeKey } from "../app/theming/themes";
 import type { AIProviderType } from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
 import { downloadFile } from "../lib/download";
+import { serializeStoryExport } from "../lib/storyExport";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
+
+function sanitizeFileStem(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 export function SettingsPage() {
   const {
@@ -17,9 +30,21 @@ export function SettingsPage() {
     saveAISettings,
     storageStatus,
     validateAIConnection,
+    universes,
+    playerCharacters,
+    stories,
+    exportStory,
+    exportUniverse,
+    exportPlayerCharacter,
+    importUniverseExport,
+    importPlayerCharacterExport,
+    importStoryExport,
     exportWorkspaceBackup,
     importWorkspaceBackup,
   } = useStoryEngine();
+
+  const { openChangelog, openChangelogHistory } = useChangelog();
+  const { themeKey, setThemeKey, theme } = useTheme();
   const [activeProviderType, setActiveProviderType] = useState<AIProviderType>(
     aiSettings?.activeProviderType ?? "openai",
   );
@@ -42,6 +67,28 @@ export function SettingsPage() {
   const [backupFile, setBackupFile] = useState<File | null>(null);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [itemExportType, setItemExportType] = useState<
+    "universe" | "playerCharacter" | "story"
+  >("story");
+  const [itemExportUniverseId, setItemExportUniverseId] = useState<string>("");
+  const [itemExportCharacterId, setItemExportCharacterId] = useState<string>("");
+  const [itemExportStoryId, setItemExportStoryId] = useState<string>("");
+  const [itemExportStoryFormat, setItemExportStoryFormat] = useState<
+    "json" | "markdown" | "txt" | "pdf"
+  >("json");
+  const [itemExportStatus, setItemExportStatus] = useState<string | null>(null);
+  const [itemExportError, setItemExportError] = useState<string | null>(null);
+  const [itemImportType, setItemImportType] = useState<
+    "universe" | "playerCharacter" | "story"
+  >("story");
+  const [itemImportFile, setItemImportFile] = useState<File | null>(null);
+  const [itemImportUniverseId, setItemImportUniverseId] = useState<string>("");
+  const [itemImportStatus, setItemImportStatus] = useState<string | null>(null);
+  const [itemImportError, setItemImportError] = useState<string | null>(null);
+  const [textSize, setTextSize] = useState<"sm" | "md" | "lg" | "xl">(() =>
+    readStoredTextSize(UI_PREFS_KEYS.textSize, "md"),
+  );
+  const [versionCopyStatus, setVersionCopyStatus] = useState<string | null>(null);
 
   useEffect(() => {
     setActiveProviderType(aiSettings?.activeProviderType ?? "openai");
@@ -55,6 +102,54 @@ export function SettingsPage() {
       aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
     );
   }, [aiSettings]);
+
+  useEffect(() => {
+    writeStoredTextSize(UI_PREFS_KEYS.textSize, textSize);
+  }, [textSize]);
+
+  async function handleCopyVersionInformation() {
+    const platform = await (async () => {
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        return Capacitor.getPlatform();
+      } catch {
+        return "web";
+      }
+    })();
+
+    const text = `${APP_NAME} v${APP_VERSION}\nPlatform: ${platform}\nUser Agent: ${navigator.userAgent}`;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setVersionCopyStatus("Copied to clipboard.");
+    } catch {
+      window.prompt("Copy version info:", text);
+      setVersionCopyStatus("Copy prompt opened.");
+    }
+  }
+
+  useEffect(() => {
+    if (!itemExportUniverseId && universes[0]?.id) {
+      setItemExportUniverseId(universes[0].id);
+    }
+    if (!itemExportCharacterId && playerCharacters[0]?.id) {
+      setItemExportCharacterId(playerCharacters[0].id);
+    }
+    if (!itemExportStoryId && stories[0]?.id) {
+      setItemExportStoryId(stories[0].id);
+    }
+    if (!itemImportUniverseId && universes[0]?.id) {
+      setItemImportUniverseId(universes[0].id);
+    }
+  }, [
+    itemExportUniverseId,
+    itemExportCharacterId,
+    itemExportStoryId,
+    itemImportUniverseId,
+    universes,
+    playerCharacters,
+    stories,
+  ]);
 
   useDebouncedEffect(
     () => {
@@ -211,6 +306,127 @@ export function SettingsPage() {
     }
   }
 
+  async function handleExportItem() {
+    setItemExportStatus(null);
+    setItemExportError(null);
+
+    try {
+      if (itemExportType === "universe") {
+        if (!itemExportUniverseId) {
+          throw new Error("Select a universe first.");
+        }
+
+        const bundle = await exportUniverse(itemExportUniverseId);
+        if (!bundle) {
+          throw new Error("Unable to assemble export data for this universe.");
+        }
+
+        const filename = `${sanitizeFileStem(bundle.universe.name) || "story-engine-universe"}.json`;
+        await downloadFile(filename, JSON.stringify(bundle, null, 2), "application/json");
+        setItemExportStatus("Universe exported.");
+        return;
+      }
+
+      if (itemExportType === "playerCharacter") {
+        if (!itemExportCharacterId) {
+          throw new Error("Select a player character first.");
+        }
+
+        const bundle = await exportPlayerCharacter(itemExportCharacterId);
+        if (!bundle) {
+          throw new Error("Unable to assemble export data for this player character.");
+        }
+
+        const filename = `${sanitizeFileStem(bundle.playerCharacter.name) || "story-engine-character"}.json`;
+        await downloadFile(filename, JSON.stringify(bundle, null, 2), "application/json");
+        setItemExportStatus("Player character exported.");
+        return;
+      }
+
+      if (!itemExportStoryId) {
+        throw new Error("Select a story first.");
+      }
+
+      const bundle = await exportStory(itemExportStoryId);
+      if (!bundle) {
+        throw new Error("Unable to assemble export data for this story.");
+      }
+
+      const stem = sanitizeFileStem(bundle.story.title) || "story-engine-story";
+      const extension =
+        itemExportStoryFormat === "json"
+          ? "json"
+          : itemExportStoryFormat === "markdown"
+            ? "md"
+            : itemExportStoryFormat === "pdf"
+              ? "pdf"
+              : "txt";
+      const filename = `${stem}.${extension}`;
+      const { content, mimeType } = serializeStoryExport(bundle, itemExportStoryFormat);
+      await downloadFile(filename, content, mimeType);
+      setItemExportStatus("Story exported.");
+    } catch (error) {
+      setItemExportError(error instanceof Error ? error.message : "Unable to export item.");
+    }
+  }
+
+  async function handleImportItem() {
+    setItemImportStatus(null);
+    setItemImportError(null);
+
+    try {
+      if (!itemImportFile) {
+        throw new Error("Select a JSON file first.");
+      }
+
+      const text = await itemImportFile.text();
+      const parsed = JSON.parse(text);
+
+      if (itemImportType === "universe") {
+        if (parsed?.exportVersion !== 1 || parsed?.type !== "universe") {
+          throw new Error("This file is not a supported universe export.");
+        }
+
+        const result = await importUniverseExport(parsed);
+        setItemImportStatus(`Universe imported. (${result.universeId})`);
+        return;
+      }
+
+      if (itemImportType === "playerCharacter") {
+        if (parsed?.exportVersion !== 1 || parsed?.type !== "playerCharacter") {
+          throw new Error("This file is not a supported player character export.");
+        }
+
+        if (!itemImportUniverseId) {
+          throw new Error("Select a target universe first.");
+        }
+
+        const result = await importPlayerCharacterExport(parsed, {
+          universeId: itemImportUniverseId,
+        });
+        setItemImportStatus(`Player character imported. (${result.characterId})`);
+        return;
+      }
+
+      const hasStoryBundle =
+        parsed &&
+        typeof parsed.exportedAt === "string" &&
+        parsed.story &&
+        parsed.universe &&
+        parsed.playerCharacter &&
+        Array.isArray(parsed.messages);
+
+      if (!hasStoryBundle) {
+        throw new Error("This file is not a supported story export.");
+      }
+
+      const result = await importStoryExport(parsed);
+      setItemImportStatus(`Story imported. (${result.storyId})`);
+    } catch (error) {
+      setItemImportError(error instanceof Error ? error.message : "Unable to import item.");
+    }
+  }
+
   async function handleImportBackup() {
     if (!backupFile) {
       setBackupError("Select a backup file first.");
@@ -273,12 +489,75 @@ export function SettingsPage() {
             <h2 className="text-xl font-semibold tracking-tight text-ink">
               Theme
             </h2>
-            <Badge variant="accent">Dark default</Badge>
+            <Badge variant="accent">{theme.name}</Badge>
           </div>
           <p className="mt-3 text-sm leading-7 text-ink-muted">
             The interface stays in a dark workspace theme optimized for long-form
             writing and dense continuity review.
           </p>
+          <div className="mt-4 space-y-4">
+            <Field label="Theme">
+              <SelectInput
+                value={themeKey}
+                onChange={(event) => setThemeKey(event.target.value as ThemeKey)}
+              >
+                {Object.entries(themes).map(([key, item]) => (
+                  <option key={key} value={key}>
+                    {item.name}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Text Size">
+              <SelectInput
+                value={textSize}
+                onChange={(event) =>
+                  setTextSize(event.target.value as "sm" | "md" | "lg" | "xl")
+                }
+              >
+                <option value="sm">Small</option>
+                <option value="md">Default</option>
+                <option value="lg">Large</option>
+                <option value="xl">Extra Large</option>
+              </SelectInput>
+            </Field>
+          </div>
+        </Panel>
+
+        <Panel className="h-full">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold tracking-tight text-ink">
+              Version Information
+            </h2>
+            <Badge variant="accent">v{APP_VERSION}</Badge>
+          </div>
+          <p className="mt-3 text-sm leading-7 text-ink-muted">
+            Version tracking and release notes for the current build.
+          </p>
+          <div className="mt-4 space-y-4">
+            <Panel className="border-white/8 bg-black/15">
+              <div className="text-sm text-ink-soft">{APP_NAME} v{APP_VERSION}</div>
+            </Panel>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="secondary" onClick={openChangelog}>
+                View Changelog
+              </Button>
+              <Button variant="secondary" onClick={openChangelogHistory}>
+                View Full Changelog
+              </Button>
+              <Button variant="secondary" onClick={handleCopyVersionInformation}>
+                Copy Version Information
+              </Button>
+              <Button variant="secondary" disabled>
+                Export Diagnostics
+              </Button>
+            </div>
+            {versionCopyStatus ? (
+              <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+                {versionCopyStatus}
+              </div>
+            ) : null}
+          </div>
         </Panel>
 
         <Panel className="h-full">
@@ -482,6 +761,206 @@ export function SettingsPage() {
                 {backupError}
               </div>
             ) : null}
+          </div>
+        </Panel>
+
+        <Panel className="h-full">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold tracking-tight text-ink">
+              Import & Export
+            </h2>
+          </div>
+          <p className="mt-3 text-sm leading-7 text-ink-muted">
+            Export individual universes, player characters, or stories. Imports always
+            duplicate with new IDs and never overwrite existing data.
+          </p>
+
+          <div className="mt-4 space-y-6">
+            <div className="space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                Export Item
+              </div>
+              <Field label="Type">
+                <SelectInput
+                  value={itemExportType}
+                  onChange={(event) =>
+                    setItemExportType(
+                      event.target.value as "universe" | "playerCharacter" | "story",
+                    )
+                  }
+                >
+                  <option value="story">Story</option>
+                  <option value="universe">Universe</option>
+                  <option value="playerCharacter">Player Character</option>
+                </SelectInput>
+              </Field>
+
+              {itemExportType === "universe" ? (
+                <Field label="Universe">
+                  <SelectInput
+                    value={itemExportUniverseId}
+                    onChange={(event) => setItemExportUniverseId(event.target.value)}
+                  >
+                    {universes.length ? (
+                      universes.map((universe) => (
+                        <option key={universe.id} value={universe.id}>
+                          {universe.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No universes available</option>
+                    )}
+                  </SelectInput>
+                </Field>
+              ) : itemExportType === "playerCharacter" ? (
+                <Field label="Player Character">
+                  <SelectInput
+                    value={itemExportCharacterId}
+                    onChange={(event) => setItemExportCharacterId(event.target.value)}
+                  >
+                    {playerCharacters.length ? (
+                      playerCharacters.map((character) => (
+                        <option key={character.id} value={character.id}>
+                          {character.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No characters available</option>
+                    )}
+                  </SelectInput>
+                </Field>
+              ) : (
+                <>
+                  <Field label="Story">
+                    <SelectInput
+                      value={itemExportStoryId}
+                      onChange={(event) => setItemExportStoryId(event.target.value)}
+                    >
+                      {stories.length ? (
+                        stories.map((story) => (
+                          <option key={story.id} value={story.id}>
+                            {story.title}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No stories available</option>
+                      )}
+                    </SelectInput>
+                  </Field>
+                  <Field label="Story Format">
+                    <SelectInput
+                      value={itemExportStoryFormat}
+                      onChange={(event) =>
+                        setItemExportStoryFormat(
+                          event.target.value as "json" | "markdown" | "txt" | "pdf",
+                        )
+                      }
+                    >
+                      <option value="json">json</option>
+                      <option value="markdown">markdown</option>
+                      <option value="txt">txt</option>
+                      <option value="pdf">pdf</option>
+                    </SelectInput>
+                  </Field>
+                </>
+              )}
+
+              <Button
+                variant="secondary"
+                onClick={handleExportItem}
+                disabled={
+                  itemExportType === "universe"
+                    ? !universes.length
+                    : itemExportType === "playerCharacter"
+                      ? !playerCharacters.length
+                      : !stories.length
+                }
+              >
+                Export
+              </Button>
+
+              {itemExportStatus ? (
+                <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+                  {itemExportStatus}
+                </div>
+              ) : null}
+
+              {itemExportError ? (
+                <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                  {itemExportError}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-3 border-t border-white/8 pt-5">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                Import Item
+              </div>
+
+              <Field label="Type">
+                <SelectInput
+                  value={itemImportType}
+                  onChange={(event) =>
+                    setItemImportType(
+                      event.target.value as "universe" | "playerCharacter" | "story",
+                    )
+                  }
+                >
+                  <option value="story">Story JSON</option>
+                  <option value="universe">Universe JSON</option>
+                  <option value="playerCharacter">Player Character JSON</option>
+                </SelectInput>
+              </Field>
+
+              <input
+                type="file"
+                accept="application/json"
+                className="block w-full text-sm text-ink-muted file:mr-4 file:rounded-2xl file:border-0 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
+                onChange={(event) => setItemImportFile(event.target.files?.[0] ?? null)}
+              />
+
+              {itemImportType === "playerCharacter" ? (
+                <Field label="Target Universe">
+                  <SelectInput
+                    value={itemImportUniverseId}
+                    onChange={(event) => setItemImportUniverseId(event.target.value)}
+                  >
+                    {universes.length ? (
+                      universes.map((universe) => (
+                        <option key={universe.id} value={universe.id}>
+                          {universe.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No universes available</option>
+                    )}
+                  </SelectInput>
+                </Field>
+              ) : null}
+
+              <Button
+                variant="secondary"
+                onClick={handleImportItem}
+                disabled={
+                  !itemImportFile ||
+                  (itemImportType === "playerCharacter" && !universes.length)
+                }
+              >
+                Import
+              </Button>
+
+              {itemImportStatus ? (
+                <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+                  {itemImportStatus}
+                </div>
+              ) : null}
+
+              {itemImportError ? (
+                <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                  {itemImportError}
+                </div>
+              ) : null}
+            </div>
           </div>
         </Panel>
 

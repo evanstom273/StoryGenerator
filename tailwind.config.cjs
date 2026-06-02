@@ -4,16 +4,19 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        app: "#090d16",
-        "app-elevated": "#0e1320",
-        panel: "#121a2b",
-        "panel-muted": "#172033",
-        "panel-strong": "#22304a",
+        app: "#0a0a0a",
+        "app-elevated": "#121212",
+        panel: "#1a1a1a",
+        "panel-muted": "#141414",
+        "panel-strong": "#202020",
+        divider: "#2a2a2a",
         ink: "#f8fafc",
         "ink-soft": "#dbe4f0",
         "ink-muted": "#94a3b8",
-        accent: "#8b5cf6",
-        "accent-soft": "#c4b5fd",
+        accent: "rgb(var(--theme-primary-rgb) / <alpha-value>)",
+        "accent-secondary": "rgb(var(--theme-secondary-rgb) / <alpha-value>)",
+        "accent-soft": "rgb(var(--theme-glow-rgb) / <alpha-value>)",
+        "accent-hover": "rgb(var(--theme-primary-hover-rgb) / <alpha-value>)",
         success: "#34d399",
         warning: "#fbbf24",
         danger: "#fb7185",
@@ -23,8 +26,8 @@ module.exports = {
         shell: "2rem",
       },
       boxShadow: {
-        panel: "0 24px 80px rgba(2, 6, 23, 0.42)",
-        hero: "0 28px 120px rgba(9, 13, 22, 0.65)",
+        panel: "0 24px 80px rgba(0, 0, 0, 0.55)",
+        hero: "0 28px 120px rgba(0, 0, 0, 0.7)",
       },
       fontFamily: {
         sans: [
@@ -41,4 +44,3 @@ module.exports = {
   },
   plugins: [],
 };
-

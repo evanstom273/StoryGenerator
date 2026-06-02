@@ -74,6 +74,9 @@ export function buildPlayerAssistContext({
       `Story Title: ${story.title}`,
       `Player Character: ${playerCharacter.name}`,
       playerCharacter.gender.trim() ? `Player Gender: ${playerCharacter.gender.trim()}` : "",
+      playerCharacter.species?.trim()
+        ? `Player Species: ${playerCharacter.species.trim()}`
+        : "",
       playerCharacter.pronouns.trim() ? `Player Pronouns: ${playerCharacter.pronouns.trim()}` : "",
       story.openingPrompt.trim()
         ? `Opening Prompt (canon setup):\n${story.openingPrompt.trim()}`

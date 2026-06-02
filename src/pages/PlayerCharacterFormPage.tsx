@@ -14,6 +14,7 @@ const initialFormState: PlayerCharacterDraft = {
   name: "",
   age: "",
   gender: "",
+  species: "",
   pronouns: "",
   appearance: "",
   personality: "",
@@ -54,6 +55,7 @@ export function PlayerCharacterFormPage() {
       name: existingCharacter.name,
       age: existingCharacter.age,
       gender: existingCharacter.gender,
+      species: existingCharacter.species ?? "",
       pronouns: existingCharacter.pronouns,
       appearance: existingCharacter.appearance,
       personality: existingCharacter.personality,
@@ -86,6 +88,7 @@ export function PlayerCharacterFormPage() {
       formState.name,
       formState.age,
       formState.gender,
+      formState.species,
       formState.pronouns,
       formState.appearance,
       formState.personality,
@@ -209,6 +212,7 @@ export function PlayerCharacterFormPage() {
       "name",
       "age",
       "gender",
+      "species",
       "pronouns",
       "appearance",
       "personality",
@@ -257,6 +261,7 @@ export function PlayerCharacterFormPage() {
   async function handleRandomizeRemainingFields() {
     const candidateFields: Array<keyof PlayerCharacterDraft> = [
       "gender",
+      "species",
       "pronouns",
       "appearance",
       "personality",
@@ -307,6 +312,7 @@ export function PlayerCharacterFormPage() {
       "name",
       "age",
       "gender",
+      "species",
       "pronouns",
       "appearance",
       "personality",
@@ -443,6 +449,25 @@ export function PlayerCharacterFormPage() {
               />
             </Field>
 
+            <Field
+              label="Species"
+              hint={resolveFieldHint(formState.species)}
+              action={renderFieldRandomizeAction(["species"])}
+            >
+              <TextInput
+                value={formState.species}
+                onChange={(event) =>
+                  setFormState((currentState) => ({
+                    ...currentState,
+                    species: event.target.value,
+                  }))
+                }
+                placeholder="Human, Twi'lek, Khajiit, ..."
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
             <Field
               label="Pronouns"
               hint={resolveFieldHint(formState.pronouns)}

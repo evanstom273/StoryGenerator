@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { BrandMark } from "../../components/BrandMark";
 import { MenuIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
 import { cn } from "../../utils/cn";
 import {
   readStoredBoolean,
+  readStoredTextSize,
   UiPrefsContext,
   UI_PREFS_KEYS,
   writeStoredBoolean,
+  writeStoredTextSize,
 } from "../ui/UiPrefsContext";
 import { StorySettingsDrawer } from "./StorySettingsDrawer";
 import { V2LeftSidebar } from "./V2LeftSidebar";
@@ -17,6 +19,7 @@ import { V2RightSidebar } from "./V2RightSidebar";
 export function V2Shell() {
   const { storyId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [leftOpen, setLeftOpen] = useState(false);
   const [storySettingsOpen, setStorySettingsOpen] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(() =>
@@ -28,6 +31,9 @@ export function V2Shell() {
   const [showChrome, setShowChrome] = useState(() =>
     readStoredBoolean(UI_PREFS_KEYS.showChrome, false),
   );
+  const [textSize, setTextSize] = useState<"sm" | "md" | "lg" | "xl">(() =>
+    readStoredTextSize(UI_PREFS_KEYS.textSize, "md"),
+  );
 
   useEffect(() => {
     setLeftOpen(false);
@@ -36,6 +42,10 @@ export function V2Shell() {
 
   const activeStoryId = useMemo(() => (storyId ? String(storyId) : undefined), [storyId]);
   const readerActive = Boolean(activeStoryId) && readerMode;
+  const effectiveShowChrome = readerActive ? false : showChrome;
+  const leftOpenRef = useRef(leftOpen);
+  const storySettingsOpenRef = useRef(storySettingsOpen);
+  const pathnameRef = useRef(location.pathname);
 
   useEffect(() => {
     writeStoredBoolean(UI_PREFS_KEYS.readerMode, readerMode);
@@ -52,6 +62,82 @@ export function V2Shell() {
     writeStoredBoolean(UI_PREFS_KEYS.showChrome, showChrome);
   }, [showChrome]);
 
+  useEffect(() => {
+    writeStoredTextSize(UI_PREFS_KEYS.textSize, textSize);
+  }, [textSize]);
+
+  useEffect(() => {
+    leftOpenRef.current = leftOpen;
+  }, [leftOpen]);
+
+  useEffect(() => {
+    storySettingsOpenRef.current = storySettingsOpen;
+  }, [storySettingsOpen]);
+
+  useEffect(() => {
+    pathnameRef.current = location.pathname;
+  }, [location.pathname]);
+
+  useEffect(() => {
+    let removeListener: (() => void) | null = null;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        if (!Capacitor.isNativePlatform()) {
+          return;
+        }
+
+        const { App } = await import("@capacitor/app");
+        const handle = await App.addListener("backButton", () => {
+          if (leftOpenRef.current) {
+            setLeftOpen(false);
+            return;
+          }
+
+          if (storySettingsOpenRef.current) {
+            setStorySettingsOpen(false);
+            return;
+          }
+
+          const state = window.history.state as any;
+          const historyIndex = typeof state?.idx === "number" ? state.idx : 0;
+          const canGoBack = historyIndex > 0;
+
+          if (canGoBack) {
+            navigate(-1);
+            return;
+          }
+
+          const pathname = pathnameRef.current;
+
+          if (pathname !== "/") {
+            navigate("/");
+            return;
+          }
+
+          if (window.confirm("Exit Story Engine?")) {
+            void App.exitApp();
+          }
+        });
+
+        if (!cancelled) {
+          removeListener = () => {
+            void handle.remove();
+          };
+        } else {
+          void handle.remove();
+        }
+      } catch {}
+    })();
+
+    return () => {
+      cancelled = true;
+      removeListener?.();
+    };
+  }, [navigate]);
+
   return (
     <UiPrefsContext.Provider
       value={{
@@ -61,13 +147,15 @@ export function V2Shell() {
         setReaderMode,
         showChrome,
         setShowChrome,
+        textSize,
+        setTextSize,
         storySettingsOpen,
         setStorySettingsOpen,
       }}
     >
       <div className="min-h-screen bg-app text-ink">
         <div className="mx-auto min-h-screen max-w-[1800px]">
-          <header className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-white/8 bg-app/80 px-4 py-4 backdrop-blur-xl lg:hidden">
+          <header className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-divider bg-app/80 px-4 py-4 backdrop-blur-xl lg:hidden">
             <BrandMark compact />
             <div className="flex items-center gap-2">
               <Button
@@ -102,7 +190,7 @@ export function V2Shell() {
             )}
           >
             {readerActive ? null : (
-              <aside className="hidden border-r border-white/8 bg-app-elevated lg:block">
+              <aside className="hidden border-r border-divider bg-app-elevated lg:block">
                 <div className="sticky top-0 h-screen">
                   <V2LeftSidebar activeStoryId={activeStoryId} />
                 </div>
@@ -113,8 +201,8 @@ export function V2Shell() {
               <Outlet />
             </main>
 
-            {readerActive || rightSidebarCollapsed ? null : (
-              <aside className="hidden border-l border-white/8 bg-app-elevated lg:block">
+            {readerActive || rightSidebarCollapsed || !effectiveShowChrome ? null : (
+              <aside className="hidden border-l border-divider bg-app-elevated lg:block">
                 <div className="sticky top-0 h-screen">
                   <V2RightSidebar storyId={activeStoryId} />
                 </div>
@@ -141,7 +229,7 @@ export function V2Shell() {
           />
           <div
             className={cn(
-              "absolute inset-y-0 left-0 flex w-[min(88vw,24rem)] flex-col border-r border-white/10 bg-app-elevated shadow-hero transition-transform duration-200",
+              "absolute inset-y-0 left-0 flex w-[min(88vw,24rem)] flex-col border-r border-divider bg-app-elevated shadow-hero transition-transform duration-200",
               leftOpen ? "translate-x-0" : "-translate-x-full",
             )}
           >

@@ -1,4 +1,5 @@
 import { cn } from "../utils/cn";
+import { APP_VERSION } from "../app/versioning/version";
 
 interface BrandMarkProps {
   compact?: boolean;
@@ -8,7 +9,7 @@ interface BrandMarkProps {
 export function BrandMark({ compact = false, className }: BrandMarkProps) {
   return (
     <div className={cn("flex items-center gap-4", className)}>
-      <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-white/12 bg-gradient-to-br from-accent/30 via-cyan-400/12 to-white/8 shadow-[0_18px_40px_rgba(56,189,248,0.15)]">
+      <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-divider bg-gradient-to-br from-accent/26 via-accent-secondary/10 to-white/6 shadow-[0_18px_40px_rgb(var(--theme-primary-rgb)/0.16)] ring-1 ring-accent/12">
         <svg
           aria-hidden="true"
           viewBox="0 0 48 48"
@@ -35,11 +36,9 @@ export function BrandMark({ compact = false, className }: BrandMarkProps) {
           <span className="truncate text-lg font-semibold tracking-tight text-ink">
             Story Engine
           </span>
-          {!compact ? (
-            <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[11px] uppercase tracking-[0.18em] text-ink-muted">
-              v1
-            </span>
-          ) : null}
+          <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[11px] tracking-[0.18em] text-ink-muted">
+            v{APP_VERSION}
+          </span>
         </div>
         {!compact ? (
           <p className="mt-1 text-sm text-ink-muted">

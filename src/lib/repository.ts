@@ -1,6 +1,10 @@
 import type {
   AISettings,
+  DeveloperBug,
+  DeveloperFeatureRequest,
+  DeveloperTestingNote,
   EntityId,
+  PlayerCharacterExportBundleV1,
   PlayerCharacter,
   Story,
   StoryAIConfig,
@@ -9,6 +13,7 @@ import type {
   StoryState,
   StoryMessage,
   StorySummary,
+  UniverseExportBundleV1,
   Universe,
   UniverseImport,
 } from "../types/models";
@@ -26,6 +31,7 @@ import {
   sortByTimestampAsc,
   sortByUpdatedAtDesc,
 } from "./dates";
+import { createEntityId } from "./ids";
 
 export interface StoryEngineRepository {
   listUniverses(): Promise<Universe[]>;
@@ -46,6 +52,18 @@ export interface StoryEngineRepository {
   saveStoryMessage(message: StoryMessage): Promise<StoryMessage>;
   deleteStoryMessage(id: EntityId): Promise<void>;
   getStoryExportBundle(storyId: EntityId): Promise<StoryExportBundle | null>;
+  getUniverseExportBundle(universeId: EntityId): Promise<UniverseExportBundleV1 | null>;
+  getPlayerCharacterExportBundle(
+    characterId: EntityId,
+  ): Promise<PlayerCharacterExportBundleV1 | null>;
+  importUniverseExportBundle(bundle: UniverseExportBundleV1): Promise<{ universeId: EntityId }>;
+  importPlayerCharacterExportBundle(
+    bundle: PlayerCharacterExportBundleV1,
+    options: { universeId: EntityId },
+  ): Promise<{ characterId: EntityId }>;
+  importStoryExportBundle(
+    bundle: StoryExportBundle,
+  ): Promise<{ storyId: EntityId; universeId: EntityId; playerCharacterId: EntityId }>;
   getAISettings(): Promise<AISettings | null>;
   saveAISettings(settings: AISettings): Promise<AISettings>;
   getStoryAIConfig(storyId: EntityId): Promise<StoryAIConfig | null>;
@@ -56,6 +74,20 @@ export interface StoryEngineRepository {
   saveStorySummary(record: StorySummary): Promise<StorySummary>;
   getStoryState(storyId: EntityId): Promise<StoryState | null>;
   saveStoryState(record: StoryState): Promise<StoryState>;
+  listDeveloperBugs(): Promise<DeveloperBug[]>;
+  getDeveloperBug(id: EntityId): Promise<DeveloperBug | null>;
+  saveDeveloperBug(record: DeveloperBug): Promise<DeveloperBug>;
+  deleteDeveloperBug(id: EntityId): Promise<void>;
+  listDeveloperFeatureRequests(): Promise<DeveloperFeatureRequest[]>;
+  getDeveloperFeatureRequest(id: EntityId): Promise<DeveloperFeatureRequest | null>;
+  saveDeveloperFeatureRequest(
+    record: DeveloperFeatureRequest,
+  ): Promise<DeveloperFeatureRequest>;
+  deleteDeveloperFeatureRequest(id: EntityId): Promise<void>;
+  listDeveloperTestingNotes(): Promise<DeveloperTestingNote[]>;
+  getDeveloperTestingNote(id: EntityId): Promise<DeveloperTestingNote | null>;
+  saveDeveloperTestingNote(record: DeveloperTestingNote): Promise<DeveloperTestingNote>;
+  deleteDeveloperTestingNote(id: EntityId): Promise<void>;
   exportWorkspaceBackup(): Promise<StoryEngineBackup>;
   clearWorkspace(): Promise<void>;
   importWorkspaceBackup(
@@ -150,6 +182,282 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         storyState: storyState ?? undefined,
       };
     },
+    async getUniverseExportBundle(universeId) {
+      const [universe, universeImports] = await Promise.all([
+        getFromStore<Universe>("universes", universeId),
+        getAllByIndex<UniverseImport>("universeImports", "universeId", universeId),
+      ]);
+
+      if (!universe) {
+        return null;
+      }
+
+      return {
+        exportVersion: 1,
+        exportedAt: new Date().toISOString(),
+        type: "universe",
+        universe,
+        universeImports: [...universeImports].sort(
+          (left, right) =>
+            new Date(right.importedAt).getTime() - new Date(left.importedAt).getTime(),
+        ),
+      };
+    },
+    async getPlayerCharacterExportBundle(characterId) {
+      const playerCharacter = await getFromStore<PlayerCharacter>(
+        "playerCharacters",
+        characterId,
+      );
+
+      if (!playerCharacter) {
+        return null;
+      }
+
+      return {
+        exportVersion: 1,
+        exportedAt: new Date().toISOString(),
+        type: "playerCharacter",
+        playerCharacter,
+      };
+    },
+    async importUniverseExportBundle(bundle) {
+      if (!bundle || bundle.exportVersion !== 1 || bundle.type !== "universe") {
+        throw new Error("Unsupported universe import format.");
+      }
+
+      const now = new Date().toISOString();
+      const newUniverseId = createEntityId("universe");
+      const universe: Universe = {
+        ...(bundle.universe as Universe),
+        id: newUniverseId,
+        createdAt: now,
+      };
+
+      const universeImports = Array.isArray(bundle.universeImports)
+        ? bundle.universeImports
+        : [];
+
+      await putInStore("universes", universe);
+      await Promise.all(
+        universeImports.map((record) =>
+          putInStore("universeImports", {
+            ...(record as UniverseImport),
+            id: createEntityId("universe-import"),
+            universeId: newUniverseId,
+          }),
+        ),
+      );
+
+      return { universeId: newUniverseId };
+    },
+    async importPlayerCharacterExportBundle(bundle, options) {
+      if (!bundle || bundle.exportVersion !== 1 || bundle.type !== "playerCharacter") {
+        throw new Error("Unsupported player character import format.");
+      }
+
+      const universeId = options?.universeId;
+      if (!universeId) {
+        throw new Error("Select a target universe for this player character.");
+      }
+
+      const universe = await getFromStore<Universe>("universes", universeId);
+      if (!universe) {
+        throw new Error("Selected universe was not found.");
+      }
+
+      const now = new Date().toISOString();
+      const newCharacterId = createEntityId("player-character");
+      const playerCharacter: PlayerCharacter = {
+        ...(bundle.playerCharacter as PlayerCharacter),
+        id: newCharacterId,
+        universeId,
+        createdAt: now,
+      };
+
+      await putInStore("playerCharacters", playerCharacter);
+
+      return { characterId: newCharacterId };
+    },
+    async importStoryExportBundle(bundle) {
+      const hasKeys =
+        bundle &&
+        typeof (bundle as any).exportedAt === "string" &&
+        typeof (bundle as any).story === "object" &&
+        typeof (bundle as any).universe === "object" &&
+        typeof (bundle as any).playerCharacter === "object" &&
+        Array.isArray((bundle as any).messages);
+
+      if (!hasKeys) {
+        throw new Error("Unsupported story import format.");
+      }
+
+      const now = new Date().toISOString();
+      const normalizeKey = (value: unknown) =>
+        typeof value === "string" ? value.trim().toLowerCase() : "";
+
+      const bundledUniverse = bundle.universe as Universe;
+      const bundledPlayerCharacter = bundle.playerCharacter as PlayerCharacter;
+      const bundledStory = bundle.story as Story;
+
+      const existingUniverses = await getAllFromStore<Universe>("universes");
+      const bundledWiki = normalizeKey((bundledUniverse as any).wikiUrl);
+      const bundledUniverseName = normalizeKey((bundledUniverse as any).name);
+      const matchedUniverse =
+        (bundledWiki
+          ? existingUniverses.find(
+              (universe) => normalizeKey((universe as any).wikiUrl) === bundledWiki,
+            )
+          : undefined) ??
+        (bundledUniverseName
+          ? existingUniverses.find(
+              (universe) => normalizeKey((universe as any).name) === bundledUniverseName,
+            )
+          : undefined);
+
+      const newUniverseId = matchedUniverse?.id ?? createEntityId("universe");
+      const newPlayerCharacterId = createEntityId("player-character");
+      const newStoryId = createEntityId("story");
+
+      const universe: Universe | null = matchedUniverse
+        ? null
+        : {
+            ...bundledUniverse,
+            id: newUniverseId,
+            createdAt: now,
+          };
+
+      const existingCharactersForUniverse = await getAllByIndex<PlayerCharacter>(
+        "playerCharacters",
+        "universeId",
+        newUniverseId,
+      );
+      const bundledCharacterName = normalizeKey((bundledPlayerCharacter as any).name);
+      const matchedCharacter = bundledCharacterName
+        ? existingCharactersForUniverse.find(
+            (character) => normalizeKey((character as any).name) === bundledCharacterName,
+          )
+        : undefined;
+
+      const playerCharacter: PlayerCharacter | null = matchedCharacter
+        ? null
+        : {
+            ...bundledPlayerCharacter,
+            id: newPlayerCharacterId,
+            universeId: newUniverseId,
+            createdAt: now,
+            species: (bundledPlayerCharacter as any).species ?? "",
+          };
+
+      const resolvedPlayerCharacterId = matchedCharacter?.id ?? newPlayerCharacterId;
+
+      const resolveExistingStoryId = async () => {
+        const bundledStoryId = (bundledStory as any).id;
+        if (typeof bundledStoryId === "string" && bundledStoryId.trim()) {
+          const existingById = await getFromStore<Story>("stories", bundledStoryId);
+          if (existingById) {
+            return existingById.id;
+          }
+        }
+
+        const normalizedTitle = normalizeKey((bundledStory as any).title);
+        const normalizedOpeningPrompt = normalizeKey((bundledStory as any).openingPrompt);
+        if (!normalizedTitle) {
+          return null;
+        }
+
+        const existingStoriesForUniverse = await getAllByIndex<Story>(
+          "stories",
+          "universeId",
+          newUniverseId,
+        );
+
+        const matched = existingStoriesForUniverse.find((candidate) => {
+          if (candidate.playerCharacterId !== resolvedPlayerCharacterId) {
+            return false;
+          }
+
+          if (normalizeKey((candidate as any).title) !== normalizedTitle) {
+            return false;
+          }
+
+          if (!normalizedOpeningPrompt) {
+            return true;
+          }
+
+          return normalizeKey((candidate as any).openingPrompt) === normalizedOpeningPrompt;
+        });
+
+        return matched?.id ?? null;
+      };
+
+      const existingStoryId = await resolveExistingStoryId();
+      if (existingStoryId) {
+        return {
+          storyId: existingStoryId,
+          universeId: newUniverseId,
+          playerCharacterId: resolvedPlayerCharacterId,
+        };
+      }
+
+      const story: Story = {
+        ...bundledStory,
+        id: newStoryId,
+        universeId: newUniverseId,
+        playerCharacterId: resolvedPlayerCharacterId,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const messages = (bundle.messages as StoryMessage[]).map((message) => ({
+        ...(message as StoryMessage),
+        id: createEntityId("story-message"),
+        storyId: newStoryId,
+      }));
+
+      const storyState = (bundle as any).storyState as StoryState | undefined;
+      const normalizedStoryState = (() => {
+        if (!storyState) {
+          return null;
+        }
+
+        const next: StoryState = {
+          ...(storyState as StoryState),
+          id: `story-state:${newStoryId}`,
+          storyId: newStoryId,
+          updatedAt: now,
+        };
+
+        try {
+          const parsed = JSON.parse(next.stateJson) as any;
+          if (parsed && typeof parsed === "object" && typeof parsed.updatedAt === "string") {
+            next.stateJson = JSON.stringify({ ...parsed, updatedAt: now });
+          }
+        } catch {}
+
+        return next;
+      })();
+
+      const writePromises: Array<Promise<unknown>> = [putInStore("stories", story)];
+      if (universe) {
+        writePromises.push(putInStore("universes", universe));
+      }
+      if (playerCharacter) {
+        writePromises.push(putInStore("playerCharacters", playerCharacter));
+      }
+      await Promise.all(writePromises);
+
+      await Promise.all(messages.map((message) => putInStore("messages", message)));
+
+      if (normalizedStoryState) {
+        await putInStore("storyStates", normalizedStoryState);
+      }
+
+      return {
+        storyId: newStoryId,
+        universeId: newUniverseId,
+        playerCharacterId: resolvedPlayerCharacterId,
+      };
+    },
     getAISettings() {
       return getFromStore<AISettings>("aiSettings", "ai-settings");
     },
@@ -207,6 +515,56 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     saveStoryState(record) {
       return putInStore("storyStates", record);
     },
+    async listDeveloperBugs() {
+      const bugs = await getAllFromStore<DeveloperBug>("developerBugs");
+      return [...bugs].sort(
+        (left, right) =>
+          new Date(right.reportedAt).getTime() - new Date(left.reportedAt).getTime(),
+      );
+    },
+    getDeveloperBug(id) {
+      return getFromStore<DeveloperBug>("developerBugs", id);
+    },
+    saveDeveloperBug(record) {
+      return putInStore("developerBugs", record);
+    },
+    deleteDeveloperBug(id) {
+      return deleteFromStore("developerBugs", id);
+    },
+    async listDeveloperFeatureRequests() {
+      const features =
+        await getAllFromStore<DeveloperFeatureRequest>("developerFeatureRequests");
+      return [...features].sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+      );
+    },
+    getDeveloperFeatureRequest(id) {
+      return getFromStore<DeveloperFeatureRequest>("developerFeatureRequests", id);
+    },
+    saveDeveloperFeatureRequest(record) {
+      return putInStore("developerFeatureRequests", record);
+    },
+    deleteDeveloperFeatureRequest(id) {
+      return deleteFromStore("developerFeatureRequests", id);
+    },
+    async listDeveloperTestingNotes() {
+      const notes =
+        await getAllFromStore<DeveloperTestingNote>("developerTestingNotes");
+      return [...notes].sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+      );
+    },
+    getDeveloperTestingNote(id) {
+      return getFromStore<DeveloperTestingNote>("developerTestingNotes", id);
+    },
+    saveDeveloperTestingNote(record) {
+      return putInStore("developerTestingNotes", record);
+    },
+    deleteDeveloperTestingNote(id) {
+      return deleteFromStore("developerTestingNotes", id);
+    },
     async exportWorkspaceBackup() {
       const [
         universes,
@@ -251,6 +609,18 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         }
       };
 
+      const readTextSize = (key: string, fallback: "sm" | "md" | "lg" | "xl") => {
+        try {
+          const value = localStorage.getItem(key);
+          if (value === "sm" || value === "md" || value === "lg" || value === "xl") {
+            return value;
+          }
+          return fallback;
+        } catch {
+          return fallback;
+        }
+      };
+
       return {
         backupVersion: 1,
         exportedAt: new Date().toISOString(),
@@ -269,6 +639,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           rightSidebarCollapsed: readPref("story-engine:v2:right-collapsed", true),
           readerMode: readPref("story-engine:v2:reader-mode", false),
           showChrome: readPref("story-engine:v2:show-chrome", false),
+          textSize: readTextSize("story-engine:v2:text-size", "md"),
         },
       };
     },
@@ -283,6 +654,9 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         clearStore("storyStates"),
         clearStore("storyAiConfigs"),
         clearStore("aiSettings"),
+        clearStore("developerBugs"),
+        clearStore("developerFeatureRequests"),
+        clearStore("developerTestingNotes"),
       ]);
     },
     async importWorkspaceBackup(backup, options) {
@@ -438,6 +812,14 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         } catch {}
       };
 
+      const writeTextSize = (key: string, value: unknown) => {
+        try {
+          if (value === "sm" || value === "md" || value === "lg" || value === "xl") {
+            localStorage.setItem(key, value);
+          }
+        } catch {}
+      };
+
       const prefs = (backup as any).uiPrefs ?? {};
       writePref(
         "story-engine:v2:right-collapsed",
@@ -451,6 +833,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         "story-engine:v2:show-chrome",
         typeof prefs.showChrome === "boolean" ? prefs.showChrome : false,
       );
+      writeTextSize("story-engine:v2:text-size", prefs.textSize);
     },
   };
 }

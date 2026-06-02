@@ -2,6 +2,7 @@ import type { NavigationItem } from "../types/navigation";
 import {
   CharactersIcon,
   HomeIcon,
+  MemoryIcon,
   SettingsIcon,
   StoriesIcon,
   UniversesIcon,
@@ -37,5 +38,11 @@ export const navigationItems: NavigationItem[] = [
     to: "/settings",
     description: "Review the shell's theme, providers, and storage state.",
     icon: SettingsIcon,
+  },
+  {
+    label: "Developer Notes",
+    to: "/developer-notes",
+    description: "Track bugs, feature requests, and testing discoveries.",
+    icon: MemoryIcon,
   },
 ];

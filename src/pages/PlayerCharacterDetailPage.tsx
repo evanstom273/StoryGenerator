@@ -103,6 +103,14 @@ export function PlayerCharacterDetailPage() {
                   {activeCharacter.age || "Not specified"}
                 </dd>
               </div>
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Species
+                </dt>
+                <dd className="mt-2 text-sm text-ink-soft">
+                  {activeCharacter.species || "Not specified"}
+                </dd>
+              </div>
               <div className="md:col-span-2">
                 <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
                   Appearance

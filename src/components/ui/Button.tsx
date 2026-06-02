@@ -25,10 +25,10 @@ export function buttonClasses({
 
   const variants: Record<ButtonVariant, string> = {
     primary:
-      "bg-accent text-white shadow-[0_18px_40px_rgba(139,92,246,0.35)] hover:-translate-y-0.5 hover:bg-[#9b73ff]",
+      "bg-accent text-white shadow-[0_18px_40px_rgb(var(--theme-primary-rgb)/0.35)] hover:-translate-y-0.5 hover:bg-accent-hover",
     secondary:
-      "border border-white/12 bg-white/[0.06] text-ink hover:-translate-y-0.5 hover:bg-white/[0.1]",
-    ghost: "text-ink-soft hover:bg-white/[0.06]",
+      "border border-divider bg-panel-muted text-ink hover:-translate-y-0.5 hover:border-accent/35 hover:bg-panel-strong",
+    ghost: "text-ink-soft hover:bg-panel-muted",
   };
 
   const sizes: Record<ButtonSize, string> = {

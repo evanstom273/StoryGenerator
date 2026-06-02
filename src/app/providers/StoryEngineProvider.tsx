@@ -44,7 +44,14 @@ import {
 import type {
   AIProviderType,
   AISettings,
+  DeveloperBug,
+  DeveloperBugDraft,
+  DeveloperFeatureRequest,
+  DeveloperFeatureRequestDraft,
+  DeveloperTestingNote,
+  DeveloperTestingNoteDraft,
   GuardedDeleteResult,
+  PlayerCharacterExportBundleV1,
   PlayerCharacter,
   PlayerCharacterDraft,
   StorageStatus,
@@ -57,6 +64,7 @@ import type {
   StoryMessageDraft,
   StoryState,
   StorySummary,
+  UniverseExportBundleV1,
   Universe,
   UniverseDraft,
   UniverseImport,
@@ -71,9 +79,15 @@ interface StoryEngineContextValue {
   stories: Story[];
   messages: StoryMessage[];
   aiSettings: AISettings | null;
+  developerBugs: DeveloperBug[];
+  developerFeatureRequests: DeveloperFeatureRequest[];
+  developerTestingNotes: DeveloperTestingNote[];
   getUniverseById: (id: string) => Universe | undefined;
   getPlayerCharacterById: (id: string) => PlayerCharacter | undefined;
   getStoryById: (id: string) => Story | undefined;
+  getDeveloperBugById: (id: string) => DeveloperBug | undefined;
+  getDeveloperFeatureRequestById: (id: string) => DeveloperFeatureRequest | undefined;
+  getDeveloperTestingNoteById: (id: string) => DeveloperTestingNote | undefined;
   getMessagesForStory: (storyId: string) => StoryMessage[];
   getPlayerCharactersForUniverse: (universeId: string) => PlayerCharacter[];
   getStoriesForUniverse: (universeId: string) => Story[];
@@ -96,7 +110,40 @@ interface StoryEngineContextValue {
     draft: Omit<StoryMessageDraft, "storyId">,
   ) => Promise<StoryMessage | null>;
   deleteMessage: (id: string) => Promise<void>;
+  createDeveloperBug: (draft: DeveloperBugDraft) => Promise<DeveloperBug>;
+  updateDeveloperBug: (id: string, draft: DeveloperBugDraft) => Promise<DeveloperBug | null>;
+  deleteDeveloperBug: (id: string) => Promise<void>;
+  createDeveloperFeatureRequest: (
+    draft: DeveloperFeatureRequestDraft,
+  ) => Promise<DeveloperFeatureRequest>;
+  updateDeveloperFeatureRequest: (
+    id: string,
+    draft: DeveloperFeatureRequestDraft,
+  ) => Promise<DeveloperFeatureRequest | null>;
+  deleteDeveloperFeatureRequest: (id: string) => Promise<void>;
+  createDeveloperTestingNote: (
+    draft: DeveloperTestingNoteDraft,
+  ) => Promise<DeveloperTestingNote>;
+  updateDeveloperTestingNote: (
+    id: string,
+    draft: DeveloperTestingNoteDraft,
+  ) => Promise<DeveloperTestingNote | null>;
+  deleteDeveloperTestingNote: (id: string) => Promise<void>;
   exportStory: (storyId: string) => Promise<StoryExportBundle | null>;
+  exportUniverse: (universeId: string) => Promise<UniverseExportBundleV1 | null>;
+  exportPlayerCharacter: (
+    characterId: string,
+  ) => Promise<PlayerCharacterExportBundleV1 | null>;
+  importUniverseExport: (
+    bundle: UniverseExportBundleV1,
+  ) => Promise<{ universeId: string }>;
+  importPlayerCharacterExport: (
+    bundle: PlayerCharacterExportBundleV1,
+    options: { universeId: string },
+  ) => Promise<{ characterId: string }>;
+  importStoryExport: (
+    bundle: StoryExportBundle,
+  ) => Promise<{ storyId: string; universeId: string; playerCharacterId: string }>;
   exportWorkspaceBackup: () => Promise<StoryEngineBackup>;
   importWorkspaceBackup: (
     backup: StoryEngineBackup,
@@ -165,6 +212,13 @@ export function StoryEngineProvider({
   const [stories, setStories] = useState<Story[]>([]);
   const [messages, setMessages] = useState<StoryMessage[]>([]);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
+  const [developerBugs, setDeveloperBugs] = useState<DeveloperBug[]>([]);
+  const [developerFeatureRequests, setDeveloperFeatureRequests] = useState<
+    DeveloperFeatureRequest[]
+  >([]);
+  const [developerTestingNotes, setDeveloperTestingNotes] = useState<
+    DeveloperTestingNote[]
+  >([]);
 
   function normalizeAISettings(value: unknown): AISettings | null {
     if (!value || typeof value !== "object") {
@@ -234,12 +288,18 @@ export function StoryEngineProvider({
           nextStories,
           nextMessages,
           nextAISettings,
+          nextDeveloperBugs,
+          nextDeveloperFeatureRequests,
+          nextDeveloperTestingNotes,
         ] = await Promise.all([
           repository.listUniverses(),
           repository.listPlayerCharacters(),
           repository.listStories(),
           repository.listAllMessages(),
           getNormalizedAISettings().catch(() => null),
+          repository.listDeveloperBugs(),
+          repository.listDeveloperFeatureRequests(),
+          repository.listDeveloperTestingNotes(),
         ]);
 
         setUniverses(sortByCreatedAtDesc(nextUniverses));
@@ -255,6 +315,14 @@ export function StoryEngineProvider({
         setStories(sortByUpdatedAtDesc(nextStories));
         setMessages(sortByTimestampAsc(nextMessages));
         setAiSettings(nextAISettings);
+        setDeveloperBugs(
+          [...nextDeveloperBugs].sort(
+            (left, right) =>
+              new Date(right.reportedAt).getTime() - new Date(left.reportedAt).getTime(),
+          ),
+        );
+        setDeveloperFeatureRequests(sortByCreatedAtDesc(nextDeveloperFeatureRequests));
+        setDeveloperTestingNotes(sortByCreatedAtDesc(nextDeveloperTestingNotes));
         setErrorMessage(null);
       } catch (error) {
         setErrorMessage(
@@ -344,10 +412,18 @@ export function StoryEngineProvider({
       stories,
       messages,
       aiSettings,
+      developerBugs,
+      developerFeatureRequests,
+      developerTestingNotes,
       getUniverseById: (id) => universes.find((universe) => universe.id === id),
       getPlayerCharacterById: (id) =>
         playerCharacters.find((character) => character.id === id),
       getStoryById: (id) => stories.find((story) => story.id === id),
+      getDeveloperBugById: (id) => developerBugs.find((bug) => bug.id === id),
+      getDeveloperFeatureRequestById: (id) =>
+        developerFeatureRequests.find((feature) => feature.id === id),
+      getDeveloperTestingNoteById: (id) =>
+        developerTestingNotes.find((note) => note.id === id),
       getMessagesForStory: (storyId) =>
         sortByTimestampAsc(messages.filter((message) => message.storyId === storyId)),
       getPlayerCharactersForUniverse: (universeId) =>
@@ -422,6 +498,7 @@ export function StoryEngineProvider({
           name: draft.name.trim(),
           age: draft.age.trim(),
           gender: draft.gender.trim(),
+          species: draft.species?.trim() ?? "",
           pronouns: draft.pronouns.trim(),
           appearance: draft.appearance.trim(),
           personality: draft.personality.trim(),
@@ -449,6 +526,7 @@ export function StoryEngineProvider({
           name: draft.name.trim(),
           age: draft.age.trim(),
           gender: draft.gender.trim(),
+          species: draft.species?.trim() ?? "",
           pronouns: draft.pronouns.trim(),
           appearance: draft.appearance.trim(),
           personality: draft.personality.trim(),
@@ -573,8 +651,184 @@ export function StoryEngineProvider({
         await touchStory(currentMessage.storyId);
         await hydrate(false);
       },
+      async createDeveloperBug(draft) {
+        const now = new Date().toISOString();
+        const trimmedId = draft.id.trim();
+        const record: DeveloperBug = {
+          id: trimmedId || createEntityId("developer-bug"),
+          title: draft.title.trim(),
+          status: draft.status,
+          reportedAt: now,
+          description: draft.description.trim(),
+          reproductionSteps: draft.reproductionSteps.trim(),
+          expectedBehaviour: draft.expectedBehaviour.trim(),
+          actualBehaviour: draft.actualBehaviour.trim(),
+          notes: draft.notes.trim(),
+          updatedAt: now,
+        };
+
+        await repository.saveDeveloperBug(record);
+        await hydrate(false);
+
+        return record;
+      },
+      async updateDeveloperBug(id, draft) {
+        const current = await repository.getDeveloperBug(id);
+
+        if (!current) {
+          return null;
+        }
+
+        const now = new Date().toISOString();
+        const nextId = draft.id.trim() || current.id;
+
+        const record: DeveloperBug = {
+          ...current,
+          id: nextId,
+          title: draft.title.trim(),
+          status: draft.status,
+          description: draft.description.trim(),
+          reproductionSteps: draft.reproductionSteps.trim(),
+          expectedBehaviour: draft.expectedBehaviour.trim(),
+          actualBehaviour: draft.actualBehaviour.trim(),
+          notes: draft.notes.trim(),
+          updatedAt: now,
+        };
+
+        if (nextId !== current.id) {
+          await repository.deleteDeveloperBug(current.id);
+        }
+
+        await repository.saveDeveloperBug(record);
+        await hydrate(false);
+
+        return record;
+      },
+      async deleteDeveloperBug(id) {
+        await repository.deleteDeveloperBug(id);
+        await hydrate(false);
+      },
+      async createDeveloperFeatureRequest(draft) {
+        const now = new Date().toISOString();
+        const trimmedId = draft.id.trim();
+        const record: DeveloperFeatureRequest = {
+          id: trimmedId || createEntityId("developer-feature"),
+          title: draft.title.trim(),
+          priority: draft.priority,
+          description: draft.description.trim(),
+          notes: draft.notes.trim(),
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        await repository.saveDeveloperFeatureRequest(record);
+        await hydrate(false);
+
+        return record;
+      },
+      async updateDeveloperFeatureRequest(id, draft) {
+        const current = await repository.getDeveloperFeatureRequest(id);
+
+        if (!current) {
+          return null;
+        }
+
+        const now = new Date().toISOString();
+        const nextId = draft.id.trim() || current.id;
+
+        const record: DeveloperFeatureRequest = {
+          ...current,
+          id: nextId,
+          title: draft.title.trim(),
+          priority: draft.priority,
+          description: draft.description.trim(),
+          notes: draft.notes.trim(),
+          updatedAt: now,
+        };
+
+        if (nextId !== current.id) {
+          await repository.deleteDeveloperFeatureRequest(current.id);
+        }
+
+        await repository.saveDeveloperFeatureRequest(record);
+        await hydrate(false);
+
+        return record;
+      },
+      async deleteDeveloperFeatureRequest(id) {
+        await repository.deleteDeveloperFeatureRequest(id);
+        await hydrate(false);
+      },
+      async createDeveloperTestingNote(draft) {
+        const now = new Date().toISOString();
+        const trimmedId = draft.id.trim();
+        const record: DeveloperTestingNote = {
+          id: trimmedId || createEntityId("developer-testing-note"),
+          title: draft.title.trim(),
+          content: draft.content.trim(),
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        await repository.saveDeveloperTestingNote(record);
+        await hydrate(false);
+
+        return record;
+      },
+      async updateDeveloperTestingNote(id, draft) {
+        const current = await repository.getDeveloperTestingNote(id);
+
+        if (!current) {
+          return null;
+        }
+
+        const now = new Date().toISOString();
+        const nextId = draft.id.trim() || current.id;
+
+        const record: DeveloperTestingNote = {
+          ...current,
+          id: nextId,
+          title: draft.title.trim(),
+          content: draft.content.trim(),
+          updatedAt: now,
+        };
+
+        if (nextId !== current.id) {
+          await repository.deleteDeveloperTestingNote(current.id);
+        }
+
+        await repository.saveDeveloperTestingNote(record);
+        await hydrate(false);
+
+        return record;
+      },
+      async deleteDeveloperTestingNote(id) {
+        await repository.deleteDeveloperTestingNote(id);
+        await hydrate(false);
+      },
       exportStory(storyId) {
         return repository.getStoryExportBundle(storyId);
+      },
+      exportUniverse(universeId) {
+        return repository.getUniverseExportBundle(universeId);
+      },
+      exportPlayerCharacter(characterId) {
+        return repository.getPlayerCharacterExportBundle(characterId);
+      },
+      async importUniverseExport(bundle) {
+        const result = await repository.importUniverseExportBundle(bundle);
+        await hydrate(false);
+        return result;
+      },
+      async importPlayerCharacterExport(bundle, options) {
+        const result = await repository.importPlayerCharacterExportBundle(bundle, options);
+        await hydrate(false);
+        return result;
+      },
+      async importStoryExport(bundle) {
+        const result = await repository.importStoryExportBundle(bundle);
+        await hydrate(false);
+        return result;
       },
       exportWorkspaceBackup() {
         return repository.exportWorkspaceBackup();
@@ -736,6 +990,7 @@ export function StoryEngineProvider({
           "name",
           "age",
           "gender",
+          "species",
           "pronouns",
           "appearance",
           "personality",
@@ -875,6 +1130,44 @@ export function StoryEngineProvider({
         const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
         const provider = createAIProvider(providerType);
 
+        const playerNameForValidation = (() => {
+          const base = playerCharacter.name.trim();
+          const json = storyState?.stateJson?.trim() ?? "";
+          if (!base || !json) {
+            return base;
+          }
+
+          const parsed = parseStoryStateData(json);
+          if (!parsed) {
+            return base;
+          }
+
+          const candidates = Object.entries(parsed.characters ?? {});
+          const match = candidates.find(([key, entry]) => {
+            if (key === base) return true;
+            if (!entry) return false;
+            if (entry.canonicalName === base) return true;
+            if (entry.displayName === base) return true;
+            if (entry.aliases?.includes(base)) return true;
+            return false;
+          });
+
+          if (!match) {
+            return base;
+          }
+
+          const [key, entry] = match;
+          const aliases = new Set<string>();
+          if (key && key !== base) aliases.add(key);
+          if (entry?.displayName && entry.displayName !== base) aliases.add(entry.displayName);
+          for (const alias of entry?.aliases ?? []) {
+            if (alias && alias !== base) aliases.add(alias);
+          }
+
+          const aliasText = Array.from(aliases).slice(0, 4).join(", ");
+          return aliasText ? `${base} (${aliasText})` : base;
+        })();
+
         const recentMessages = sortByTimestampAsc(refreshedMessages).slice(-31);
         const historyMessages =
           recentMessages.length && recentMessages[recentMessages.length - 1]?.id === userMessage.id
@@ -890,7 +1183,7 @@ export function StoryEngineProvider({
             ...message,
             content: sanitizeAssistantTranscript({
               text: message.content,
-              playerName: playerCharacter.name,
+              playerName: playerNameForValidation,
             }).text,
           };
         });
@@ -1047,7 +1340,7 @@ export function StoryEngineProvider({
           const candidateSanitized = sanitizeAssistantTranscript({
             text: candidateAssistantText,
             latestUserMessage: userMessage.content,
-            playerName: playerCharacter.name,
+            playerName: playerNameForValidation,
           });
 
           if (!candidateSanitized.formatValid) {
@@ -1071,7 +1364,7 @@ export function StoryEngineProvider({
           }
 
           const violation = getPlayerCharacterAuthorshipViolation({
-            playerName: playerCharacter.name,
+            playerName: playerNameForValidation,
             text: candidateSanitized.text,
           });
 
@@ -1234,6 +1527,9 @@ export function StoryEngineProvider({
     universes,
     getNormalizedAISettings,
     resolveAIProfile,
+    developerBugs,
+    developerFeatureRequests,
+    developerTestingNotes,
   ]);
 
   return (

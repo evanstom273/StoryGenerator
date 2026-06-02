@@ -4,6 +4,7 @@ export type PlayerCharacterField =
   | "name"
   | "age"
   | "gender"
+  | "species"
   | "pronouns"
   | "appearance"
   | "personality"
@@ -61,7 +62,7 @@ export function buildCharacterGeneratorSystemPrompt({
     "Return STRICT JSON only. No markdown. No code fences. No commentary.",
     `Generate: ${requested}.`,
     "JSON schema (exact keys):",
-    '{ "name": string, "age": string, "gender": string, "pronouns": string, "appearance": string, "personality": string, "background": string, "goals": string, "notes": string }',
+    '{ "name": string, "age": string, "gender": string, "species": string, "pronouns": string, "appearance": string, "personality": string, "background": string, "goals": string, "notes": string }',
     "All values must be plain text strings (no nested objects, no arrays).",
     "If pronouns are provided or implied by the existing request, keep them consistent and do not invent conflicting pronouns.",
     "Asterisks are reserved for actions in story text; do not use asterisks for emphasis in any field values.",

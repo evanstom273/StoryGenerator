@@ -9,6 +9,8 @@ export type StoryMessageSpeakerType =
   | "system";
 export type ExportFormat = "json" | "markdown" | "txt" | "pdf";
 export type AIProviderType = "openai" | "gemini" | "openrouter";
+export type DeveloperBugStatus = "open" | "in-progress" | "resolved" | "closed";
+export type DeveloperFeaturePriority = "low" | "medium" | "high";
 
 export interface Universe {
   id: EntityId;
@@ -27,6 +29,7 @@ export interface PlayerCharacter {
   name: string;
   age: string;
   gender: string;
+  species: string;
   pronouns: string;
   appearance: string;
   personality: string;
@@ -162,6 +165,37 @@ export interface StoryState {
   updatedAt: Timestamp;
 }
 
+export interface DeveloperBug {
+  id: EntityId;
+  title: string;
+  status: DeveloperBugStatus;
+  reportedAt: Timestamp;
+  description: string;
+  reproductionSteps: string;
+  expectedBehaviour: string;
+  actualBehaviour: string;
+  notes: string;
+  updatedAt: Timestamp;
+}
+
+export interface DeveloperFeatureRequest {
+  id: EntityId;
+  title: string;
+  priority: DeveloperFeaturePriority;
+  description: string;
+  notes: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface DeveloperTestingNote {
+  id: EntityId;
+  title: string;
+  content: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export interface UniverseDraft {
   name: string;
   description: string;
@@ -172,6 +206,7 @@ export interface PlayerCharacterDraft {
   name: string;
   age: string;
   gender: string;
+  species: string;
   pronouns: string;
   appearance: string;
   personality: string;
@@ -197,6 +232,31 @@ export interface StoryMessageDraft {
   speakerType?: StoryMessageSpeakerType;
 }
 
+export interface DeveloperBugDraft {
+  id: string;
+  title: string;
+  status: DeveloperBugStatus;
+  description: string;
+  reproductionSteps: string;
+  expectedBehaviour: string;
+  actualBehaviour: string;
+  notes: string;
+}
+
+export interface DeveloperFeatureRequestDraft {
+  id: string;
+  title: string;
+  priority: DeveloperFeaturePriority;
+  description: string;
+  notes: string;
+}
+
+export interface DeveloperTestingNoteDraft {
+  id: string;
+  title: string;
+  content: string;
+}
+
 export interface StorageStatus {
   driver: "IndexedDB";
   ready: boolean;
@@ -215,6 +275,21 @@ export interface StoryExportBundle {
   playerCharacter: PlayerCharacter;
   messages: StoryMessage[];
   storyState?: StoryState;
+}
+
+export interface UniverseExportBundleV1 {
+  exportVersion: 1;
+  exportedAt: Timestamp;
+  type: "universe";
+  universe: Universe;
+  universeImports: UniverseImport[];
+}
+
+export interface PlayerCharacterExportBundleV1 {
+  exportVersion: 1;
+  exportedAt: Timestamp;
+  type: "playerCharacter";
+  playerCharacter: PlayerCharacter;
 }
 
 export interface GuardedDeleteResult {
@@ -240,6 +315,7 @@ export type StoryEngineBackupV1 = {
     rightSidebarCollapsed: boolean;
     readerMode: boolean;
     showChrome: boolean;
+    textSize: "sm" | "md" | "lg" | "xl";
   };
 };
 

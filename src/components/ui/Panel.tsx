@@ -22,7 +22,7 @@ export function Panel({
   return (
     <div
       className={cn(
-        "rounded-card border border-white/10 bg-white/[0.045] shadow-panel backdrop-blur-xl",
+        "rounded-card border border-divider bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.55),0_0_42px_rgb(var(--theme-primary-rgb)/0.06)] backdrop-blur-xl ring-1 ring-accent/10",
         paddings[padding],
         className,
       )}

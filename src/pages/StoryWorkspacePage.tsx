@@ -39,6 +39,7 @@ export function StoryWorkspacePage() {
     setReaderMode,
     showChrome,
     setShowChrome,
+    textSize,
     setStorySettingsOpen,
   } = useUiPrefs();
   const {
@@ -371,9 +372,9 @@ export function StoryWorkspacePage() {
         </div>
       </div>
 
-      <div className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
+        <div className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
         {messages.length ? (
-          showChrome ? (
+          showChrome && !readerMode ? (
             <div className="space-y-1">
               {(() => {
                 const nodes: React.ReactNode[] = [];
@@ -403,7 +404,18 @@ export function StoryWorkspacePage() {
             <StoryTranscriptView
               messages={messages}
               playerCharacterName={activePlayerCharacter.name}
-              className={readerMode ? "pb-8" : undefined}
+              className={[
+                readerMode ? "pb-8" : "",
+                textSize === "sm"
+                  ? "text-[14px] leading-7 sm:text-[14px] sm:leading-7"
+                  : textSize === "lg"
+                    ? "text-[18px] leading-9 sm:text-[17px] sm:leading-8"
+                    : textSize === "xl"
+                      ? "text-[20px] leading-10 sm:text-[18px] sm:leading-9"
+                      : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             />
           )
         ) : (

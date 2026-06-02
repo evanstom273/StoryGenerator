@@ -27,7 +27,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                 cn(
                   "group flex items-start gap-3 rounded-card border px-4 py-4 transition duration-200",
                   isActive
-                    ? "border-accent/20 bg-accent/12 text-ink shadow-[0_18px_50px_rgba(139,92,246,0.18)]"
+                    ? "border-accent/20 bg-accent/12 text-ink shadow-[0_18px_50px_rgb(var(--theme-primary-rgb)/0.18)]"
                     : "border-transparent bg-transparent text-ink-muted hover:border-white/10 hover:bg-white/[0.05] hover:text-ink-soft",
                 )
               }

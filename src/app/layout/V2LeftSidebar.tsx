@@ -4,6 +4,7 @@ import { BrandMark } from "../../components/BrandMark";
 import { buttonClasses } from "../../components/ui/Button";
 import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
+import { APP_NAME, APP_VERSION } from "../versioning/version";
 
 interface V2LeftSidebarProps {
   activeStoryId?: string;
@@ -60,7 +61,7 @@ export function V2LeftSidebar({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search universes or stories..."
-            className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-accent/20"
+            className="w-full rounded-2xl border border-divider bg-panel-muted px-4 py-3 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
           />
         </div>
       </div>
@@ -74,8 +75,8 @@ export function V2LeftSidebar({
             <div
               key={universe.id}
               className={cn(
-                "rounded-2xl border border-white/8 bg-white/[0.02] p-2",
-                hasActiveStory ? "border-accent/20 bg-accent/6" : "",
+                "rounded-2xl border border-divider bg-panel-muted p-2 ring-1 ring-accent/8",
+                hasActiveStory ? "border-accent/35 bg-accent/10 ring-accent/12" : "",
               )}
             >
               <button
@@ -134,7 +135,7 @@ export function V2LeftSidebar({
                     to="/stories/new"
                     onClick={onNavigate}
                     className={cn(
-                      "mt-2 flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-accent-soft transition hover:bg-white/[0.04]",
+                      "mt-2 flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-accent-soft transition hover:bg-panel-strong",
                     )}
                   >
                     <span className="text-ink-muted">+</span>
@@ -151,7 +152,7 @@ export function V2LeftSidebar({
             to="/universes/new"
             onClick={onNavigate}
             className={cn(
-              "flex items-center gap-2 rounded-2xl border border-dashed border-white/12 bg-white/[0.02] px-4 py-3 text-sm text-ink-soft transition hover:border-white/20 hover:bg-white/[0.05]",
+              "flex items-center gap-2 rounded-2xl border border-dashed border-divider bg-panel-muted px-4 py-3 text-sm text-ink-soft transition hover:border-accent/25 hover:bg-panel-strong",
             )}
           >
             <span className="text-ink-muted">+</span>
@@ -160,7 +161,7 @@ export function V2LeftSidebar({
         </div>
       </div>
 
-      <div className="border-t border-white/8 p-4">
+      <div className="border-t border-divider p-4">
         <div className="grid gap-2">
           <Link
             to="/settings"
@@ -183,9 +184,18 @@ export function V2LeftSidebar({
           >
             Manage Characters
           </Link>
+          <Link
+            to="/developer-notes"
+            onClick={onNavigate}
+            className={buttonClasses({ variant: "ghost", className: "w-full justify-start" })}
+          >
+            Developer Notes
+          </Link>
+        </div>
+        <div className="mt-4 text-center text-xs text-ink-muted">
+          {APP_NAME} v{APP_VERSION}
         </div>
       </div>
     </div>
   );
 }
-

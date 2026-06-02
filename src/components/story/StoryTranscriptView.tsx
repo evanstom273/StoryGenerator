@@ -80,7 +80,7 @@ export function StoryTranscriptView({
 }: StoryTranscriptViewProps) {
   let latestUserMessage: string | null = null;
   return (
-    <div className={cn("space-y-6 text-[16px] leading-8 sm:text-[15px] sm:leading-7", className)}>
+    <div className={cn("space-y-6", className)}>
       {messages.map((message) => {
         if (message.role === "system") {
           return (
