@@ -158,8 +158,13 @@ export function ChangelogHistoryModal({
         )}
       >
         <div className="w-full max-w-4xl">
-          <Panel padding="lg" role="dialog" aria-modal="true" className="max-h-[82vh] overflow-hidden">
-            <div className="flex items-start justify-between gap-4">
+          <Panel
+            padding="lg"
+            role="dialog"
+            aria-modal="true"
+            className="flex max-h-[82vh] flex-col overflow-hidden"
+          >
+            <div className="flex shrink-0 items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   Changelog History
@@ -176,7 +181,7 @@ export function ChangelogHistoryModal({
               </Button>
             </div>
 
-            <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="mt-6 flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-[240px]">
                 <div className="text-xs text-ink-muted">Jump to version</div>
                 <SelectInput
@@ -208,7 +213,7 @@ export function ChangelogHistoryModal({
               </div>
             </div>
 
-            <div className="mt-6 space-y-4 overflow-auto pr-1">
+            <div className="mt-6 min-h-0 flex-1 space-y-4 overflow-auto pr-1">
               {versions.map((version) => {
                 const entry = CHANGELOG[version]!;
                 const isExpanded = expanded[version] ?? false;
@@ -235,4 +240,3 @@ export function ChangelogHistoryModal({
     </div>
   );
 }
-

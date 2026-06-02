@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.2.1";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -56,6 +56,12 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Improved card separation (subtle themed border tint and glow)",
     ],
     fixed: [],
+    knownIssues: [],
+  },
+  "1.2.1": {
+    title: "Changelog Hotfix",
+    added: [],
+    fixed: ["Fix changelog history scrolling"],
     knownIssues: [],
   },
 };
