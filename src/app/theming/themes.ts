@@ -1,36 +1,145 @@
 export type ThemeDefinition = {
   name: string;
-  primary: string;
-  secondary: string;
-  glow: string;
-  background: string;
+  accent: string;
+  bg: string;
+  bgElevated: string;
   surface: string;
+  surfaceMuted: string;
+  surfaceStrong: string;
+  border: string;
   text: string;
-  mutedText: string;
+  textSoft: string;
+  textMuted: string;
+  group: "standard" | "accessibility" | "custom";
 };
 
 export const themes = {
-  purple: {
-    name: "Purple",
-    primary: "#8B5CF6",
-    secondary: "#A78BFA",
-    glow: "#C4B5FD",
-    background: "#09090F",
-    surface: "#12121A",
-    text: "#FFFFFF",
-    mutedText: "#A1A1AA",
+  amethyst: {
+    name: "Amethyst",
+    accent: "#7C3AED",
+    bg: "#0A0A0A",
+    bgElevated: "#121212",
+    surface: "#1A1A1A",
+    surfaceMuted: "#141414",
+    surfaceStrong: "#202020",
+    border: "#2A2A2A",
+    text: "#F8FAFC",
+    textSoft: "#DBE4F0",
+    textMuted: "#94A3B8",
+    group: "standard",
   },
-  gold: {
-    name: "Gold",
-    primary: "#D4A017",
-    secondary: "#F0C75E",
-    glow: "#FFD76A",
-    background: "#0B0B0F",
-    surface: "#141414",
+  copper: {
+    name: "Copper",
+    accent: "#C47A2C",
+    bg: "#0A0A0A",
+    bgElevated: "#121212",
+    surface: "#1A1A1A",
+    surfaceMuted: "#141414",
+    surfaceStrong: "#202020",
+    border: "#2A2A2A",
+    text: "#F8FAFC",
+    textSoft: "#DBE4F0",
+    textMuted: "#94A3B8",
+    group: "standard",
+  },
+  emerald: {
+    name: "Emerald",
+    accent: "#10B981",
+    bg: "#0A0A0A",
+    bgElevated: "#121212",
+    surface: "#1A1A1A",
+    surfaceMuted: "#141414",
+    surfaceStrong: "#202020",
+    border: "#2A2A2A",
+    text: "#F8FAFC",
+    textSoft: "#DBE4F0",
+    textMuted: "#94A3B8",
+    group: "standard",
+  },
+  azure: {
+    name: "Azure",
+    accent: "#3B82F6",
+    bg: "#0A0A0A",
+    bgElevated: "#121212",
+    surface: "#1A1A1A",
+    surfaceMuted: "#141414",
+    surfaceStrong: "#202020",
+    border: "#2A2A2A",
+    text: "#F8FAFC",
+    textSoft: "#DBE4F0",
+    textMuted: "#94A3B8",
+    group: "standard",
+  },
+  crimson: {
+    name: "Crimson",
+    accent: "#DC2626",
+    bg: "#0A0A0A",
+    bgElevated: "#121212",
+    surface: "#1A1A1A",
+    surfaceMuted: "#141414",
+    surfaceStrong: "#202020",
+    border: "#2A2A2A",
+    text: "#F8FAFC",
+    textSoft: "#DBE4F0",
+    textMuted: "#94A3B8",
+    group: "standard",
+  },
+  silver: {
+    name: "Silver",
+    accent: "#94A3B8",
+    bg: "#0A0A0A",
+    bgElevated: "#121212",
+    surface: "#1A1A1A",
+    surfaceMuted: "#141414",
+    surfaceStrong: "#202020",
+    border: "#2A2A2A",
+    text: "#F8FAFC",
+    textSoft: "#DBE4F0",
+    textMuted: "#94A3B8",
+    group: "standard",
+  },
+  highContrast: {
+    name: "High Contrast",
+    accent: "#22D3EE",
+    bg: "#000000",
+    bgElevated: "#0A0A0A",
+    surface: "#000000",
+    surfaceMuted: "#000000",
+    surfaceStrong: "#111111",
+    border: "#FFFFFF",
     text: "#FFFFFF",
-    mutedText: "#B8B8B8",
+    textSoft: "#FFFFFF",
+    textMuted: "#E5E7EB",
+    group: "accessibility",
+  },
+  monochrome: {
+    name: "Monochrome",
+    accent: "#D4D4D4",
+    bg: "#0B0B0B",
+    bgElevated: "#111111",
+    surface: "#161616",
+    surfaceMuted: "#121212",
+    surfaceStrong: "#1F1F1F",
+    border: "#2F2F2F",
+    text: "#F5F5F5",
+    textSoft: "#E5E5E5",
+    textMuted: "#A3A3A3",
+    group: "accessibility",
+  },
+  custom: {
+    name: "Custom",
+    accent: "#7C3AED",
+    bg: "#0A0A0A",
+    bgElevated: "#121212",
+    surface: "#1A1A1A",
+    surfaceMuted: "#141414",
+    surfaceStrong: "#202020",
+    border: "#2A2A2A",
+    text: "#F8FAFC",
+    textSoft: "#DBE4F0",
+    textMuted: "#94A3B8",
+    group: "custom",
   },
 } satisfies Record<string, ThemeDefinition>;
 
 export type ThemeKey = keyof typeof themes;
-

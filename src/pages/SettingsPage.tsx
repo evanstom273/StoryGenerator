@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { DatabaseIcon } from "../components/icons";
 import { Badge } from "../components/ui/Badge";
@@ -9,13 +9,14 @@ import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { UI_PREFS_KEYS, readStoredTextSize, writeStoredTextSize } from "../app/ui/UiPrefsContext";
 import { useChangelog } from "../app/versioning/ChangelogContext";
 import { APP_NAME, APP_VERSION } from "../app/versioning/version";
-import { useTheme } from "../app/theming/ThemeContext";
+import { buildThemeCssVariables, useTheme } from "../app/theming/ThemeContext";
 import { themes, type ThemeKey } from "../app/theming/themes";
 import type { AIProviderType } from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
 import { downloadFile } from "../lib/download";
 import { serializeStoryExport } from "../lib/storyExport";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
+import { cn } from "../utils/cn";
 
 function sanitizeFileStem(value: string) {
   return value
@@ -45,7 +46,8 @@ export function SettingsPage() {
   } = useStoryEngine();
 
   const { openChangelog, openChangelogHistory } = useChangelog();
-  const { themeKey, setThemeKey, theme } = useTheme();
+  const { themeKey, setThemeKey, theme, customAccent, setCustomAccent } = useTheme();
+  const [customAccentInput, setCustomAccentInput] = useState(customAccent);
   const [activeProviderType, setActiveProviderType] = useState<AIProviderType>(
     aiSettings?.activeProviderType ?? "openai",
   );
@@ -78,6 +80,13 @@ export function SettingsPage() {
     "json" | "markdown" | "txt" | "pdf"
   >("json");
   const [itemExportStatus, setItemExportStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (themeKey !== "custom") {
+      return;
+    }
+    setCustomAccentInput(customAccent);
+  }, [customAccent, themeKey]);
   const [itemExportError, setItemExportError] = useState<string | null>(null);
   const [itemImportType, setItemImportType] = useState<
     "universe" | "playerCharacter" | "story"
@@ -502,17 +511,95 @@ export function SettingsPage() {
           </p>
           <div className="mt-4 space-y-4">
             <Field label="Theme">
-              <SelectInput
-                value={themeKey}
-                onChange={(event) => setThemeKey(event.target.value as ThemeKey)}
-              >
-                {Object.entries(themes).map(([key, item]) => (
-                  <option key={key} value={key}>
-                    {item.name}
-                  </option>
-                ))}
-              </SelectInput>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(Object.entries(themes) as Array<[ThemeKey, (typeof themes)[ThemeKey]]>).map(
+                  ([key, item]) => {
+                    const isSelected = key === themeKey;
+                    const previewStyle = buildThemeCssVariables({
+                      themeKey: key,
+                      customAccent,
+                    });
+
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        style={previewStyle as unknown as CSSProperties}
+                        onClick={() => setThemeKey(key)}
+                        aria-pressed={isSelected}
+                        className={cn(
+                          "rounded-card border p-4 text-left transition duration-200",
+                          isSelected
+                            ? "border-accent/40 bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.55),0_0_42px_rgb(var(--accent-rgb)/0.06)]"
+                            : "border-divider bg-panel-muted hover:border-accent/25 hover:bg-panel",
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="h-3 w-3 rounded-full bg-accent" />
+                            <span className="font-semibold text-ink">{item.name}</span>
+                          </div>
+                          {isSelected ? (
+                            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-accent-soft">
+                              Active
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          <div className="rounded-2xl border border-divider bg-panel-muted px-3 py-2">
+                            <div className="text-xs font-semibold text-accent">Jamie:</div>
+                            <div className="mt-1 text-xs leading-5 text-ink-soft">
+                              Quick player message sample.
+                            </div>
+                          </div>
+                          <div className="text-xs leading-5 text-ink-muted">
+                            <span className="font-semibold text-accent">Narrator:</span>{" "}
+                            A sample narration line for contrast.
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  },
+                )}
+              </div>
             </Field>
+            {themeKey === "custom" ? (
+              <Field label="Custom Accent">
+                <div className="flex flex-wrap items-center gap-3">
+                  <TextInput
+                    value={customAccentInput}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setCustomAccentInput(next);
+                      setCustomAccent(next);
+                    }}
+                    placeholder="#7C3AED"
+                  />
+                  <input
+                    type="color"
+                    value={customAccent}
+                    onChange={(event) => {
+                      setCustomAccentInput(event.target.value);
+                      setCustomAccent(event.target.value);
+                    }}
+                    className="h-10 w-10 cursor-pointer rounded-xl border border-divider bg-panel-muted p-1"
+                    aria-label="Pick custom accent"
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setCustomAccentInput(themes.custom.accent);
+                      setCustomAccent(themes.custom.accent);
+                    }}
+                  >
+                    Reset
+                  </Button>
+                </div>
+                <div className="mt-2 text-xs leading-5 text-ink-muted">
+                  Enter a hex colour (#RRGGBB). Invalid values won’t apply.
+                </div>
+              </Field>
+            ) : null}
             <Field label="Text Size">
               <SelectInput
                 value={textSize}

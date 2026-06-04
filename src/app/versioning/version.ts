@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.9.0";
+export const APP_VERSION = "1.10.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -153,6 +153,19 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Homepage includes a New Story button for faster start",
     ],
     fixed: ["Vercel deployments now support deep links (SPA routing rewrite)"],
+    knownIssues: [],
+  },
+  "1.10.0": {
+    title: "Theme System 2.0",
+    added: [
+      "Theme ids migrated: Purple → Amethyst, Gold → Copper",
+      "New themes: Emerald, Azure, Crimson, Silver",
+      "Accessibility themes: High Contrast, Monochrome",
+      "Custom theme with user-selected accent colour (persisted locally)",
+      "Derived accent tokens (muted/border/glow/surface/gradients) applied via CSS variables",
+      "Settings theme picker now shows preview cards",
+    ],
+    fixed: [],
     knownIssues: [],
   },
 };
