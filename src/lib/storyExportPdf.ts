@@ -146,9 +146,6 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
   writeBullet("Updated", formatDateTime(bundle.story.updatedAt));
   y += 10;
 
-  writeHeading("Opening Prompt", 14);
-  writeParagraph(bundle.story.openingPrompt || "No opening prompt.");
-
   writeHeading("Current Summary", 14);
   const summaryText =
     bundle.story.currentSummary?.trim() || storyStateData?.summaries?.worldSummary?.trim() || "";

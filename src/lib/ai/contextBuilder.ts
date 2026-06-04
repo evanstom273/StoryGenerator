@@ -88,7 +88,6 @@ export function buildStoryChatContext({
   const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
   const playerStateHint = extractExplicitPlayerStateHint({
     playerName: playerCharacter.name,
-    openingPrompt: story.openingPrompt,
     recentMessages,
   });
 
@@ -104,9 +103,6 @@ export function buildStoryChatContext({
         ? `Player Species: ${playerCharacter.species.trim()}`
         : "",
       playerCharacter.pronouns.trim() ? `Player Pronouns: ${playerCharacter.pronouns.trim()}` : "",
-      story.openingPrompt.trim()
-        ? `Opening Prompt (canon setup):\n${story.openingPrompt.trim()}`
-        : "",
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -148,7 +144,7 @@ export function buildStoryChatContext({
   const sceneGuidance = normalizeWhitespace(
     [
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
-      "The Opening Prompt is canon and defines the authoritative starting state. Expand the player's setup rather than replacing it.",
+      "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
       "Do not automatically introduce cases, missions, mysteries, assignments, emergencies, villains, or conflicts simply because the story has started.",
       "Character interaction alone is a valid scene.",
       "Name resolution rule: treat nicknames, shortened names, last-name references, and informal variants as referring to the same character unless the story explicitly introduces a separate person.",
@@ -179,7 +175,7 @@ export function buildStoryChatContext({
       "Do not generate suggested player lines or options unless explicitly asked via Player Assist. Focus on canon characters, NPCs, and narration.",
       "Drive the story forward with complications, discoveries, and tension, but never remove player agency.",
       "Never move, speak for, think for, feel for, or act on behalf of the player character.",
-      "Never introduce the player character into the scene unless the player explicitly placed them there in the canon setup or their latest message. Do not narrate the player character arriving, acting, speaking, thinking, or reacting.",
+      "Never introduce the player character into the scene unless the transcript/story state or the player's latest message established them there. Do not narrate the player character arriving, acting, speaking, thinking, or reacting.",
       "When the player character is present, other characters may address them, but always wait for the player's response.",
       "Asterisks are reserved exclusively for actions. Never use asterisks for emphasis, sarcasm, or formatting.",
       "Actions should read like prose, not stage directions. Avoid repetitive filler actions (nods/looks/shrugs) unless truly warranted.",

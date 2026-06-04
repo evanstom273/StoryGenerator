@@ -35,7 +35,7 @@ export function HomePage() {
                   "Unknown character"}
               </p>
               <p className="mt-4 text-sm leading-7 text-ink-soft">
-                {continueStory.currentSummary || continueStory.openingPrompt}
+                {continueStory.currentSummary || "No summary yet."}
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link

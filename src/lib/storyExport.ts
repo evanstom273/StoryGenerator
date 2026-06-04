@@ -173,10 +173,6 @@ function toMarkdown(bundle: StoryExportBundle) {
 - Created: ${formatDateTime(bundle.story.createdAt)}
 - Updated: ${formatDateTime(bundle.story.updatedAt)}
 
-## Opening Prompt
-
-${bundle.story.openingPrompt}
-
 ## Current Summary
 
 ${bundle.story.currentSummary || "_No summary yet._"}
@@ -214,9 +210,6 @@ Story
 - Player Character: ${bundle.playerCharacter.name}
 - Created: ${formatDateTime(bundle.story.createdAt)}
 - Updated: ${formatDateTime(bundle.story.updatedAt)}
-
-Opening Prompt
-${bundle.story.openingPrompt}
 
 Current Summary
 ${bundle.story.currentSummary || "No summary yet."}

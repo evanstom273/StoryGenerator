@@ -78,9 +78,6 @@ export function buildPlayerAssistContext({
         ? `Player Species: ${playerCharacter.species.trim()}`
         : "",
       playerCharacter.pronouns.trim() ? `Player Pronouns: ${playerCharacter.pronouns.trim()}` : "",
-      story.openingPrompt.trim()
-        ? `Opening Prompt (canon setup):\n${story.openingPrompt.trim()}`
-        : "",
     ]
       .filter(Boolean)
       .join("\n\n"),

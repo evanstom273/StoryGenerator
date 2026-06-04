@@ -40,7 +40,6 @@ function formatRecentMessages(
 
 export function buildStoryStateExtractionPrompt({
   playerName,
-  openingPrompt,
   summaryText,
   recentMessages,
   existingStateJson,
@@ -48,7 +47,6 @@ export function buildStoryStateExtractionPrompt({
   messageNumberTotal,
 }: {
   playerName: string;
-  openingPrompt: string;
   summaryText: string;
   recentMessages: StoryMessage[];
   existingStateJson?: string;
@@ -58,7 +56,7 @@ export function buildStoryStateExtractionPrompt({
   const system = normalizeWhitespace(
     [
       "You extract and maintain current story-state for continuity.",
-      "Story events define current truth. The character sheet and opening prompt define the starting state.",
+      "Story events define current truth. The character sheet and transcript define the starting state.",
       "Prefer existing story-state; update only when new evidence appears.",
       "Track only explicit, high-confidence changes. Do not invent facts.",
       "Transcript is the source of truth. Indexes are derived and rebuildable.",
@@ -124,7 +122,6 @@ export function buildStoryStateExtractionPrompt({
 
   const user = normalizeWhitespace(
     [
-      openingPrompt.trim() ? `Opening Prompt (canon setup):\n${openingPrompt.trim()}` : "",
       summaryText.trim() ? `Current Summary:\n${summaryText.trim()}` : "",
       existingStateJson?.trim() ? `Existing Story State JSON:\n${existingStateJson.trim()}` : "",
       `Recent Transcript:\n${formatRecentMessages(recentMessages, playerName, { messageNumberStart, messageNumberTotal })}`,

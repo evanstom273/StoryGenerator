@@ -32,19 +32,13 @@ function findCandidateLines(text: string) {
 
 export function extractExplicitPlayerStateHint({
   playerName,
-  openingPrompt,
   recentMessages,
 }: {
   playerName: string;
-  openingPrompt: string;
   recentMessages: StoryMessage[];
 }) {
   const normalizedPlayer = normalize(playerName);
   const sources: string[] = [];
-
-  if (openingPrompt.trim()) {
-    sources.push(openingPrompt);
-  }
 
   for (const message of recentMessages.slice(-15)) {
     if (message.role === "user") {
@@ -68,4 +62,3 @@ export function extractExplicitPlayerStateHint({
 
   return null;
 }
-

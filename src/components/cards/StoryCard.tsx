@@ -32,14 +32,8 @@ export function StoryCard({
         {story.title}
       </h3>
       <p className="mt-3 text-sm leading-6 text-ink-muted">
-        {story.currentSummary || story.openingPrompt}
+        {story.currentSummary || "No summary yet."}
       </p>
-      <div className="mt-6 rounded-2xl border border-white/8 bg-black/15 p-4">
-        <div className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-          Opening Prompt
-        </div>
-        <p className="mt-2 text-sm leading-6 text-ink-soft">{story.openingPrompt}</p>
-      </div>
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <div>
           <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
@@ -59,4 +53,3 @@ export function StoryCard({
     </Panel>
   );
 }
-

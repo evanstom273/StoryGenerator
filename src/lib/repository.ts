@@ -361,7 +361,6 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         }
 
         const normalizedTitle = normalizeKey((bundledStory as any).title);
-        const normalizedOpeningPrompt = normalizeKey((bundledStory as any).openingPrompt);
         if (!normalizedTitle) {
           return null;
         }
@@ -380,12 +379,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           if (normalizeKey((candidate as any).title) !== normalizedTitle) {
             return false;
           }
-
-          if (!normalizedOpeningPrompt) {
-            return true;
-          }
-
-          return normalizeKey((candidate as any).openingPrompt) === normalizedOpeningPrompt;
+          return true;
         });
 
         return matched?.id ?? null;

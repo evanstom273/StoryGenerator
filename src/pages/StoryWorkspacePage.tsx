@@ -34,8 +34,6 @@ const initialComposerState: MessageComposerState = {
 export function StoryWorkspacePage() {
   const { storyId } = useParams();
   const {
-    rightSidebarCollapsed,
-    setRightSidebarCollapsed,
     readerMode,
     setReaderMode,
     showChrome,
@@ -351,7 +349,7 @@ export function StoryWorkspacePage() {
         </h1>
         {readerMode ? null : (
           <div className="mt-3 text-sm leading-7 text-ink-muted">
-            {activeStory.currentSummary || activeStory.openingPrompt}
+            {activeStory.currentSummary || "No summary yet."}
           </div>
         )}
       </div>
@@ -367,13 +365,6 @@ export function StoryWorkspacePage() {
             onClick={() => setStorySettingsOpen(true)}
           >
             Settings
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setRightSidebarCollapsed(!rightSidebarCollapsed)}
-          >
-            {rightSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
           </Button>
           <Button
             size="sm"

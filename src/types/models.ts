@@ -45,7 +45,7 @@ export interface Story {
   title: string;
   universeId: EntityId;
   playerCharacterId: EntityId;
-  openingPrompt: string;
+  openingPrompt?: string;
   currentSummary: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -289,7 +289,7 @@ export interface StoryDraft {
   title: string;
   universeId: EntityId;
   playerCharacterId: EntityId;
-  openingPrompt: string;
+  openingPrompt?: string;
   currentSummary: string;
 }
 

@@ -3,24 +3,16 @@ import { Link, useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
 import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
-import { SparklesIcon } from "../components/icons";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
-import {
-  generateStoryPremise,
-  suggestStoryTitle,
-} from "../lib/storyPremises";
 import type { AIProviderType } from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
-
-type StoryStartMode = "custom" | "generated";
 
 const initialFormState = {
   title: "",
   universeId: "",
   playerCharacterId: "",
-  openingPrompt: "",
   currentSummary: "",
 };
 
@@ -31,12 +23,9 @@ export function StoryCreatePage() {
     createStory,
     universes,
     getPlayerCharactersForUniverse,
-    getPlayerCharacterById,
-    getUniverseById,
     saveStoryAIConfig,
   } = useStoryEngine();
   const [formState, setFormState] = useState(initialFormState);
-  const [storyStartMode, setStoryStartMode] = useState<StoryStartMode>("custom");
   const [storyProviderType, setStoryProviderType] = useState(
     aiSettings?.activeProviderType ?? "openai",
   );
@@ -47,7 +36,6 @@ export function StoryCreatePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedUniverse = getUniverseById(formState.universeId);
   const availableCharacters = useMemo(
     () =>
       formState.universeId
@@ -55,7 +43,6 @@ export function StoryCreatePage() {
         : [],
     [formState.universeId, getPlayerCharactersForUniverse],
   );
-  const selectedPlayerCharacter = getPlayerCharacterById(formState.playerCharacterId);
 
   if (!universes.length) {
     return (
@@ -96,11 +83,6 @@ export function StoryCreatePage() {
       return;
     }
 
-    if (!formState.openingPrompt.trim()) {
-      setErrorMessage("Write or generate an opening prompt.");
-      return;
-    }
-
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -126,43 +108,19 @@ export function StoryCreatePage() {
     }
   }
 
-  function handleGeneratePremise() {
-    if (!selectedUniverse || !selectedPlayerCharacter) {
-      setErrorMessage(
-        "Select both a universe and a player character before generating a premise.",
-      );
-      return;
-    }
-
-    const openingPrompt = generateStoryPremise(
-      selectedUniverse.name,
-      selectedPlayerCharacter.name,
-    );
-
-    setStoryStartMode("generated");
-    setErrorMessage(null);
-    setFormState((currentState) => ({
-      ...currentState,
-      title:
-        currentState.title.trim() ||
-        suggestStoryTitle(selectedUniverse.name, selectedPlayerCharacter.name),
-      openingPrompt,
-    }));
-  }
-
   return (
     <div className="space-y-8">
       <PageHeader
         eyebrow="Create Story"
-        title="Build a campaign from universe to opening scene"
-        description="Start by choosing the fictional universe, then the player character the user controls, then the opening scenario that puts the story in motion."
+        title="Create a story from a universe and a player character"
+        description="Choose the fictional universe, select the player character, then set a title and optional summary."
       />
 
       <div className="grid gap-4 md:grid-cols-3">
         {[
           ["Step 1", "Select Universe"],
           ["Step 2", "Select Player Character"],
-          ["Step 3", "Choose Story Start"],
+          ["Step 3", "Story Details"],
         ].map(([step, title]) => (
           <Panel key={step}>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
@@ -285,76 +243,32 @@ export function StoryCreatePage() {
             </Panel>
           ) : null}
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="space-y-6">
-              <Field label="Story Title" hint="Required">
-                <TextInput
-                  value={formState.title}
-                  onChange={(event) =>
-                    setFormState((currentState) => ({
-                      ...currentState,
-                      title: event.target.value,
-                    }))
-                  }
-                  placeholder="Example: Brooklyn Nine-Nine: Jamie Mercer"
-                />
-              </Field>
+          <div className="space-y-6">
+            <Field label="Story Title" hint="Required">
+              <TextInput
+                value={formState.title}
+                onChange={(event) =>
+                  setFormState((currentState) => ({
+                    ...currentState,
+                    title: event.target.value,
+                  }))
+                }
+                placeholder="Example: Brooklyn Nine-Nine: Jamie Mercer"
+              />
+            </Field>
 
-              <Field label="Opening Prompt" hint="Required">
-                <TextAreaInput
-                  value={formState.openingPrompt}
-                  onChange={(event) =>
-                    setFormState((currentState) => ({
-                      ...currentState,
-                      openingPrompt: event.target.value,
-                    }))
-                  }
-                  placeholder="Write the scenario that starts the story."
-                />
-              </Field>
-
-              <Field label="Current Summary" hint="Optional">
-                <TextAreaInput
-                  value={formState.currentSummary}
-                  onChange={(event) =>
-                    setFormState((currentState) => ({
-                      ...currentState,
-                      currentSummary: event.target.value,
-                    }))
-                  }
-                  placeholder="Leave blank for now or add a short story overview."
-                />
-              </Field>
-            </div>
-
-            <Panel className="h-fit">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                Story start
-              </div>
-              <div className="mt-4 space-y-3">
-                <Button
-                  variant={storyStartMode === "custom" ? "primary" : "secondary"}
-                  className="w-full justify-start rounded-2xl"
-                  onClick={() => setStoryStartMode("custom")}
-                >
-                  Write your own prompt
-                </Button>
-                <Button
-                  variant={
-                    storyStartMode === "generated" ? "primary" : "secondary"
-                  }
-                  className="w-full justify-start rounded-2xl"
-                  onClick={handleGeneratePremise}
-                >
-                  <SparklesIcon className="h-4 w-4" />
-                  Generate Story Premise
-                </Button>
-              </div>
-              <p className="mt-4 text-sm leading-7 text-ink-muted">
-                Premise generation is fully local in Step 2. It fills the opening
-                prompt field without calling any AI provider.
-              </p>
-            </Panel>
+            <Field label="Current Summary" hint="Optional">
+              <TextAreaInput
+                value={formState.currentSummary}
+                onChange={(event) =>
+                  setFormState((currentState) => ({
+                    ...currentState,
+                    currentSummary: event.target.value,
+                  }))
+                }
+                placeholder="Leave blank for now or add a short story overview."
+              />
+            </Field>
           </div>
 
           {errorMessage ? (

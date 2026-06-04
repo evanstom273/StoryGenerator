@@ -43,9 +43,8 @@ export function StoryListRow({
         </div>
       </div>
       <div className="mt-2 truncate text-sm text-ink-soft">
-        {story.currentSummary || story.openingPrompt}
+        {story.currentSummary || "No summary yet."}
       </div>
     </Link>
   );
 }
-

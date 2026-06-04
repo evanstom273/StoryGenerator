@@ -57,7 +57,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
   const [storyFields, setStoryFields] = useState({
     title: story?.title ?? "",
-    openingPrompt: story?.openingPrompt ?? "",
     currentSummary: story?.currentSummary ?? "",
   });
   const [isSavingStory, setIsSavingStory] = useState(false);
@@ -82,7 +81,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
     setStoryFields({
       title: story.title,
-      openingPrompt: story.openingPrompt,
       currentSummary: story.currentSummary,
     });
   }, [story]);
@@ -122,20 +120,19 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
       if (
         storyFields.title === story.title &&
-        storyFields.openingPrompt === story.openingPrompt &&
         storyFields.currentSummary === story.currentSummary
       ) {
         return;
       }
 
-      if (!storyFields.title.trim() || !storyFields.openingPrompt.trim()) {
+      if (!storyFields.title.trim()) {
         return;
       }
 
       void updateStory(story.id, storyFields).catch(() => {});
     },
     800,
-    [story?.id, storyFields.title, storyFields.openingPrompt, storyFields.currentSummary],
+    [story?.id, storyFields.title, storyFields.currentSummary],
   );
 
   useEffect(() => {
@@ -211,11 +208,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
     if (!storyFields.title.trim()) {
       setPageError("Story title is required.");
-      return;
-    }
-
-    if (!storyFields.openingPrompt.trim()) {
-      setPageError("Opening prompt is required.");
       return;
     }
 
@@ -455,19 +447,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       value={storyFields.title}
                       onChange={(event) =>
                         setStoryFields((current) => ({ ...current, title: event.target.value }))
-                      }
-                    />
-                  </label>
-                  <label className="block space-y-2">
-                    <div className="text-xs text-ink-muted">Opening Prompt</div>
-                    <textarea
-                      className="min-h-[110px] w-full resize-y rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
-                      value={storyFields.openingPrompt}
-                      onChange={(event) =>
-                        setStoryFields((current) => ({
-                          ...current,
-                          openingPrompt: event.target.value,
-                        }))
                       }
                     />
                   </label>
