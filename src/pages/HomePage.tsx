@@ -45,6 +45,12 @@ export function HomePage() {
                   Continue
                 </Link>
                 <Link
+                  to="/stories/new"
+                  className={buttonClasses({ variant: "secondary", size: "lg" })}
+                >
+                  New Story
+                </Link>
+                <Link
                   to="/stories"
                   className={buttonClasses({ variant: "secondary", size: "lg" })}
                 >

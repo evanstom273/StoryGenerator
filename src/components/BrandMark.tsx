@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { cn } from "../utils/cn";
 import { APP_VERSION } from "../app/versioning/version";
 
@@ -8,7 +9,7 @@ interface BrandMarkProps {
 
 export function BrandMark({ compact = false, className }: BrandMarkProps) {
   return (
-    <div className={cn("flex items-center gap-4", className)}>
+    <Link to="/" aria-label="Go to Home" className={cn("flex items-center gap-4", className)}>
       <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-divider bg-gradient-to-br from-accent/26 via-accent-secondary/10 to-white/6 shadow-[0_18px_40px_rgb(var(--theme-primary-rgb)/0.16)] ring-1 ring-accent/12">
         <svg
           aria-hidden="true"
@@ -46,6 +47,6 @@ export function BrandMark({ compact = false, className }: BrandMarkProps) {
           </p>
         ) : null}
       </div>
-    </div>
+    </Link>
   );
 }

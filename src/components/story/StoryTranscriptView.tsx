@@ -21,8 +21,8 @@ function getSpeakerTag(label: string, kind: SpeakerKind) {
     return {
       label,
       kind,
-      tagClass: cn(baseTagClass, "text-blue-200"),
-      rowClass: cn(baseRowClass, "ml-3 border-l-2 border-blue-400/40 bg-blue-500/10"),
+      tagClass: cn(baseTagClass, "text-accent"),
+      rowClass: cn(baseRowClass, "ml-3 border-l-2 border-accent/35 bg-accent/10"),
       contentClass: "text-ink",
     };
   }
@@ -31,9 +31,9 @@ function getSpeakerTag(label: string, kind: SpeakerKind) {
     return {
       label,
       kind,
-      tagClass: cn(baseTagClass, "text-zinc-300"),
+      tagClass: cn(baseTagClass, "text-ink-soft"),
       rowClass: cn(baseRowClass, "bg-white/[0.02]"),
-      contentClass: "text-zinc-300 italic",
+      contentClass: "text-ink-muted italic",
     };
   }
 

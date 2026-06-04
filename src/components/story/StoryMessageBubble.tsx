@@ -40,6 +40,30 @@ function resolveSpeakerLabel(
   return "Assistant";
 }
 
+function resolveSpeakerTagClass(
+  role: StoryMessage["role"],
+  speakerType: StoryMessageSpeakerType | undefined,
+  speakerName: string | undefined,
+) {
+  if (role === "user") {
+    return "text-accent";
+  }
+
+  if (role === "system" || speakerType === "system") {
+    return "text-ink-muted";
+  }
+
+  if (speakerType === "narrator") {
+    return "text-ink-soft";
+  }
+
+  if (speakerName?.trim()) {
+    return "text-accent";
+  }
+
+  return "text-ink";
+}
+
 function getInitials(label: string) {
   const parts = label
     .trim()
@@ -96,6 +120,11 @@ export function StoryMessageBubble({
     message.speakerType,
     message.speakerName,
     playerCharacterName,
+  );
+  const speakerTagClass = resolveSpeakerTagClass(
+    message.role,
+    message.speakerType,
+    message.speakerName,
   );
   const initials = getInitials(speakerLabel);
   const avatarClass = resolveAvatarClass(speakerLabel, message.speakerType);
@@ -198,7 +227,7 @@ export function StoryMessageBubble({
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div className="flex min-w-0 items-center gap-2">
             {speakerLabel ? (
-              <div className="truncate text-sm font-semibold text-ink">
+              <div className={cn("truncate text-sm font-semibold", speakerTagClass)}>
                 {speakerLabel}
               </div>
             ) : null}
