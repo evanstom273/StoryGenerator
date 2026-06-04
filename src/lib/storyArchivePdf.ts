@@ -327,7 +327,7 @@ export function serializeStoryArchivePdf(
   if (relationshipRegistry.length) {
     writeHeading("Relationship Registry", 14);
     for (const entry of relationshipRegistry) {
-      writeSubheading(`${entry.a} ↔ ${entry.b}`);
+      writeSubheading(`${entry.a} <-> ${entry.b}`);
       if (entry.friendship != null) writeBullet("Friendship", String(Math.round(entry.friendship)));
       if (entry.trust != null) writeBullet("Trust", String(Math.round(entry.trust)));
       if (entry.loyalty != null) writeBullet("Loyalty", String(Math.round(entry.loyalty)));
@@ -397,6 +397,11 @@ export function serializeStoryArchivePdf(
     const message = sortedMessages[index];
     const number = index + 1;
 
+    if (index > 0) {
+      ensureSpace(18);
+      y += 18;
+    }
+
     if (message.role === "user") {
       latestUserMessage = message.content;
     }
@@ -413,11 +418,11 @@ export function serializeStoryArchivePdf(
           }).text
         : message.content;
     writeParagraph((resolvedContent ?? "").trim());
-    writeBullet("Time", formatDateTime(message.timestamp));
-    y += 6;
+    writeMonospace(`Time: ${formatDateTime(message.timestamp)}`);
+    ensureSpace(18);
+    y += 18;
   }
 
   const buffer = doc.output("arraybuffer") as ArrayBuffer;
   return { content: new Uint8Array(buffer), mimeType: "application/pdf" };
 }
-

@@ -249,7 +249,7 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
     doc.setFontSize(10);
     ensureSpace(16);
     doc.text(`Time: ${timestamp}`, marginX, y);
-    y += 18;
+    y += 26;
   }
 
   return doc.output("arraybuffer") as ArrayBuffer;
