@@ -6,6 +6,8 @@ import { Panel } from "../../components/ui/Panel";
 import { downloadFile } from "../../lib/download";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
 import { serializeStoryExport } from "../../lib/storyExport";
+import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
+import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
 import type { AIProviderType, ExportFormat } from "../../types/models";
 import { cn } from "../../utils/cn";
@@ -18,15 +20,16 @@ function createExportFilename(title: string, format: ExportFormat) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
+  const suffix = format === "archive_pdf" ? "-archive" : "";
   const extension =
     format === "json"
       ? "json"
       : format === "markdown"
         ? "md"
-        : format === "pdf"
+        : format === "pdf" || format === "archive_pdf"
           ? "pdf"
           : "txt";
-  return `${sanitizedTitle || "story-engine-story"}.${extension}`;
+  return `${sanitizedTitle || "story-engine-story"}${suffix}.${extension}`;
 }
 
 export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
@@ -37,11 +40,15 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     getStoryById,
     getUniverseById,
     getPlayerCharacterById,
+    getMessagesForStory,
     exportStory,
+    fetchStoryState,
     updateStory,
     deleteStory,
     getStoryAIConfig,
     saveStoryAIConfig,
+    updateIndexesDeep,
+    rebuildStatus,
   } = useStoryEngine();
 
   const story = storyId ? getStoryById(storyId) : undefined;
@@ -63,6 +70,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   );
   const [isSavingAI, setIsSavingAI] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [storyStateData, setStoryStateData] = useState<ReturnType<typeof normalizeStoryStateToV2> | null>(
+    null,
+  );
+  const [expandedEvidenceKeys, setExpandedEvidenceKeys] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!story) {
@@ -75,6 +86,33 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       currentSummary: story.currentSummary,
     });
   }, [story]);
+
+  useEffect(() => {
+    if (!storySettingsOpen || !story) {
+      setStoryStateData(null);
+      return;
+    }
+
+    let cancelled = false;
+    void fetchStoryState(story.id)
+      .then((record) => {
+        if (cancelled) {
+          return;
+        }
+        const parsed = record?.stateJson ? safeParseStoryStateData(record.stateJson) : null;
+        setStoryStateData(normalizeStoryStateToV2(parsed));
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setStoryStateData(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchStoryState, story, storySettingsOpen, rebuildStatus]);
 
   useDebouncedEffect(
     () => {
@@ -230,6 +268,73 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     await deleteStory(story.id);
     setStorySettingsOpen(false);
     navigate("/stories");
+  }
+
+  const rebuildInfo =
+    story && rebuildStatus?.storyId === story.id && rebuildStatus.phase !== "idle"
+      ? rebuildStatus
+      : null;
+  const isRebuilding = rebuildInfo ? rebuildInfo.phase === "loading" || rebuildInfo.phase === "extracting" || rebuildInfo.phase === "saving" : false;
+
+  async function handleReindex() {
+    if (!story) {
+      return;
+    }
+
+    setPageError(null);
+    try {
+      await updateIndexesDeep(story.id);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to re-index.");
+    }
+  }
+
+  function renderEvidencePills(evidence: number[] | undefined, key: string) {
+    if (!story || !evidence?.length) {
+      return null;
+    }
+
+    const totalMessages = getMessagesForStory(story.id).length;
+    const uniqueSorted = Array.from(new Set(evidence))
+      .filter((value) => Number.isFinite(value) && value >= 1 && value <= totalMessages)
+      .sort((a, b) => a - b);
+
+    if (!uniqueSorted.length) {
+      return null;
+    }
+
+    const expanded = expandedEvidenceKeys[key] ?? false;
+    const visible = expanded ? uniqueSorted : uniqueSorted.slice(0, 10);
+    const remaining = uniqueSorted.length - visible.length;
+
+    return (
+      <div className="mt-2 flex flex-wrap gap-2">
+        {visible.map((number) => (
+          <button
+            key={number}
+            type="button"
+            className="rounded-full border border-divider bg-white/[0.03] px-2 py-1 text-xs font-semibold text-ink-soft transition hover:border-accent/50 hover:bg-accent/10"
+            onClick={() => navigateToStoryMessageNumber(story.id, number)}
+          >
+            #{number}
+          </button>
+        ))}
+        {remaining > 0 ? (
+          <button
+            type="button"
+            className="rounded-full border border-divider bg-white/[0.03] px-2 py-1 text-xs font-semibold text-ink-muted transition hover:border-accent/50 hover:bg-accent/10"
+            onClick={() =>
+              setExpandedEvidenceKeys((current) => ({
+                ...current,
+                [key]: true,
+              }))
+            }
+          >
+            +{remaining} more
+          </button>
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -423,6 +528,191 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <DownloadIcon className="h-4 w-4" />
                     Export PDF
                   </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-2xl"
+                    onClick={() => handleExport("archive_pdf")}
+                  >
+                    <DownloadIcon className="h-4 w-4" />
+                    Export Archive PDF
+                  </Button>
+                </div>
+              </Panel>
+
+              <Panel padding="sm">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Index / Archive
+                </div>
+                <div className="mt-4 space-y-3">
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-2xl"
+                    disabled={isRebuilding}
+                    onClick={handleReindex}
+                  >
+                    {isRebuilding ? "Re-indexing..." : "Re-index"}
+                  </Button>
+                  {rebuildInfo ? (
+                    <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+                      {rebuildInfo.phase === "error"
+                        ? rebuildInfo.error || "Rebuild failed."
+                        : rebuildInfo.message ||
+                          `Rebuilding… ${rebuildInfo.processedMessages}/${rebuildInfo.totalMessages} messages`}
+                    </div>
+                  ) : null}
+                  {(() => {
+                    if (!story || !storyStateData) {
+                      return (
+                        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+                          No indexed state available yet.
+                        </div>
+                      );
+                    }
+
+                    const totalMessages = getMessagesForStory(story.id).length;
+                    const indexedMessageCount =
+                      storyStateData.indexes?.messageCount ??
+                      storyStateData.lastIndexedMessageCount ??
+                      0;
+                    const staleBy = Math.max(0, totalMessages - indexedMessageCount);
+                    const worldFacts = storyStateData.indexes?.worldFacts ?? [];
+                    const openThreads = storyStateData.indexes?.openThreads ?? [];
+                    const characters = storyStateData.indexes?.characters
+                      ? Object.values(storyStateData.indexes.characters)
+                      : [];
+                    const locations = storyStateData.indexes?.locations
+                      ? Object.values(storyStateData.indexes.locations)
+                      : [];
+                    const relationships = storyStateData.indexes?.relationships ?? [];
+
+                    return (
+                      <div className="space-y-4 rounded-2xl border border-white/8 bg-black/15 px-4 py-4 text-sm">
+                        <div className="space-y-2 text-ink-muted">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>Message count</div>
+                            <div className="text-ink-soft">{indexedMessageCount || "—"}</div>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <div>Status</div>
+                            <div className={cn("text-ink-soft", staleBy ? "text-amber-200" : "")}>
+                              {staleBy ? `Stale (+${staleBy})` : "Up to date"}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <div>Indexed</div>
+                            <div className="text-ink-soft">
+                              {storyStateData.lastIndexedAt ? new Date(storyStateData.lastIndexedAt).toLocaleString() : "—"}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <div>Deep indexed</div>
+                            <div className="text-ink-soft">
+                              {storyStateData.lastDeepIndexedAt ? new Date(storyStateData.lastDeepIndexedAt).toLocaleString() : "—"}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-5">
+                          {openThreads.length ? (
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                                Open Threads
+                              </div>
+                              <div className="mt-3 space-y-3">
+                                {openThreads.slice(0, 8).map((entry, index) => (
+                                  <div key={index} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                    <div className="text-ink-soft">{entry.thread}</div>
+                                    {renderEvidencePills(entry.evidence?.messageNumbers, `thread-${index}`)}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {worldFacts.length ? (
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                                World Facts
+                              </div>
+                              <div className="mt-3 space-y-3">
+                                {worldFacts.slice(0, 8).map((entry, index) => (
+                                  <div key={index} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                    <div className="text-ink-soft">{entry.fact}</div>
+                                    {renderEvidencePills(entry.evidence?.messageNumbers, `fact-${index}`)}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {characters.length ? (
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                                Characters
+                              </div>
+                              <div className="mt-3 space-y-3">
+                                {characters
+                                  .slice(0, 12)
+                                  .sort((a, b) => a.name.localeCompare(b.name))
+                                  .map((entry) => (
+                                    <div key={entry.name} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                      <div className="font-semibold text-ink-soft">{entry.name}</div>
+                                      {entry.description ? (
+                                        <div className="mt-1 text-xs text-ink-muted">{entry.description}</div>
+                                      ) : null}
+                                      {renderEvidencePills(entry.evidence?.messageNumbers, `char-${entry.name}`)}
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {locations.length ? (
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                                Locations
+                              </div>
+                              <div className="mt-3 space-y-3">
+                                {locations
+                                  .slice(0, 12)
+                                  .sort((a, b) => a.name.localeCompare(b.name))
+                                  .map((entry) => (
+                                    <div key={entry.name} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                      <div className="font-semibold text-ink-soft">{entry.name}</div>
+                                      {entry.description ? (
+                                        <div className="mt-1 text-xs text-ink-muted">{entry.description}</div>
+                                      ) : null}
+                                      {renderEvidencePills(entry.evidence?.messageNumbers, `loc-${entry.name}`)}
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {relationships.length ? (
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                                Relationships
+                              </div>
+                              <div className="mt-3 space-y-3">
+                                {relationships.slice(0, 12).map((entry, index) => (
+                                  <div key={`${entry.a}-${entry.b}-${index}`} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                    <div className="font-semibold text-ink-soft">
+                                      {entry.a} ↔ {entry.b}
+                                    </div>
+                                    {entry.summary ? (
+                                      <div className="mt-1 text-xs text-ink-muted">{entry.summary}</div>
+                                    ) : null}
+                                    {renderEvidencePills(entry.evidence?.messageNumbers, `rel-${index}`)}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </Panel>
 

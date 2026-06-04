@@ -22,15 +22,16 @@ function createExportFilename(title: string, format: ExportFormat) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
+  const suffix = format === "archive_pdf" ? "-archive" : "";
   const extension =
     format === "json"
       ? "json"
       : format === "markdown"
         ? "md"
-        : format === "pdf"
+        : format === "pdf" || format === "archive_pdf"
           ? "pdf"
           : "txt";
-  return `${sanitizedTitle || "story-engine-story"}.${extension}`;
+  return `${sanitizedTitle || "story-engine-story"}${suffix}.${extension}`;
 }
 
 export function V2RightSidebar({
@@ -168,6 +169,14 @@ export function V2RightSidebar({
                   >
                     <DownloadIcon className="h-4 w-4" />
                     Export PDF
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-2xl"
+                    onClick={() => handleExport("archive_pdf")}
+                  >
+                    <DownloadIcon className="h-4 w-4" />
+                    Export Archive PDF
                   </Button>
                 </div>
               </Panel>

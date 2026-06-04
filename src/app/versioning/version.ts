@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.2.1";
+export const APP_VERSION = "1.8.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -62,6 +62,77 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     title: "Changelog Hotfix",
     added: [],
     fixed: ["Fix changelog history scrolling"],
+    knownIssues: [],
+  },
+  "1.2.2": {
+    title: "Summary & Story State Hotfix",
+    added: [],
+    fixed: [
+      "PDF/Markdown/TXT/JSON exports now show the latest available summary even when story.currentSummary is empty",
+      "Story exports trigger a story-state refresh when possible to reduce stale scene/state data",
+    ],
+    knownIssues: [],
+  },
+  "1.3.0": {
+    title: "Memory Architecture v2 Schema (Phase 1)",
+    added: [
+      "Story state now supports optional v2 schema fields (indexes, scene snapshot, threads, indexing metadata)",
+      "Story state saves include memory architecture metadata for future transcript-first indexing",
+      "Safe story-state parsing helper for backward-compatible normalization",
+    ],
+    fixed: [],
+    knownIssues: [],
+  },
+  "1.4.0": {
+    title: "Memory Rebuild Engine (Phase 2)",
+    added: [
+      "Rebuild Memory & Indexes pipeline (chunked transcript-first rebuild with progress)",
+      "Story Settings drawer action to rebuild memory and update story state safely",
+    ],
+    fixed: [],
+    knownIssues: [],
+  },
+  "1.5.0": {
+    title: "AI-Assisted Index System (Phase 3)",
+    added: [
+      "Transcript-stable message numbering for index evidence references",
+      "Indexes section populated during rebuild (entities, facts, threads, memories, relationships with evidence)",
+    ],
+    fixed: [],
+    knownIssues: [],
+  },
+  "1.6.0": {
+    title: "Incremental Indexing & Evidence Viewer (Phase 4)",
+    added: [
+      "Automatic light indexing every 5 messages and deep re-index every 20 messages",
+      "Story Settings Index / Archive viewer (threads, facts, characters, locations, relationships)",
+      "Jump-to-evidence: clicking #N scrolls to and highlights transcript message N",
+    ],
+    fixed: [],
+    knownIssues: [],
+  },
+  "1.6.1": {
+    title: "Memory & Indexes Hotfix",
+    added: [],
+    fixed: ["Fix crash when rebuilding memory & indexes (defensive array checks in index sanitiser)"],
+    knownIssues: [],
+  },
+  "1.7.0": {
+    title: "Deep Indexing + PDF Metadata (Phase 5)",
+    added: [
+      "Deep-only automatic indexing every 20 messages (light indexing removed)",
+      "Manual Re-index action in Story Settings",
+      "PDF export metadata section (indexedAt, memory architecture version, indexed message count)",
+    ],
+    fixed: [],
+    knownIssues: [],
+  },
+  "1.8.0": {
+    title: "Archive PDF Export (Phase 6)",
+    added: [
+      "New Archive PDF export (metadata + indexes/registries + evidence + numbered transcript)",
+    ],
+    fixed: [],
     knownIssues: [],
   },
 };

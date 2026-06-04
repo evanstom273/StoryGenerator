@@ -10,6 +10,7 @@ import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
+import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
 import type {
   StoryMessage,
   StoryMessageRole,
@@ -73,6 +74,7 @@ export function StoryWorkspacePage() {
   const [isGeneratingAssist, setIsGeneratingAssist] = useState(false);
   const [assistError, setAssistError] = useState<string | null>(null);
   const [manualMode, setManualMode] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
 
   useEffect(() => {
     setEditingMessage(null);
@@ -85,6 +87,35 @@ export function StoryWorkspacePage() {
     setAssistError(null);
     setManualMode(false);
   }, [storyId]);
+
+  useEffect(() => {
+    function handleJump(event: Event) {
+      const custom = event as CustomEvent<StoryNavigationDetail>;
+      const detail = custom.detail;
+      if (!detail || detail.storyId !== storyId) {
+        return;
+      }
+
+      const target = messages[detail.messageNumber - 1];
+      if (!target) {
+        return;
+      }
+
+      setHighlightedMessageId(target.id);
+
+      requestAnimationFrame(() => {
+        const element = document.getElementById(`story-message-${target.id}`);
+        element?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+
+      window.setTimeout(() => {
+        setHighlightedMessageId((current) => (current === target.id ? null : current));
+      }, 1500);
+    }
+
+    window.addEventListener(STORY_NAVIGATION_EVENT, handleJump);
+    return () => window.removeEventListener(STORY_NAVIGATION_EVENT, handleJump);
+  }, [messages, storyId]);
 
   useEffect(() => {
     if (!readerMode) {
@@ -393,6 +424,7 @@ export function StoryWorkspacePage() {
                       latestUserMessage={latestUserMessage}
                       onEdit={populateComposerFromMessage}
                       onDelete={handleDeleteMessage}
+                      highlighted={highlightedMessageId === message.id}
                     />,
                   );
                 }
@@ -404,6 +436,7 @@ export function StoryWorkspacePage() {
             <StoryTranscriptView
               messages={messages}
               playerCharacterName={activePlayerCharacter.name}
+              highlightedMessageId={highlightedMessageId}
               className={[
                 readerMode ? "pb-8" : "",
                 textSize === "sm"

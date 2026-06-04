@@ -14,8 +14,8 @@ import { extractExplicitPlayerStateHint } from "../storyText/playerState";
 import {
   formatStoryLongTermMemoryForPrompt,
   formatStorySceneStateForPrompt,
-  parseStoryStateData,
 } from "./storyStateExtractor";
+import { safeParseStoryStateData } from "../storyStateV2";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
@@ -133,7 +133,7 @@ export function buildStoryChatContext({
       return { longTerm: "No long-term memory is recorded yet.", scene: "" };
     }
 
-    const parsed = parseStoryStateData(json);
+    const parsed = safeParseStoryStateData(json);
     if (!parsed) {
       return { longTerm: "Story state is present but could not be parsed.", scene: "" };
     }

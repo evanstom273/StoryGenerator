@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import type { PlayerCharacter, StoryExportBundle, StoryMessage } from "../types/models";
 import { formatDateTime } from "./dates";
+import { normalizeStoryStateToV2, safeParseStoryStateData } from "./storyStateV2";
 import { parseActionSegments } from "./storyText/parseActionSegments";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
@@ -102,6 +103,42 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
 
   writeHeading(bundle.story.title, 20);
 
+  const storyStateData = (() => {
+    const json = bundle.storyState?.stateJson?.trim() ?? "";
+    if (!json) return null;
+    const parsed = safeParseStoryStateData(json);
+    return normalizeStoryStateToV2(parsed);
+  })();
+
+  const exportMetadata: Array<{ label: string; value: string }> = [];
+  exportMetadata.push({ label: "Story", value: bundle.story.title });
+  exportMetadata.push({ label: "Universe", value: bundle.universe.name });
+  exportMetadata.push({ label: "Player", value: bundle.playerCharacter.name });
+  exportMetadata.push({ label: "Exported", value: formatDateTime(bundle.exportedAt) });
+
+  if (storyStateData?.indexedAt) {
+    exportMetadata.push({ label: "Indexed", value: formatDateTime(storyStateData.indexedAt) });
+  }
+
+  if (storyStateData?.memoryArchitectureVersion) {
+    exportMetadata.push({
+      label: "Memory Architecture",
+      value: storyStateData.memoryArchitectureVersion,
+    });
+  }
+
+  const messageCountValue = storyStateData?.indexes?.messageCount;
+  if (typeof messageCountValue === "number" && Number.isFinite(messageCountValue) && messageCountValue > 0) {
+    exportMetadata.push({ label: "Indexed Messages", value: String(Math.trunc(messageCountValue)) });
+  }
+
+  writeHeading("Export Metadata", 14);
+  for (const entry of exportMetadata) {
+    if (!entry.value?.trim()) continue;
+    writeBullet(entry.label, entry.value);
+  }
+  y += 10;
+
   writeHeading("Story", 14);
   writeBullet("Universe", bundle.universe.name);
   writeBullet("Player Character", bundle.playerCharacter.name);
@@ -113,7 +150,9 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
   writeParagraph(bundle.story.openingPrompt || "No opening prompt.");
 
   writeHeading("Current Summary", 14);
-  writeParagraph(bundle.story.currentSummary || "No summary yet.");
+  const summaryText =
+    bundle.story.currentSummary?.trim() || storyStateData?.summaries?.worldSummary?.trim() || "";
+  writeParagraph(summaryText || "No summary yet.");
 
   writeHeading("Universe Snapshot", 14);
   writeBullet("Name", bundle.universe.name);

@@ -36,6 +36,7 @@ export function SettingsPage() {
     exportStory,
     exportUniverse,
     exportPlayerCharacter,
+    refreshStoryState,
     importUniverseExport,
     importPlayerCharacterExport,
     importStoryExport,
@@ -346,6 +347,10 @@ export function SettingsPage() {
       if (!itemExportStoryId) {
         throw new Error("Select a story first.");
       }
+
+      try {
+        await refreshStoryState(itemExportStoryId);
+      } catch {}
 
       const bundle = await exportStory(itemExportStoryId);
       if (!bundle) {

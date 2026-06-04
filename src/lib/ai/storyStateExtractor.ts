@@ -2,6 +2,8 @@ import type { StoryMessage, StoryStateData } from "../../types/models";
 import type { AIChatMessage } from "./types";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
 
+const MAX_RECENT_MESSAGES = 40;
+
 function normalizeWhitespace(value: string) {
   return value
     .replace(/\r\n/g, "\n")
@@ -10,19 +12,28 @@ function normalizeWhitespace(value: string) {
     .trim();
 }
 
-function formatRecentMessages(messages: StoryMessage[], playerName: string) {
-  return messages
-    .slice(-40)
-    .map((message) => {
+function formatRecentMessages(
+  messages: StoryMessage[],
+  playerName: string,
+  opts?: { messageNumberStart?: number; messageNumberTotal?: number },
+) {
+  const sliceStart = Math.max(0, messages.length - MAX_RECENT_MESSAGES);
+  const sliced = messages.slice(sliceStart);
+  const startNumber = (opts?.messageNumberStart ?? 1) + sliceStart;
+  const total = opts?.messageNumberTotal ?? messages.length;
+
+  return sliced
+    .map((message, index) => {
       const prefix =
         message.role === "user"
-          ? `Player (${playerName}):`
+          ? `user (${playerName})`
           : message.speakerType === "canon"
-            ? `Canon (${message.speakerName?.trim() || "Unknown"}):`
+            ? `canon (${message.speakerName?.trim() || "Unknown"})`
             : message.speakerType === "narrator"
-              ? "Narration:"
-              : "Assistant:";
-      return `${prefix}\n${message.content}`;
+              ? "narrator"
+              : "assistant";
+      const number = startNumber + index;
+      return `[Message ${number}/${total}] ${prefix}: ${message.content}`;
     })
     .join("\n\n");
 }
@@ -33,12 +44,16 @@ export function buildStoryStateExtractionPrompt({
   summaryText,
   recentMessages,
   existingStateJson,
+  messageNumberStart,
+  messageNumberTotal,
 }: {
   playerName: string;
   openingPrompt: string;
   summaryText: string;
   recentMessages: StoryMessage[];
   existingStateJson?: string;
+  messageNumberStart?: number;
+  messageNumberTotal?: number;
 }): AIChatMessage[] {
   const system = normalizeWhitespace(
     [
@@ -46,6 +61,8 @@ export function buildStoryStateExtractionPrompt({
       "Story events define current truth. The character sheet and opening prompt define the starting state.",
       "Prefer existing story-state; update only when new evidence appears.",
       "Track only explicit, high-confidence changes. Do not invent facts.",
+      "Transcript is the source of truth. Indexes are derived and rebuildable.",
+      "Evidence rule: any indexed fact should reference the stable message numbers where it appears (messageNumbers).",
       "Return STRICT JSON only. No markdown. No commentary. No trailing text.",
       "Schema (keys must match exactly):",
       "{",
@@ -71,7 +88,19 @@ export function buildStoryStateExtractionPrompt({
       '  "relationships"?: { "<name>": { "<otherName>": { "trust"?: "low"|"medium"|"high"|"unknown", "respect"?: "low"|"medium"|"high"|"unknown", "friendship"?: "low"|"medium"|"high"|"unknown", "loyalty"?: "low"|"medium"|"high"|"unknown", "fear"?: "low"|"medium"|"high"|"unknown", "attraction"?: "low"|"medium"|"high"|"unknown", "rivalry"?: "low"|"medium"|"high"|"unknown", "hostility"?: "low"|"medium"|"high"|"unknown" } } },',
       '  "npcs"?: { "<name>": { "description"?: string, "role"?: string, "firstSeen"?: string, "lastSeen"?: string, "significance"?: "minor"|"recurring"|"major", "memories"?: string[] } },',
       '  "locations"?: { "<name>": { "description"?: string, "tags"?: string[], "notes"?: string[], "lastSeen"?: string } },',
-      '  "summaries"?: { "characterSummaries"?: { "<name>": string }, "relationshipSummary"?: string, "worldSummary"?: string }',
+      '  "summaries"?: { "characterSummaries"?: { "<name>": string }, "relationshipSummary"?: string, "worldSummary"?: string },',
+      '  "indexes"?: {',
+      '    "messageCount"?: number,',
+      '    "messageNumberingVersion"?: "1.0",',
+      '    "characters"?: { "<canonicalName>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
+      '    "locations"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
+      '    "items"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
+      '    "factions"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
+      '    "relationships"?: Array<{ "a": string, "b": string, "friendship"?: number, "trust"?: number, "loyalty"?: number, "hostility"?: number, "summary"?: string, "evidence"?: { "messageNumbers": number[] } }>,',
+      '    "worldFacts"?: Array<{ "fact": string, "evidence"?: { "messageNumbers": number[] } }>,',
+      '    "significantMemories"?: Array<{ "moment": string, "evidence"?: { "messageNumbers": number[] } }>,',
+      '    "openThreads"?: Array<{ "thread": string, "evidence"?: { "messageNumbers": number[] } }>',
+      "  }",
       "}",
       "Rules:",
       "- Include identity changes (preferred name, alias, undercover identity, pronouns).",
@@ -86,6 +115,8 @@ export function buildStoryStateExtractionPrompt({
       "- Use npcs to track recurring NPCs and what they remember.",
       "- Use locations to track important recurring places.",
       "- Keep lists short and deduplicated.",
+      "- Keep indexes bounded: max 50 entities per category, max 30 worldFacts, max 50 significantMemories, max 20 openThreads, max 30 relationships.",
+      "- Evidence should use messageNumbers from the transcript brackets. If uncertain, omit the entry instead of guessing.",
       "- If nothing changed, return the previous state with a refreshed updatedAt.",
       "- Never generate dialogue or actions for the player character; this is metadata only.",
     ].join("\n"),
@@ -96,7 +127,7 @@ export function buildStoryStateExtractionPrompt({
       openingPrompt.trim() ? `Opening Prompt (canon setup):\n${openingPrompt.trim()}` : "",
       summaryText.trim() ? `Current Summary:\n${summaryText.trim()}` : "",
       existingStateJson?.trim() ? `Existing Story State JSON:\n${existingStateJson.trim()}` : "",
-      `Recent Transcript:\n${formatRecentMessages(recentMessages, playerName)}`,
+      `Recent Transcript:\n${formatRecentMessages(recentMessages, playerName, { messageNumberStart, messageNumberTotal })}`,
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -106,6 +137,146 @@ export function buildStoryStateExtractionPrompt({
     { role: "system", content: system },
     { role: "user", content: user },
   ];
+}
+
+function sanitizeEvidence(value: any, maxMessageNumber?: number) {
+  const numbers = Array.isArray(value?.messageNumbers) ? value.messageNumbers : null;
+  if (!numbers) return undefined;
+
+  const filtered = numbers
+    .filter((entry: unknown) => Number.isFinite(entry) && typeof entry === "number")
+    .map((entry: number) => Math.trunc(entry))
+    .filter((entry: number) => entry >= 1)
+    .filter((entry: number) => (maxMessageNumber ? entry <= maxMessageNumber : true));
+
+  const deduped = Array.from(new Set(filtered));
+  return deduped.length ? { messageNumbers: deduped } : undefined;
+}
+
+function sanitizeEntityMap(value: any, maxMessageNumber?: number) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value).slice(0, 50);
+  const result: Record<string, any> = {};
+
+  for (const [key, entry] of entries) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const candidate = entry as any;
+    if (typeof candidate.name !== "string" || !candidate.name.trim()) continue;
+
+    const aliases = Array.isArray(candidate.aliases)
+      ? candidate.aliases.filter((item: unknown) => typeof item === "string" && item.trim()).slice(0, 12)
+      : undefined;
+
+    const firstSeenMessage =
+      typeof candidate.firstSeenMessage === "number" && Number.isFinite(candidate.firstSeenMessage)
+        ? Math.trunc(candidate.firstSeenMessage)
+        : undefined;
+    const lastSeenMessage =
+      typeof candidate.lastSeenMessage === "number" && Number.isFinite(candidate.lastSeenMessage)
+        ? Math.trunc(candidate.lastSeenMessage)
+        : undefined;
+
+    const evidence = sanitizeEvidence(candidate.evidence, maxMessageNumber);
+
+    result[key] = {
+      ...(typeof candidate.id === "string" && candidate.id.trim() ? { id: candidate.id.trim() } : {}),
+      name: candidate.name.trim(),
+      ...(aliases?.length ? { aliases } : {}),
+      ...(typeof candidate.description === "string" && candidate.description.trim()
+        ? { description: candidate.description.trim() }
+        : {}),
+      ...(firstSeenMessage && firstSeenMessage >= 1
+        ? { firstSeenMessage: maxMessageNumber ? Math.min(firstSeenMessage, maxMessageNumber) : firstSeenMessage }
+        : {}),
+      ...(lastSeenMessage && lastSeenMessage >= 1
+        ? { lastSeenMessage: maxMessageNumber ? Math.min(lastSeenMessage, maxMessageNumber) : lastSeenMessage }
+        : {}),
+      ...(evidence ? { evidence } : {}),
+    };
+  }
+
+  return Object.keys(result).length ? result : undefined;
+}
+
+function sanitizeIndexes(value: any) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+
+  const messageCount =
+    typeof value.messageCount === "number" && Number.isFinite(value.messageCount)
+      ? Math.trunc(value.messageCount)
+      : undefined;
+
+  const maxMessageNumber = messageCount && messageCount > 0 ? messageCount : undefined;
+
+  const relationshipsList = (value as any).relationships;
+  const relationships = Array.isArray(relationshipsList)
+    ? relationshipsList
+        .filter((entry: unknown) => entry && typeof entry === "object" && !Array.isArray(entry))
+        .slice(0, 30)
+        .map((entry: any) => {
+          if (typeof entry.a !== "string" || typeof entry.b !== "string") return null;
+          const clampScore = (score: unknown) =>
+            typeof score === "number" && Number.isFinite(score)
+              ? Math.max(0, Math.min(100, Math.trunc(score)))
+              : undefined;
+
+          const evidence = sanitizeEvidence(entry.evidence, maxMessageNumber);
+
+          return {
+            a: entry.a.trim(),
+            b: entry.b.trim(),
+            ...(clampScore(entry.friendship) !== undefined ? { friendship: clampScore(entry.friendship) } : {}),
+            ...(clampScore(entry.trust) !== undefined ? { trust: clampScore(entry.trust) } : {}),
+            ...(clampScore(entry.loyalty) !== undefined ? { loyalty: clampScore(entry.loyalty) } : {}),
+            ...(clampScore(entry.hostility) !== undefined ? { hostility: clampScore(entry.hostility) } : {}),
+            ...(typeof entry.summary === "string" && entry.summary.trim() ? { summary: entry.summary.trim() } : {}),
+            ...(evidence ? { evidence } : {}),
+          };
+        })
+        .filter(Boolean)
+    : undefined;
+
+  const sanitizeStringEvidenceArray = (
+    list: any,
+    key: "fact" | "moment" | "thread",
+    maxItems: number,
+  ) => {
+    if (!Array.isArray(list)) return undefined;
+    const result = list
+      .filter((entry: unknown) => entry && typeof entry === "object" && !Array.isArray(entry))
+      .slice(0, maxItems)
+      .map((entry: any) => {
+        const value = entry[key];
+        if (typeof value !== "string" || !value.trim()) return null;
+        const evidence = sanitizeEvidence(entry.evidence, maxMessageNumber);
+        return { [key]: value.trim(), ...(evidence ? { evidence } : {}) } as any;
+      })
+      .filter(Boolean);
+    return result.length ? result : undefined;
+  };
+
+  const characters = sanitizeEntityMap(value.characters, maxMessageNumber);
+  const locations = sanitizeEntityMap(value.locations, maxMessageNumber);
+  const items = sanitizeEntityMap(value.items, maxMessageNumber);
+  const factions = sanitizeEntityMap(value.factions, maxMessageNumber);
+  const worldFacts = sanitizeStringEvidenceArray(value.worldFacts, "fact", 30);
+  const significantMemories = sanitizeStringEvidenceArray(value.significantMemories, "moment", 50);
+  const openThreads = sanitizeStringEvidenceArray(value.openThreads, "thread", 20);
+
+  const built: any = {
+    ...(messageCount && messageCount > 0 ? { messageCount } : {}),
+    messageNumberingVersion: "1.0",
+    ...(characters ? { characters } : {}),
+    ...(locations ? { locations } : {}),
+    ...(items ? { items } : {}),
+    ...(factions ? { factions } : {}),
+    ...(relationships && relationships.length ? { relationships } : {}),
+    ...(worldFacts ? { worldFacts } : {}),
+    ...(significantMemories ? { significantMemories } : {}),
+    ...(openThreads ? { openThreads } : {}),
+  };
+
+  return Object.keys(built).length ? built : undefined;
 }
 
 export function parseStoryStateData(text: string): StoryStateData | null {
@@ -153,6 +324,23 @@ export function parseStoryStateData(text: string): StoryStateData | null {
 
   if (parsed.summaries && typeof parsed.summaries !== "object") {
     return null;
+  }
+
+  if ((parsed as any).indexes) {
+    const sanitized = sanitizeIndexes((parsed as any).indexes);
+    if (sanitized) {
+      (parsed as any).indexes = sanitized;
+    } else {
+      delete (parsed as any).indexes;
+    }
+  }
+
+  if ((parsed as any).scene && (typeof (parsed as any).scene !== "object" || Array.isArray((parsed as any).scene))) {
+    delete (parsed as any).scene;
+  }
+
+  if ((parsed as any).threads && (typeof (parsed as any).threads !== "object" || Array.isArray((parsed as any).threads))) {
+    delete (parsed as any).threads;
   }
 
   return parsed;

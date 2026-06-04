@@ -7,7 +7,7 @@ export type StoryMessageSpeakerType =
   | "canon"
   | "narrator"
   | "system";
-export type ExportFormat = "json" | "markdown" | "txt" | "pdf";
+export type ExportFormat = "json" | "markdown" | "txt" | "pdf" | "archive_pdf";
 export type AIProviderType = "openai" | "gemini" | "openrouter";
 export type DeveloperBugStatus = "open" | "in-progress" | "resolved" | "closed";
 export type DeveloperFeaturePriority = "low" | "medium" | "high";
@@ -95,6 +95,57 @@ export interface StorySummary {
   generatedAt: Timestamp;
 }
 
+export type MemoryArchitectureVersion = "1.0" | "2.0";
+
+export type EvidenceRef = {
+  messageNumbers: number[];
+};
+
+export type IndexedEntity = {
+  id?: string;
+  name: string;
+  aliases?: string[];
+  description?: string;
+  firstSeenMessage?: number;
+  lastSeenMessage?: number;
+  evidence?: EvidenceRef;
+};
+
+export type RelationshipIndexEntry = {
+  a: string;
+  b: string;
+  friendship?: number;
+  trust?: number;
+  loyalty?: number;
+  hostility?: number;
+  summary?: string;
+  evidence?: EvidenceRef;
+};
+
+export type StoryIndexesV2 = {
+  messageCount?: number;
+  messageNumberingVersion?: "1.0";
+  characters?: Record<string, IndexedEntity>;
+  locations?: Record<string, IndexedEntity>;
+  items?: Record<string, IndexedEntity>;
+  factions?: Record<string, IndexedEntity>;
+  relationships?: RelationshipIndexEntry[];
+  worldFacts?: Array<{ fact: string; evidence?: EvidenceRef }>;
+  significantMemories?: Array<{ moment: string; evidence?: EvidenceRef }>;
+  openThreads?: Array<{ thread: string; evidence?: EvidenceRef }>;
+};
+
+export type StorySceneSnapshotV2 = {
+  currentLocation?: string;
+  currentObjective?: string;
+  activeParticipants?: string[];
+  sceneSummary?: string;
+};
+
+export type StoryThreadsV2 = {
+  openThreads?: string[];
+};
+
 export type StoryStateCharacterState = {
   canonicalName?: string;
   displayName?: string;
@@ -156,6 +207,24 @@ export type StoryStateData = {
     relationshipSummary?: string;
     worldSummary?: string;
   };
+  memoryArchitectureVersion?: MemoryArchitectureVersion;
+  indexedAt?: Timestamp;
+  lastIndexedAt?: Timestamp;
+  lastDeepIndexedAt?: Timestamp;
+  lastIndexedMessageCount?: number;
+  lastDeepIndexedMessageCount?: number;
+  messagesSinceDeepIndexUpdate?: number;
+  indexes?: StoryIndexesV2;
+  scene?: StorySceneSnapshotV2;
+  threads?: StoryThreadsV2;
+};
+
+export type StoryStateDataV2 = Partial<StoryStateData> & {
+  memoryArchitectureVersion?: MemoryArchitectureVersion;
+  indexedAt?: Timestamp;
+  indexes?: StoryIndexesV2;
+  scene?: StorySceneSnapshotV2;
+  threads?: StoryThreadsV2;
 };
 
 export interface StoryState {

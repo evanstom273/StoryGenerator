@@ -1,6 +1,6 @@
 # Story Engine — Technical Architecture Document (TAD)
 
-This document is written to onboard a developer who has never seen the Story Engine codebase before. It describes the current architecture as implemented in `c:\Users\evans\Documents\StoryGenRepo\storygenerator`.
+This document is written to onboard a developer who has never seen the Story Engine codebase before. It describes the current architecture as implemented in `c:\Users\evans\Documents\StoryGenRepo\StoryGenerator`.
 
 ## Table of Contents
 
@@ -55,35 +55,35 @@ The core narrative philosophy is enforced both through prompting and post-genera
 - Bundler: Vite.
 - Styling: Tailwind CSS.
 - App entry:
-  - [main.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/main.tsx)
-  - [App.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/App.tsx)
-- Routing: [router.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/router.tsx)
+  - [main.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/main.tsx)
+  - [App.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/App.tsx)
+- Routing: [router.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/router.tsx)
 - Layout/shell:
-  - Primary UI shell is `V2Shell` (responsive columns + drawers): [V2Shell.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/layout/V2Shell.tsx)
-  - Left navigation: [V2LeftSidebar.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/layout/V2LeftSidebar.tsx)
-  - Right contextual sidebar: [V2RightSidebar.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/layout/V2RightSidebar.tsx)
-  - Story settings drawer overlay: [StorySettingsDrawer.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/layout/StorySettingsDrawer.tsx)
+  - Primary UI shell is `V2Shell` (responsive columns + drawers): [V2Shell.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/layout/V2Shell.tsx)
+  - Left navigation: [V2LeftSidebar.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/layout/V2LeftSidebar.tsx)
+  - Right contextual sidebar: [V2RightSidebar.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/layout/V2RightSidebar.tsx)
+  - Story settings drawer overlay: [StorySettingsDrawer.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/layout/StorySettingsDrawer.tsx)
 
 ### State & Data Flow
 - Persistent storage access lives in:
-  - IndexedDB schema & helpers: [idb.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/idb.ts)
-  - Repository (CRUD + import/export/backup): [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/repository.ts)
+  - IndexedDB schema & helpers: [idb.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/idb.ts)
+  - Repository (CRUD + import/export/backup): [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/repository.ts)
 - Global app state is managed by `StoryEngineProvider`:
   - Loads data on startup, exposes CRUD functions, handles AI chat actions, and orchestrates imports/exports.
-  - [StoryEngineProvider.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/providers/StoryEngineProvider.tsx)
+  - [StoryEngineProvider.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/providers/StoryEngineProvider.tsx)
 
 ### Storage Architecture
 Story Engine uses three storage layers:
 - IndexedDB (primary persistence): all entities listed in “Data Models” live here.
 - localStorage (UI prefs + version tracking):
-  - UI prefs: [UiPrefsContext.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/ui/UiPrefsContext.tsx)
-  - Changelog “last viewed version”: `story-engine:changelog:last-viewed` via [ChangelogContext.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/versioning/ChangelogContext.tsx)
+  - UI prefs: [UiPrefsContext.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/ui/UiPrefsContext.tsx)
+  - Changelog “last viewed version”: `story-engine:changelog:last-viewed` via [ChangelogContext.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/versioning/ChangelogContext.tsx)
 - In-memory React state:
   - Provider caches entity lists for fast read access and page rendering.
 
 ### IndexedDB Schema
 Database:
-- Name/version: `story-engine-db` / `4` ([idb.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/idb.ts))
+- Name/version: `story-engine-db` / `4` ([idb.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/idb.ts))
 
 Object stores and indexes (keyPath is always `id`):
 - `universes`
@@ -99,7 +99,7 @@ Object stores and indexes (keyPath is always `id`):
 - `developerFeatureRequests`
 - `developerTestingNotes`
 
-See [idb.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/idb.ts) for the authoritative schema definition.
+See [idb.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/idb.ts) for the authoritative schema definition.
 
 ### Data Relationships (Conceptual)
 - Universe → Player Characters (1:N)
@@ -123,12 +123,12 @@ Universes contain:
 - Placeholder arrays for imported characters/locations/relationships (future use).
 
 Key pages:
-- Universe list: [UniversesPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/UniversesPage.tsx)
-- Universe create/edit/import: [UniverseFormPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/UniverseFormPage.tsx)
-- Universe detail + imported lore view: [UniverseDetailPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/UniverseDetailPage.tsx)
+- Universe list: [UniversesPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/UniversesPage.tsx)
+- Universe create/edit/import: [UniverseFormPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/UniverseFormPage.tsx)
+- Universe detail + imported lore view: [UniverseDetailPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/UniverseDetailPage.tsx)
 
 Key storage ops:
-- Repository universe CRUD and exports/imports: [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/repository.ts)
+- Repository universe CRUD and exports/imports: [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/repository.ts)
 
 ### 3.2 Player Characters
 Player Characters define the playable protagonist for a story. They are explicit typed entities, not just prompt text.
@@ -139,13 +139,13 @@ Notable fields:
 - Relationship: belongs to a `universeId`
 
 Key pages:
-- List: [PlayerCharactersPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/PlayerCharactersPage.tsx)
-- Create/edit: [PlayerCharacterFormPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/PlayerCharacterFormPage.tsx)
-- Detail: [PlayerCharacterDetailPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/PlayerCharacterDetailPage.tsx)
+- List: [PlayerCharactersPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/PlayerCharactersPage.tsx)
+- Create/edit: [PlayerCharacterFormPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/PlayerCharacterFormPage.tsx)
+- Detail: [PlayerCharacterDetailPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/PlayerCharacterDetailPage.tsx)
 
 AI-assisted “randomize/fill fields”:
-- AI schema and instructions: [characterGenerator.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/characterGenerator.ts)
-- Orchestration in provider: [StoryEngineProvider.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/providers/StoryEngineProvider.tsx)
+- AI schema and instructions: [characterGenerator.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/characterGenerator.ts)
+- Orchestration in provider: [StoryEngineProvider.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/providers/StoryEngineProvider.tsx)
 
 ### 3.3 Stories
 Stories bind:
@@ -156,8 +156,8 @@ Stories bind:
 - Optional long-term structured “story state” JSON
 
 Key pages:
-- Create (wizard): [StoryCreatePage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/StoryCreatePage.tsx)
-- Workspace: [StoryWorkspacePage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/StoryWorkspacePage.tsx)
+- Create (wizard): [StoryCreatePage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/StoryCreatePage.tsx)
+- Workspace: [StoryWorkspacePage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/StoryWorkspacePage.tsx)
 
 ### 3.4 Messages
 Messages are stored as `StoryMessage` items with:
@@ -167,8 +167,8 @@ Storage:
 - Indexed by `storyId` to quickly retrieve a story’s timeline.
 
 Rendering:
-- Bubble mode: [StoryMessageBubble.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/components/story/StoryMessageBubble.tsx)
-- Transcript mode: [StoryTranscriptView.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/components/story/StoryTranscriptView.tsx)
+- Bubble mode: [StoryMessageBubble.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/components/story/StoryMessageBubble.tsx)
+- Transcript mode: [StoryTranscriptView.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/components/story/StoryTranscriptView.tsx)
 
 ### 3.5 Developer Notes
 Developer Notes provide an in-app QA tracker for testing without external tooling:
@@ -178,11 +178,11 @@ Developer Notes provide an in-app QA tracker for testing without external toolin
 - Export (JSON)
 
 Pages:
-- Index: [DeveloperNotesPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/DeveloperNotesPage.tsx)
-- Bugs list/form: [DeveloperBugsPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/DeveloperBugsPage.tsx), [DeveloperBugFormPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/DeveloperBugFormPage.tsx)
-- Feature requests list: [DeveloperFeatureRequestsPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/DeveloperFeatureRequestsPage.tsx)
-- Testing notes list/form: [DeveloperTestingNotesPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/DeveloperTestingNotesPage.tsx), [DeveloperTestingNoteFormPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/DeveloperTestingNoteFormPage.tsx)
-- Export: [DeveloperNotesExportPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/DeveloperNotesExportPage.tsx)
+- Index: [DeveloperNotesPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/DeveloperNotesPage.tsx)
+- Bugs list/form: [DeveloperBugsPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/DeveloperBugsPage.tsx), [DeveloperBugFormPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/DeveloperBugFormPage.tsx)
+- Feature requests list: [DeveloperFeatureRequestsPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/DeveloperFeatureRequestsPage.tsx)
+- Testing notes list/form: [DeveloperTestingNotesPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/DeveloperTestingNotesPage.tsx), [DeveloperTestingNoteFormPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/DeveloperTestingNoteFormPage.tsx)
+- Export: [DeveloperNotesExportPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/DeveloperNotesExportPage.tsx)
 
 Storage:
 - `developerBugs`, `developerFeatureRequests`, `developerTestingNotes` stores (IndexedDB).
@@ -202,20 +202,20 @@ Workspace backup is a full dump of all indexedDB stores plus UI prefs:
 - Sanitizes API keys on export (keys are not included in backups).
 
 See:
-- Backup export/import: [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/repository.ts)
-- Backup shape: [models.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/types/models.ts)
+- Backup export/import: [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/repository.ts)
+- Backup shape: [models.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/types/models.ts)
 
 ---
 
 ## 4. Data Models
 
 Authoritative TypeScript models live in:
-- [models.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/types/models.ts)
+- [models.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/types/models.ts)
 
 ### 4.1 ID Strategy
 All entity IDs are strings generated by:
 - `createEntityId(prefix)` → `${prefix}-${crypto.randomUUID()}` (preferred) or a timestamp/random fallback.
-- [ids.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ids.ts)
+- [ids.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ids.ts)
 
 ### 4.2 Entity Schemas
 
@@ -400,8 +400,8 @@ High-level rule:
 - The AI must not narrate the player’s actions, thoughts, feelings, or dialogue.
 
 Where it is implemented:
-- Prompt rules embedded into the AI context: [contextBuilder.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/contextBuilder.ts)
-- Heuristic validator for “player-authorship violations”: [playerProtection.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/storyText/playerProtection.ts)
+- Prompt rules embedded into the AI context: [contextBuilder.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/contextBuilder.ts)
+- Heuristic validator for “player-authorship violations”: [playerProtection.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/storyText/playerProtection.ts)
 
 Typical violations detected:
 - “You walk into the room…” (second person action)
@@ -418,7 +418,7 @@ Key prompt instructions:
 - Continue from the player’s last message rather than rewriting it.
 
 Source:
-- [contextBuilder.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/contextBuilder.ts)
+- [contextBuilder.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/contextBuilder.ts)
 
 ### 5.3 Canon Handling
 Canon anchors:
@@ -431,7 +431,7 @@ The system formats the story history for the LLM with role tags:
 - Canon/NPC/narrator messages labeled accordingly
 
 Source:
-- [contextBuilder.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/contextBuilder.ts)
+- [contextBuilder.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/contextBuilder.ts)
 
 ### 5.4 NPC Generation
 NPC behavior is fully model-driven; the system constrains it by:
@@ -445,9 +445,9 @@ The codebase does not maintain an explicit NPC entity database yet. Instead, NPC
 The system treats nicknames/shortened names/variants as the same character unless explicitly introduced otherwise.
 
 Enforcement points:
-- Prompt rule: [contextBuilder.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/contextBuilder.ts)
-- Story-state extraction rule encourages recording aliases/displayName: [storyStateExtractor.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/storyStateExtractor.ts)
-- Player-ownership validator can accept name variants for the player: [playerProtection.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/storyText/playerProtection.ts)
+- Prompt rule: [contextBuilder.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/contextBuilder.ts)
+- Story-state extraction rule encourages recording aliases/displayName: [storyStateExtractor.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/storyStateExtractor.ts)
+- Player-ownership validator can accept name variants for the player: [playerProtection.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/storyText/playerProtection.ts)
 
 ---
 
@@ -458,10 +458,10 @@ Goal:
 - Turn a wiki URL into cleaned plaintext stored for later AI context.
 
 Implementation:
-- Fetch: AllOrigins proxy to bypass CORS: [fetchHtml.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ingestion/fetchHtml.ts)
-- Convert: HTML → text extraction: [htmlToText.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ingestion/htmlToText.ts)
-- Orchestration: [importUniverseLore.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ingestion/importUniverseLore.ts)
-- UI: Universe import page is part of the Universe form route: [UniverseFormPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/UniverseFormPage.tsx)
+- Fetch: AllOrigins proxy to bypass CORS: [fetchHtml.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ingestion/fetchHtml.ts)
+- Convert: HTML → text extraction: [htmlToText.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ingestion/htmlToText.ts)
+- Orchestration: [importUniverseLore.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ingestion/importUniverseLore.ts)
+- UI: Universe import page is part of the Universe form route: [UniverseFormPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/UniverseFormPage.tsx)
 
 Storage:
 - A `UniverseImport` record is saved into the `universeImports` store (indexed by `universeId`).
@@ -473,14 +473,14 @@ Current supported import:
 Implementation:
 - Export: `exportPlayerCharacterBundleV1(characterId)`
 - Import: `importPlayerCharacterBundleV1(bundle, { universeId })`
-- [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/repository.ts)
+- [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/repository.ts)
 
 ### 6.3 Story Import Flow
 Current supported import:
 - Import story JSON bundle (story + universe + player character + messages + optional story state).
 
 Implementation:
-- Export: `exportStoryExportBundle(storyId)` in [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/repository.ts)
+- Export: `exportStoryExportBundle(storyId)` in [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/repository.ts)
 - Import: `importStoryExportBundle(bundle)`:
   - Creates a new story id and new message ids.
   - Attempts to reuse an existing universe (match by `wikiUrl` first, then by universe name).
@@ -488,7 +488,7 @@ Implementation:
   - If story state exists, it is normalized to the new story id.
 
 See:
-- [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/repository.ts)
+- [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/repository.ts)
 
 ### 6.4 Backup Format (Workspace backup v1)
 Backup is a full snapshot of the workspace:
@@ -504,8 +504,8 @@ Implementation:
 - Import: `importWorkspaceBackupV1(backup, { mode, mergePolicy })`
 
 See:
-- [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/repository.ts)
-- Type definition: [models.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/types/models.ts)
+- [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/repository.ts)
+- Type definition: [models.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/types/models.ts)
 
 ---
 
@@ -551,9 +551,9 @@ Current:
 - Transcript typography scales with the selected text size.
 
 Primary code points:
-- Setting UI and persistence: [SettingsPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/SettingsPage.tsx)
-- Preference key: [UiPrefsContext.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/ui/UiPrefsContext.tsx)
-- Typography application: [StoryWorkspacePage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/pages/StoryWorkspacePage.tsx), [StoryTranscriptView.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/components/story/StoryTranscriptView.tsx)
+- Setting UI and persistence: [SettingsPage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/SettingsPage.tsx)
+- Preference key: [UiPrefsContext.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/ui/UiPrefsContext.tsx)
+- Typography application: [StoryWorkspacePage.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/pages/StoryWorkspacePage.tsx), [StoryTranscriptView.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/components/story/StoryTranscriptView.tsx)
 
 Gaps:
 - No explicit screen reader labels/a11y audit yet beyond basic semantic HTML.
@@ -569,15 +569,15 @@ Gaps:
 - Desktop uses a 2–3 column layout with persistent left/right sidebars.
 
 Files:
-- Mobile nav overlay: [MobileNav.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/layout/MobileNav.tsx)
-- Shell/responsive grid: [V2Shell.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/layout/V2Shell.tsx)
+- Mobile nav overlay: [MobileNav.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/layout/MobileNav.tsx)
+- Shell/responsive grid: [V2Shell.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/layout/V2Shell.tsx)
 
 ### Android Back / Gesture Handling
 - Packaged Android builds are expected to navigate back through app history rather than instantly exiting.
 - Native back integration is handled via Capacitor’s App plugin.
 
 ### Capacitor Packaging
-- Capacitor config: [capacitor.config.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/capacitor.config.ts)
+- Capacitor config: [capacitor.config.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/capacitor.config.ts)
 - App ID: `com.storyengine.app`
 - Web assets directory: `dist`
 
@@ -634,26 +634,26 @@ Top-level:
 
 Highlights:
 - Storage:
-  - [idb.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/idb.ts)
-  - [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/repository.ts)
+  - [idb.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/idb.ts)
+  - [repository.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/repository.ts)
 - Global app orchestration:
-  - [StoryEngineProvider.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/app/providers/StoryEngineProvider.tsx)
+  - [StoryEngineProvider.tsx](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/app/providers/StoryEngineProvider.tsx)
 - AI:
-  - Provider factory + provider implementations: [providerFactory.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/providerFactory.ts), [openaiProvider.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/openaiProvider.ts), [geminiProvider.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/geminiProvider.ts), [openrouterProvider.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/openrouterProvider.ts)
-  - Prompt builder: [contextBuilder.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/contextBuilder.ts)
-  - State extractor (LLM-driven JSON memory): [storyStateExtractor.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/ai/storyStateExtractor.ts)
+  - Provider factory + provider implementations: [providerFactory.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/providerFactory.ts), [openaiProvider.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/openaiProvider.ts), [geminiProvider.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/geminiProvider.ts), [openrouterProvider.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/openrouterProvider.ts)
+  - Prompt builder: [contextBuilder.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/contextBuilder.ts)
+  - State extractor (LLM-driven JSON memory): [storyStateExtractor.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/ai/storyStateExtractor.ts)
 - Story text normalization + player-ownership checking:
-  - [transcriptSanitizer.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/storyText/transcriptSanitizer.ts)
-  - [playerProtection.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/storyText/playerProtection.ts)
+  - [transcriptSanitizer.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/storyText/transcriptSanitizer.ts)
+  - [playerProtection.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/storyText/playerProtection.ts)
 - Exports:
-  - Markdown/TXT: [storyExport.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/storyExport.ts)
-  - PDF: [storyExportPdf.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/src/lib/storyExportPdf.ts)
+  - Markdown/TXT: [storyExport.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/storyExport.ts)
+  - PDF: [storyExportPdf.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/src/lib/storyExportPdf.ts)
 
 ---
 
 ## 13. Dependencies
 
-From [package.json](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/package.json):
+From [package.json](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/package.json):
 
 Runtime:
 - `react`, `react-dom`: UI rendering and component model.
@@ -677,7 +677,7 @@ Dev:
 ## 14. Build & Deployment
 
 ### Local Development (Web)
-From the project root (`storygenerator/`):
+From the project root (`StoryGenerator/`):
 ```bash
 npm install
 npm run dev
@@ -699,7 +699,7 @@ npx cap open android
 
 Notes:
 - Android updates require consistent signing + increasing `versionCode` when generating release APKs.
-- Capacitor serves files from `webDir: "dist"` ([capacitor.config.ts](file:///c:/Users/evans/Documents/StoryGenRepo/storygenerator/capacitor.config.ts)).
+- Capacitor serves files from `webDir: "dist"` ([capacitor.config.ts](file:///c:/Users/evans/Documents/StoryGenRepo/StoryGenerator/capacitor.config.ts)).
 
 ---
 
@@ -798,4 +798,3 @@ Notes:
   }
 }
 ```
-

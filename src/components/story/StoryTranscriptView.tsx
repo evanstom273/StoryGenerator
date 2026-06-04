@@ -8,6 +8,7 @@ type StoryTranscriptViewProps = {
   messages: StoryMessage[];
   playerCharacterName: string;
   className?: string;
+  highlightedMessageId?: string | null;
 };
 
 function renderInlineContent(value: string) {
@@ -77,16 +78,22 @@ export function StoryTranscriptView({
   messages,
   playerCharacterName,
   className,
+  highlightedMessageId,
 }: StoryTranscriptViewProps) {
   let latestUserMessage: string | null = null;
   return (
     <div className={cn("space-y-6", className)}>
       {messages.map((message) => {
+        const highlight = highlightedMessageId === message.id;
         if (message.role === "system") {
           return (
             <div
               key={message.id}
-              className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-ink-muted"
+              id={`story-message-${message.id}`}
+              className={cn(
+                "rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-ink-muted",
+                highlight ? "border-accent/60 bg-accent/10 ring-2 ring-accent/35" : "",
+              )}
             >
               {message.content}
             </div>
@@ -97,7 +104,14 @@ export function StoryTranscriptView({
           latestUserMessage = message.content;
           const lines = message.content.split("\n");
           return (
-            <div key={message.id} className="space-y-2">
+            <div
+              key={message.id}
+              id={`story-message-${message.id}`}
+              className={cn(
+                "space-y-2 rounded-2xl px-2 py-1",
+                highlight ? "bg-accent/10 ring-2 ring-accent/35" : "",
+              )}
+            >
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 {playerCharacterName}
               </div>
@@ -117,7 +131,14 @@ export function StoryTranscriptView({
         }).text;
         const blocks = parseSceneBlocks(sanitized);
         return (
-          <div key={message.id} className="space-y-4">
+          <div
+            key={message.id}
+            id={`story-message-${message.id}`}
+            className={cn(
+              "space-y-4 rounded-2xl px-2 py-1",
+              highlight ? "bg-accent/10 ring-2 ring-accent/35" : "",
+            )}
+          >
             {blocks.map((block, blockIndex) => {
               const isNarration = !block.speakerLabel || block.speakerLabel === "Narrator";
               const lines = block.text.split("\n");

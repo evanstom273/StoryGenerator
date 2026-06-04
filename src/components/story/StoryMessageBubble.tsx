@@ -12,6 +12,7 @@ interface StoryMessageBubbleProps {
   latestUserMessage?: string | null;
   onEdit: (message: StoryMessage) => void;
   onDelete: (message: StoryMessage) => void;
+  highlighted?: boolean;
 }
 
 function resolveSpeakerLabel(
@@ -88,6 +89,7 @@ export function StoryMessageBubble({
   latestUserMessage,
   onEdit,
   onDelete,
+  highlighted,
 }: StoryMessageBubbleProps) {
   const speakerLabel = resolveSpeakerLabel(
     message.role,
@@ -177,8 +179,10 @@ export function StoryMessageBubble({
 
   return (
     <div
+      id={`story-message-${message.id}`}
       className={cn(
         "group flex gap-3 rounded-2xl border px-3 py-3 transition hover:bg-white/[0.03]",
+        highlighted ? "border-accent/60 bg-accent/10 ring-2 ring-accent/35" : "",
         rowClassName,
       )}
     >
