@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.8.0";
+export const APP_VERSION = "1.8.1";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -133,6 +133,16 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "New Archive PDF export (metadata + indexes/registries + evidence + numbered transcript)",
     ],
     fixed: [],
+    knownIssues: [],
+  },
+  "1.8.1": {
+    title: "Transcript & PDF Formatting Fixes",
+    added: [],
+    fixed: [
+      "Transcript mode is now script-like with speaker tags on every line (no giant player banner)",
+      "Archive PDF relationship separator uses ASCII (<->) for reliable export/search",
+      "Archive PDF transcript spacing no longer runs message headers into Time lines",
+    ],
     knownIssues: [],
   },
 };

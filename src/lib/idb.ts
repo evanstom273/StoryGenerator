@@ -165,6 +165,30 @@ export async function putInStore<RecordType extends { id: string }>(
   });
 }
 
+export async function putManyInStore<RecordType extends { id: string }>(
+  storeName: StoreName,
+  values: RecordType[],
+) {
+  if (!values.length) {
+    return;
+  }
+
+  const database = await openStoryEngineDatabase();
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+
+    for (const value of values) {
+      store.put(value);
+    }
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () =>
+      reject(transaction.error ?? new Error(`Unable to save ${storeName}.`));
+  });
+}
+
 export async function deleteFromStore(storeName: StoreName, id: string) {
   const database = await openStoryEngineDatabase();
 

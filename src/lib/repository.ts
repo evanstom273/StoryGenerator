@@ -24,6 +24,7 @@ import {
   getAllByIndex,
   getAllFromStore,
   getFromStore,
+  putManyInStore,
   putInStore,
 } from "./idb";
 import {
@@ -712,30 +713,43 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         } as any;
       })();
 
-      if (mode === "replace") {
-        await Promise.all([
-          clearStore("messages"),
-          clearStore("stories"),
-          clearStore("playerCharacters"),
-          clearStore("universes"),
-          clearStore("universeImports"),
-          clearStore("storySummaries"),
-          clearStore("storyStates"),
-          clearStore("storyAiConfigs"),
-          clearStore("aiSettings"),
-        ]);
+      const chunk = <T,>(items: T[], size: number) => {
+        const chunks: T[][] = [];
+        for (let i = 0; i < items.length; i += size) {
+          chunks.push(items.slice(i, i + size));
+        }
+        return chunks;
+      };
 
-        await Promise.all([
-          ...universes.map((record) => putInStore("universes", record)),
-          ...playerCharacters.map((record) => putInStore("playerCharacters", record)),
-          ...stories.map((record) => putInStore("stories", record)),
-          ...messages.map((record) => putInStore("messages", record)),
-          ...universeImports.map((record) => putInStore("universeImports", record)),
-          ...storySummaries.map((record) => putInStore("storySummaries", record)),
-          ...storyStates.map((record) => putInStore("storyStates", record)),
-          ...storyAiConfigs.map((record) => putInStore("storyAiConfigs", record)),
-          ...(normalizedAISettings ? [putInStore("aiSettings", normalizedAISettings)] : []),
-        ]);
+      if (mode === "replace") {
+        await clearStore("messages");
+        await clearStore("stories");
+        await clearStore("playerCharacters");
+        await clearStore("universes");
+        await clearStore("universeImports");
+        await clearStore("storySummaries");
+        await clearStore("storyStates");
+        await clearStore("storyAiConfigs");
+        await clearStore("aiSettings");
+        await clearStore("developerBugs");
+        await clearStore("developerFeatureRequests");
+        await clearStore("developerTestingNotes");
+
+        await putManyInStore("universes", universes);
+        await putManyInStore("playerCharacters", playerCharacters);
+        await putManyInStore("stories", stories);
+
+        for (const batch of chunk(messages, 1000)) {
+          await putManyInStore("messages", batch);
+        }
+
+        await putManyInStore("universeImports", universeImports);
+        await putManyInStore("storySummaries", storySummaries);
+        await putManyInStore("storyStates", storyStates);
+        await putManyInStore("storyAiConfigs", storyAiConfigs);
+        if (normalizedAISettings) {
+          await putManyInStore("aiSettings", [normalizedAISettings]);
+        }
       } else {
         const [
           existingUniverses,
@@ -775,35 +789,43 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           return !existingByStore[store].has(id);
         }
 
-        await Promise.all([
-          ...universes
-            .filter((record) => shouldWrite("universes", record.id))
-            .map((record) => putInStore("universes", record)),
-          ...playerCharacters
-            .filter((record) => shouldWrite("playerCharacters", record.id))
-            .map((record) => putInStore("playerCharacters", record)),
-          ...stories
-            .filter((record) => shouldWrite("stories", record.id))
-            .map((record) => putInStore("stories", record)),
-          ...messages
-            .filter((record) => shouldWrite("messages", record.id))
-            .map((record) => putInStore("messages", record)),
-          ...universeImports
-            .filter((record) => shouldWrite("universeImports", record.id))
-            .map((record) => putInStore("universeImports", record)),
-          ...storySummaries
-            .filter((record) => shouldWrite("storySummaries", record.id))
-            .map((record) => putInStore("storySummaries", record)),
-          ...storyStates
-            .filter((record) => shouldWrite("storyStates", record.id))
-            .map((record) => putInStore("storyStates", record)),
-          ...storyAiConfigs
-            .filter((record) => shouldWrite("storyAiConfigs", record.id))
-            .map((record) => putInStore("storyAiConfigs", record)),
-          ...(normalizedAISettings
-            ? [putInStore("aiSettings", normalizedAISettings)]
-            : []),
-        ]);
+        await putManyInStore(
+          "universes",
+          universes.filter((record) => shouldWrite("universes", record.id)),
+        );
+        await putManyInStore(
+          "playerCharacters",
+          playerCharacters.filter((record) => shouldWrite("playerCharacters", record.id)),
+        );
+        await putManyInStore(
+          "stories",
+          stories.filter((record) => shouldWrite("stories", record.id)),
+        );
+
+        const messagesToWrite = messages.filter((record) => shouldWrite("messages", record.id));
+        for (const batch of chunk(messagesToWrite, 1000)) {
+          await putManyInStore("messages", batch);
+        }
+
+        await putManyInStore(
+          "universeImports",
+          universeImports.filter((record) => shouldWrite("universeImports", record.id)),
+        );
+        await putManyInStore(
+          "storySummaries",
+          storySummaries.filter((record) => shouldWrite("storySummaries", record.id)),
+        );
+        await putManyInStore(
+          "storyStates",
+          storyStates.filter((record) => shouldWrite("storyStates", record.id)),
+        );
+        await putManyInStore(
+          "storyAiConfigs",
+          storyAiConfigs.filter((record) => shouldWrite("storyAiConfigs", record.id)),
+        );
+        if (normalizedAISettings) {
+          await putManyInStore("aiSettings", [normalizedAISettings]);
+        }
       }
 
       const writePref = (key: string, value: boolean) => {
