@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.8.1";
+export const APP_VERSION = "1.9.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -143,6 +143,16 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Archive PDF relationship separator uses ASCII (<->) for reliable export/search",
       "Archive PDF transcript spacing no longer runs message headers into Time lines",
     ],
+    knownIssues: [],
+  },
+  "1.9.0": {
+    title: "Theme-Accented UX Polish",
+    added: [
+      "Player speaker tags now follow the active theme accent (matches NPC/canon tags)",
+      "Top-left logo is clickable and returns to the homepage",
+      "Homepage includes a New Story button for faster start",
+    ],
+    fixed: ["Vercel deployments now support deep links (SPA routing rewrite)"],
     knownIssues: [],
   },
 };
