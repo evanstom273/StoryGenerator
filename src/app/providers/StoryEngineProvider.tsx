@@ -585,7 +585,6 @@ export function StoryEngineProvider({
           title: draft.title.trim(),
           universeId: draft.universeId,
           playerCharacterId: draft.playerCharacterId,
-          openingPrompt: draft.openingPrompt?.trim() ?? "",
           currentSummary: draft.currentSummary.trim(),
           createdAt: now,
           updatedAt: now,
@@ -606,8 +605,6 @@ export function StoryEngineProvider({
         const nextStory: Story = {
           ...currentStory,
           title: patch.title?.trim() ?? currentStory.title,
-          openingPrompt:
-            patch.openingPrompt?.trim() ?? currentStory.openingPrompt ?? "",
           currentSummary: patch.currentSummary?.trim() ?? currentStory.currentSummary,
           universeId: patch.universeId ?? currentStory.universeId,
           playerCharacterId:

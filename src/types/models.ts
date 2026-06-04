@@ -289,7 +289,6 @@ export interface StoryDraft {
   title: string;
   universeId: EntityId;
   playerCharacterId: EntityId;
-  openingPrompt?: string;
   currentSummary: string;
 }
 

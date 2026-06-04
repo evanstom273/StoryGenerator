@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.10.0";
+export const APP_VERSION = "1.11.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -166,6 +166,15 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Settings theme picker now shows preview cards",
     ],
     fixed: [],
+    knownIssues: [],
+  },
+  "1.11.0": {
+    title: "UX Cleanup",
+    added: [],
+    fixed: [
+      "Removed the redundant show/hide sidebar button (Story Settings controls the sidebar)",
+      "Removed the Opening Prompt concept from story creation/editing, prompting, and exports",
+    ],
     knownIssues: [],
   },
 };
