@@ -12,6 +12,10 @@ export function PlayerCharactersPage() {
     getUniverseById,
   } = useStoryEngine();
 
+  const libraryCharacters = playerCharacters.filter(
+    (character) => (character.scope ?? "library") === "library",
+  );
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -25,9 +29,9 @@ export function PlayerCharactersPage() {
         }
       />
 
-      {playerCharacters.length ? (
+      {libraryCharacters.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {playerCharacters.map((character) => (
+          {libraryCharacters.map((character) => (
             <CharacterCard
               key={character.id}
               character={character}
@@ -58,4 +62,3 @@ export function PlayerCharactersPage() {
     </div>
   );
 }
-

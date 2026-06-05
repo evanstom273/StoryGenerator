@@ -43,6 +43,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     getMessagesForStory,
     exportStory,
     fetchStoryState,
+    promoteStoryPlayerCharacter,
     updateStory,
     deleteStory,
     getStoryAIConfig,
@@ -68,11 +69,37 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       getProviderDefaultModel(aiSettings?.activeProviderType ?? "openai"),
   );
   const [isSavingAI, setIsSavingAI] = useState(false);
+  const [isPromotingCharacter, setIsPromotingCharacter] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [storyStateData, setStoryStateData] = useState<ReturnType<typeof normalizeStoryStateToV2> | null>(
     null,
   );
   const [expandedEvidenceKeys, setExpandedEvidenceKeys] = useState<Record<string, boolean>>({});
+
+  async function handlePromoteCharacter() {
+    if (!story || !playerCharacter) {
+      return;
+    }
+
+    setIsPromotingCharacter(true);
+    setPageError(null);
+
+    try {
+      const promoted = await promoteStoryPlayerCharacter(story.id);
+      const switchStory = window.confirm(
+        "Saved to Player Characters. Switch this story to the new permanent character?",
+      );
+      if (switchStory) {
+        await updateStory(story.id, { playerCharacterId: promoted.id });
+      }
+    } catch (error) {
+      setPageError(
+        error instanceof Error ? error.message : "Unable to promote character.",
+      );
+    } finally {
+      setIsPromotingCharacter(false);
+    }
+  }
 
   useEffect(() => {
     if (!story) {
@@ -382,6 +409,25 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </div>
                 </dl>
               </Panel>
+
+              {(playerCharacter.scope ?? "library") === "story" ? (
+                <Panel padding="sm" className="border-dashed border-white/12 bg-white/[0.03]">
+                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                    Quick Character
+                  </div>
+                  <p className="mt-3 text-sm leading-7 text-ink-muted">
+                    This story is using a story-local protagonist. You can save them into your Player Characters library.
+                  </p>
+                  <Button
+                    className="mt-4 w-full"
+                    variant="secondary"
+                    onClick={() => void handlePromoteCharacter()}
+                    disabled={isPromotingCharacter}
+                  >
+                    {isPromotingCharacter ? "Saving..." : "Promote to Library"}
+                  </Button>
+                </Panel>
+              ) : null}
 
               <Panel padding="sm">
                 <form className="space-y-4" onSubmit={handleSaveStoryAI}>

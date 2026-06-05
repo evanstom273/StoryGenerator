@@ -31,12 +31,15 @@ export interface PlayerCharacter {
   gender: string;
   species: string;
   pronouns: string;
+  characterConcept?: string;
   appearance: string;
   personality: string;
   background: string;
   goals: string;
   notes: string;
   universeId: EntityId;
+  scope?: "library" | "story";
+  storyId?: EntityId;
   createdAt: Timestamp;
 }
 
@@ -59,6 +62,9 @@ export interface StoryMessage {
   timestamp: Timestamp;
   speakerName?: string;
   speakerType?: StoryMessageSpeakerType;
+  editedAt?: Timestamp;
+  regeneratedAt?: Timestamp;
+  revision?: number;
 }
 
 export interface AISettings {
@@ -277,12 +283,15 @@ export interface PlayerCharacterDraft {
   gender: string;
   species: string;
   pronouns: string;
+  characterConcept?: string;
   appearance: string;
   personality: string;
   background: string;
   goals: string;
   notes: string;
   universeId: EntityId;
+  scope?: "library" | "story";
+  storyId?: EntityId;
 }
 
 export interface StoryDraft {
@@ -298,6 +307,9 @@ export interface StoryMessageDraft {
   content: string;
   speakerName?: string;
   speakerType?: StoryMessageSpeakerType;
+  editedAt?: Timestamp;
+  regeneratedAt?: Timestamp;
+  revision?: number;
 }
 
 export interface DeveloperBugDraft {

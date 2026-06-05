@@ -273,6 +273,8 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         id: newCharacterId,
         universeId,
         createdAt: now,
+        scope: "library",
+        storyId: undefined,
       };
 
       await putInStore("playerCharacters", playerCharacter);
@@ -299,6 +301,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
       const bundledUniverse = bundle.universe as Universe;
       const bundledPlayerCharacter = bundle.playerCharacter as PlayerCharacter;
       const bundledStory = bundle.story as Story;
+      const bundledCharacterScope = (bundledPlayerCharacter as any).scope ?? "library";
 
       const existingUniverses = await getAllFromStore<Universe>("universes");
       const bundledWiki = normalizeKey((bundledUniverse as any).wikiUrl);
@@ -333,7 +336,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         newUniverseId,
       );
       const bundledCharacterName = normalizeKey((bundledPlayerCharacter as any).name);
-      const matchedCharacter = bundledCharacterName
+      const matchedCharacter = bundledCharacterScope !== "story" && bundledCharacterName
         ? existingCharactersForUniverse.find(
             (character) => normalizeKey((character as any).name) === bundledCharacterName,
           )
@@ -347,6 +350,8 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
             universeId: newUniverseId,
             createdAt: now,
             species: (bundledPlayerCharacter as any).species ?? "",
+            scope: bundledCharacterScope,
+            storyId: bundledCharacterScope === "story" ? newStoryId : undefined,
           };
 
       const resolvedPlayerCharacterId = matchedCharacter?.id ?? newPlayerCharacterId;

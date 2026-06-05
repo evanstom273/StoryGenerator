@@ -37,7 +37,7 @@ The application stores everything locally (IndexedDB + localStorage). It is buil
 The core narrative philosophy is enforced both through prompting and post-generation validation:
 - The player is the author of the player character.
 - The AI “owns the world” (NPCs, canon characters, consequences, scene progression) but must not steal authorship of the player’s thoughts/actions/words.
-- Canon is anchored by the story’s Opening Prompt and any imported universe lore.
+- Canon is anchored by the transcript (Message 1 onward) and any imported universe lore.
 
 ### Core Design Principles
 - Local-first: data persists on-device without a backend.
@@ -413,7 +413,7 @@ High-level rule:
 - The AI is responsible for NPC behavior, world events, and consequences, but must not invent facts that only the player could have provided.
 
 Key prompt instructions:
-- The Opening Prompt is canon and authoritative.
+- The transcript is canon and authoritative.
 - Do not auto-introduce mysteries/emergencies/cases “because the story started”.
 - Continue from the player’s last message rather than rewriting it.
 
@@ -422,7 +422,7 @@ Source:
 
 ### 5.3 Canon Handling
 Canon anchors:
-- `Story.openingPrompt` (the “starting truth”)
+- Transcript messages (Message 1 onward)
 - Imported universe lore (`UniverseImport.importedText`)
 - Current story summary + story-state long-term memory (when present)
 
@@ -714,7 +714,6 @@ Notes:
     "title": "My Story",
     "universeId": "universe-<uuid>",
     "playerCharacterId": "player-character-<uuid>",
-    "openingPrompt": "Canon opening prompt...",
     "currentSummary": "",
     "createdAt": "2026-06-02T12:00:00.000Z",
     "updatedAt": "2026-06-02T12:30:00.000Z"

@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.11.0";
+export const APP_VERSION = "1.13.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -175,6 +175,25 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Removed the redundant show/hide sidebar button (Story Settings controls the sidebar)",
       "Removed the Opening Prompt concept from story creation/editing, prompting, and exports",
     ],
+    knownIssues: [],
+  },
+  "1.12.0": {
+    title: "Edit / Regenerate Last AI Message",
+    added: [
+      "Edit the last assistant message in-place (quick fix modal)",
+      "Regenerate the last assistant message (re-run AI for the last turn)",
+    ],
+    fixed: [],
+    knownIssues: [],
+  },
+  "1.13.0": {
+    title: "Character Concepts + Quick Protagonists",
+    added: [
+      "Player characters now support a Character Concept field",
+      "Generate character details from concept (and regenerate individual fields)",
+      "Create a Quick Story Character during story creation and promote it to the library later",
+    ],
+    fixed: [],
     knownIssues: [],
   },
 };

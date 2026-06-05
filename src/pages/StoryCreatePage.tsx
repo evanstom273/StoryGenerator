@@ -6,7 +6,7 @@ import { Field, SelectInput, TextAreaInput, TextInput } from "../components/form
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
-import type { AIProviderType } from "../types/models";
+import type { AIProviderType, PlayerCharacterDraft } from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
 
 const initialFormState = {
@@ -16,16 +16,43 @@ const initialFormState = {
   currentSummary: "",
 };
 
+const initialQuickCharacterState: PlayerCharacterDraft = {
+  name: "",
+  age: "",
+  gender: "",
+  species: "",
+  pronouns: "",
+  characterConcept: "",
+  appearance: "",
+  personality: "",
+  background: "",
+  goals: "",
+  notes: "",
+  universeId: "",
+  scope: "story",
+};
+
 export function StoryCreatePage() {
   const navigate = useNavigate();
   const {
     aiSettings,
+    createPlayerCharacter,
     createStory,
+    generatePlayerCharacterDraft,
     universes,
     getPlayerCharactersForUniverse,
     saveStoryAIConfig,
+    updatePlayerCharacter,
   } = useStoryEngine();
   const [formState, setFormState] = useState(initialFormState);
+  const [protagonistMode, setProtagonistMode] = useState<
+    "existing" | "newPermanent" | "quick"
+  >("existing");
+  const [quickCharacterState, setQuickCharacterState] = useState<PlayerCharacterDraft>(
+    initialQuickCharacterState,
+  );
+  const [quickCharacterError, setQuickCharacterError] = useState<string | null>(null);
+  const [isQuickGenerating, setIsQuickGenerating] = useState(false);
   const [storyProviderType, setStoryProviderType] = useState(
     aiSettings?.activeProviderType ?? "openai",
   );
@@ -43,6 +70,14 @@ export function StoryCreatePage() {
         : [],
     [formState.universeId, getPlayerCharactersForUniverse],
   );
+
+  useEffect(() => {
+    setQuickCharacterState((current) => ({
+      ...current,
+      universeId: formState.universeId,
+      scope: "story",
+    }));
+  }, [formState.universeId]);
 
   if (!universes.length) {
     return (
@@ -73,11 +108,6 @@ export function StoryCreatePage() {
       return;
     }
 
-    if (!formState.playerCharacterId) {
-      setErrorMessage("Select the player character the user will play.");
-      return;
-    }
-
     if (!formState.title.trim()) {
       setErrorMessage("Enter a story title.");
       return;
@@ -87,10 +117,48 @@ export function StoryCreatePage() {
     setErrorMessage(null);
 
     try {
+      let resolvedPlayerCharacterId = formState.playerCharacterId;
+
+      if (protagonistMode === "existing") {
+        if (!resolvedPlayerCharacterId) {
+          setErrorMessage("Select the player character the user will play.");
+          return;
+        }
+      }
+
+      if (protagonistMode === "newPermanent") {
+        setErrorMessage("Create a player character for this universe before creating the story.");
+        return;
+      }
+
+      if (protagonistMode === "quick") {
+        if (!quickCharacterState.name.trim()) {
+          setErrorMessage("Enter a quick character name.");
+          return;
+        }
+
+        const createdCharacter = await createPlayerCharacter({
+          ...quickCharacterState,
+          universeId: formState.universeId,
+          scope: "story",
+        });
+        resolvedPlayerCharacterId = createdCharacter.id;
+      }
+
       const story = await createStory({
         ...formState,
+        playerCharacterId: resolvedPlayerCharacterId,
         currentSummary: formState.currentSummary.trim(),
       });
+
+      if (protagonistMode === "quick") {
+        await updatePlayerCharacter(resolvedPlayerCharacterId, {
+          ...quickCharacterState,
+          universeId: formState.universeId,
+          scope: "story",
+          storyId: story.id,
+        }).catch(() => null);
+      }
 
       await saveStoryAIConfig({
         storyId: story.id,
@@ -105,6 +173,49 @@ export function StoryCreatePage() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleGenerateQuickCharacterDetails(mode: "overwrite" | "fillEmpty") {
+    if (!formState.universeId) {
+      setQuickCharacterError("Select a universe before generating a character.");
+      return;
+    }
+
+    const candidateFields: Array<keyof PlayerCharacterDraft> = [
+      "appearance",
+      "personality",
+      "background",
+      "goals",
+      "notes",
+    ];
+
+    const fields =
+      mode === "fillEmpty"
+        ? candidateFields.filter((field) => !(quickCharacterState[field] ?? "").trim())
+        : candidateFields;
+
+    if (!fields.length) {
+      setQuickCharacterError("No fields to generate.");
+      return;
+    }
+
+    setIsQuickGenerating(true);
+    setQuickCharacterError(null);
+
+    try {
+      const patch = await generatePlayerCharacterDraft(
+        formState.universeId,
+        fields,
+        quickCharacterState,
+      );
+      setQuickCharacterState((current) => ({ ...current, ...patch }));
+    } catch (error) {
+      setQuickCharacterError(
+        error instanceof Error ? error.message : "Unable to generate character fields.",
+      );
+    } finally {
+      setIsQuickGenerating(false);
     }
   }
 
@@ -157,6 +268,37 @@ export function StoryCreatePage() {
               </SelectInput>
             </Field>
 
+            <Field label="Protagonist" hint="Required">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Button
+                  type="button"
+                  variant={protagonistMode === "existing" ? "secondary" : "ghost"}
+                  onClick={() => setProtagonistMode("existing")}
+                  disabled={!formState.universeId}
+                >
+                  Existing
+                </Button>
+                <Button
+                  type="button"
+                  variant={protagonistMode === "newPermanent" ? "secondary" : "ghost"}
+                  onClick={() => setProtagonistMode("newPermanent")}
+                  disabled={!formState.universeId}
+                >
+                  New
+                </Button>
+                <Button
+                  type="button"
+                  variant={protagonistMode === "quick" ? "secondary" : "ghost"}
+                  onClick={() => setProtagonistMode("quick")}
+                  disabled={!formState.universeId}
+                >
+                  Quick
+                </Button>
+              </div>
+            </Field>
+          </div>
+
+          {protagonistMode === "existing" ? (
             <Field label="Player Character" hint="Required">
               <SelectInput
                 value={formState.playerCharacterId}
@@ -182,7 +324,199 @@ export function StoryCreatePage() {
                 ))}
               </SelectInput>
             </Field>
-          </div>
+          ) : null}
+
+          {protagonistMode === "newPermanent" ? (
+            <Panel className="border-dashed border-white/12 bg-white/[0.03]">
+              <h2 className="text-lg font-semibold text-ink">Create a permanent player character</h2>
+              <p className="mt-2 text-sm leading-7 text-ink-muted">
+                This adds the character to your Player Characters library so you can reuse them across stories.
+              </p>
+              <Link
+                to={`/player-characters/new?universeId=${formState.universeId}`}
+                className={buttonClasses({ className: "mt-5" })}
+              >
+                Create Player Character
+              </Link>
+            </Panel>
+          ) : null}
+
+          {protagonistMode === "quick" ? (
+            <Panel className="border-dashed border-white/12 bg-white/[0.03]" padding="lg">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                Quick Story Character
+              </div>
+              <div className="mt-4 grid gap-6 md:grid-cols-2">
+                <Field label="Name" hint="Required">
+                  <TextInput
+                    value={quickCharacterState.name}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="Jamie Mercer"
+                  />
+                </Field>
+                <Field label="Pronouns">
+                  <TextInput
+                    value={quickCharacterState.pronouns}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        pronouns: event.target.value,
+                      }))
+                    }
+                    placeholder="she/her, he/him, they/them, ..."
+                  />
+                </Field>
+              </div>
+
+              <div className="mt-6 grid gap-6 md:grid-cols-2">
+                <Field label="Age">
+                  <TextInput
+                    value={quickCharacterState.age}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        age: event.target.value,
+                      }))
+                    }
+                    placeholder="29"
+                  />
+                </Field>
+                <Field label="Gender">
+                  <TextInput
+                    value={quickCharacterState.gender}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        gender: event.target.value,
+                      }))
+                    }
+                    placeholder="Woman / Man / Non-binary / ..."
+                  />
+                </Field>
+              </div>
+
+              <div className="mt-6 grid gap-6 md:grid-cols-2">
+                <Field label="Species">
+                  <TextInput
+                    value={quickCharacterState.species}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        species: event.target.value,
+                      }))
+                    }
+                    placeholder="Human, Twi'lek, Khajiit, ..."
+                  />
+                </Field>
+                <Field label="Character Concept">
+                  <TextAreaInput
+                    value={quickCharacterState.characterConcept ?? ""}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        characterConcept: event.target.value,
+                      }))
+                    }
+                    placeholder="A short pitch for the character."
+                  />
+                </Field>
+              </div>
+
+              <div className="mt-6 grid gap-6 md:grid-cols-2">
+                <Field label="Appearance">
+                  <TextAreaInput
+                    value={quickCharacterState.appearance}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        appearance: event.target.value,
+                      }))
+                    }
+                  />
+                </Field>
+                <Field label="Personality">
+                  <TextAreaInput
+                    value={quickCharacterState.personality}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        personality: event.target.value,
+                      }))
+                    }
+                  />
+                </Field>
+              </div>
+
+              <div className="mt-6 grid gap-6 md:grid-cols-2">
+                <Field label="Background">
+                  <TextAreaInput
+                    value={quickCharacterState.background}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        background: event.target.value,
+                      }))
+                    }
+                  />
+                </Field>
+                <Field label="Goals">
+                  <TextAreaInput
+                    value={quickCharacterState.goals}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        goals: event.target.value,
+                      }))
+                    }
+                  />
+                </Field>
+              </div>
+
+              <div className="mt-6">
+                <Field label="Notes">
+                  <TextAreaInput
+                    value={quickCharacterState.notes}
+                    onChange={(event) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        notes: event.target.value,
+                      }))
+                    }
+                  />
+                </Field>
+              </div>
+
+              {quickCharacterError ? (
+                <div className="mt-6 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                  {quickCharacterError}
+                </div>
+              ) : null}
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void handleGenerateQuickCharacterDetails("overwrite")}
+                  disabled={isQuickGenerating || isSubmitting}
+                >
+                  {isQuickGenerating ? "Generating..." : "Generate Character Details"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void handleGenerateQuickCharacterDetails("fillEmpty")}
+                  disabled={isQuickGenerating || isSubmitting}
+                >
+                  {isQuickGenerating ? "Generating..." : "Regenerate All (Fill Empty)"}
+                </Button>
+              </div>
+            </Panel>
+          ) : null}
 
           <Panel className="border-dashed border-white/12 bg-white/[0.03]">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
@@ -225,14 +559,14 @@ export function StoryCreatePage() {
             </p>
           </Panel>
 
-          {formState.universeId && !availableCharacters.length ? (
+          {formState.universeId && !availableCharacters.length && protagonistMode === "existing" ? (
             <Panel className="border-dashed border-white/12 bg-white/[0.03]">
               <h2 className="text-lg font-semibold text-ink">
                 This universe needs a player character
               </h2>
               <p className="mt-2 text-sm leading-7 text-ink-muted">
                 Create the original character the user will play, then return to
-                finish this story setup.
+                finish this story setup. Or switch to Quick.
               </p>
               <Link
                 to={`/player-characters/new?universeId=${formState.universeId}`}

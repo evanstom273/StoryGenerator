@@ -16,6 +16,7 @@ const initialFormState: PlayerCharacterDraft = {
   gender: "",
   species: "",
   pronouns: "",
+  characterConcept: "",
   appearance: "",
   personality: "",
   background: "",
@@ -57,6 +58,7 @@ export function PlayerCharacterFormPage() {
       gender: existingCharacter.gender,
       species: existingCharacter.species ?? "",
       pronouns: existingCharacter.pronouns,
+      characterConcept: existingCharacter.characterConcept ?? "",
       appearance: existingCharacter.appearance,
       personality: existingCharacter.personality,
       background: existingCharacter.background,
@@ -90,6 +92,7 @@ export function PlayerCharacterFormPage() {
       formState.gender,
       formState.species,
       formState.pronouns,
+      formState.characterConcept,
       formState.appearance,
       formState.personality,
       formState.background,
@@ -314,6 +317,7 @@ export function PlayerCharacterFormPage() {
       "gender",
       "species",
       "pronouns",
+      "characterConcept",
       "appearance",
       "personality",
       "background",
@@ -322,6 +326,45 @@ export function PlayerCharacterFormPage() {
     ];
 
     await handleRandomize(fields);
+  }
+
+  async function handleGenerateCharacterDetails(mode: "overwrite" | "fillEmpty") {
+    const candidateFields: Array<keyof PlayerCharacterDraft> = [
+      "appearance",
+      "personality",
+      "background",
+      "goals",
+      "notes",
+    ];
+
+    const fields =
+      mode === "fillEmpty"
+        ? candidateFields.filter((field) => !formState[field].trim())
+        : candidateFields;
+
+    if (!fields.length) {
+      setGeneratorError("No fields to generate.");
+      return;
+    }
+
+    if (!formState.universeId) {
+      setGeneratorError("Select a universe before generating a character.");
+      return;
+    }
+
+    setIsGenerating(true);
+    setGeneratorError(null);
+
+    try {
+      const patch = await generatePlayerCharacterDraft(formState.universeId, fields, formState);
+      setFormState((current) => ({ ...current, ...patch }));
+    } catch (error) {
+      setGeneratorError(
+        error instanceof Error ? error.message : "Unable to generate character fields.",
+      );
+    } finally {
+      setIsGenerating(false);
+    }
   }
 
   function resolveFieldHint(value: string, baseHint?: string) {
@@ -342,7 +385,7 @@ export function PlayerCharacterFormPage() {
         disabled={isGenerating || isSubmitting}
       >
         <SparklesIcon className="h-4 w-4" />
-        🎲
+        Regenerate
       </Button>
     );
   }
@@ -394,6 +437,22 @@ export function PlayerCharacterFormPage() {
               </SelectInput>
             </Field>
           </div>
+
+          <Field
+            label="Character Concept"
+            hint={resolveFieldHint(formState.characterConcept ?? "")}
+          >
+            <TextAreaInput
+              value={formState.characterConcept ?? ""}
+              onChange={(event) =>
+                setFormState((currentState) => ({
+                  ...currentState,
+                  characterConcept: event.target.value,
+                }))
+              }
+              placeholder="A short pitch for the character (vibe, archetype, core conflict, what makes them fun to play)."
+            />
+          </Field>
 
           <div className="grid gap-6 md:grid-cols-2">
             <Field
@@ -573,26 +632,18 @@ export function PlayerCharacterFormPage() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => void handleRandomizeEmptyFields()}
+              onClick={() => void handleGenerateCharacterDetails("overwrite")}
               disabled={isGenerating || isSubmitting}
             >
-              {isGenerating ? "Generating..." : "🎲 Randomize Empty Fields"}
+              {isGenerating ? "Generating..." : "Generate Character Details"}
             </Button>
             <Button
               type="button"
               variant="secondary"
-              onClick={() => void handleRandomizeRemainingFields()}
+              onClick={() => void handleGenerateCharacterDetails("fillEmpty")}
               disabled={isGenerating || isSubmitting}
             >
-              {isGenerating ? "Generating..." : "🎲 Randomize Remaining Fields"}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => void handleRandomizeAllFields()}
-              disabled={isGenerating || isSubmitting}
-            >
-              {isGenerating ? "Generating..." : "🎲 Randomize All"}
+              {isGenerating ? "Generating..." : "Regenerate All (Fill Empty)"}
             </Button>
             <Link
               to={existingCharacter ? `/player-characters/${existingCharacter.id}` : "/player-characters"}

@@ -17,6 +17,7 @@ export interface CharacterGeneratorInput {
   importedLoreText?: string;
   fields?: PlayerCharacterField[];
   existing?: Partial<Record<PlayerCharacterField, string>>;
+  characterConcept?: string;
 }
 
 function buildUniverseInfo(universe: Universe) {
@@ -34,11 +35,15 @@ export function buildCharacterGeneratorSystemPrompt({
   importedLoreText,
   fields,
   existing,
+  characterConcept,
 }: CharacterGeneratorInput) {
   const requested = fields?.length ? fields.join(", ") : "all";
   const loreBlock = importedLoreText?.trim()
     ? `Imported Lore (reference only):\n${importedLoreText.trim()}`
     : "No imported lore is available.";
+  const conceptBlock = characterConcept?.trim()
+    ? `Character Concept (authoritative):\n${characterConcept.trim()}`
+    : "No character concept was provided.";
 
   const lockedFields = (existing
     ? Object.entries(existing)
@@ -70,6 +75,8 @@ export function buildCharacterGeneratorSystemPrompt({
     buildUniverseInfo(universe),
     "",
     loreBlock,
+    "",
+    conceptBlock,
     "",
     lockedBlock,
   ].join("\n");

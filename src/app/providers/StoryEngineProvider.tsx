@@ -111,6 +111,7 @@ interface StoryEngineContextValue {
   updateUniverse: (id: string, draft: UniverseDraft) => Promise<Universe | null>;
   deleteUniverse: (id: string) => Promise<GuardedDeleteResult>;
   createPlayerCharacter: (draft: PlayerCharacterDraft) => Promise<PlayerCharacter>;
+  promoteStoryPlayerCharacter: (storyId: string) => Promise<PlayerCharacter>;
   updatePlayerCharacter: (
     id: string,
     draft: PlayerCharacterDraft,
@@ -189,6 +190,8 @@ interface StoryEngineContextValue {
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
   sendChatMessage: (storyId: string, content: string) => Promise<StoryMessage>;
+  editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
+  regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
 }
 
 const StoryEngineContext = createContext<StoryEngineContextValue | null>(null);
@@ -449,7 +452,11 @@ export function StoryEngineProvider({
         sortByTimestampAsc(messages.filter((message) => message.storyId === storyId)),
       getPlayerCharactersForUniverse: (universeId) =>
         sortByCreatedAtDesc(
-          playerCharacters.filter((character) => character.universeId === universeId),
+          playerCharacters.filter(
+            (character) =>
+              character.universeId === universeId &&
+              (character.scope ?? "library") === "library",
+          ),
         ),
       getStoriesForUniverse: (universeId) =>
         sortByUpdatedAtDesc(stories.filter((story) => story.universeId === universeId)),
@@ -521,12 +528,15 @@ export function StoryEngineProvider({
           gender: draft.gender.trim(),
           species: draft.species?.trim() ?? "",
           pronouns: draft.pronouns.trim(),
+          characterConcept: draft.characterConcept?.trim() || undefined,
           appearance: draft.appearance.trim(),
           personality: draft.personality.trim(),
           background: draft.background.trim(),
           goals: draft.goals.trim(),
           notes: draft.notes.trim(),
           universeId: draft.universeId,
+          scope: draft.scope ?? "library",
+          storyId: draft.storyId,
           createdAt: new Date().toISOString(),
         };
 
@@ -534,6 +544,38 @@ export function StoryEngineProvider({
         await hydrate(false);
 
         return nextCharacter;
+      },
+      async promoteStoryPlayerCharacter(storyId) {
+        const story = await repository.getStory(storyId);
+
+        if (!story) {
+          throw new Error("Story not found.");
+        }
+
+        const playerCharacter = await repository.getPlayerCharacter(story.playerCharacterId);
+
+        if (!playerCharacter) {
+          throw new Error("Player character not found.");
+        }
+
+        if ((playerCharacter.scope ?? "library") !== "story") {
+          throw new Error("This story is already using a library character.");
+        }
+
+        const now = new Date().toISOString();
+        const promoted: PlayerCharacter = {
+          ...playerCharacter,
+          id: createEntityId("player-character"),
+          universeId: story.universeId,
+          scope: "library",
+          storyId: undefined,
+          createdAt: now,
+        };
+
+        await repository.savePlayerCharacter(promoted);
+        await hydrate(false);
+
+        return promoted;
       },
       async updatePlayerCharacter(id, draft) {
         const currentCharacter = await repository.getPlayerCharacter(id);
@@ -549,12 +591,15 @@ export function StoryEngineProvider({
           gender: draft.gender.trim(),
           species: draft.species?.trim() ?? "",
           pronouns: draft.pronouns.trim(),
+          characterConcept: draft.characterConcept?.trim() || undefined,
           appearance: draft.appearance.trim(),
           personality: draft.personality.trim(),
           background: draft.background.trim(),
           goals: draft.goals.trim(),
           notes: draft.notes.trim(),
           universeId: draft.universeId,
+          scope: draft.scope ?? currentCharacter.scope ?? "library",
+          storyId: draft.storyId ?? currentCharacter.storyId,
         };
 
         await repository.savePlayerCharacter(nextCharacter);
@@ -630,6 +675,9 @@ export function StoryEngineProvider({
           timestamp: new Date().toISOString(),
           speakerName: draft.speakerName?.trim() || undefined,
           speakerType: draft.speakerType,
+          editedAt: draft.editedAt,
+          regeneratedAt: draft.regeneratedAt,
+          revision: draft.revision,
         };
 
         await repository.saveStoryMessage(nextMessage);
@@ -651,6 +699,9 @@ export function StoryEngineProvider({
           content: draft.content.trim(),
           speakerName: draft.speakerName?.trim() || undefined,
           speakerType: draft.speakerType,
+          editedAt: draft.editedAt ?? currentMessage.editedAt,
+          regeneratedAt: draft.regeneratedAt ?? currentMessage.regeneratedAt,
+          revision: draft.revision ?? currentMessage.revision,
         };
 
         await repository.saveStoryMessage(nextMessage);
@@ -658,6 +709,371 @@ export function StoryEngineProvider({
         await hydrate(false);
 
         return nextMessage;
+      },
+      async editAssistantMessage(messageId, content) {
+        const currentMessage = await repository.getStoryMessage(messageId);
+
+        if (!currentMessage) {
+          return null;
+        }
+
+        if (currentMessage.role !== "assistant") {
+          throw new Error("Only assistant messages can be edited.");
+        }
+
+        const nextMessage: StoryMessage = {
+          ...currentMessage,
+          content: content.trim(),
+          editedAt: new Date().toISOString(),
+          revision: (currentMessage.revision ?? 0) + 1,
+        };
+
+        await repository.saveStoryMessage(nextMessage);
+        await touchStory(currentMessage.storyId);
+        await hydrate(false);
+
+        return nextMessage;
+      },
+      async regenerateLastAssistantMessage(storyId) {
+        const story = await repository.getStory(storyId);
+
+        if (!story) {
+          throw new Error("Story not found.");
+        }
+
+        const existingMessages = await repository.listStoryMessages(storyId);
+        const lastMessage = existingMessages[existingMessages.length - 1];
+        const previousMessage = existingMessages[existingMessages.length - 2];
+
+        if (!lastMessage || lastMessage.role !== "assistant") {
+          throw new Error("The latest message is not an assistant reply.");
+        }
+
+        if (!previousMessage || previousMessage.role !== "user") {
+          throw new Error("Cannot regenerate without a preceding user message.");
+        }
+
+        const [universe, playerCharacter] = await Promise.all([
+          repository.getUniverse(story.universeId),
+          repository.getPlayerCharacter(story.playerCharacterId),
+        ]);
+
+        if (!universe || !playerCharacter) {
+          throw new Error("Story references missing universe or player character.");
+        }
+
+        const [imports, summaries, storyConfig, storyState] = await Promise.all([
+          repository.listUniverseImports(universe.id),
+          repository.listStorySummaries(storyId),
+          repository.getStoryAIConfig(storyId),
+          repository.getStoryState(storyId),
+        ]);
+
+        const settings = await getNormalizedAISettings();
+
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings before generating scenes.");
+        }
+
+        const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+        const provider = createAIProvider(providerType);
+
+        const playerNameForValidation = (() => {
+          const base = playerCharacter.name.trim();
+          const json = storyState?.stateJson?.trim() ?? "";
+          if (!base || !json) {
+            return base;
+          }
+
+          const parsed = safeParseStoryStateData(json);
+          if (!parsed) {
+            return base;
+          }
+
+          const candidates = Object.entries(parsed.characters ?? {});
+          const match = candidates.find(([key, entry]) => {
+            if (key === base) return true;
+            if (!entry) return false;
+            if (entry.canonicalName === base) return true;
+            if (entry.displayName === base) return true;
+            if (entry.aliases?.includes(base)) return true;
+            return false;
+          });
+
+          if (!match) {
+            return base;
+          }
+
+          const [key, entry] = match;
+          const aliases = new Set<string>();
+          if (key && key !== base) aliases.add(key);
+          if (entry?.displayName && entry.displayName !== base) aliases.add(entry.displayName);
+          for (const alias of entry?.aliases ?? []) {
+            if (alias && alias !== base) aliases.add(alias);
+          }
+
+          const aliasText = Array.from(aliases).slice(0, 4).join(", ");
+          return aliasText ? `${base} (${aliasText})` : base;
+        })();
+
+        const recentMessages = sortByTimestampAsc(existingMessages.slice(0, -1)).slice(-31);
+        const historyMessages = recentMessages.slice(0, -1);
+
+        const sanitizedHistoryMessages = historyMessages.map((message) => {
+          if (message.role !== "assistant") {
+            return message;
+          }
+
+          return {
+            ...message,
+            content: sanitizeAssistantTranscript({
+              text: message.content,
+              playerName: playerNameForValidation,
+            }).text,
+          };
+        });
+
+        const context = buildStoryChatContext({
+          universe,
+          story,
+          playerCharacter,
+          imports,
+          summaries,
+          storyState,
+          recentMessages: sanitizedHistoryMessages,
+          latestUserMessage: previousMessage.content,
+        });
+
+        const assistantContent = await provider.generateResponse({
+          apiKey,
+          model,
+          messages: context,
+        });
+
+        const sceneDepth = inferSceneDepth(previousMessage.content);
+        const target = getSceneWordTarget(sceneDepth);
+        const wordCount = assistantContent.content.split(/\s+/).filter(Boolean).length;
+        const shouldRewriteForSize = sceneDepth === "light" && wordCount > target.maxWords * 2;
+        const finalAssistantText = shouldRewriteForSize
+          ? (
+              await provider.generateResponse({
+                apiKey,
+                model,
+                messages: [
+                  {
+                    role: "system",
+                    content: [
+                      "Rewrite the following story scene to match a light interaction.",
+                      `Target length: ${target.minWords}-${target.maxWords} words.`,
+                      "Keep character voice and only the essential beats.",
+                      "Do not reintroduce unchanged environments or participants.",
+                      "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
+                      "Not every character needs to speak; keep participation natural.",
+                      "Never speak for the player character. Do not generate suggested player lines or options.",
+                      "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+                      "Formatting rules:",
+                      "- Every character line must start with 'Name:'.",
+                      "- Actions must be wrapped as *...* (asterisks only for actions).",
+                      '- Dialogue must be wrapped in double quotes like \"...\"',
+                      "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+                      "- Narration must be standalone italic narration (stored as *...*), never 'Narrator:' labels.",
+                      "Mystery rule:",
+                      "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+                    ].join("\n"),
+                  },
+                  {
+                    role: "user",
+                    content: assistantContent.content,
+                  },
+                ],
+              })
+            ).content
+          : assistantContent.content;
+
+        const formatRewritePrompt = [
+          "Rewrite the following story scene into the required Story Engine transcript grammar.",
+          "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
+          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          "Formatting rules (strict):",
+          "- Every character line must start with 'Name:'.",
+          "- Actions must be wrapped as *...* (asterisks only for actions).",
+          '- Dialogue must be wrapped in double quotes like \"...\"',
+          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+          "- Never use narrator labels like 'Narrator:' anywhere.",
+          "Mystery rule (strict):",
+          "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+          "Information ownership rule (strict):",
+          "- Do not invent facts that could only have been communicated by the player character off-screen.",
+          "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
+          "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
+          "Ownership rules (strict):",
+          `- The player character is: ${playerCharacter.name}`,
+          "- Never write dialogue/actions/thoughts/decisions for the player character.",
+          "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
+          "Sanitization rules:",
+          "- Never repeat the latest player message.",
+          "- Never use asterisks for emphasis.",
+        ].join("\n");
+
+        const ownershipRewritePrompt = [
+          "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
+          `The player character is: ${playerCharacter.name}.`,
+          "Never include a speaker header for the player character.",
+          "Never narrate actions/thoughts for the player character.",
+          "Remove any repetition of the latest player message.",
+          "Never use narrator labels like 'Narrator:' anywhere in the output.",
+          "Keep continuity, character voice, and natural pacing.",
+          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+          "Formatting rules:",
+          "- Every character line must start with 'Name:'.",
+          "- Actions must be wrapped as *...* (asterisks only for actions).",
+          '- Dialogue must be wrapped in double quotes like \"...\"',
+          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+          "Mystery rule:",
+          "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+          "Information ownership rule:",
+          "- Do not invent facts that could only have been communicated by the player character off-screen.",
+          "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
+          "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
+        ].join("\n");
+
+        const hiddenDialogueInferencePattern =
+          /\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
+        const hiddenDialogueRewritePrompt = [
+          "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
+          `The latest player message is:\n${previousMessage.content}`,
+          `The player character is: ${playerCharacter.name}.`,
+          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          "Do not attribute extra details to what the player said.",
+          "If NPCs need details, have them ask clarifying questions.",
+          "Do not invent diagnoses, causes, or specifics unless already established in prior story events/state or explicitly present in the latest player message.",
+          "Formatting rules:",
+          "- Every character line must start with 'Name:'.",
+          "- Actions must be wrapped as *...* (asterisks only for actions).",
+          '- Dialogue must be wrapped in double quotes like \"...\"',
+          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+          "Never use narrator labels like 'Narrator:' anywhere in the output.",
+          "Never use asterisks for emphasis.",
+        ].join("\n");
+
+        const sceneStateRewritePrompt = [
+          "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
+          `The latest player message is canon scene state:\n${previousMessage.content}`,
+          "Do not restate those facts in new words. Continue from the current moment and show consequences and NPC/world reactions.",
+          "If a character enters/arrives or a reveal is already stated by the player, start after that moment (reactions, responses, new beats).",
+          "Formatting rules:",
+          "- Every character line must start with 'Name:'.",
+          "- Actions must be wrapped as *...* (asterisks only for actions).",
+          '- Dialogue must be wrapped in double quotes like \"...\"',
+          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+          "Never use narrator labels like 'Narrator:' anywhere in the output.",
+          "Never use asterisks for emphasis.",
+          "Ownership rules:",
+          `- The player character is: ${playerCharacter.name}`,
+          "- Never write dialogue/actions/thoughts/decisions for the player character.",
+        ].join("\n");
+
+        let candidateAssistantText = finalAssistantText;
+        let finalSanitizedText: string | null = null;
+
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const candidateSanitized = sanitizeAssistantTranscript({
+            text: candidateAssistantText,
+            latestUserMessage: previousMessage.content,
+            playerName: playerNameForValidation,
+          });
+
+          if (!candidateSanitized.formatValid) {
+            candidateAssistantText = (
+              await provider.generateResponse({
+                apiKey,
+                model,
+                messages: [
+                  { role: "system", content: formatRewritePrompt },
+                  { role: "user", content: candidateAssistantText },
+                ],
+              })
+            ).content;
+            continue;
+          }
+
+          const violation = getPlayerCharacterAuthorshipViolation({
+            playerName: playerNameForValidation,
+            text: candidateSanitized.text,
+          });
+
+          if (violation) {
+            candidateAssistantText = (
+              await provider.generateResponse({
+                apiKey,
+                model,
+                messages: [
+                  { role: "system", content: ownershipRewritePrompt },
+                  { role: "user", content: candidateSanitized.text },
+                ],
+              })
+            ).content;
+            continue;
+          }
+
+          if (hiddenDialogueInferencePattern.test(candidateSanitized.text)) {
+            candidateAssistantText = (
+              await provider.generateResponse({
+                apiKey,
+                model,
+                messages: [
+                  { role: "system", content: hiddenDialogueRewritePrompt },
+                  { role: "user", content: candidateSanitized.text },
+                ],
+              })
+            ).content;
+            continue;
+          }
+
+          const sceneDup = detectSceneStateRenarration({
+            latestUserMessage: previousMessage.content,
+            assistantText: candidateSanitized.text,
+          });
+          if (sceneDup.triggered) {
+            candidateAssistantText = (
+              await provider.generateResponse({
+                apiKey,
+                model,
+                messages: [
+                  { role: "system", content: sceneStateRewritePrompt },
+                  { role: "user", content: candidateSanitized.text },
+                ],
+              })
+            ).content;
+            continue;
+          }
+
+          finalSanitizedText = candidateSanitized.text;
+          break;
+        }
+
+        if (!finalSanitizedText) {
+          throw new Error("Unable to generate a response. Please try again.");
+        }
+
+        const nextAssistantMessage: StoryMessage = {
+          ...lastMessage,
+          content: finalSanitizedText,
+          regeneratedAt: new Date().toISOString(),
+          revision: (lastMessage.revision ?? 0) + 1,
+        };
+
+        await repository.saveStoryMessage(nextAssistantMessage);
+        await touchStory(storyId);
+        await hydrate(false);
+
+        return nextAssistantMessage;
       },
       async deleteMessage(id) {
         const currentMessage = await repository.getStoryMessage(id);
@@ -1293,6 +1709,10 @@ export function StoryEngineProvider({
           universe,
           importedLoreText,
           fields: generatorFields.length ? generatorFields : undefined,
+          characterConcept:
+            typeof (existing as any)?.characterConcept === "string"
+              ? (existing as any).characterConcept
+              : undefined,
           existing: existing
             ? allowedFields.reduce(
                 (acc, key) => {

@@ -11,6 +11,9 @@ interface StoryMessageBubbleProps {
   playerCharacterName: string;
   latestUserMessage?: string | null;
   onEdit: (message: StoryMessage) => void;
+  onQuickEdit?: (message: StoryMessage) => void;
+  onRegenerate?: (message: StoryMessage) => void;
+  isLatestAssistant?: boolean;
   onDelete: (message: StoryMessage) => void;
   highlighted?: boolean;
 }
@@ -112,6 +115,9 @@ export function StoryMessageBubble({
   playerCharacterName,
   latestUserMessage,
   onEdit,
+  onQuickEdit,
+  onRegenerate,
+  isLatestAssistant,
   onDelete,
   highlighted,
 }: StoryMessageBubbleProps) {
@@ -238,9 +244,24 @@ export function StoryMessageBubble({
           <div className="flex items-center gap-2">
             <div className="text-xs text-ink-muted">{formatDateTime(message.timestamp)}</div>
             <div className="hidden items-center gap-1 opacity-0 transition group-hover:flex group-hover:opacity-100">
-              <Button size="sm" variant="ghost" onClick={() => onEdit(message)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  if (message.role === "assistant" && isLatestAssistant && onQuickEdit) {
+                    onQuickEdit(message);
+                    return;
+                  }
+                  onEdit(message);
+                }}
+              >
                 Edit
               </Button>
+              {message.role === "assistant" && isLatestAssistant && onRegenerate ? (
+                <Button size="sm" variant="ghost" onClick={() => onRegenerate(message)}>
+                  Regenerate
+                </Button>
+              ) : null}
               <Button size="sm" variant="ghost" onClick={() => onDelete(message)}>
                 Delete
               </Button>
@@ -261,9 +282,24 @@ export function StoryMessageBubble({
               )}
         </div>
         <div className="mt-2 flex gap-2 group-hover:hidden">
-          <Button size="sm" variant="ghost" onClick={() => onEdit(message)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (message.role === "assistant" && isLatestAssistant && onQuickEdit) {
+                onQuickEdit(message);
+                return;
+              }
+              onEdit(message);
+            }}
+          >
             Edit
           </Button>
+          {message.role === "assistant" && isLatestAssistant && onRegenerate ? (
+            <Button size="sm" variant="ghost" onClick={() => onRegenerate(message)}>
+              Regenerate
+            </Button>
+          ) : null}
           <Button size="sm" variant="ghost" onClick={() => onDelete(message)}>
             Delete
           </Button>

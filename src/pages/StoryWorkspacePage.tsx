@@ -48,7 +48,9 @@ export function StoryWorkspacePage() {
     getPlayerCharacterById,
     getStoryById,
     getUniverseById,
+    editAssistantMessage,
     generatePlayerAssistMessage,
+    regenerateLastAssistantMessage,
     sendChatMessage,
     updateMessage,
   } = useStoryEngine();
@@ -68,11 +70,16 @@ export function StoryWorkspacePage() {
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const [lastChatContent, setLastChatContent] = useState<string | null>(null);
   const [isGeneratingAssist, setIsGeneratingAssist] = useState(false);
   const [assistError, setAssistError] = useState<string | null>(null);
   const [manualMode, setManualMode] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [assistantEditMessage, setAssistantEditMessage] = useState<StoryMessage | null>(null);
+  const [assistantEditContent, setAssistantEditContent] = useState("");
+  const [assistantEditError, setAssistantEditError] = useState<string | null>(null);
+  const [isAssistantEditSaving, setIsAssistantEditSaving] = useState(false);
 
   useEffect(() => {
     setEditingMessage(null);
@@ -80,10 +87,15 @@ export function StoryWorkspacePage() {
     setChatInput("");
     setChatError(null);
     setIsGenerating(false);
+    setIsRegenerating(false);
     setLastChatContent(null);
     setIsGeneratingAssist(false);
     setAssistError(null);
     setManualMode(false);
+    setAssistantEditMessage(null);
+    setAssistantEditContent("");
+    setAssistantEditError(null);
+    setIsAssistantEditSaving(false);
   }, [storyId]);
 
   useEffect(() => {
@@ -148,6 +160,15 @@ export function StoryWorkspacePage() {
   const activeStory = story;
   const activeUniverse = universe;
   const activePlayerCharacter = playerCharacter;
+  const latestAssistantMessage = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message?.role === "assistant") {
+        return message;
+      }
+    }
+    return null;
+  }, [messages]);
 
   async function handleSendChat() {
     if (!chatInput.trim()) {
@@ -190,6 +211,80 @@ export function StoryWorkspacePage() {
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  async function handleRegenerateLastAssistant() {
+    if (!latestAssistantMessage || !messages.length || messages[messages.length - 1]?.id !== latestAssistantMessage.id) {
+      return;
+    }
+
+    const confirmed = window.confirm("Replace the last AI message?");
+    if (!confirmed) {
+      return;
+    }
+
+    setIsRegenerating(true);
+    setChatError(null);
+
+    try {
+      await regenerateLastAssistantMessage(activeStory.id);
+    } catch (error) {
+      setChatError(
+        error instanceof Error ? error.message : "Unable to regenerate the last reply.",
+      );
+    } finally {
+      setIsRegenerating(false);
+    }
+  }
+
+  function handleOpenAssistantEdit() {
+    if (!latestAssistantMessage || !messages.length || messages[messages.length - 1]?.id !== latestAssistantMessage.id) {
+      return;
+    }
+
+    setAssistantEditMessage(latestAssistantMessage);
+    setAssistantEditContent(latestAssistantMessage.content);
+    setAssistantEditError(null);
+  }
+
+  async function handleSaveAssistantEdit() {
+    if (!assistantEditMessage) {
+      return;
+    }
+
+    if (assistantEditMessage.role !== "assistant") {
+      setAssistantEditError("Only assistant messages can be edited.");
+      return;
+    }
+
+    if (!assistantEditContent.trim()) {
+      setAssistantEditError("Message content is required.");
+      return;
+    }
+
+    setIsAssistantEditSaving(true);
+    setAssistantEditError(null);
+
+    try {
+      await editAssistantMessage(assistantEditMessage.id, assistantEditContent);
+      setAssistantEditMessage(null);
+      setAssistantEditContent("");
+    } catch (error) {
+      setAssistantEditError(
+        error instanceof Error ? error.message : "Unable to save changes.",
+      );
+    } finally {
+      setIsAssistantEditSaving(false);
+    }
+  }
+
+  function handleCloseAssistantEdit() {
+    if (isAssistantEditSaving) {
+      return;
+    }
+    setAssistantEditMessage(null);
+    setAssistantEditContent("");
+    setAssistantEditError(null);
   }
 
   async function handleGeneratePlayerAssist() {
@@ -340,6 +435,56 @@ export function StoryWorkspacePage() {
 
   return (
     <div className="flex min-h-[72vh] flex-col">
+      <div
+        className={[
+          "fixed inset-0 z-[70]",
+          assistantEditMessage ? "pointer-events-auto" : "pointer-events-none",
+        ].join(" ")}
+        aria-hidden={!assistantEditMessage}
+      >
+        <button
+          type="button"
+          aria-label="Close editor"
+          className={[
+            "absolute inset-0 bg-slate-950/65 backdrop-blur-sm transition-opacity duration-200",
+            assistantEditMessage ? "opacity-100" : "opacity-0",
+          ].join(" ")}
+          onClick={handleCloseAssistantEdit}
+        />
+        <div
+          className={[
+            "absolute inset-0 flex items-center justify-center p-4 transition-opacity duration-200",
+            assistantEditMessage ? "opacity-100" : "opacity-0",
+          ].join(" ")}
+        >
+          <div className="w-full max-w-2xl">
+            <Panel padding="lg" role="dialog" aria-modal="true">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                Edit Last AI Message
+              </div>
+              <div className="mt-4 space-y-4">
+                <TextAreaInput
+                  value={assistantEditContent}
+                  onChange={(event) => setAssistantEditContent(event.target.value)}
+                />
+                {assistantEditError ? (
+                  <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                    {assistantEditError}
+                  </div>
+                ) : null}
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                  <Button variant="ghost" onClick={handleCloseAssistantEdit}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSaveAssistantEdit} disabled={isAssistantEditSaving}>
+                    {isAssistantEditSaving ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              </div>
+            </Panel>
+          </div>
+        </div>
+      </div>
       <div className="border-b border-white/8 pb-5">
         <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
           {activeUniverse.name} · {activePlayerCharacter.name}
@@ -414,6 +559,9 @@ export function StoryWorkspacePage() {
                       playerCharacterName={activePlayerCharacter.name}
                       latestUserMessage={latestUserMessage}
                       onEdit={populateComposerFromMessage}
+                      onQuickEdit={handleOpenAssistantEdit}
+                      onRegenerate={handleRegenerateLastAssistant}
+                      isLatestAssistant={message.id === latestAssistantMessage?.id}
                       onDelete={handleDeleteMessage}
                       highlighted={highlightedMessageId === message.id}
                     />,
@@ -449,6 +597,32 @@ export function StoryWorkspacePage() {
           />
         )}
       </div>
+
+      {readerMode ? null : (
+        latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
+          <Panel className="mt-4" padding="sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-ink-muted">Last AI message</div>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button
+                  variant="secondary"
+                  onClick={handleOpenAssistantEdit}
+                  disabled={isGenerating || isGeneratingAssist || isRegenerating}
+                >
+                  Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleRegenerateLastAssistant}
+                  disabled={isGenerating || isGeneratingAssist || isRegenerating}
+                >
+                  {isRegenerating ? "Regenerating..." : "Regenerate"}
+                </Button>
+              </div>
+            </div>
+          </Panel>
+        ) : null
+      )}
 
       {readerMode ? null : (
         <Panel className="mt-4" padding="sm">
