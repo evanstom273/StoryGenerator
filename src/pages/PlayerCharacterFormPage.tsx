@@ -210,124 +210,6 @@ export function PlayerCharacterFormPage() {
     }
   }
 
-  async function handleRandomizeEmptyFields() {
-    const candidateFields: Array<keyof PlayerCharacterDraft> = [
-      "name",
-      "age",
-      "gender",
-      "species",
-      "pronouns",
-      "appearance",
-      "personality",
-      "background",
-      "goals",
-      "notes",
-    ];
-    const fields = candidateFields.filter((field) => !formState[field].trim());
-
-    if (!fields.length) {
-      setGeneratorError("No empty fields to randomize.");
-      return;
-    }
-
-    const emptyAtStart = new Set(fields);
-
-    if (!formState.universeId) {
-      setGeneratorError("Select a universe before generating a character.");
-      return;
-    }
-
-    setIsGenerating(true);
-    setGeneratorError(null);
-
-    try {
-      const patch = await generatePlayerCharacterDraft(formState.universeId, fields, formState);
-      setFormState((current) => {
-        const next = { ...current };
-        for (const field of fields) {
-          const value = (patch as any)[field];
-          if (typeof value === "string" && emptyAtStart.has(field) && !current[field].trim()) {
-            (next as any)[field] = value;
-          }
-        }
-        return next;
-      });
-    } catch (error) {
-      setGeneratorError(
-        error instanceof Error ? error.message : "Unable to generate character fields.",
-      );
-    } finally {
-      setIsGenerating(false);
-    }
-  }
-
-  async function handleRandomizeRemainingFields() {
-    const candidateFields: Array<keyof PlayerCharacterDraft> = [
-      "gender",
-      "species",
-      "pronouns",
-      "appearance",
-      "personality",
-      "background",
-      "goals",
-      "notes",
-    ];
-    const fields = candidateFields.filter((field) => !formState[field].trim());
-
-    if (!fields.length) {
-      setGeneratorError("No remaining fields to randomize.");
-      return;
-    }
-
-    const emptyAtStart = new Set(fields);
-
-    if (!formState.universeId) {
-      setGeneratorError("Select a universe before generating a character.");
-      return;
-    }
-
-    setIsGenerating(true);
-    setGeneratorError(null);
-
-    try {
-      const patch = await generatePlayerCharacterDraft(formState.universeId, fields, formState);
-      setFormState((current) => {
-        const next = { ...current };
-        for (const field of fields) {
-          const value = (patch as any)[field];
-          if (typeof value === "string" && emptyAtStart.has(field) && !current[field].trim()) {
-            (next as any)[field] = value;
-          }
-        }
-        return next;
-      });
-    } catch (error) {
-      setGeneratorError(
-        error instanceof Error ? error.message : "Unable to generate character fields.",
-      );
-    } finally {
-      setIsGenerating(false);
-    }
-  }
-
-  async function handleRandomizeAllFields() {
-    const fields: Array<keyof PlayerCharacterDraft> = [
-      "name",
-      "age",
-      "gender",
-      "species",
-      "pronouns",
-      "characterConcept",
-      "appearance",
-      "personality",
-      "background",
-      "goals",
-      "notes",
-    ];
-
-    await handleRandomize(fields);
-  }
-
   async function handleGenerateCharacterDetails(mode: "overwrite" | "fillEmpty") {
     const candidateFields: Array<keyof PlayerCharacterDraft> = [
       "appearance",
@@ -339,7 +221,7 @@ export function PlayerCharacterFormPage() {
 
     const fields =
       mode === "fillEmpty"
-        ? candidateFields.filter((field) => !formState[field].trim())
+        ? candidateFields.filter((field) => !((formState as any)[field] ?? "").trim())
         : candidateFields;
 
     if (!fields.length) {
