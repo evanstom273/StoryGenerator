@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.14.1";
+export const APP_VERSION = "1.14.2";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -216,6 +216,14 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     fixed: [
       "Promoting a Quick Character no longer creates duplicates (promotion converts the existing record in-place)",
       "Cleanup routine updates story character references and removes losing duplicate records safely",
+    ],
+    knownIssues: [],
+  },
+  "1.14.2": {
+    title: "Auto Indexing Consistency Hotfix",
+    added: [],
+    fixed: [
+      "Automatic story-state updates now run the same full deep indexing pipeline as manual Re-indexing for consistent results",
     ],
     knownIssues: [],
   },

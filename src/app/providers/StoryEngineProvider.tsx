@@ -32,10 +32,6 @@ import {
 } from "../../lib/ai/characterGenerator";
 import { extractFirstJsonObject, safeParseJsonObject } from "../../lib/ai/json";
 import {
-  buildStoryStateExtractionPrompt,
-  parseStoryStateData,
-} from "../../lib/ai/storyStateExtractor";
-import {
   normalizeStoryStateToV2,
   finalizeStoryStateForSave,
   reconcileStoryIndexes,
@@ -533,43 +529,34 @@ export function StoryEngineProvider({
       const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
       const provider = createAIProvider(providerType);
 
-      const summaryText = (() => {
-        const direct = story.currentSummary?.trim();
-        if (direct) return direct;
-        const json = storyState?.stateJson?.trim() ?? "";
-        if (!json) return "";
-        const parsed = safeParseStoryStateData(json);
-        return parsed?.summaries?.worldSummary?.trim() ?? "";
-      })();
-
-      const extractionContext = buildStoryStateExtractionPrompt({
-        playerName: playerCharacter.name,
-        summaryText,
-        recentMessages: refreshedMessages,
-        existingStateJson: storyState?.stateJson,
-        messageNumberStart: 1,
-        messageNumberTotal: refreshedMessages.length,
-      });
-
-      const stateResponse = await provider.generateResponse({
+      const rebuilt = await rebuildStoryMemoryAndIndexes({
+        storyId,
+        repository,
+        provider,
         apiKey,
         model,
-        messages: extractionContext,
+        onProgress: () => {},
       });
-
-      const parsedState = parseStoryStateData(stateResponse.content);
-      if (!parsedState) {
-        return;
-      }
 
       const now = new Date().toISOString();
-      const nextStateJson = finalizeStoryStateForSave({
-        parsedState,
-        previousStateJson: storyState?.stateJson,
-        totalMessages: refreshedMessages.length,
-        now,
-        mode: "auto",
-      });
+      const nextStateJson = (() => {
+        try {
+          const parsed = safeParseStoryStateData(rebuilt.stateJson);
+          if (!parsed) {
+            return rebuilt.stateJson;
+          }
+
+          return finalizeStoryStateForSave({
+            parsedState: parsed,
+            previousStateJson: storyState?.stateJson,
+            totalMessages: refreshedMessages.length,
+            now,
+            mode: "deep",
+          });
+        } catch {
+          return rebuilt.stateJson;
+        }
+      })();
 
       await repository.saveStoryState({
         id: `story-state:${storyId}`,
@@ -578,11 +565,10 @@ export function StoryEngineProvider({
         updatedAt: now,
       });
 
-      const fallbackSummary = parsedState.summaries?.worldSummary?.trim();
-      if (!story.currentSummary?.trim() && fallbackSummary) {
+      if (!story.currentSummary?.trim() && rebuilt.summaryText?.trim()) {
         await repository.saveStory({
           ...story,
-          currentSummary: fallbackSummary,
+          currentSummary: rebuilt.summaryText.trim(),
           updatedAt: new Date().toISOString(),
         });
       }
@@ -2346,7 +2332,6 @@ export function StoryEngineProvider({
         await repository.saveStoryMessage(assistantMessage);
 
         const updatedMessages = await repository.listStoryMessages(storyId);
-        let summaryForState = story.currentSummary;
 
         if (updatedMessages.length > 0 && updatedMessages.length % 20 === 0) {
           const summaryContext = buildStorySummaryContext({
@@ -2375,56 +2360,6 @@ export function StoryEngineProvider({
             currentSummary: summaryText,
             updatedAt: new Date().toISOString(),
           });
-
-          summaryForState = summaryText;
-        }
-
-        if (updatedMessages.length > 0 && updatedMessages.length % 10 === 0) {
-          try {
-            const extractionContext = buildStoryStateExtractionPrompt({
-              playerName: playerCharacter.name,
-              summaryText: summaryForState,
-              recentMessages: updatedMessages,
-              existingStateJson: storyState?.stateJson,
-              messageNumberStart: 1,
-              messageNumberTotal: updatedMessages.length,
-            });
-
-            const stateResponse = await provider.generateResponse({
-              apiKey,
-              model,
-              messages: extractionContext,
-            });
-
-            const parsedState = parseStoryStateData(stateResponse.content);
-
-            if (parsedState) {
-              const now = new Date().toISOString();
-              const nextStateJson = finalizeStoryStateForSave({
-                parsedState,
-                previousStateJson: storyState?.stateJson,
-                totalMessages: updatedMessages.length,
-                now,
-                mode: "auto",
-              });
-              const record: StoryState = {
-                id: `story-state:${storyId}`,
-                storyId,
-                stateJson: nextStateJson,
-                updatedAt: now,
-              };
-              await repository.saveStoryState(record);
-
-              const fallbackSummary = parsedState.summaries?.worldSummary?.trim();
-              if (!story.currentSummary?.trim() && fallbackSummary) {
-                await repository.saveStory({
-                  ...story,
-                  currentSummary: fallbackSummary,
-                  updatedAt: new Date().toISOString(),
-                });
-              }
-            }
-          } catch {}
         }
 
         await touchStory(storyId);
@@ -2475,7 +2410,7 @@ export function StoryEngineProvider({
               await hydrate(false);
             }
 
-            if (nextDeepCounter < 20) {
+            if (nextDeepCounter < 10) {
               return;
             }
 
