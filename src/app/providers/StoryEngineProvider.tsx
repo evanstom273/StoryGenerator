@@ -116,6 +116,10 @@ interface StoryEngineContextValue {
   deleteUniverse: (id: string) => Promise<GuardedDeleteResult>;
   createPlayerCharacter: (draft: PlayerCharacterDraft) => Promise<PlayerCharacter>;
   promoteStoryPlayerCharacter: (storyId: string) => Promise<PlayerCharacter>;
+  cleanupDuplicatePlayerCharacters: () => Promise<{
+    mergedDuplicates: number;
+    updatedStories: number;
+  }>;
   updatePlayerCharacter: (
     id: string,
     draft: PlayerCharacterDraft,
@@ -199,6 +203,33 @@ interface StoryEngineContextValue {
 }
 
 const StoryEngineContext = createContext<StoryEngineContextValue | null>(null);
+
+function normalizeDuplicateKeyPart(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isBlank(value: string | undefined) {
+  return !value || !value.trim();
+}
+
+function mergePlayerCharacterFillEmpty(
+  winner: PlayerCharacter,
+  candidate: PlayerCharacter,
+): PlayerCharacter {
+  return {
+    ...winner,
+    age: isBlank(winner.age) ? candidate.age : winner.age,
+    gender: isBlank(winner.gender) ? candidate.gender : winner.gender,
+    species: isBlank(winner.species) ? candidate.species : winner.species,
+    pronouns: isBlank(winner.pronouns) ? candidate.pronouns : winner.pronouns,
+    characterConcept: isBlank(winner.characterConcept) ? candidate.characterConcept : winner.characterConcept,
+    appearance: isBlank(winner.appearance) ? candidate.appearance : winner.appearance,
+    personality: isBlank(winner.personality) ? candidate.personality : winner.personality,
+    background: isBlank(winner.background) ? candidate.background : winner.background,
+    goals: isBlank(winner.goals) ? candidate.goals : winner.goals,
+    notes: isBlank(winner.notes) ? candidate.notes : winner.notes,
+  };
+}
 
 function buildStorageStatus(
   ready: boolean,
@@ -693,20 +724,97 @@ export function StoryEngineProvider({
           throw new Error("This story is already using a library character.");
         }
 
-        const now = new Date().toISOString();
         const promoted: PlayerCharacter = {
           ...playerCharacter,
-          id: createEntityId("player-character"),
           universeId: story.universeId,
           scope: "library",
           storyId: undefined,
-          createdAt: now,
+          createdAt: new Date().toISOString(),
         };
 
         await repository.savePlayerCharacter(promoted);
         await hydrate(false);
 
         return promoted;
+      },
+      async cleanupDuplicatePlayerCharacters() {
+        const [allCharacters, allStories] = await Promise.all([
+          repository.listPlayerCharacters(),
+          repository.listStories(),
+        ]);
+
+        const groups = new Map<string, PlayerCharacter[]>();
+        for (const character of allCharacters) {
+          const key = `${character.universeId}::${normalizeDuplicateKeyPart(character.name)}`;
+          const existing = groups.get(key);
+          if (existing) {
+            existing.push(character);
+          } else {
+            groups.set(key, [character]);
+          }
+        }
+
+        let mergedDuplicates = 0;
+        let updatedStories = 0;
+
+        for (const group of groups.values()) {
+          if (group.length < 2) {
+            continue;
+          }
+
+          const library = group.filter((character) => (character.scope ?? "library") === "library");
+          const storyScoped = group.filter(
+            (character) =>
+              (character.scope ?? "library") === "story" || Boolean(character.storyId),
+          );
+
+          if (!library.length || !storyScoped.length) {
+            continue;
+          }
+
+          const pool = [...library].sort((left, right) => {
+            const timeDelta =
+              new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+            return timeDelta || left.id.localeCompare(right.id);
+          });
+
+          const winnerBase = pool[0];
+          const losers = group.filter((candidate) => candidate.id !== winnerBase.id);
+
+          const mergedWinner = losers.reduce(
+            (winner, candidate) => mergePlayerCharacterFillEmpty(winner, candidate),
+            {
+              ...winnerBase,
+              scope: "library",
+              storyId: undefined,
+            } satisfies PlayerCharacter,
+          );
+
+          await repository.savePlayerCharacter(mergedWinner);
+
+          const losingIds = new Set(losers.map((character) => character.id));
+          for (const story of allStories) {
+            if (!losingIds.has(story.playerCharacterId)) {
+              continue;
+            }
+
+            updatedStories += 1;
+            await repository.saveStory({
+              ...story,
+              playerCharacterId: mergedWinner.id,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+
+          for (const loser of losers) {
+            mergedDuplicates += 1;
+            await repository.deletePlayerCharacter(loser.id);
+          }
+        }
+
+        await hydrate(false);
+
+        return { mergedDuplicates, updatedStories };
       },
       async updatePlayerCharacter(id, draft) {
         const currentCharacter = await repository.getPlayerCharacter(id);

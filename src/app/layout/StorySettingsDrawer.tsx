@@ -44,6 +44,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     exportStory,
     fetchStoryState,
     promoteStoryPlayerCharacter,
+    cleanupDuplicatePlayerCharacters,
     updateStory,
     deleteStory,
     getStoryAIConfig,
@@ -70,6 +71,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   );
   const [isSavingAI, setIsSavingAI] = useState(false);
   const [isPromotingCharacter, setIsPromotingCharacter] = useState(false);
+  const [isCleanupConfirmOpen, setIsCleanupConfirmOpen] = useState(false);
+  const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
+  const [cleanupSummary, setCleanupSummary] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [storyStateData, setStoryStateData] = useState<ReturnType<typeof normalizeStoryStateToV2> | null>(
     null,
@@ -83,21 +87,35 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
     setIsPromotingCharacter(true);
     setPageError(null);
+    setCleanupSummary(null);
 
     try {
-      const promoted = await promoteStoryPlayerCharacter(story.id);
-      const switchStory = window.confirm(
-        "Saved to Player Characters. Switch this story to the new permanent character?",
-      );
-      if (switchStory) {
-        await updateStory(story.id, { playerCharacterId: promoted.id });
-      }
+      await promoteStoryPlayerCharacter(story.id);
+      window.alert("Saved to Player Characters.");
     } catch (error) {
       setPageError(
         error instanceof Error ? error.message : "Unable to promote character.",
       );
     } finally {
       setIsPromotingCharacter(false);
+    }
+  }
+
+  async function handleCleanupDuplicates() {
+    setIsCleaningDuplicates(true);
+    setPageError(null);
+    setCleanupSummary(null);
+
+    try {
+      const result = await cleanupDuplicatePlayerCharacters();
+      const summary = `Merged ${result.mergedDuplicates} duplicates; updated ${result.updatedStories} stories.`;
+      setCleanupSummary(summary);
+      window.alert(summary);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to cleanup duplicates.");
+    } finally {
+      setIsCleaningDuplicates(false);
+      setIsCleanupConfirmOpen(false);
     }
   }
 
@@ -577,6 +595,19 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   >
                     {isRebuilding ? "Re-indexing..." : "Re-index"}
                   </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-2xl"
+                    disabled={isCleaningDuplicates}
+                    onClick={() => setIsCleanupConfirmOpen(true)}
+                  >
+                    {isCleaningDuplicates ? "Cleaning..." : "Cleanup Duplicates"}
+                  </Button>
+                  {cleanupSummary ? (
+                    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                      {cleanupSummary}
+                    </div>
+                  ) : null}
                   {rebuildInfo ? (
                     <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
                       {rebuildInfo.phase === "error"
@@ -777,6 +808,59 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               {pageError}
             </div>
           ) : null}
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          "fixed inset-0 z-[80]",
+          isCleanupConfirmOpen ? "pointer-events-auto" : "pointer-events-none",
+        )}
+        aria-hidden={!isCleanupConfirmOpen}
+      >
+        <button
+          type="button"
+          aria-label="Close cleanup dialog"
+          className={cn(
+            "absolute inset-0 bg-slate-950/65 backdrop-blur-sm transition-opacity duration-200",
+            isCleanupConfirmOpen ? "opacity-100" : "opacity-0",
+          )}
+          onClick={() => setIsCleanupConfirmOpen(false)}
+        />
+        <div
+          className={cn(
+            "absolute inset-0 flex items-center justify-center p-4 transition-opacity duration-200",
+            isCleanupConfirmOpen ? "opacity-100" : "opacity-0",
+          )}
+        >
+          <div className="w-full max-w-lg">
+            <Panel padding="lg" role="dialog" aria-modal="true">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                Cleanup
+              </div>
+              <div className="mt-3 text-xl font-semibold tracking-tight text-ink">
+                Cleanup Duplicates
+              </div>
+              <div className="mt-3 text-sm leading-7 text-ink-muted">
+                This will merge duplicate Player Characters and update any stories that reference them.
+              </div>
+              <div className="mt-2 text-sm leading-7 text-ink-muted">
+                It targets likely duplicates with the same name and universe where one is story-scoped and one is in the library.
+              </div>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsCleanupConfirmOpen(false)}
+                  disabled={isCleaningDuplicates}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={() => void handleCleanupDuplicates()} disabled={isCleaningDuplicates}>
+                  {isCleaningDuplicates ? "Cleaning..." : "Run Cleanup"}
+                </Button>
+              </div>
+            </Panel>
+          </div>
         </div>
       </div>
     </div>
