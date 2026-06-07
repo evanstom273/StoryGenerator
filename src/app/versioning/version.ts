@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.13.0";
+export const APP_VERSION = "1.14.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -194,6 +194,20 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Create a Quick Story Character during story creation and promote it to the library later",
     ],
     fixed: [],
+    knownIssues: [],
+  },
+  "1.14.0": {
+    title: "Reliability + Identity + Android Auto Backup",
+    added: [
+      "Automatic story-state refresh when the active protagonist identity changes",
+      "Relationship indexes now merge by character pair and show dynamic metrics (trust/loyalty/tension/etc.)",
+      "User messages can set a speaker label using a Name: prefix",
+      "Custom theme accent now derives readable foreground text color for accent buttons",
+      "Android auto-backup every ~12 hours (keeps last 5) with a share prompt",
+    ],
+    fixed: [
+      "Auto indexing and manual deep indexing now share the same reconciliation step for consistent outputs",
+    ],
     knownIssues: [],
   },
 };

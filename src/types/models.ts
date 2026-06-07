@@ -122,7 +122,9 @@ export type RelationshipIndexEntry = {
   b: string;
   friendship?: number;
   trust?: number;
+  respect?: number;
   loyalty?: number;
+  tension?: number;
   hostility?: number;
   summary?: string;
   evidence?: EvidenceRef;

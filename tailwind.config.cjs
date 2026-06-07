@@ -14,6 +14,7 @@ module.exports = {
         "ink-soft": "rgb(var(--ink-soft-rgb) / <alpha-value>)",
         "ink-muted": "rgb(var(--ink-muted-rgb) / <alpha-value>)",
         accent: "rgb(var(--accent-rgb) / <alpha-value>)",
+        "accent-foreground": "rgb(var(--accent-foreground-rgb) / <alpha-value>)",
         "accent-secondary": "rgb(var(--accent-secondary-rgb) / <alpha-value>)",
         "accent-soft": "rgb(var(--accent-soft-rgb) / <alpha-value>)",
         "accent-hover": "rgb(var(--accent-hover-rgb) / <alpha-value>)",

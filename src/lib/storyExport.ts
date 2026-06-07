@@ -55,7 +55,7 @@ function resolveSpeakerLabel(
   playerCharacter: PlayerCharacter,
 ) {
   if (message.role === "user") {
-    return playerCharacter.name;
+    return message.speakerName?.trim() || playerCharacter.name;
   }
 
   if (message.speakerName?.trim()) {
@@ -103,8 +103,9 @@ function toMarkdown(bundle: StoryExportBundle) {
     .map((message) => {
       if (message.role === "user") {
         latestUserMessage = message.content;
+        const speaker = resolveSpeakerLabel(message, bundle.playerCharacter);
         return [
-          `${bundle.playerCharacter.name}:`,
+          `${speaker}:`,
           "",
           message.content,
           "",

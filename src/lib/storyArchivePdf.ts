@@ -30,7 +30,8 @@ function formatEvidence(numbers: number[]) {
 
 function resolveTranscriptSpeakerLabel(message: StoryMessage, playerName: string) {
   if (message.role === "user") {
-    return `USER (${playerName})`;
+    const label = message.speakerName?.trim() || playerName;
+    return `USER (${label})`;
   }
 
   if (message.role === "system" || message.speakerType === "system") {
@@ -317,7 +318,9 @@ export function serializeStoryArchivePdf(
       b: typeof entry?.b === "string" ? entry.b.trim() : "",
       friendship: typeof entry?.friendship === "number" ? entry.friendship : null,
       trust: typeof entry?.trust === "number" ? entry.trust : null,
+      respect: typeof entry?.respect === "number" ? entry.respect : null,
       loyalty: typeof entry?.loyalty === "number" ? entry.loyalty : null,
+      tension: typeof entry?.tension === "number" ? entry.tension : null,
       hostility: typeof entry?.hostility === "number" ? entry.hostility : null,
       summary: typeof entry?.summary === "string" ? entry.summary.trim() : "",
       evidence: formatEvidence(coerceEvidenceNumbers(entry)),
@@ -330,7 +333,9 @@ export function serializeStoryArchivePdf(
       writeSubheading(`${entry.a} <-> ${entry.b}`);
       if (entry.friendship != null) writeBullet("Friendship", String(Math.round(entry.friendship)));
       if (entry.trust != null) writeBullet("Trust", String(Math.round(entry.trust)));
+      if (entry.respect != null) writeBullet("Respect", String(Math.round(entry.respect)));
       if (entry.loyalty != null) writeBullet("Loyalty", String(Math.round(entry.loyalty)));
+      if (entry.tension != null) writeBullet("Tension", String(Math.round(entry.tension)));
       if (entry.hostility != null) writeBullet("Hostility", String(Math.round(entry.hostility)));
       if (entry.summary) writeParagraph(entry.summary);
       if (entry.evidence) writeBullet("Evidence", entry.evidence);

@@ -37,10 +37,13 @@ import {
 } from "../../lib/ai/storyStateExtractor";
 import {
   normalizeStoryStateToV2,
+  finalizeStoryStateForSave,
+  reconcileStoryIndexes,
   safeParseStoryStateData,
   withIndexedMetadata,
 } from "../../lib/storyStateV2";
 import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
+import { runAndroidAutoBackupIfNeeded } from "../../lib/androidAutoBackup";
 import {
   getPlayerCharacterAuthorshipViolation,
 } from "../../lib/storyText/playerProtection";
@@ -48,6 +51,7 @@ import {
   detectSceneStateRenarration,
   sanitizeAssistantTranscript,
 } from "../../lib/storyText/transcriptSanitizer";
+import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import type {
   AIProviderType,
   AISettings,
@@ -151,7 +155,7 @@ interface StoryEngineContextValue {
     characterId: string,
   ) => Promise<PlayerCharacterExportBundleV1 | null>;
   fetchStoryState: (storyId: string) => Promise<StoryState | null>;
-  refreshStoryState: (storyId: string) => Promise<void>;
+  refreshStoryState: (storyId: string, opts?: { force?: boolean }) => Promise<void>;
   updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal }) => Promise<void>;
   importUniverseExport: (
     bundle: UniverseExportBundleV1,
@@ -364,6 +368,42 @@ export function StoryEngineProvider({
     void hydrate(true);
   }, [hydrate]);
 
+  useEffect(() => {
+    const ready = !loading && !errorMessage;
+    if (!ready) {
+      return;
+    }
+
+    let listener: { remove: () => Promise<void> } | { remove: () => void } | null = null;
+
+    void (async () => {
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") {
+          return;
+        }
+
+        await runAndroidAutoBackupIfNeeded(repository);
+
+        const { App } = await import("@capacitor/app");
+        listener = await App.addListener("appStateChange", ({ isActive }) => {
+          if (!isActive) {
+            return;
+          }
+          void runAndroidAutoBackupIfNeeded(repository);
+        });
+      } catch {}
+    })();
+
+    return () => {
+      void (async () => {
+        try {
+          await listener?.remove();
+        } catch {}
+      })();
+    };
+  }, [errorMessage, loading, repository]);
+
   const resolveAIProfile = useCallback(
     async (providerType: AIProviderType, storyModelOverride?: string) => {
       const settings = await getNormalizedAISettings();
@@ -425,6 +465,97 @@ export function StoryEngineProvider({
       messages,
       errorMessage,
     );
+
+    const refreshStoryStateInternal = async (storyId: string, opts?: { force?: boolean }) => {
+      const story = await repository.getStory(storyId);
+      if (!story) {
+        return;
+      }
+
+      const [playerCharacter, refreshedMessages, storyConfig, storyState] = await Promise.all([
+        repository.getPlayerCharacter(story.playerCharacterId),
+        repository.listStoryMessages(storyId),
+        repository.getStoryAIConfig(storyId),
+        repository.getStoryState(storyId),
+      ]);
+
+      if (!playerCharacter) {
+        return;
+      }
+
+      const lastMessage = refreshedMessages[refreshedMessages.length - 1];
+      if (
+        !opts?.force &&
+        storyState?.updatedAt &&
+        lastMessage?.timestamp &&
+        storyState.updatedAt >= lastMessage.timestamp
+      ) {
+        return;
+      }
+
+      const settings = await getNormalizedAISettings();
+      if (!settings) {
+        return;
+      }
+
+      const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+      const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+      const provider = createAIProvider(providerType);
+
+      const summaryText = (() => {
+        const direct = story.currentSummary?.trim();
+        if (direct) return direct;
+        const json = storyState?.stateJson?.trim() ?? "";
+        if (!json) return "";
+        const parsed = safeParseStoryStateData(json);
+        return parsed?.summaries?.worldSummary?.trim() ?? "";
+      })();
+
+      const extractionContext = buildStoryStateExtractionPrompt({
+        playerName: playerCharacter.name,
+        summaryText,
+        recentMessages: refreshedMessages,
+        existingStateJson: storyState?.stateJson,
+        messageNumberStart: 1,
+        messageNumberTotal: refreshedMessages.length,
+      });
+
+      const stateResponse = await provider.generateResponse({
+        apiKey,
+        model,
+        messages: extractionContext,
+      });
+
+      const parsedState = parseStoryStateData(stateResponse.content);
+      if (!parsedState) {
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const nextStateJson = finalizeStoryStateForSave({
+        parsedState,
+        previousStateJson: storyState?.stateJson,
+        totalMessages: refreshedMessages.length,
+        now,
+        mode: "auto",
+      });
+
+      await repository.saveStoryState({
+        id: `story-state:${storyId}`,
+        storyId,
+        stateJson: nextStateJson,
+        updatedAt: now,
+      });
+
+      const fallbackSummary = parsedState.summaries?.worldSummary?.trim();
+      if (!story.currentSummary?.trim() && fallbackSummary) {
+        await repository.saveStory({
+          ...story,
+          currentSummary: fallbackSummary,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    };
 
     return {
       loading,
@@ -602,8 +733,39 @@ export function StoryEngineProvider({
           storyId: draft.storyId ?? currentCharacter.storyId,
         };
 
+        const identityChanged =
+          currentCharacter.name.trim() !== nextCharacter.name.trim() ||
+          currentCharacter.pronouns.trim() !== nextCharacter.pronouns.trim() ||
+          (currentCharacter.species ?? "").trim() !== (nextCharacter.species ?? "").trim() ||
+          currentCharacter.gender.trim() !== nextCharacter.gender.trim() ||
+          currentCharacter.universeId !== nextCharacter.universeId;
+
         await repository.savePlayerCharacter(nextCharacter);
         await hydrate(false);
+
+        if (identityChanged) {
+          const linkedStoryIds = Array.from(
+            new Set([
+              ...stories.filter((story) => story.playerCharacterId === id).map((story) => story.id),
+              ...((nextCharacter.scope ?? "library") === "story" && nextCharacter.storyId ? [nextCharacter.storyId] : []),
+            ]),
+          );
+
+          for (const storyId of linkedStoryIds) {
+            void (async () => {
+              try {
+                await refreshStoryStateInternal(storyId, { force: true });
+                setRebuildStatus({
+                  storyId,
+                  phase: "done",
+                  processedMessages: 0,
+                  totalMessages: 0,
+                  message: "Story state updated due to character changes.",
+                });
+              } catch {}
+            })();
+          }
+        }
 
         return nextCharacter;
       },
@@ -667,13 +829,14 @@ export function StoryEngineProvider({
         await hydrate(false);
       },
       async createMessage(draft) {
+        const prefix = draft.role === "user" ? extractSpeakerPrefix(draft.content) : null;
         const nextMessage: StoryMessage = {
           id: createEntityId("story-message"),
           storyId: draft.storyId,
           role: draft.role,
-          content: draft.content.trim(),
+          content: (prefix?.strippedContent ?? draft.content).trim(),
           timestamp: new Date().toISOString(),
-          speakerName: draft.speakerName?.trim() || undefined,
+          speakerName: draft.speakerName?.trim() || prefix?.speakerLabel || undefined,
           speakerType: draft.speakerType,
           editedAt: draft.editedAt,
           regeneratedAt: draft.regeneratedAt,
@@ -693,11 +856,12 @@ export function StoryEngineProvider({
           return null;
         }
 
+        const prefix = draft.role === "user" ? extractSpeakerPrefix(draft.content) : null;
         const nextMessage: StoryMessage = {
           ...currentMessage,
           role: draft.role,
-          content: draft.content.trim(),
-          speakerName: draft.speakerName?.trim() || undefined,
+          content: (prefix?.strippedContent ?? draft.content).trim(),
+          speakerName: draft.speakerName?.trim() || prefix?.speakerLabel || undefined,
           speakerType: draft.speakerType,
           editedAt: draft.editedAt ?? currentMessage.editedAt,
           regeneratedAt: draft.regeneratedAt ?? currentMessage.regeneratedAt,
@@ -1247,84 +1411,7 @@ export function StoryEngineProvider({
       fetchStoryState(storyId) {
         return repository.getStoryState(storyId);
       },
-      async refreshStoryState(storyId) {
-        const story = await repository.getStory(storyId);
-        if (!story) {
-          return;
-        }
-
-        const [playerCharacter, refreshedMessages, storyConfig, storyState] = await Promise.all([
-          repository.getPlayerCharacter(story.playerCharacterId),
-          repository.listStoryMessages(storyId),
-          repository.getStoryAIConfig(storyId),
-          repository.getStoryState(storyId),
-        ]);
-
-        if (!playerCharacter) {
-          return;
-        }
-
-        const lastMessage = refreshedMessages[refreshedMessages.length - 1];
-        if (storyState?.updatedAt && lastMessage?.timestamp && storyState.updatedAt >= lastMessage.timestamp) {
-          return;
-        }
-
-        const settings = await getNormalizedAISettings();
-        if (!settings) {
-          return;
-        }
-
-        const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
-        const provider = createAIProvider(providerType);
-
-        const summaryText = (() => {
-          const direct = story.currentSummary?.trim();
-          if (direct) return direct;
-          const json = storyState?.stateJson?.trim() ?? "";
-          if (!json) return "";
-          const parsed = safeParseStoryStateData(json);
-          return parsed?.summaries?.worldSummary?.trim() ?? "";
-        })();
-
-        const extractionContext = buildStoryStateExtractionPrompt({
-          playerName: playerCharacter.name,
-          summaryText,
-          recentMessages: refreshedMessages,
-          existingStateJson: storyState?.stateJson,
-          messageNumberStart: 1,
-          messageNumberTotal: refreshedMessages.length,
-        });
-
-        const stateResponse = await provider.generateResponse({
-          apiKey,
-          model,
-          messages: extractionContext,
-        });
-
-        const parsedState = parseStoryStateData(stateResponse.content);
-        if (!parsedState) {
-          return;
-        }
-
-        const normalizedState = withIndexedMetadata(normalizeStoryStateToV2(parsedState));
-
-        await repository.saveStoryState({
-          id: `story-state:${storyId}`,
-          storyId,
-          stateJson: JSON.stringify(normalizedState),
-          updatedAt: new Date().toISOString(),
-        });
-
-        const fallbackSummary = parsedState.summaries?.worldSummary?.trim();
-        if (!story.currentSummary?.trim() && fallbackSummary) {
-          await repository.saveStory({
-            ...story,
-            currentSummary: fallbackSummary,
-            updatedAt: new Date().toISOString(),
-          });
-        }
-      },
+      refreshStoryState: refreshStoryStateInternal,
       async updateIndexesDeep(storyId, opts) {
         rebuildAbortRef.current?.abort();
         const controller = new AbortController();
@@ -1356,7 +1443,10 @@ export function StoryEngineProvider({
           const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
           const provider = createAIProvider(providerType);
 
-          const allMessages = await repository.listStoryMessages(storyId);
+          const [allMessages, existingStoryState] = await Promise.all([
+            repository.listStoryMessages(storyId),
+            repository.getStoryState(storyId),
+          ]);
 
           setRebuildStatus({
             storyId,
@@ -1410,23 +1500,16 @@ export function StoryEngineProvider({
           const nextStateJson = (() => {
             try {
               const parsed = safeParseStoryStateData(result.stateJson);
-              const normalized = normalizeStoryStateToV2(parsed);
-              const total = allMessages.length;
-              const patched = withIndexedMetadata({
-                ...normalized,
-                memoryArchitectureVersion: "2.0",
-                lastIndexedAt: now,
-                lastDeepIndexedAt: now,
-                lastIndexedMessageCount: total,
-                lastDeepIndexedMessageCount: total,
-                messagesSinceDeepIndexUpdate: 0,
-                indexes: {
-                  ...(normalized.indexes ?? {}),
-                  messageCount: total,
-                  messageNumberingVersion: "1.0",
-                },
+              if (!parsed) {
+                return result.stateJson;
+              }
+              return finalizeStoryStateForSave({
+                parsedState: parsed,
+                previousStateJson: existingStoryState?.stateJson,
+                totalMessages: allMessages.length,
+                now,
+                mode: "deep",
               });
-              return JSON.stringify(patched);
             } catch {
               return result.stateJson;
             }
@@ -1787,14 +1870,16 @@ export function StoryEngineProvider({
           lastMessage.content.trim() === trimmed &&
           lastMessage.storyId === storyId;
 
+        const prefix = extractSpeakerPrefix(trimmed);
         const userMessage: StoryMessage = shouldReuseLastUserMessage
           ? lastMessage
           : {
               id: createEntityId("story-message"),
               storyId,
               role: "user",
-              content: trimmed,
+              content: (prefix?.strippedContent ?? trimmed).trim(),
               timestamp: new Date().toISOString(),
+              speakerName: prefix?.speakerLabel,
               speakerType: "player",
             };
 
@@ -2206,12 +2291,19 @@ export function StoryEngineProvider({
             const parsedState = parseStoryStateData(stateResponse.content);
 
             if (parsedState) {
-              const normalizedState = withIndexedMetadata(normalizeStoryStateToV2(parsedState));
+              const now = new Date().toISOString();
+              const nextStateJson = finalizeStoryStateForSave({
+                parsedState,
+                previousStateJson: storyState?.stateJson,
+                totalMessages: updatedMessages.length,
+                now,
+                mode: "auto",
+              });
               const record: StoryState = {
                 id: `story-state:${storyId}`,
                 storyId,
-                stateJson: JSON.stringify(normalizedState),
-                updatedAt: new Date().toISOString(),
+                stateJson: nextStateJson,
+                updatedAt: now,
               };
               await repository.saveStoryState(record);
 
@@ -2253,12 +2345,12 @@ export function StoryEngineProvider({
 
             if (baseState.messagesSinceDeepIndexUpdate !== nextDeepCounter) {
               const now = new Date().toISOString();
+              const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages);
               const patched = withIndexedMetadata({
                 ...baseState,
                 memoryArchitectureVersion: "2.0",
                 messagesSinceDeepIndexUpdate: nextDeepCounter,
-                indexes: {
-                  ...(baseState.indexes ?? {}),
+                indexes: reconciledIndexes ?? {
                   messageCount: totalMessages,
                   messageNumberingVersion: "1.0",
                 },
@@ -2292,22 +2384,16 @@ export function StoryEngineProvider({
             const patchedJson = (() => {
               try {
                 const parsed = safeParseStoryStateData(rebuilt.stateJson);
-                const normalized = normalizeStoryStateToV2(parsed);
-                const patched = withIndexedMetadata({
-                  ...normalized,
-                  memoryArchitectureVersion: "2.0",
-                  lastIndexedAt: now,
-                  lastDeepIndexedAt: now,
-                  lastIndexedMessageCount: totalMessages,
-                  lastDeepIndexedMessageCount: totalMessages,
-                  messagesSinceDeepIndexUpdate: 0,
-                  indexes: {
-                    ...(normalized.indexes ?? {}),
-                    messageCount: totalMessages,
-                    messageNumberingVersion: "1.0",
-                  },
+                if (!parsed) {
+                  return rebuilt.stateJson;
+                }
+                return finalizeStoryStateForSave({
+                  parsedState: parsed,
+                  previousStateJson: latestStoryState?.stateJson,
+                  totalMessages,
+                  now,
+                  mode: "deep",
                 });
-                return JSON.stringify(patched);
               } catch {
                 return rebuilt.stateJson;
               }

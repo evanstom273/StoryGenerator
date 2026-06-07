@@ -8,7 +8,7 @@ import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 
 function resolveSpeakerLabel(message: StoryMessage, playerCharacter: PlayerCharacter) {
   if (message.role === "user") {
-    return playerCharacter.name;
+    return message.speakerName?.trim() || playerCharacter.name;
   }
 
   if (message.speakerName?.trim()) {

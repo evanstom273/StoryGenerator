@@ -725,6 +725,19 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                     <div className="font-semibold text-ink-soft">
                                       {entry.a} ↔ {entry.b}
                                     </div>
+                                    {(() => {
+                                      const parts = [
+                                        typeof entry.friendship === "number" ? `Friendship ${Math.round(entry.friendship)}` : null,
+                                        typeof entry.trust === "number" ? `Trust ${Math.round(entry.trust)}` : null,
+                                        typeof entry.respect === "number" ? `Respect ${Math.round(entry.respect)}` : null,
+                                        typeof entry.loyalty === "number" ? `Loyalty ${Math.round(entry.loyalty)}` : null,
+                                        typeof entry.tension === "number" ? `Tension ${Math.round(entry.tension)}` : null,
+                                        typeof entry.hostility === "number" ? `Hostility ${Math.round(entry.hostility)}` : null,
+                                      ].filter(Boolean);
+                                      return parts.length ? (
+                                        <div className="mt-1 text-xs text-ink-soft">{parts.join(" · ")}</div>
+                                      ) : null;
+                                    })()}
                                     {entry.summary ? (
                                       <div className="mt-1 text-xs text-ink-muted">{entry.summary}</div>
                                     ) : null}

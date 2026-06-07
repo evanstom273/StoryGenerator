@@ -77,6 +77,33 @@ function toCssRgba(value: { r: number; g: number; b: number }, alpha: number) {
   return `rgba(${value.r}, ${value.g}, ${value.b}, ${a})`;
 }
 
+function srgbToLinear(channel: number) {
+  const v = channel / 255;
+  return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+
+function relativeLuminance(rgb: { r: number; g: number; b: number }) {
+  const r = srgbToLinear(rgb.r);
+  const g = srgbToLinear(rgb.g);
+  const b = srgbToLinear(rgb.b);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(a: number, b: number) {
+  const lighter = Math.max(a, b);
+  const darker = Math.min(a, b);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function getContrastingTextRgb(accentRgb: { r: number; g: number; b: number }) {
+  const lum = relativeLuminance(accentRgb);
+  const whiteLum = 1;
+  const blackLum = 0;
+  const whiteRatio = contrastRatio(lum, whiteLum);
+  const blackRatio = contrastRatio(lum, blackLum);
+  return blackRatio >= whiteRatio ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 };
+}
+
 function deriveAccentVariants(accentRgb: { r: number; g: number; b: number }) {
   const white = { r: 255, g: 255, b: 255 };
   const accentSecondary = mixRgb(accentRgb, white, 0.32);
@@ -136,6 +163,7 @@ export function buildThemeCssVariables(params: { themeKey: ThemeKey; customAccen
   const accent = params.themeKey === "custom" ? params.customAccent : base.accent;
 
   const accentRgb = hexToRgbTriplet(accent) ?? { r: 124, g: 58, b: 237 };
+  const accentForegroundRgb = getContrastingTextRgb(accentRgb);
   const bgRgb = hexToRgbTriplet(base.bg) ?? { r: 10, g: 10, b: 10 };
   const bgElevatedRgb = hexToRgbTriplet(base.bgElevated) ?? { r: 18, g: 18, b: 18 };
   const surfaceRgb = hexToRgbTriplet(base.surface) ?? { r: 26, g: 26, b: 26 };
@@ -159,6 +187,7 @@ export function buildThemeCssVariables(params: { themeKey: ThemeKey; customAccen
     "--ink-soft-rgb": toCssRgbTriplet(textSoftRgb),
     "--ink-muted-rgb": toCssRgbTriplet(textMutedRgb),
     "--accent-rgb": toCssRgbTriplet(accentRgb),
+    "--accent-foreground-rgb": toCssRgbTriplet(accentForegroundRgb),
     "--accent-secondary-rgb": toCssRgbTriplet(derived.accentSecondary),
     "--accent-soft-rgb": toCssRgbTriplet(derived.accentSoft),
     "--accent-hover-rgb": toCssRgbTriplet(derived.accentHover),

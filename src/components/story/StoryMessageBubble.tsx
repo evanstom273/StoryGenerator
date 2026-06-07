@@ -25,7 +25,7 @@ function resolveSpeakerLabel(
   playerCharacterName: string,
 ) {
   if (role === "user") {
-    return playerCharacterName;
+    return speakerName?.trim() || playerCharacterName;
   }
 
   if (speakerName?.trim()) {
