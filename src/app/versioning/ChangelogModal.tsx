@@ -6,12 +6,12 @@ import type { ChangelogEntry } from "./version";
 export function ChangelogModal({
   open,
   appLabel,
-  entry,
+  releases,
   onClose,
 }: {
   open: boolean;
   appLabel: string;
-  entry: ChangelogEntry | null;
+  releases: Array<{ version: string; entry: ChangelogEntry }>;
   onClose: () => void;
 }) {
   return (
@@ -42,43 +42,53 @@ export function ChangelogModal({
             <div className="mt-3 text-2xl font-semibold tracking-tight text-ink">
               {appLabel}
             </div>
-            <div className="mt-2 text-sm leading-7 text-ink-muted">
-              {entry?.title ?? "No changelog entry available for this version."}
-            </div>
+            <div className="mt-2 text-sm leading-7 text-ink-muted">What’s new</div>
 
-            <div className="mt-6 space-y-6">
-              {entry?.fixed?.length ? (
-                <section>
-                  <div className="text-sm font-semibold text-ink">Fixed</div>
-                  <ul className="mt-3 space-y-2 text-sm text-ink-soft">
-                    {entry.fixed.map((item) => (
-                      <li key={item}>• {item}</li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
+            <div className="mt-6 max-h-[70vh] space-y-8 overflow-auto pr-2">
+              {releases.length ? (
+                releases.map((release) => (
+                  <section key={release.version} className="rounded-2xl border border-divider bg-white/[0.02] px-4 py-4">
+                    <div className="text-sm font-semibold text-ink">
+                      v{release.version} · {release.entry.title}
+                    </div>
 
-              {entry?.added?.length ? (
-                <section>
-                  <div className="text-sm font-semibold text-ink">Added</div>
-                  <ul className="mt-3 space-y-2 text-sm text-ink-soft">
-                    {entry.added.map((item) => (
-                      <li key={item}>• {item}</li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
+                    {release.entry.fixed?.length ? (
+                      <div className="mt-4">
+                        <div className="text-sm font-semibold text-ink">Fixed</div>
+                        <ul className="mt-3 space-y-2 text-sm text-ink-soft">
+                          {release.entry.fixed.map((item) => (
+                            <li key={item}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
 
-              {entry?.knownIssues?.length ? (
-                <section>
-                  <div className="text-sm font-semibold text-ink">Known Issues</div>
-                  <ul className="mt-3 space-y-2 text-sm text-ink-soft">
-                    {entry.knownIssues.map((item) => (
-                      <li key={item}>• {item}</li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
+                    {release.entry.added?.length ? (
+                      <div className="mt-4">
+                        <div className="text-sm font-semibold text-ink">Added</div>
+                        <ul className="mt-3 space-y-2 text-sm text-ink-soft">
+                          {release.entry.added.map((item) => (
+                            <li key={item}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {release.entry.knownIssues?.length ? (
+                      <div className="mt-4">
+                        <div className="text-sm font-semibold text-ink">Known Issues</div>
+                        <ul className="mt-3 space-y-2 text-sm text-ink-soft">
+                          {release.entry.knownIssues.map((item) => (
+                            <li key={item}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </section>
+                ))
+              ) : (
+                <div className="text-sm text-ink-soft">No changelog entries available for this update.</div>
+              )}
             </div>
 
             <div className="mt-8 flex justify-end">
@@ -90,4 +100,3 @@ export function ChangelogModal({
     </div>
   );
 }
-
