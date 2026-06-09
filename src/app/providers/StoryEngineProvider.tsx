@@ -628,17 +628,16 @@ export function StoryEngineProvider({
         ),
       async createUniverse(draft) {
         const mode = draft.mode ?? "referenced";
+        const description = (draft.description ?? "").trim();
         const concept =
-          mode === "custom"
-            ? (draft.concept ?? draft.description ?? "").trim()
-            : (draft.concept ?? "").trim();
+          mode === "custom" ? (draft.concept ?? description).trim() : (draft.concept ?? "").trim();
         const nextUniverse: Universe = {
           id: createEntityId("universe"),
           name: draft.name.trim(),
-          description: concept,
+          description,
           wikiUrl: draft.wikiUrl.trim(),
           mode,
-          concept: concept || undefined,
+          concept: mode === "custom" && concept ? concept : undefined,
           genreTheme: draft.genreTheme?.trim() || undefined,
           tone: draft.tone?.trim() || undefined,
           universeBlueprint: draft.universeBlueprint?.trim() || undefined,
@@ -663,17 +662,21 @@ export function StoryEngineProvider({
         }
 
         const mode = draft.mode ?? (currentUniverse.mode ?? "referenced");
+        const description =
+          typeof draft.description === "string"
+            ? draft.description.trim()
+            : currentUniverse.description.trim();
         const concept =
           mode === "custom"
-            ? (draft.concept ?? draft.description ?? currentUniverse.concept ?? "").trim()
+            ? (draft.concept ?? description ?? currentUniverse.concept ?? "").trim()
             : (draft.concept ?? currentUniverse.concept ?? "").trim();
         const nextUniverse: Universe = {
           ...currentUniverse,
           name: draft.name.trim(),
-          description: concept,
+          description,
           wikiUrl: draft.wikiUrl.trim(),
           mode,
-          concept: concept || undefined,
+          concept: mode === "custom" && concept ? concept : undefined,
           genreTheme: draft.genreTheme?.trim() || undefined,
           tone: draft.tone?.trim() || undefined,
           universeBlueprint: draft.universeBlueprint?.trim() || undefined,

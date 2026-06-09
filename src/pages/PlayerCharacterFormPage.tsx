@@ -332,7 +332,7 @@ export function PlayerCharacterFormPage() {
                   characterConcept: event.target.value,
                 }))
               }
-              placeholder="A short pitch for the character (vibe, archetype, core conflict, what makes them fun to play)."
+              placeholder="A short pitch for the character (vibe, role, core conflict, what makes them fun to play)."
             />
           </Field>
 

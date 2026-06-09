@@ -92,14 +92,14 @@ export function buildStoryChatContext({
   });
 
   const universeMode = universe.mode ?? "referenced";
-  const universeConcept = universe.concept?.trim() || universe.description.trim();
+  const universeDescription = universe.description.trim() || universe.concept?.trim() || "";
   const universeBlueprint = universe.universeBlueprint?.trim() || "";
 
   const universeInfo = normalizeWhitespace(
     [
       `Universe Name: ${universe.name}`,
       `Universe Mode: ${universeMode}`,
-      universeMode === "custom" && universeConcept ? `Universe Concept: ${universeConcept}` : "",
+      universeDescription ? `Universe Description: ${universeDescription}` : "",
       universeMode === "custom" && universe.genreTheme?.trim()
         ? `Genre/Theme: ${universe.genreTheme.trim()}`
         : "",

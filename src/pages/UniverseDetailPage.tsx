@@ -179,7 +179,7 @@ export function UniverseDetailPage() {
 
   const activeUniverse = universe;
   const universeMode = activeUniverse.mode ?? "referenced";
-  const universeConcept = activeUniverse.concept ?? activeUniverse.description ?? "";
+  const universeDescription = activeUniverse.description.trim() || activeUniverse.concept?.trim() || "";
   const universeBlueprint = activeUniverse.universeBlueprint ?? "";
 
   const placeholderSections = useMemo(
@@ -253,6 +253,14 @@ export function UniverseDetailPage() {
                 <>
                   <div className="md:col-span-2">
                     <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                      Description
+                    </dt>
+                    <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                      {universeDescription || "Not set"}
+                    </dd>
+                  </div>
+                  <div className="md:col-span-2">
+                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
                       Wiki / Reference URL
                     </dt>
                     <dd className="mt-2 break-all text-sm text-ink-soft">
@@ -269,9 +277,11 @@ export function UniverseDetailPage() {
               ) : (
                 <>
                   <div className="md:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">Concept</dt>
+                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                      Description
+                    </dt>
                     <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                      {universeConcept || "Not set"}
+                      {universeDescription || "Not set"}
                     </dd>
                   </div>
                   <div>
