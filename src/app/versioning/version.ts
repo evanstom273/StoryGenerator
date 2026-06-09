@@ -245,6 +245,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Universe creation now supports the referenced/custom blueprint workflow with separate Concept and Description fields",
       "Archive view now surfaces Story Premise, Protagonist Focus, Current Situation, Recent Developments, and Character Status",
       "Archive view now shows automatic deep-index progress so you can see when the next auto refresh is due",
+      "Story Settings now mirrors archive info in collapsible dropdown sections, including the auto deep-index countdown",
     ],
     fixed: [
       "Additive Generate Response now continues inline when the existing draft ends with an open delimiter like * or quotes",

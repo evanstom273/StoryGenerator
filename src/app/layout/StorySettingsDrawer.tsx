@@ -15,6 +15,8 @@ import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useUiPrefs } from "../ui/UiPrefsContext";
 
+const AUTO_DEEP_INDEX_THRESHOLD = 10;
+
 function createExportFilename(title: string, format: ExportFormat) {
   const sanitizedTitle = title
     .toLowerCase()
@@ -31,6 +33,30 @@ function createExportFilename(title: string, format: ExportFormat) {
           ? "pdf"
           : "txt";
   return `${sanitizedTitle || "story-engine-story"}${suffix}.${extension}`;
+}
+
+function trimStringList(value: unknown, maxItems: number) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim())
+    .slice(0, maxItems);
+}
+
+function getCharacterStatusLines(character: any) {
+  const bullets = trimStringList(character?.statusBullets, 4);
+  if (bullets.length) {
+    return bullets;
+  }
+
+  if (typeof character?.status === "string" && character.status.trim()) {
+    return [character.status.trim()];
+  }
+
+  return trimStringList(character?.notes, 3);
 }
 
 export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
@@ -401,6 +427,26 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     );
   }
 
+  function renderArchiveDropdown(args: {
+    title: string;
+    defaultOpen?: boolean;
+    countLabel?: string;
+    children: React.ReactNode;
+  }) {
+    return (
+      <details
+        open={args.defaultOpen}
+        className="rounded-2xl border border-white/8 bg-white/[0.02] px-3 py-3"
+      >
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft marker:content-none">
+          <span>{args.title}</span>
+          {args.countLabel ? <span className="text-[11px] text-ink-muted">{args.countLabel}</span> : null}
+        </summary>
+        <div className="mt-3">{args.children}</div>
+      </details>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -672,10 +718,25 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     const characters = storyStateData.indexes?.characters
                       ? Object.values(storyStateData.indexes.characters)
                       : [];
+                    const characterStates = Object.entries(storyStateData.characters ?? {});
                     const locations = storyStateData.indexes?.locations
                       ? Object.values(storyStateData.indexes.locations)
                       : [];
                     const relationships = storyStateData.indexes?.relationships ?? [];
+                    const significantMemories = (storyStateData.indexes as any)?.significantMemories ?? [];
+                    const premise = storyStateData.summaries?.premise?.trim() ?? "";
+                    const protagonistSummary = storyStateData.summaries?.protagonistSummary?.trim() ?? "";
+                    const currentSituation = storyStateData.summaries?.currentSituation?.trim() ?? "";
+                    const recentDevelopments = trimStringList(storyStateData.summaries?.recentDevelopments, 6);
+                    const messagesSinceDeep = Math.max(
+                      0,
+                      storyStateData.messagesSinceDeepIndexUpdate ?? staleBy,
+                    );
+                    const messagesUntilAutoDeep = Math.max(
+                      0,
+                      AUTO_DEEP_INDEX_THRESHOLD -
+                        Math.min(messagesSinceDeep, AUTO_DEEP_INDEX_THRESHOLD),
+                    );
 
                     return (
                       <div className="space-y-4 rounded-2xl border border-white/8 bg-black/15 px-4 py-4 text-sm">
@@ -702,118 +763,247 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                               {storyStateData.lastDeepIndexedAt ? new Date(storyStateData.lastDeepIndexedAt).toLocaleString() : "—"}
                             </div>
                           </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <div>Auto deep index</div>
+                            <div className="text-ink-soft">
+                              {messagesUntilAutoDeep === 0
+                                ? "Ready on next pass"
+                                : `In ${messagesUntilAutoDeep} message${messagesUntilAutoDeep === 1 ? "" : "s"}`}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-white/8 bg-black/20 px-3 py-3 text-sm text-ink-muted">
+                          Automatic deep indexing runs every {AUTO_DEEP_INDEX_THRESHOLD} new
+                          messages. Progress: {messagesSinceDeep}/{AUTO_DEEP_INDEX_THRESHOLD}.
                         </div>
 
                         <div className="space-y-5">
-                          {openThreads.length ? (
-                            <div>
-                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                                Open Threads
-                              </div>
-                              <div className="mt-3 space-y-3">
-                                {openThreads.slice(0, 8).map((entry, index) => (
-                                  <div key={index} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
-                                    <div className="text-ink-soft">{entry.thread}</div>
-                                    {renderEvidencePills(entry.evidence?.messageNumbers, `thread-${index}`)}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          {worldFacts.length ? (
-                            <div>
-                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                                World Facts
-                              </div>
-                              <div className="mt-3 space-y-3">
-                                {worldFacts.slice(0, 8).map((entry, index) => (
-                                  <div key={index} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
-                                    <div className="text-ink-soft">{entry.fact}</div>
-                                    {renderEvidencePills(entry.evidence?.messageNumbers, `fact-${index}`)}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          {characters.length ? (
-                            <div>
-                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                                Characters
-                              </div>
-                              <div className="mt-3 space-y-3">
-                                {characters
-                                  .slice(0, 12)
-                                  .sort((a, b) => a.name.localeCompare(b.name))
-                                  .map((entry) => (
-                                    <div key={entry.name} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
-                                      <div className="font-semibold text-ink-soft">{entry.name}</div>
-                                      {entry.description ? (
-                                        <div className="mt-1 text-xs text-ink-muted">{entry.description}</div>
-                                      ) : null}
-                                      {renderEvidencePills(entry.evidence?.messageNumbers, `char-${entry.name}`)}
-                                    </div>
-                                  ))}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          {locations.length ? (
-                            <div>
-                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                                Locations
-                              </div>
-                              <div className="mt-3 space-y-3">
-                                {locations
-                                  .slice(0, 12)
-                                  .sort((a, b) => a.name.localeCompare(b.name))
-                                  .map((entry) => (
-                                    <div key={entry.name} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
-                                      <div className="font-semibold text-ink-soft">{entry.name}</div>
-                                      {entry.description ? (
-                                        <div className="mt-1 text-xs text-ink-muted">{entry.description}</div>
-                                      ) : null}
-                                      {renderEvidencePills(entry.evidence?.messageNumbers, `loc-${entry.name}`)}
-                                    </div>
-                                  ))}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          {relationships.length ? (
-                            <div>
-                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                                Relationships
-                              </div>
-                              <div className="mt-3 space-y-3">
-                                {relationships.slice(0, 12).map((entry, index) => (
-                                  <div key={`${entry.a}-${entry.b}-${index}`} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
-                                    <div className="font-semibold text-ink-soft">
-                                      {entry.a} ↔ {entry.b}
-                                    </div>
-                                    {(() => {
-                                      const parts = [
-                                        typeof entry.friendship === "number" ? `Friendship ${Math.round(entry.friendship)}` : null,
-                                        typeof entry.trust === "number" ? `Trust ${Math.round(entry.trust)}` : null,
-                                        typeof entry.respect === "number" ? `Respect ${Math.round(entry.respect)}` : null,
-                                        typeof entry.loyalty === "number" ? `Loyalty ${Math.round(entry.loyalty)}` : null,
-                                        typeof entry.tension === "number" ? `Tension ${Math.round(entry.tension)}` : null,
-                                        typeof entry.hostility === "number" ? `Hostility ${Math.round(entry.hostility)}` : null,
-                                      ].filter(Boolean);
-                                      return parts.length ? (
-                                        <div className="mt-1 text-xs text-ink-soft">{parts.join(" · ")}</div>
-                                      ) : null;
-                                    })()}
-                                    {entry.summary ? (
-                                      <div className="mt-1 text-xs text-ink-muted">{entry.summary}</div>
+                          {premise || protagonistSummary || currentSituation || recentDevelopments.length
+                            ? renderArchiveDropdown({
+                                title: "Story State",
+                                defaultOpen: true,
+                                children: (
+                                  <div className="space-y-3">
+                                    {premise ? (
+                                      <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+                                          Premise
+                                        </div>
+                                        <div className="mt-2 text-sm text-ink-soft">{premise}</div>
+                                      </div>
                                     ) : null}
-                                    {renderEvidencePills(entry.evidence?.messageNumbers, `rel-${index}`)}
+                                    {protagonistSummary ? (
+                                      <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+                                          Protagonist
+                                        </div>
+                                        <div className="mt-2 text-sm text-ink-soft">{protagonistSummary}</div>
+                                      </div>
+                                    ) : null}
+                                    {currentSituation ? (
+                                      <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+                                          Current Situation
+                                        </div>
+                                        <div className="mt-2 text-sm text-ink-soft">{currentSituation}</div>
+                                      </div>
+                                    ) : null}
+                                    {recentDevelopments.length ? (
+                                      <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+                                          Recent Developments
+                                        </div>
+                                        <div className="mt-2 space-y-2">
+                                          {recentDevelopments.map((entry) => (
+                                            <div key={entry} className="text-sm text-ink-soft">
+                                              {entry}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
                                   </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
+                                ),
+                              })
+                            : null}
+
+                          {openThreads.length
+                            ? renderArchiveDropdown({
+                                title: "Open Threads",
+                                defaultOpen: true,
+                                countLabel: `${Math.min(openThreads.length, 8)} shown`,
+                                children: (
+                                  <div className="space-y-3">
+                                    {openThreads.slice(0, 8).map((entry, index) => (
+                                      <div key={index} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                        <div className="text-ink-soft">{entry.thread}</div>
+                                        {renderEvidencePills(entry.evidence?.messageNumbers, `thread-${index}`)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ),
+                              })
+                            : null}
+
+                          {worldFacts.length
+                            ? renderArchiveDropdown({
+                                title: "World Facts",
+                                countLabel: `${Math.min(worldFacts.length, 8)} shown`,
+                                children: (
+                                  <div className="space-y-3">
+                                    {worldFacts.slice(0, 8).map((entry, index) => (
+                                      <div key={index} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                        <div className="text-ink-soft">{entry.fact}</div>
+                                        {renderEvidencePills(entry.evidence?.messageNumbers, `fact-${index}`)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ),
+                              })
+                            : null}
+
+                          {characterStates.length
+                            ? renderArchiveDropdown({
+                                title: "Character Status",
+                                countLabel: `${characterStates.length} tracked`,
+                                children: (
+                                  <div className="space-y-3">
+                                    {characterStates
+                                      .slice()
+                                      .sort(([a], [b]) => a.localeCompare(b))
+                                      .map(([name, entry]) => {
+                                        const statusLines = getCharacterStatusLines(entry);
+                                        const strengths = trimStringList((entry as any)?.strengths, 3);
+                                        const weaknesses = trimStringList((entry as any)?.weaknesses, 3);
+                                        if (!statusLines.length && !strengths.length && !weaknesses.length) {
+                                          return null;
+                                        }
+                                        return (
+                                          <div key={name} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                            <div className="font-semibold text-ink-soft">{name}</div>
+                                            <div className="mt-2 space-y-2">
+                                              {statusLines.map((line) => (
+                                                <div key={line} className="text-sm text-ink-soft">
+                                                  {line}
+                                                </div>
+                                              ))}
+                                              {strengths.length ? (
+                                                <div className="text-xs text-emerald-200/90">
+                                                  Strengths: {strengths.join(", ")}
+                                                </div>
+                                              ) : null}
+                                              {weaknesses.length ? (
+                                                <div className="text-xs text-amber-100/90">
+                                                  Weaknesses: {weaknesses.join(", ")}
+                                                </div>
+                                              ) : null}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                ),
+                              })
+                            : null}
+
+                          {characters.length
+                            ? renderArchiveDropdown({
+                                title: "Characters",
+                                countLabel: `${Math.min(characters.length, 12)} shown`,
+                                children: (
+                                  <div className="space-y-3">
+                                    {characters
+                                      .slice(0, 12)
+                                      .sort((a, b) => a.name.localeCompare(b.name))
+                                      .map((entry) => (
+                                        <div key={entry.name} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                          <div className="font-semibold text-ink-soft">{entry.name}</div>
+                                          {entry.description ? (
+                                            <div className="mt-1 text-sm text-ink-muted">{entry.description}</div>
+                                          ) : null}
+                                          {renderEvidencePills(entry.evidence?.messageNumbers, `char-${entry.name}`)}
+                                        </div>
+                                      ))}
+                                  </div>
+                                ),
+                              })
+                            : null}
+
+                          {locations.length
+                            ? renderArchiveDropdown({
+                                title: "Locations",
+                                countLabel: `${Math.min(locations.length, 12)} shown`,
+                                children: (
+                                  <div className="space-y-3">
+                                    {locations
+                                      .slice(0, 12)
+                                      .sort((a, b) => a.name.localeCompare(b.name))
+                                      .map((entry) => (
+                                        <div key={entry.name} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                          <div className="font-semibold text-ink-soft">{entry.name}</div>
+                                          {entry.description ? (
+                                            <div className="mt-1 text-sm text-ink-muted">{entry.description}</div>
+                                          ) : null}
+                                          {renderEvidencePills(entry.evidence?.messageNumbers, `loc-${entry.name}`)}
+                                        </div>
+                                      ))}
+                                  </div>
+                                ),
+                              })
+                            : null}
+
+                          {relationships.length
+                            ? renderArchiveDropdown({
+                                title: "Relationships",
+                                countLabel: `${Math.min(relationships.length, 12)} shown`,
+                                children: (
+                                  <div className="space-y-3">
+                                    {relationships.slice(0, 12).map((entry, index) => (
+                                      <div key={`${entry.a}-${entry.b}-${index}`} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                        <div className="font-semibold text-ink-soft">
+                                          {entry.a} ↔ {entry.b}
+                                        </div>
+                                        {(() => {
+                                          const parts = [
+                                            typeof entry.friendship === "number" ? `Friendship ${Math.round(entry.friendship)}` : null,
+                                            typeof entry.trust === "number" ? `Trust ${Math.round(entry.trust)}` : null,
+                                            typeof entry.respect === "number" ? `Respect ${Math.round(entry.respect)}` : null,
+                                            typeof entry.loyalty === "number" ? `Loyalty ${Math.round(entry.loyalty)}` : null,
+                                            typeof entry.tension === "number" ? `Tension ${Math.round(entry.tension)}` : null,
+                                            typeof entry.hostility === "number" ? `Hostility ${Math.round(entry.hostility)}` : null,
+                                          ].filter(Boolean);
+                                          return parts.length ? (
+                                            <div className="mt-1 text-xs text-ink-soft">{parts.join(" · ")}</div>
+                                          ) : null;
+                                        })()}
+                                        {entry.summary ? (
+                                          <div className="mt-1 text-xs text-ink-muted">{entry.summary}</div>
+                                        ) : null}
+                                        {renderEvidencePills(entry.evidence?.messageNumbers, `rel-${index}`)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ),
+                              })
+                            : null}
+
+                          {Array.isArray(significantMemories) && significantMemories.length
+                            ? renderArchiveDropdown({
+                                title: "Significant Memories",
+                                countLabel: `${Math.min(significantMemories.length, 8)} shown`,
+                                children: (
+                                  <div className="space-y-3">
+                                    {significantMemories.slice(0, 8).map((entry: any, index: number) => (
+                                      <div key={index} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                        <div className="text-ink-soft">{entry?.moment ?? entry?.memory ?? entry?.fact ?? "—"}</div>
+                                        {renderEvidencePills(entry?.evidence?.messageNumbers, `mem-${index}`)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ),
+                              })
+                            : null}
                         </div>
                       </div>
                     );
