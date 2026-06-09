@@ -28,9 +28,11 @@ function toOpenAIMessages(messages: AIChatMessage[]) {
 async function callChatCompletions(
   apiKey: string,
   payload: OpenAIChatCompletionRequest,
+  opts?: { timeoutMs?: number },
 ) {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -78,7 +80,7 @@ export function createOpenAIProvider(): AIProvider {
         messages: toOpenAIMessages(messages),
         temperature: 0.8,
         max_tokens: 700,
-      });
+      }, { timeoutMs: arguments[0].timeoutMs });
 
       return { content };
     },
@@ -108,7 +110,7 @@ export function createOpenAIProvider(): AIProvider {
         ],
         temperature: 0.2,
         max_tokens: 350,
-      });
+      }, { timeoutMs: arguments[0].timeoutMs });
 
       return content;
     },
