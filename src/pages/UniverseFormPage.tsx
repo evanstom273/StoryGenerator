@@ -15,21 +15,17 @@ const initialFormState: UniverseDraft = {
   name: "",
   description: "",
   wikiUrl: "",
+  mode: "referenced",
+  concept: "",
   genreTheme: "",
   tone: "",
-  eraTechLevel: "",
-  powerSystemRules: "",
-  coreConflict: "",
-  everydayLifeVibe: "",
-  canonGuardrails: "",
-  playerBoundaries: "",
-  ratingContentNotes: "",
-  lorePrimer: "",
-  keyFactions: "",
-  keyLocations: "",
-  characterArchetypes: "",
+  universeBlueprint: "",
   notes: "",
 };
+
+function normalizeMode(value: UniverseDraft["mode"] | undefined) {
+  return value === "custom" ? "custom" : "referenced";
+}
 
 export function UniverseFormPage() {
   const { universeId } = useParams();
@@ -37,7 +33,7 @@ export function UniverseFormPage() {
   const navigate = useNavigate();
   const {
     createUniverse,
-    generateUniverseDraft,
+    generateUniverseBlueprint,
     getUniverseById,
     saveUniverseImport,
     updateUniverse,
@@ -57,23 +53,18 @@ export function UniverseFormPage() {
       return;
     }
 
+    const mode = normalizeMode(existingUniverse.mode);
+    const concept = existingUniverse.concept ?? existingUniverse.description ?? "";
+
     setFormState({
       name: existingUniverse.name,
-      description: existingUniverse.description,
-      wikiUrl: existingUniverse.wikiUrl,
+      description: concept,
+      wikiUrl: existingUniverse.wikiUrl ?? "",
+      mode,
+      concept,
       genreTheme: existingUniverse.genreTheme ?? "",
       tone: existingUniverse.tone ?? "",
-      eraTechLevel: existingUniverse.eraTechLevel ?? "",
-      powerSystemRules: existingUniverse.powerSystemRules ?? "",
-      coreConflict: existingUniverse.coreConflict ?? "",
-      everydayLifeVibe: existingUniverse.everydayLifeVibe ?? "",
-      canonGuardrails: existingUniverse.canonGuardrails ?? "",
-      playerBoundaries: existingUniverse.playerBoundaries ?? "",
-      ratingContentNotes: existingUniverse.ratingContentNotes ?? "",
-      lorePrimer: existingUniverse.lorePrimer ?? existingUniverse.description ?? "",
-      keyFactions: existingUniverse.keyFactions ?? "",
-      keyLocations: existingUniverse.keyLocations ?? "",
-      characterArchetypes: existingUniverse.characterArchetypes ?? "",
+      universeBlueprint: existingUniverse.universeBlueprint ?? "",
       notes: existingUniverse.notes ?? "",
     });
     setPendingUniverseId(null);
@@ -81,7 +72,7 @@ export function UniverseFormPage() {
 
   useDebouncedEffect(
     () => {
-      if (!existingUniverse || isSubmitting || isImportMode) {
+      if (!existingUniverse || isSubmitting || isImportMode || isGenerating) {
         return;
       }
 
@@ -94,22 +85,13 @@ export function UniverseFormPage() {
     800,
     [
       existingUniverse?.id,
+      formState.mode,
       formState.name,
-      formState.description,
       formState.wikiUrl,
+      formState.concept,
       formState.genreTheme,
       formState.tone,
-      formState.eraTechLevel,
-      formState.powerSystemRules,
-      formState.coreConflict,
-      formState.everydayLifeVibe,
-      formState.canonGuardrails,
-      formState.playerBoundaries,
-      formState.ratingContentNotes,
-      formState.lorePrimer,
-      formState.keyFactions,
-      formState.keyLocations,
-      formState.characterArchetypes,
+      formState.universeBlueprint,
       formState.notes,
       isSubmitting,
       isGenerating,
@@ -149,8 +131,15 @@ export function UniverseFormPage() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    const effectiveMode = isImportMode ? "referenced" : normalizeMode(formState.mode);
+
     if (!formState.name.trim()) {
       setErrorMessage("Universe name is required.");
+      return;
+    }
+
+    if (effectiveMode === "custom" && !(formState.concept ?? "").trim()) {
+      setErrorMessage("Universe concept is required for custom universes.");
       return;
     }
 
@@ -163,14 +152,21 @@ export function UniverseFormPage() {
     setErrorMessage(null);
 
     try {
+      const draft: UniverseDraft = {
+        ...formState,
+        mode: effectiveMode,
+        concept: (formState.concept ?? "").trim(),
+        description: (formState.concept ?? "").trim(),
+      };
+
       if (existingUniverse) {
-        const savedUniverse = await updateUniverse(existingUniverse.id, formState);
+        const savedUniverse = await updateUniverse(existingUniverse.id, draft);
 
         if (savedUniverse) {
           navigate(`/universes/${savedUniverse.id}`);
         }
       } else {
-        const savedUniverse = await createUniverse(formState);
+        const savedUniverse = await createUniverse(draft);
 
         if (!isImportMode) {
           navigate(`/universes/${savedUniverse.id}`);
@@ -192,9 +188,7 @@ export function UniverseFormPage() {
         navigate(`/universes/${savedUniverse.id}`);
       }
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Unable to complete the import.",
-      );
+      setErrorMessage(error instanceof Error ? error.message : "Unable to save this universe.");
     } finally {
       setIsSubmitting(false);
     }
@@ -229,97 +223,52 @@ export function UniverseFormPage() {
     }
   }
 
-  function resolveFieldHint(value: string, baseHint?: string) {
-    const locked = value.trim() ? "🔒" : "";
-    if (!baseHint) {
-      return locked || undefined;
-    }
-    return locked ? `${baseHint} ${locked}` : baseHint;
-  }
-
-  async function handleRandomise() {
-    setIsGenerating(true);
+  async function handleGenerateUniverse(force?: boolean) {
     setGeneratorError(null);
 
-    try {
-      const patch = await generateUniverseDraft(
-        existingUniverse?.id,
-        [
-          "name",
-          "genreTheme",
-          "tone",
-          "eraTechLevel",
-          "powerSystemRules",
-          "coreConflict",
-          "everydayLifeVibe",
-          "canonGuardrails",
-          "playerBoundaries",
-          "ratingContentNotes",
-          "lorePrimer",
-          "keyFactions",
-          "keyLocations",
-          "characterArchetypes",
-          "notes",
-        ],
-        formState,
-      );
-      setFormState((current) => ({ ...current, ...patch }));
-    } catch (error) {
-      setGeneratorError(
-        error instanceof Error ? error.message : "Unable to generate universe fields.",
-      );
-    } finally {
-      setIsGenerating(false);
-    }
-  }
-
-  async function handleFillWithAi() {
-    const candidateFields: Array<keyof UniverseDraft> = [
-      "genreTheme",
-      "tone",
-      "eraTechLevel",
-      "powerSystemRules",
-      "coreConflict",
-      "everydayLifeVibe",
-      "canonGuardrails",
-      "playerBoundaries",
-      "ratingContentNotes",
-      "lorePrimer",
-      "keyFactions",
-      "keyLocations",
-      "characterArchetypes",
-      "notes",
-    ];
-
-    const fields = candidateFields.filter((field) => !((formState as any)[field] ?? "").trim());
-    if (!fields.length) {
-      setGeneratorError("No empty fields to fill.");
+    const mode = normalizeMode(formState.mode);
+    if (mode !== "custom") {
+      setGeneratorError("Switch to Custom mode to generate a blueprint.");
       return;
     }
 
-    setIsGenerating(true);
-    setGeneratorError(null);
+    const concept = (formState.concept ?? "").trim();
+    if (!concept) {
+      setGeneratorError("Universe concept is required.");
+      return;
+    }
 
+    const existingBlueprint = (formState.universeBlueprint ?? "").trim();
+    if (!force && existingBlueprint) {
+      const confirmed = window.confirm("Overwrite the existing Universe Blueprint?");
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setIsGenerating(true);
     try {
-      const patch = await generateUniverseDraft(existingUniverse?.id, fields, formState);
-      setFormState((current) => ({ ...current, ...patch }));
+      const blueprint = await generateUniverseBlueprint({
+        name: formState.name.trim() || "Untitled Universe",
+        concept,
+        genreTheme: (formState.genreTheme ?? "").trim() || undefined,
+        tone: (formState.tone ?? "").trim() || undefined,
+        existingBlueprint: existingBlueprint || undefined,
+      });
+
+      setFormState((current) => ({
+        ...current,
+        universeBlueprint: blueprint,
+        description: concept,
+      }));
     } catch (error) {
-      setGeneratorError(
-        error instanceof Error ? error.message : "Unable to generate universe fields.",
-      );
+      setGeneratorError(error instanceof Error ? error.message : "Unable to generate a blueprint.");
     } finally {
       setIsGenerating(false);
     }
   }
 
-  function handleClear() {
-    setGeneratorError(null);
-    setFormState((current) => ({
-      ...initialFormState,
-      name: current.name,
-      wikiUrl: current.wikiUrl,
-    }));
-  }
+  const effectiveMode = isImportMode ? "referenced" : normalizeMode(formState.mode);
 
   return (
     <div className="space-y-8">
@@ -329,45 +278,46 @@ export function UniverseFormPage() {
         description={
           isImportMode
             ? "Create a universe from a wiki URL and store clean lore text for AI context."
-            : "Create the world that player characters and story campaigns will belong to."
+            : "Choose a referenced universe or a concept-first custom universe with a single editable blueprint."
         }
       />
 
       <Panel padding="lg">
         <form className="space-y-6" onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button
-              type="button"
-              variant="secondary"
-              className="justify-start"
-              onClick={() => void handleRandomise()}
-              disabled={isSubmitting || isGenerating}
-            >
-              <SparklesIcon className="h-4 w-4" />
-              {isGenerating ? "Generating..." : "Randomise"}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="justify-start"
-              onClick={() => void handleFillWithAi()}
-              disabled={isSubmitting || isGenerating}
-            >
-              <SparklesIcon className="h-4 w-4" />
-              Fill with AI
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="justify-start"
-              onClick={handleClear}
-              disabled={isSubmitting || isGenerating}
-            >
-              Clear
-            </Button>
-          </div>
+          {isImportMode ? null : (
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={effectiveMode === "referenced" ? "secondary" : "ghost"}
+                onClick={() =>
+                  setFormState((current) => ({
+                    ...current,
+                    mode: "referenced",
+                  }))
+                }
+                disabled={isSubmitting || isGenerating}
+              >
+                Referenced
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={effectiveMode === "custom" ? "secondary" : "ghost"}
+                onClick={() =>
+                  setFormState((current) => ({
+                    ...current,
+                    mode: "custom",
+                  }))
+                }
+                disabled={isSubmitting || isGenerating}
+              >
+                Custom
+              </Button>
+            </div>
+          )}
 
-          <Field label="Name" hint={resolveFieldHint(formState.name, "Required")}>
+          <Field label="Universe Name" hint="Required">
             <TextInput
               value={formState.name}
               onChange={(event) =>
@@ -380,200 +330,9 @@ export function UniverseFormPage() {
             />
           </Field>
 
-          <Field label="Genre / Theme" hint={resolveFieldHint(formState.genreTheme ?? "")}>
-            <TextInput
-              value={formState.genreTheme ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  genreTheme: event.target.value,
-                }))
-              }
-              placeholder="Hopeful sci-fi frontier"
-            />
-          </Field>
-
-          <Field label="Tone" hint={resolveFieldHint(formState.tone ?? "")}>
-            <TextInput
-              value={formState.tone ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  tone: event.target.value,
-                }))
-              }
-              placeholder="Optimistic, tense, mysterious..."
-            />
-          </Field>
-
-          <Field label="Era / Tech Level" hint={resolveFieldHint(formState.eraTechLevel ?? "")}>
-            <TextInput
-              value={formState.eraTechLevel ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  eraTechLevel: event.target.value,
-                }))
-              }
-              placeholder="Late-stage colony era; scarce FTL; dangerous ruins"
-            />
-          </Field>
-
-          <Field label="Power System Rules" hint={resolveFieldHint(formState.powerSystemRules ?? "")}>
-            <TextAreaInput
-              value={formState.powerSystemRules ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  powerSystemRules: event.target.value,
-                }))
-              }
-              placeholder="How tech, magic, psionics, or special abilities work (and what they cannot do)."
-            />
-          </Field>
-
-          <Field label="Core Conflict" hint={resolveFieldHint(formState.coreConflict ?? "")}>
-            <TextAreaInput
-              value={formState.coreConflict ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  coreConflict: event.target.value,
-                }))
-              }
-              placeholder="What is the big pressure driving stories in this universe?"
-            />
-          </Field>
-
-          <Field label="Everyday Life Vibe" hint={resolveFieldHint(formState.everydayLifeVibe ?? "")}>
-            <TextAreaInput
-              value={formState.everydayLifeVibe ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  everydayLifeVibe: event.target.value,
-                }))
-              }
-              placeholder="What does a normal day feel like for an average person here?"
-            />
-          </Field>
-
-          <Field label="Canon Guardrails" hint={resolveFieldHint(formState.canonGuardrails ?? "")}>
-            <TextAreaInput
-              value={formState.canonGuardrails ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  canonGuardrails: event.target.value,
-                }))
-              }
-              placeholder="What must never be contradicted? What are the non-negotiables?"
-            />
-          </Field>
-
-          <Field label="Player Boundaries" hint={resolveFieldHint(formState.playerBoundaries ?? "")}>
-            <TextAreaInput
-              value={formState.playerBoundaries ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  playerBoundaries: event.target.value,
-                }))
-              }
-              placeholder="Limits on what the player character can/cannot do; consent lines/veils; narrative boundaries."
-            />
-          </Field>
-
-          <Field
-            label="Rating / Content Notes"
-            hint={resolveFieldHint(formState.ratingContentNotes ?? "")}
-          >
-            <TextAreaInput
-              value={formState.ratingContentNotes ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  ratingContentNotes: event.target.value,
-                }))
-              }
-              placeholder="Violence level, horror elements, romance intensity, etc."
-            />
-          </Field>
-
-          <Field label="Lore Primer" hint={resolveFieldHint(formState.lorePrimer ?? "")}>
-            <TextAreaInput
-              value={formState.lorePrimer ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  lorePrimer: event.target.value,
-                  description: event.target.value,
-                }))
-              }
-              placeholder="The short canonical primer the AI should treat as the setting's core truth."
-            />
-          </Field>
-
-          <Field label="Key Factions" hint={resolveFieldHint(formState.keyFactions ?? "")}>
-            <TextAreaInput
-              value={formState.keyFactions ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  keyFactions: event.target.value,
-                }))
-              }
-              placeholder="Major powers, factions, megacorps, cults, governments..."
-            />
-          </Field>
-
-          <Field label="Key Locations" hint={resolveFieldHint(formState.keyLocations ?? "")}>
-            <TextAreaInput
-              value={formState.keyLocations ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  keyLocations: event.target.value,
-                }))
-              }
-              placeholder="Important places: stations, cities, ruins, regions, planets..."
-            />
-          </Field>
-
-          <Field label="Character Archetypes" hint={resolveFieldHint(formState.characterArchetypes ?? "")}>
-            <TextAreaInput
-              value={formState.characterArchetypes ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  characterArchetypes: event.target.value,
-                }))
-              }
-              placeholder="Recurring archetypes that fit this setting: scavenger, corp fixer, relic diver..."
-            />
-          </Field>
-
-          <Field label="Notes" hint={resolveFieldHint(formState.notes ?? "")}>
-            <TextAreaInput
-              value={formState.notes ?? ""}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  notes: event.target.value,
-                }))
-              }
-              placeholder="Anything else you want to capture."
-            />
-          </Field>
-
-          <Panel padding="sm" className="border-dashed border-white/12 bg-white/[0.03]">
-            <div className="text-sm font-semibold text-ink">Imported Lore</div>
-            <div className="mt-2 text-sm leading-7 text-ink-muted">
-              Imported lore is stored separately from these curated fields. Use a wiki URL to
-              import clean lore text for AI context.
-            </div>
-            <div className="mt-4 space-y-4">
-              <Field label="Wiki URL" hint={isImportMode ? "Required" : undefined}>
+          {effectiveMode === "referenced" ? (
+            <>
+              <Field label="Wiki / Reference URL" hint={isImportMode ? "Required" : undefined}>
                 <TextInput
                   value={formState.wikiUrl}
                   onChange={(event) =>
@@ -585,8 +344,95 @@ export function UniverseFormPage() {
                   placeholder="https://example-wiki-page"
                 />
               </Field>
-            </div>
-          </Panel>
+
+              <Field label="Notes (optional)">
+                <TextAreaInput
+                  value={formState.notes ?? ""}
+                  onChange={(event) =>
+                    setFormState((currentState) => ({
+                      ...currentState,
+                      notes: event.target.value,
+                    }))
+                  }
+                  placeholder="Anything you want to remember about this setting."
+                />
+              </Field>
+            </>
+          ) : (
+            <>
+              <Field label="Universe Concept" hint="Required">
+                <TextAreaInput
+                  value={formState.concept ?? ""}
+                  onChange={(event) =>
+                    setFormState((currentState) => ({
+                      ...currentState,
+                      concept: event.target.value,
+                      description: event.target.value,
+                    }))
+                  }
+                  placeholder="A hopeful sci-fi frontier universe with old colony ships, rival megacorps, and dangerous ruins."
+                />
+              </Field>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <Field label="Genre / Theme">
+                  <TextInput
+                    value={formState.genreTheme ?? ""}
+                    onChange={(event) =>
+                      setFormState((currentState) => ({
+                        ...currentState,
+                        genreTheme: event.target.value,
+                      }))
+                    }
+                    placeholder="Hopeful sci-fi frontier"
+                  />
+                </Field>
+
+                <Field label="Tone">
+                  <TextInput
+                    value={formState.tone ?? ""}
+                    onChange={(event) =>
+                      setFormState((currentState) => ({
+                        ...currentState,
+                        tone: event.target.value,
+                      }))
+                    }
+                    placeholder="Optimistic, tense, mysterious..."
+                  />
+                </Field>
+              </div>
+
+              <Button
+                type="button"
+                variant="secondary"
+                className="justify-start"
+                onClick={() => void handleGenerateUniverse()}
+                disabled={isSubmitting || isGenerating}
+              >
+                <SparklesIcon className="h-4 w-4" />
+                {isGenerating
+                  ? "Generating..."
+                  : (formState.universeBlueprint ?? "").trim()
+                    ? "Regenerate Universe"
+                    : "Generate Universe"}
+              </Button>
+
+              {(formState.universeBlueprint ?? "").trim() ? (
+                <Field label="Universe Blueprint">
+                  <TextAreaInput
+                    value={formState.universeBlueprint ?? ""}
+                    onChange={(event) =>
+                      setFormState((currentState) => ({
+                        ...currentState,
+                        universeBlueprint: event.target.value,
+                      }))
+                    }
+                    placeholder="Generate a blueprint to begin editing..."
+                  />
+                </Field>
+              ) : null}
+            </>
+          )}
 
           {errorMessage ? (
             <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">

@@ -17,19 +17,11 @@ export interface Universe {
   name: string;
   description: string;
   wikiUrl: string;
+  mode?: "referenced" | "custom";
+  concept?: string;
   genreTheme?: string;
   tone?: string;
-  eraTechLevel?: string;
-  powerSystemRules?: string;
-  coreConflict?: string;
-  everydayLifeVibe?: string;
-  canonGuardrails?: string;
-  playerBoundaries?: string;
-  ratingContentNotes?: string;
-  lorePrimer?: string;
-  keyFactions?: string;
-  keyLocations?: string;
-  characterArchetypes?: string;
+  universeBlueprint?: string;
   notes?: string;
   importedLore: string[];
   importedCharacters: string[];
@@ -292,19 +284,11 @@ export interface UniverseDraft {
   name: string;
   description: string;
   wikiUrl: string;
+  mode?: "referenced" | "custom";
+  concept?: string;
   genreTheme?: string;
   tone?: string;
-  eraTechLevel?: string;
-  powerSystemRules?: string;
-  coreConflict?: string;
-  everydayLifeVibe?: string;
-  canonGuardrails?: string;
-  playerBoundaries?: string;
-  ratingContentNotes?: string;
-  lorePrimer?: string;
-  keyFactions?: string;
-  keyLocations?: string;
-  characterArchetypes?: string;
+  universeBlueprint?: string;
   notes?: string;
 }
 

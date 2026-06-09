@@ -67,18 +67,26 @@ export function buildPlayerAssistContext({
 }): AIChatMessage[] {
   const mostRecentImport = imports[0];
   const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
-  const lorePrimer = universe.lorePrimer?.trim() || universe.description.trim();
+  const universeMode = universe.mode ?? "referenced";
+  const universeConcept = universe.concept?.trim() || universe.description.trim();
+  const universeBlueprint = universe.universeBlueprint?.trim() || "";
 
   const universeInfo = normalizeWhitespace(
     [
       `Universe Name: ${universe.name}`,
-      lorePrimer ? `Lore Primer: ${lorePrimer}` : "",
-      universe.genreTheme?.trim() ? `Genre/Theme: ${universe.genreTheme.trim()}` : "",
-      universe.tone?.trim() ? `Tone: ${universe.tone.trim()}` : "",
-      universe.eraTechLevel?.trim()
-        ? `Era / Tech Level: ${universe.eraTechLevel.trim()}`
+      `Universe Mode: ${universeMode}`,
+      universeMode === "custom" && universeConcept ? `Universe Concept: ${universeConcept}` : "",
+      universeMode === "custom" && universe.genreTheme?.trim()
+        ? `Genre/Theme: ${universe.genreTheme.trim()}`
         : "",
-      universe.wikiUrl.trim() ? `Universe Wiki URL: ${universe.wikiUrl.trim()}` : "",
+      universeMode === "custom" && universe.tone?.trim() ? `Tone: ${universe.tone.trim()}` : "",
+      universeMode === "custom" && universeBlueprint
+        ? `Universe Blueprint:\n\n${universeBlueprint}`
+        : "",
+      universeMode === "referenced" && universe.wikiUrl.trim()
+        ? `Reference URL: ${universe.wikiUrl.trim()}`
+        : "",
+      universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,
       `Player Character: ${playerCharacter.name}`,
       playerCharacter.gender.trim() ? `Player Gender: ${playerCharacter.gender.trim()}` : "",

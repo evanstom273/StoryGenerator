@@ -31,8 +31,7 @@ import {
   type PlayerCharacterField,
 } from "../../lib/ai/characterGenerator";
 import {
-  buildUniverseGeneratorSystemPrompt,
-  type UniverseField,
+  buildUniverseBlueprintSystemPrompt,
 } from "../../lib/ai/universeGenerator";
 import { extractFirstJsonObject, safeParseJsonObject } from "../../lib/ai/json";
 import {
@@ -114,11 +113,13 @@ interface StoryEngineContextValue {
   getStoriesForPlayerCharacter: (playerCharacterId: string) => Story[];
   createUniverse: (draft: UniverseDraft) => Promise<Universe>;
   updateUniverse: (id: string, draft: UniverseDraft) => Promise<Universe | null>;
-  generateUniverseDraft: (
-    universeId?: string,
-    fields?: Array<keyof UniverseDraft>,
-    existing?: Partial<UniverseDraft>,
-  ) => Promise<Record<string, string>>;
+  generateUniverseBlueprint: (input: {
+    name: string;
+    concept: string;
+    genreTheme?: string;
+    tone?: string;
+    existingBlueprint?: string;
+  }) => Promise<string>;
   deleteUniverse: (id: string) => Promise<GuardedDeleteResult>;
   createPlayerCharacter: (draft: PlayerCharacterDraft) => Promise<PlayerCharacter>;
   promoteStoryPlayerCharacter: (storyId: string) => Promise<PlayerCharacter>;
@@ -626,25 +627,21 @@ export function StoryEngineProvider({
           stories.filter((story) => story.playerCharacterId === playerCharacterId),
         ),
       async createUniverse(draft) {
-        const lorePrimer = (draft.lorePrimer ?? draft.description ?? "").trim();
+        const mode = draft.mode ?? "referenced";
+        const concept =
+          mode === "custom"
+            ? (draft.concept ?? draft.description ?? "").trim()
+            : (draft.concept ?? "").trim();
         const nextUniverse: Universe = {
           id: createEntityId("universe"),
           name: draft.name.trim(),
-          description: lorePrimer,
+          description: concept,
           wikiUrl: draft.wikiUrl.trim(),
+          mode,
+          concept: concept || undefined,
           genreTheme: draft.genreTheme?.trim() || undefined,
           tone: draft.tone?.trim() || undefined,
-          eraTechLevel: draft.eraTechLevel?.trim() || undefined,
-          powerSystemRules: draft.powerSystemRules?.trim() || undefined,
-          coreConflict: draft.coreConflict?.trim() || undefined,
-          everydayLifeVibe: draft.everydayLifeVibe?.trim() || undefined,
-          canonGuardrails: draft.canonGuardrails?.trim() || undefined,
-          playerBoundaries: draft.playerBoundaries?.trim() || undefined,
-          ratingContentNotes: draft.ratingContentNotes?.trim() || undefined,
-          lorePrimer: lorePrimer || undefined,
-          keyFactions: draft.keyFactions?.trim() || undefined,
-          keyLocations: draft.keyLocations?.trim() || undefined,
-          characterArchetypes: draft.characterArchetypes?.trim() || undefined,
+          universeBlueprint: draft.universeBlueprint?.trim() || undefined,
           notes: draft.notes?.trim() || undefined,
           importedLore: [],
           importedCharacters: [],
@@ -665,25 +662,21 @@ export function StoryEngineProvider({
           return null;
         }
 
-        const lorePrimer = (draft.lorePrimer ?? draft.description ?? "").trim();
+        const mode = draft.mode ?? (currentUniverse.mode ?? "referenced");
+        const concept =
+          mode === "custom"
+            ? (draft.concept ?? draft.description ?? currentUniverse.concept ?? "").trim()
+            : (draft.concept ?? currentUniverse.concept ?? "").trim();
         const nextUniverse: Universe = {
           ...currentUniverse,
           name: draft.name.trim(),
-          description: lorePrimer,
+          description: concept,
           wikiUrl: draft.wikiUrl.trim(),
+          mode,
+          concept: concept || undefined,
           genreTheme: draft.genreTheme?.trim() || undefined,
           tone: draft.tone?.trim() || undefined,
-          eraTechLevel: draft.eraTechLevel?.trim() || undefined,
-          powerSystemRules: draft.powerSystemRules?.trim() || undefined,
-          coreConflict: draft.coreConflict?.trim() || undefined,
-          everydayLifeVibe: draft.everydayLifeVibe?.trim() || undefined,
-          canonGuardrails: draft.canonGuardrails?.trim() || undefined,
-          playerBoundaries: draft.playerBoundaries?.trim() || undefined,
-          ratingContentNotes: draft.ratingContentNotes?.trim() || undefined,
-          lorePrimer: lorePrimer || undefined,
-          keyFactions: draft.keyFactions?.trim() || undefined,
-          keyLocations: draft.keyLocations?.trim() || undefined,
-          characterArchetypes: draft.characterArchetypes?.trim() || undefined,
+          universeBlueprint: draft.universeBlueprint?.trim() || undefined,
           notes: draft.notes?.trim() || undefined,
         };
 
@@ -692,7 +685,7 @@ export function StoryEngineProvider({
 
         return nextUniverse;
       },
-      async generateUniverseDraft(universeId, fields, existing) {
+      async generateUniverseBlueprint(input) {
         const settings = await getNormalizedAISettings();
         if (!settings) {
           throw new Error("Configure an AI provider in Settings before generating universes.");
@@ -702,62 +695,18 @@ export function StoryEngineProvider({
         const { apiKey, model } = await resolveAIProfile(providerType);
         const provider = createAIProvider(providerType);
 
-        const existingUniverse = universeId ? await repository.getUniverse(universeId) : null;
-        const imports = universeId ? await repository.listUniverseImports(universeId) : [];
-        const mostRecentImport = imports[0];
-        const importedLoreText = mostRecentImport?.importedText?.slice(0, 12000) ?? "";
+        const name = input.name.trim();
+        const concept = input.concept.trim();
+        if (!concept) {
+          throw new Error("Universe concept is required.");
+        }
 
-        const allowedFields: Array<UniverseField> = [
-          "name",
-          "genreTheme",
-          "tone",
-          "eraTechLevel",
-          "powerSystemRules",
-          "coreConflict",
-          "everydayLifeVibe",
-          "canonGuardrails",
-          "playerBoundaries",
-          "ratingContentNotes",
-          "lorePrimer",
-          "keyFactions",
-          "keyLocations",
-          "characterArchetypes",
-          "notes",
-        ];
-
-        const requestedFieldsRaw = fields?.length ? fields : allowedFields;
-        const requestedFields = requestedFieldsRaw.filter((field) =>
-          allowedFields.includes(field as UniverseField),
-        ) as UniverseField[];
-        const generatorFields = requestedFields;
-
-        const existingValues = existing
-          ? allowedFields.reduce(
-              (acc, key) => {
-                const value = (existing as any)[key];
-                if (typeof value === "string" && value.trim()) {
-                  acc[key] = value.trim();
-                }
-                return acc;
-              },
-              {} as Partial<Record<UniverseField, string>>,
-            )
-          : undefined;
-
-        const systemPrompt = buildUniverseGeneratorSystemPrompt({
-          universeIdea: (() => {
-            const primer =
-              typeof (existing as any)?.lorePrimer === "string"
-                ? (existing as any).lorePrimer
-                : typeof (existing as any)?.description === "string"
-                  ? (existing as any).description
-                  : "";
-            return primer?.trim() || undefined;
-          })(),
-          fields: generatorFields.length ? generatorFields : undefined,
-          existing: existingValues,
-          importedLoreText,
-          existingUniverse: existingUniverse ?? undefined,
+        const systemPrompt = buildUniverseBlueprintSystemPrompt({
+          universeName: name,
+          concept,
+          genreTheme: input.genreTheme?.trim() || undefined,
+          tone: input.tone?.trim() || undefined,
+          existingBlueprint: input.existingBlueprint?.trim() || undefined,
         });
 
         const response = await provider.generateResponse({
@@ -776,15 +725,12 @@ export function StoryEngineProvider({
           throw new Error("Universe generator returned invalid JSON.");
         }
 
-        const draft: Record<string, string> = {};
-        for (const key of requestedFields) {
-          const value = parsed[key];
-          if (typeof value === "string") {
-            draft[key] = value.trim();
-          }
+        const blueprint = parsed.universeBlueprint;
+        if (typeof blueprint !== "string" || !blueprint.trim()) {
+          throw new Error("Universe generator did not return a universeBlueprint.");
         }
 
-        return draft;
+        return blueprint.trim();
       },
       async deleteUniverse(id) {
         const linkedCharacters = playerCharacters.some(
