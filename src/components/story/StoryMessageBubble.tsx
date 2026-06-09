@@ -2,7 +2,7 @@ import type { StoryMessage, StoryMessageSpeakerType } from "../../types/models";
 import { formatDateTime } from "../../lib/dates";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
-import { sanitizeAssistantTranscript } from "../../lib/storyText/transcriptSanitizer";
+import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
 
@@ -144,11 +144,11 @@ export function StoryMessageBubble({
 
   const sanitizedContent =
     message.role === "assistant"
-      ? sanitizeAssistantTranscript({
-          text: message.content,
+      ? sanitizeMessageForDisplay({
+          message,
           latestUserMessage,
           playerName: playerCharacterName,
-        }).text
+        })
       : message.content;
 
   function renderInlineSegments(

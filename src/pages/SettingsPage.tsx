@@ -25,6 +25,26 @@ function sanitizeFileStem(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
+async function readSelectedFileAsText(file: File) {
+  if (typeof file.text === "function") {
+    return await file.text();
+  }
+
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      reject(new Error("Unable to read the selected file."));
+    };
+
+    reader.onload = () => {
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    };
+
+    reader.readAsText(file);
+  });
+}
+
 export function SettingsPage() {
   const {
     aiSettings,
@@ -393,7 +413,7 @@ export function SettingsPage() {
         throw new Error("Select a JSON file first.");
       }
 
-      const text = await itemImportFile.text();
+      const text = await readSelectedFileAsText(itemImportFile);
       const parsed = JSON.parse(text);
 
       if (itemImportType === "universe") {
@@ -454,7 +474,7 @@ export function SettingsPage() {
     setBackupError(null);
 
     try {
-      const text = await backupFile.text();
+      const text = await readSelectedFileAsText(backupFile);
       const parsed = JSON.parse(text);
       await importWorkspaceBackup(parsed, { mode: "merge", conflict: "skip" });
       setBackupStatus("Backup imported (merged). Reloading...");
@@ -482,7 +502,7 @@ export function SettingsPage() {
     setBackupError(null);
 
     try {
-      const text = await backupFile.text();
+      const text = await readSelectedFileAsText(backupFile);
       const parsed = JSON.parse(text);
       await importWorkspaceBackup(parsed, { mode: "replace" });
       setBackupStatus("Backup imported (replaced). Reloading...");
@@ -825,10 +845,13 @@ export function SettingsPage() {
               </div>
               <input
                 type="file"
-                accept="application/json"
                 className="block w-full text-sm text-ink-muted file:mr-4 file:rounded-2xl file:border-0 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
                 onChange={(event) => setBackupFile(event.target.files?.[0] ?? null)}
               />
+              <div className="text-xs text-ink-muted">
+                Android file pickers can mislabel JSON files, so file filtering is disabled
+                here. The app still validates the file contents during import.
+              </div>
               <Button
                 variant="ghost"
                 onClick={handleImportBackup}
@@ -1009,10 +1032,13 @@ export function SettingsPage() {
 
               <input
                 type="file"
-                accept="application/json"
                 className="block w-full text-sm text-ink-muted file:mr-4 file:rounded-2xl file:border-0 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
                 onChange={(event) => setItemImportFile(event.target.files?.[0] ?? null)}
               />
+              <div className="text-xs text-ink-muted">
+                Android file pickers can mislabel JSON files, so file filtering is disabled
+                here. The app still validates the file contents during import.
+              </div>
 
               {itemImportType === "playerCharacter" ? (
                 <Field label="Target Universe">

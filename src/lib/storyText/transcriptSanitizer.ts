@@ -564,6 +564,12 @@ export function sanitizeMessageForDisplay(args: {
     return args.message.content;
   }
 
+  // Respect manual transcript fixes. If the user edited the assistant message,
+  // render the saved text as-is instead of re-sanitising it back into a different shape.
+  if (args.message.editedAt) {
+    return normalizeTranscriptWhitespace(args.message.content);
+  }
+
   return sanitizeAssistantTranscript({
     text: args.message.content,
     latestUserMessage: args.latestUserMessage,

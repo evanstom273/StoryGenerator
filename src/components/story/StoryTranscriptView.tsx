@@ -2,7 +2,7 @@ import type { StoryMessage } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
-import { sanitizeAssistantTranscript } from "../../lib/storyText/transcriptSanitizer";
+import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
@@ -177,11 +177,11 @@ export function StoryTranscriptView({
           );
         }
 
-        const sanitized = sanitizeAssistantTranscript({
-          text: message.content,
+        const sanitized = sanitizeMessageForDisplay({
+          message,
           latestUserMessage,
           playerName: playerCharacterName,
-        }).text;
+        });
         const blocks = parseSceneBlocks(sanitized);
         return (
           <div
