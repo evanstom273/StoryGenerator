@@ -171,6 +171,11 @@ export function buildStoryChatContext({
       "Information ownership: do not invent facts that could only have been communicated by the player character off-screen. If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
       "Never put words in the player's mouth. Do not write lines like 'You're saying X' / 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
       "Treat the player's latest message as canon scene state that has already happened. Do not re-describe it in different words. Continue from the next beat: reactions, consequences, and new information from the world.",
+      "Player-declared outcomes rule: if the player explicitly states that something succeeds, happens, or is already done, treat that outcome as canon unless it directly violates established world constraints or prior canon.",
+      "When the player declares an outcome, respond with consequences, reactions, costs, complications, or new pressure. Prefer 'Yes, and...' or 'Yes, but...' over vetoing the outcome.",
+      "Attempt rule: if the player leaves the outcome unresolved with phrasing like 'I try', 'I attempt', or 'I test whether', the world may determine success, failure, or partial success.",
+      "Example: if the player says 'I slip past the guard and close the door behind me,' accept that they are past the guard and build forward from there.",
+      "Example: if the player says 'I try to slip past the guard,' resolve whether or how the attempt works.",
       "You are generating a collaborative story scene inside the universe above.",
       "Assume the scene persists between messages. Do not reintroduce unchanged environments or participants.",
       playerStateHint

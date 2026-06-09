@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.15.0";
+export const APP_VERSION = "1.15.1";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -237,6 +237,16 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Generate Response is additive when text already exists in the input box (continuation mode)",
     ],
     fixed: [],
+    knownIssues: [],
+  },
+  "1.15.1": {
+    title: "Additive Continuation + Retry + Yes, And",
+    added: [],
+    fixed: [
+      "Additive Generate Response now continues inline when the existing draft ends with an open delimiter like * or quotes",
+      "AI generation now retries transient failures and surfaces clearer human-readable error categories",
+      "Narrator guidance now more strongly treats explicit player-declared outcomes as canon and builds forward from them",
+    ],
     knownIssues: [],
   },
 };

@@ -11,6 +11,7 @@ import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
+import { appendAdditiveText } from "../lib/ai/additiveJoin";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
 import type {
   StoryMessage,
@@ -305,15 +306,7 @@ export function StoryWorkspacePage() {
         if (!base.trim()) {
           return suggestion;
         }
-
-        const trimmedBase = base.replace(/[ \t]+\n/g, "\n").replace(/\s+$/g, "");
-        const trimmedSuggestion = suggestion.trim();
-        if (!trimmedSuggestion) {
-          return base;
-        }
-
-        const separator = trimmedBase.endsWith("\n") ? "\n" : "\n\n";
-        return `${trimmedBase}${separator}${trimmedSuggestion}`;
+        return appendAdditiveText(base, suggestion);
       });
     } catch (error) {
       setAssistError(

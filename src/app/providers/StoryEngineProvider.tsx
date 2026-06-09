@@ -35,6 +35,16 @@ import {
 } from "../../lib/ai/universeGenerator";
 import { extractFirstJsonObject, safeParseJsonObject } from "../../lib/ai/json";
 import {
+  classifyAIGenerationError,
+  createAIGenerationError,
+  formatAIGenerationError,
+} from "../../lib/ai/errors";
+import type {
+  AIChatMessage,
+  AIProvider,
+  GenerateResponseResult,
+} from "../../lib/ai/types";
+import {
   normalizeStoryStateToV2,
   finalizeStoryStateForSave,
   reconcileStoryIndexes,
@@ -215,6 +225,116 @@ interface StoryEngineContextValue {
   sendChatMessage: (storyId: string, content: string) => Promise<StoryMessage>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
+}
+
+const AI_MAX_ATTEMPTS = 3;
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function generateResponseWithRetry(params: {
+  providerType: string;
+  provider: AIProvider;
+  apiKey: string;
+  model: string;
+  messages: AIChatMessage[];
+  maxAttempts?: number;
+}) {
+  const maxAttempts = params.maxAttempts ?? AI_MAX_ATTEMPTS;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await params.provider.generateResponse({
+        apiKey: params.apiKey,
+        model: params.model,
+        messages: params.messages,
+      });
+    } catch (error) {
+      lastError = error;
+      const classified = classifyAIGenerationError(error);
+      if (attempt >= maxAttempts || !classified.retryable) {
+        throw new Error(
+          formatAIGenerationError(error, {
+            provider: params.providerType,
+            attempts: attempt,
+            maxAttempts,
+          }),
+        );
+      }
+
+      await wait(350 * attempt);
+    }
+  }
+
+  throw new Error(
+    formatAIGenerationError(lastError, {
+      provider: params.providerType,
+      attempts: maxAttempts,
+      maxAttempts,
+    }),
+  );
+}
+
+async function generateSummaryWithRetry(params: {
+  providerType: string;
+  provider: AIProvider;
+  apiKey: string;
+  model: string;
+  storyTitle: string;
+  messages: AIChatMessage[];
+  existingSummary?: string;
+  maxAttempts?: number;
+}) {
+  const maxAttempts = params.maxAttempts ?? AI_MAX_ATTEMPTS;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await params.provider.generateSummary({
+        apiKey: params.apiKey,
+        model: params.model,
+        storyTitle: params.storyTitle,
+        messages: params.messages,
+        existingSummary: params.existingSummary,
+      });
+    } catch (error) {
+      lastError = error;
+      const classified = classifyAIGenerationError(error);
+      if (attempt >= maxAttempts || !classified.retryable) {
+        throw new Error(
+          formatAIGenerationError(error, {
+            provider: params.providerType,
+            attempts: attempt,
+            maxAttempts,
+          }),
+        );
+      }
+
+      await wait(350 * attempt);
+    }
+  }
+
+  throw new Error(
+    formatAIGenerationError(lastError, {
+      provider: params.providerType,
+      attempts: maxAttempts,
+      maxAttempts,
+    }),
+  );
+}
+
+function rethrowUserFacingGenerationError(error: unknown, providerType: string): never {
+  throw new Error(
+    formatAIGenerationError(error, {
+      provider: providerType,
+      attempts: 1,
+      maxAttempts: 1,
+    }),
+  );
 }
 
 const StoryEngineContext = createContext<StoryEngineContextValue | null>(null);
@@ -716,25 +836,45 @@ export function StoryEngineProvider({
           existingBlueprint: input.existingBlueprint?.trim() || undefined,
         });
 
-        const response = await provider.generateResponse({
-          apiKey,
-          model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: "Generate the JSON now." },
-          ],
-        });
+        let response: GenerateResponseResult;
+        try {
+          response = await generateResponseWithRetry({
+            providerType,
+            provider,
+            apiKey,
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: "Generate the JSON now." },
+            ],
+          });
+        } catch (error) {
+          rethrowUserFacingGenerationError(error, providerType);
+        }
 
         const jsonText = extractFirstJsonObject(response.content) ?? response.content.trim();
         const parsed = safeParseJsonObject<Record<string, unknown>>(jsonText);
 
         if (!parsed) {
-          throw new Error("Universe generator returned invalid JSON.");
+          rethrowUserFacingGenerationError(
+            createAIGenerationError(
+              "parse",
+              "Universe generator returned invalid JSON.",
+              { diagnostic: jsonText.slice(0, 400) },
+            ),
+            providerType,
+          );
         }
 
         const blueprint = parsed.universeBlueprint;
         if (typeof blueprint !== "string" || !blueprint.trim()) {
-          throw new Error("Universe generator did not return a universeBlueprint.");
+          rethrowUserFacingGenerationError(
+            createAIGenerationError(
+              "validation",
+              "Universe generator did not return a universeBlueprint.",
+            ),
+            providerType,
+          );
         }
 
         const description = parsed.description;
@@ -1217,7 +1357,9 @@ export function StoryEngineProvider({
           latestUserMessage: previousMessage.content,
         });
 
-        const assistantContent = await provider.generateResponse({
+        const assistantContent = await generateResponseWithRetry({
+          providerType,
+          provider,
           apiKey,
           model,
           messages: context,
@@ -1229,7 +1371,9 @@ export function StoryEngineProvider({
         const shouldRewriteForSize = sceneDepth === "light" && wordCount > target.maxWords * 2;
         const finalAssistantText = shouldRewriteForSize
           ? (
-              await provider.generateResponse({
+              await generateResponseWithRetry({
+                providerType,
+                provider,
                 apiKey,
                 model,
                 messages: [
@@ -1243,6 +1387,8 @@ export function StoryEngineProvider({
                       "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
                       "Not every character needs to speak; keep participation natural.",
                       "Never speak for the player character. Do not generate suggested player lines or options.",
+                      "Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
+                      "Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
                       "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
                       "Formatting rules:",
                       "- Every character line must start with 'Name:'.",
@@ -1267,6 +1413,8 @@ export function StoryEngineProvider({
           "Rewrite the following story scene into the required Story Engine transcript grammar.",
           "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
           "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
+          "Only resolve success or failure when the player's message leaves the outcome open as an attempt.",
           "Formatting rules (strict):",
           "- Every character line must start with 'Name:'.",
           "- Actions must be wrapped as *...* (asterisks only for actions).",
@@ -1298,6 +1446,7 @@ export function StoryEngineProvider({
           "Never use narrator labels like 'Narrator:' anywhere in the output.",
           "Keep continuity, character voice, and natural pacing.",
           "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
           "Formatting rules:",
           "- Every character line must start with 'Name:'.",
@@ -1320,6 +1469,7 @@ export function StoryEngineProvider({
           `The latest player message is:\n${previousMessage.content}`,
           `The player character is: ${playerCharacter.name}.`,
           "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "Do not attribute extra details to what the player said.",
           "If NPCs need details, have them ask clarifying questions.",
           "Do not invent diagnoses, causes, or specifics unless already established in prior story events/state or explicitly present in the latest player message.",
@@ -1337,6 +1487,7 @@ export function StoryEngineProvider({
           "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
           `The latest player message is canon scene state:\n${previousMessage.content}`,
           "Do not restate those facts in new words. Continue from the current moment and show consequences and NPC/world reactions.",
+          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "If a character enters/arrives or a reveal is already stated by the player, start after that moment (reactions, responses, new beats).",
           "Formatting rules:",
           "- Every character line must start with 'Name:'.",
@@ -1363,7 +1514,9 @@ export function StoryEngineProvider({
 
           if (!candidateSanitized.formatValid) {
             candidateAssistantText = (
-              await provider.generateResponse({
+              await generateResponseWithRetry({
+                providerType,
+                provider,
                 apiKey,
                 model,
                 messages: [
@@ -1382,7 +1535,9 @@ export function StoryEngineProvider({
 
           if (violation) {
             candidateAssistantText = (
-              await provider.generateResponse({
+              await generateResponseWithRetry({
+                providerType,
+                provider,
                 apiKey,
                 model,
                 messages: [
@@ -1396,7 +1551,9 @@ export function StoryEngineProvider({
 
           if (hiddenDialogueInferencePattern.test(candidateSanitized.text)) {
             candidateAssistantText = (
-              await provider.generateResponse({
+              await generateResponseWithRetry({
+                providerType,
+                provider,
                 apiKey,
                 model,
                 messages: [
@@ -1414,7 +1571,9 @@ export function StoryEngineProvider({
           });
           if (sceneDup.triggered) {
             candidateAssistantText = (
-              await provider.generateResponse({
+              await generateResponseWithRetry({
+                providerType,
+                provider,
                 apiKey,
                 model,
                 messages: [
@@ -1959,7 +2118,9 @@ export function StoryEngineProvider({
           existingText: opts?.existingText,
         });
 
-        const suggestion = await provider.generateResponse({
+        const suggestion = await generateResponseWithRetry({
+          providerType,
+          provider,
           apiKey,
           model,
           messages: context,
@@ -2040,20 +2201,34 @@ export function StoryEngineProvider({
             : undefined,
         });
 
-        const response = await provider.generateResponse({
-          apiKey,
-          model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: "Generate the JSON now." },
-          ],
-        });
+        let response: GenerateResponseResult;
+        try {
+          response = await generateResponseWithRetry({
+            providerType,
+            provider,
+            apiKey,
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: "Generate the JSON now." },
+            ],
+          });
+        } catch (error) {
+          rethrowUserFacingGenerationError(error, providerType);
+        }
 
         const jsonText = extractFirstJsonObject(response.content) ?? response.content.trim();
         const parsed = safeParseJsonObject<Record<string, unknown>>(jsonText);
 
         if (!parsed) {
-          throw new Error("Character generator returned invalid JSON.");
+          rethrowUserFacingGenerationError(
+            createAIGenerationError(
+              "parse",
+              "Character generator returned invalid JSON.",
+              { diagnostic: jsonText.slice(0, 400) },
+            ),
+            providerType,
+          );
         }
 
         const draft: Partial<PlayerCharacterDraft> = {};
@@ -2223,7 +2398,9 @@ export function StoryEngineProvider({
           latestUserMessage: userMessage.content,
         });
 
-        const assistantContent = await provider.generateResponse({
+        const assistantContent = await generateResponseWithRetry({
+          providerType,
+          provider,
           apiKey,
           model,
           messages: context,
@@ -2235,7 +2412,9 @@ export function StoryEngineProvider({
         const shouldRewriteForSize = sceneDepth === "light" && wordCount > target.maxWords * 2;
         const finalAssistantText = shouldRewriteForSize
           ? (
-              await provider.generateResponse({
+              await generateResponseWithRetry({
+                providerType,
+                provider,
                 apiKey,
                 model,
                 messages: [
@@ -2249,6 +2428,8 @@ export function StoryEngineProvider({
                       "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
                       "Not every character needs to speak; keep participation natural.",
                       "Never speak for the player character. Do not generate suggested player lines or options.",
+                      "Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
+                      "Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
                       "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
                       "Formatting rules:",
                       "- Every character line must start with 'Name:'.",
@@ -2273,6 +2454,8 @@ export function StoryEngineProvider({
           "Rewrite the following story scene into the required Story Engine transcript grammar.",
           "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
           "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
+          "Only resolve success or failure when the player's message leaves the outcome open as an attempt.",
           "Formatting rules (strict):",
           "- Every character line must start with 'Name:'.",
           "- Actions must be wrapped as *...* (asterisks only for actions).",
@@ -2304,6 +2487,7 @@ export function StoryEngineProvider({
           "Never use narrator labels like 'Narrator:' anywhere in the output.",
           "Keep continuity, character voice, and natural pacing.",
           "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
           "Formatting rules:",
           "- Every character line must start with 'Name:'.",
@@ -2326,6 +2510,7 @@ export function StoryEngineProvider({
           `The latest player message is:\n${userMessage.content}`,
           `The player character is: ${playerCharacter.name}.`,
           "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "Do not attribute extra details to what the player said.",
           "If NPCs need details, have them ask clarifying questions.",
           "Do not invent diagnoses, causes, or specifics unless already established in prior story events/state or explicitly present in the latest player message.",
@@ -2343,6 +2528,7 @@ export function StoryEngineProvider({
           "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
           `The latest player message is canon scene state:\n${userMessage.content}`,
           "Do not restate those facts in new words. Continue from the current moment and show consequences and NPC/world reactions.",
+          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "If a character enters/arrives or a reveal is already stated by the player, start after that moment (reactions, responses, new beats).",
           "Formatting rules:",
           "- Every character line must start with 'Name:'.",
@@ -2375,7 +2561,9 @@ export function StoryEngineProvider({
             console.groupEnd();
 
             candidateAssistantText = (
-              await provider.generateResponse({
+              await generateResponseWithRetry({
+                providerType,
+                provider,
                 apiKey,
                 model,
                 messages: [
@@ -2402,7 +2590,9 @@ export function StoryEngineProvider({
             console.groupEnd();
 
             candidateAssistantText = (
-              await provider.generateResponse({
+              await generateResponseWithRetry({
+                providerType,
+                provider,
                 apiKey,
                 model,
                 messages: [
@@ -2416,7 +2606,9 @@ export function StoryEngineProvider({
 
           if (hiddenDialogueInferencePattern.test(candidateSanitized.text)) {
             candidateAssistantText = (
-              await provider.generateResponse({
+              await generateResponseWithRetry({
+                providerType,
+                provider,
                 apiKey,
                 model,
                 messages: [
@@ -2439,7 +2631,9 @@ export function StoryEngineProvider({
             console.groupEnd();
 
             candidateAssistantText = (
-              await provider.generateResponse({
+              await generateResponseWithRetry({
+                providerType,
+                provider,
                 apiKey,
                 model,
                 messages: [
@@ -2479,7 +2673,9 @@ export function StoryEngineProvider({
             messages: updatedMessages,
           });
 
-          const summaryText = await provider.generateSummary({
+          const summaryText = await generateSummaryWithRetry({
+            providerType,
+            provider,
             apiKey,
             model,
             storyTitle: story.title,

@@ -1,6 +1,8 @@
 import type { AIProvider, AIChatMessage } from "./types";
 import { normalizeAIError, AIError } from "./errors";
 
+const REQUEST_TIMEOUT_MS = 45_000;
+
 interface GeminiGenerateContentRequest {
   contents: Array<{
     role?: "user" | "model";
@@ -60,6 +62,9 @@ async function extractGeminiErrorMessage(response: Response) {
 }
 
 async function callGenerateContent(apiKey: string, model: string, messages: AIChatMessage[]) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   try {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
@@ -72,6 +77,7 @@ async function callGenerateContent(apiKey: string, model: string, messages: AICh
           "x-goog-api-key": apiKey,
         },
         body: JSON.stringify(buildGeminiRequest(messages)),
+        signal: controller.signal,
       },
     );
 
@@ -97,6 +103,8 @@ async function callGenerateContent(apiKey: string, model: string, messages: AICh
     return content.trim();
   } catch (error) {
     throw normalizeAIError(error);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 }
 

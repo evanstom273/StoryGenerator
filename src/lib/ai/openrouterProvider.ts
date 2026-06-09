@@ -1,6 +1,8 @@
 import type { AIProvider, AIChatMessage } from "./types";
 import { normalizeAIError, normalizeOpenRouterError } from "./errors";
 
+const REQUEST_TIMEOUT_MS = 45_000;
+
 interface OpenRouterChatCompletionRequest {
   model: string;
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
@@ -27,6 +29,9 @@ async function callChatCompletions(
   apiKey: string,
   payload: OpenRouterChatCompletionRequest,
 ) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -35,6 +40,7 @@ async function callChatCompletions(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -46,6 +52,8 @@ async function callChatCompletions(
     return content.trim();
   } catch (error) {
     throw normalizeAIError(error);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 }
 
@@ -99,4 +107,3 @@ export function createOpenRouterProvider(): AIProvider {
     },
   };
 }
-
