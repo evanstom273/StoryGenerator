@@ -119,7 +119,12 @@ interface StoryEngineContextValue {
     genreTheme?: string;
     tone?: string;
     existingBlueprint?: string;
-  }) => Promise<string>;
+  }) => Promise<{
+    universeBlueprint: string;
+    description?: string;
+    genreTheme?: string;
+    tone?: string;
+  }>;
   deleteUniverse: (id: string) => Promise<GuardedDeleteResult>;
   createPlayerCharacter: (draft: PlayerCharacterDraft) => Promise<PlayerCharacter>;
   promoteStoryPlayerCharacter: (storyId: string) => Promise<PlayerCharacter>;
@@ -628,9 +633,8 @@ export function StoryEngineProvider({
         ),
       async createUniverse(draft) {
         const mode = draft.mode ?? "referenced";
-        const description = (draft.description ?? "").trim();
-        const concept =
-          mode === "custom" ? (draft.concept ?? description).trim() : (draft.concept ?? "").trim();
+        const concept = (draft.concept ?? "").trim();
+        const description = (draft.description ?? "").trim() || (mode === "custom" ? concept : "");
         const nextUniverse: Universe = {
           id: createEntityId("universe"),
           name: draft.name.trim(),
@@ -662,14 +666,14 @@ export function StoryEngineProvider({
         }
 
         const mode = draft.mode ?? (currentUniverse.mode ?? "referenced");
-        const description =
-          typeof draft.description === "string"
-            ? draft.description.trim()
-            : currentUniverse.description.trim();
         const concept =
-          mode === "custom"
-            ? (draft.concept ?? description ?? currentUniverse.concept ?? "").trim()
-            : (draft.concept ?? currentUniverse.concept ?? "").trim();
+          typeof draft.concept === "string"
+            ? draft.concept.trim()
+            : (currentUniverse.concept ?? "").trim();
+        const draftDescription =
+          typeof draft.description === "string" ? draft.description.trim() : "";
+        const description =
+          draftDescription || (mode === "custom" ? concept : currentUniverse.description.trim());
         const nextUniverse: Universe = {
           ...currentUniverse,
           name: draft.name.trim(),
@@ -733,7 +737,16 @@ export function StoryEngineProvider({
           throw new Error("Universe generator did not return a universeBlueprint.");
         }
 
-        return blueprint.trim();
+        const description = parsed.description;
+        const genreTheme = parsed.genreTheme;
+        const tone = parsed.tone;
+
+        return {
+          universeBlueprint: blueprint.trim(),
+          description: typeof description === "string" && description.trim() ? description.trim() : undefined,
+          genreTheme: typeof genreTheme === "string" && genreTheme.trim() ? genreTheme.trim() : undefined,
+          tone: typeof tone === "string" && tone.trim() ? tone.trim() : undefined,
+        };
       },
       async deleteUniverse(id) {
         const linkedCharacters = playerCharacters.some(

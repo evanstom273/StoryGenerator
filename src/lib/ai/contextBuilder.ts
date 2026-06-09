@@ -93,6 +93,7 @@ export function buildStoryChatContext({
 
   const universeMode = universe.mode ?? "referenced";
   const universeDescription = universe.description.trim() || universe.concept?.trim() || "";
+  const universeConcept = universe.concept?.trim() || "";
   const universeBlueprint = universe.universeBlueprint?.trim() || "";
 
   const universeInfo = normalizeWhitespace(
@@ -100,6 +101,7 @@ export function buildStoryChatContext({
       `Universe Name: ${universe.name}`,
       `Universe Mode: ${universeMode}`,
       universeDescription ? `Universe Description: ${universeDescription}` : "",
+      universeMode === "custom" && universeConcept ? `Universe Concept: ${universeConcept}` : "",
       universeMode === "custom" && universe.genreTheme?.trim()
         ? `Genre/Theme: ${universe.genreTheme.trim()}`
         : "",

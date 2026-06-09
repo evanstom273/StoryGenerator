@@ -54,14 +54,18 @@ export function UniverseFormPage() {
     }
 
     const mode = normalizeMode(existingUniverse.mode);
-    const description = existingUniverse.description ?? existingUniverse.concept ?? "";
+    const description = existingUniverse.description ?? "";
+    const concept =
+      mode === "custom"
+        ? (existingUniverse.concept ?? existingUniverse.description ?? "")
+        : (existingUniverse.concept ?? "");
 
     setFormState({
       name: existingUniverse.name,
       description,
       wikiUrl: existingUniverse.wikiUrl ?? "",
       mode,
-      concept: description,
+      concept,
       genreTheme: existingUniverse.genreTheme ?? "",
       tone: existingUniverse.tone ?? "",
       universeBlueprint: existingUniverse.universeBlueprint ?? "",
@@ -89,6 +93,7 @@ export function UniverseFormPage() {
       formState.name,
       formState.description,
       formState.wikiUrl,
+      formState.concept,
       formState.genreTheme,
       formState.tone,
       formState.universeBlueprint,
@@ -138,10 +143,8 @@ export function UniverseFormPage() {
       return;
     }
 
-    if (effectiveMode === "custom" && !formState.description.trim()) {
-      setErrorMessage(
-        "Universe description is required for custom universes (include power rules and core conflicts).",
-      );
+    if (effectiveMode === "custom" && !(formState.concept ?? "").trim()) {
+      setErrorMessage("Universe concept is required for custom universes.");
       return;
     }
 
@@ -155,10 +158,11 @@ export function UniverseFormPage() {
 
     try {
       const description = formState.description.trim();
+      const concept = (formState.concept ?? "").trim();
       const draft: UniverseDraft = {
         ...formState,
         mode: effectiveMode,
-        concept: description || undefined,
+        concept: concept || undefined,
         description,
       };
 
@@ -235,11 +239,9 @@ export function UniverseFormPage() {
       return;
     }
 
-    const description = formState.description.trim();
-    if (!description) {
-      setGeneratorError(
-        "Universe description is required (include power rules and core conflicts).",
-      );
+    const concept = (formState.concept ?? "").trim();
+    if (!concept) {
+      setGeneratorError("Universe concept is required.");
       return;
     }
 
@@ -253,9 +255,9 @@ export function UniverseFormPage() {
 
     setIsGenerating(true);
     try {
-      const blueprint = await generateUniverseBlueprint({
+      const result = await generateUniverseBlueprint({
         name: formState.name.trim() || "Untitled Universe",
-        concept: description,
+        concept,
         genreTheme: (formState.genreTheme ?? "").trim() || undefined,
         tone: (formState.tone ?? "").trim() || undefined,
         existingBlueprint: existingBlueprint || undefined,
@@ -263,8 +265,14 @@ export function UniverseFormPage() {
 
       setFormState((current) => ({
         ...current,
-        universeBlueprint: blueprint,
-        concept: description,
+        universeBlueprint: result.universeBlueprint,
+        description: current.description.trim()
+          ? current.description
+          : (result.description ?? current.description),
+        genreTheme: current.genreTheme?.trim()
+          ? current.genreTheme
+          : (result.genreTheme ?? current.genreTheme),
+        tone: current.tone?.trim() ? current.tone : (result.tone ?? current.tone),
       }));
     } catch (error) {
       setGeneratorError(error instanceof Error ? error.message : "Unable to generate a blueprint.");
@@ -335,9 +343,24 @@ export function UniverseFormPage() {
             />
           </Field>
 
+          {effectiveMode === "custom" ? (
+            <Field label="Universe Concept" hint="Required">
+              <TextAreaInput
+                value={formState.concept ?? ""}
+                onChange={(event) =>
+                  setFormState((currentState) => ({
+                    ...currentState,
+                    concept: event.target.value,
+                  }))
+                }
+                placeholder="What kind of universe do you want to play in?"
+              />
+            </Field>
+          ) : null}
+
           <Field
             label="Description"
-            hint={effectiveMode === "custom" ? "Required" : "Optional"}
+            hint="Player-facing (shown in universe lists)"
           >
             <TextAreaInput
               value={formState.description}
@@ -345,7 +368,6 @@ export function UniverseFormPage() {
                 setFormState((currentState) => ({
                   ...currentState,
                   description: event.target.value,
-                  concept: event.target.value,
                 }))
               }
               placeholder="Describe the setting in player-facing terms. Include power rules (what can/can't happen) and the core conflicts (what keeps things tense)."
