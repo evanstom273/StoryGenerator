@@ -75,6 +75,9 @@ export function buildStoryStateExtractionPrompt({
       '      "titleOrRank"?: string,',
       '      "relationships"?: { "<otherName>": string },',
       '      "status"?: string,',
+      '      "statusBullets"?: string[],',
+      '      "strengths"?: string[],',
+      '      "weaknesses"?: string[],',
       '      "notes"?: string[]',
       "    }",
       "  },",
@@ -86,7 +89,7 @@ export function buildStoryStateExtractionPrompt({
       '  "relationships"?: { "<name>": { "<otherName>": { "trust"?: "low"|"medium"|"high"|"unknown", "respect"?: "low"|"medium"|"high"|"unknown", "friendship"?: "low"|"medium"|"high"|"unknown", "loyalty"?: "low"|"medium"|"high"|"unknown", "fear"?: "low"|"medium"|"high"|"unknown", "attraction"?: "low"|"medium"|"high"|"unknown", "rivalry"?: "low"|"medium"|"high"|"unknown", "hostility"?: "low"|"medium"|"high"|"unknown" } } },',
       '  "npcs"?: { "<name>": { "description"?: string, "role"?: string, "firstSeen"?: string, "lastSeen"?: string, "significance"?: "minor"|"recurring"|"major", "memories"?: string[] } },',
       '  "locations"?: { "<name>": { "description"?: string, "tags"?: string[], "notes"?: string[], "lastSeen"?: string } },',
-      '  "summaries"?: { "characterSummaries"?: { "<name>": string }, "relationshipSummary"?: string, "worldSummary"?: string },',
+      '  "summaries"?: { "premise"?: string, "protagonistSummary"?: string, "currentSituation"?: string, "recentDevelopments"?: string[], "characterSummaries"?: { "<name>": string }, "relationshipSummary"?: string, "worldSummary"?: string },',
       '  "indexes"?: {',
       '    "messageCount"?: number,',
       '    "messageNumberingVersion"?: "1.0",',
@@ -104,18 +107,32 @@ export function buildStoryStateExtractionPrompt({
       "- Include identity changes (preferred name, alias, undercover identity, pronouns).",
       "- Always include the player character as an entry in characters (canonicalName = the player name). If the transcript uses nicknames/short forms for the player, add them to aliases and update displayName if the nickname becomes the primary address.",
       "- Include relationship changes and rank/title changes when they occur.",
+      "- Preserve three summary layers inside summaries: premise, currentSituation, and recentDevelopments.",
+      "- premise should capture what the story is fundamentally about and who it is about. It should change slowly unless the story truly transforms.",
+      "- currentSituation should capture what is happening now, who is in immediate trouble, and what the active pressure is.",
+      "- recentDevelopments should capture only the most important recent turning points, not every small beat.",
+      "- protagonistSummary should keep extra focus on the player character: who they are, what matters to them, and their current condition.",
       "- If characters shift from formal titles to first names (or vice versa), capture the current preferred displayName and titleOrRank.",
       "- Include major injuries/recoveries and major world events.",
+      "- Character entries and indexes.characters descriptions should answer 'who are they now?' not just who they were at the start.",
+      "- Use status/statusBullets for live character conditions such as injuries, captivity, blindness, wanted status, political danger, disguises, or recent transformations.",
+      "- Use strengths/weaknesses for enduring characterization that should influence future narration.",
+      "- Major life-changing events should aggressively update character status and registry descriptions.",
       "- Put short-term scene specifics (current location/participants/active situation) in sceneState.",
       "- Put only lasting, story-changing events in significantMemories (diagnoses, deaths, betrayals, promotions, major injuries, identity changes).",
       "- relationshipState should be a consolidated set of relationship facts that affect future behavior.",
       "- Use relationships for structured relationship metrics between characters (including recurring NPCs).",
       "- Use npcs to track recurring NPCs and what they remember.",
       "- Use locations to track important recurring places.",
+      "- World facts are setting-level truths, institutions, wars, laws, disasters, political situations, and external constraints. Do not put personal character conditions in worldFacts.",
+      "- Personal conditions belong in the relevant character entry, not in worldFacts. Example: 'Lyra is permanently blind' is character status, while 'the poison causes permanent blindness' is a world fact only if the transcript explicitly establishes it as a general rule.",
+      "- If a major event is trivial or local, do not let it overwrite the premise. If it is story-defining, reflect it in premise/currentSituation/recentDevelopments.",
+      "- Treat probable spelling variants, nicknames, and near-identical names as the same person unless the transcript clearly establishes separate individuals.",
       "- Keep lists short and deduplicated.",
       "- Keep indexes bounded: max 50 entities per category, max 30 worldFacts, max 50 significantMemories, max 20 openThreads, max 30 relationships.",
       "- Evidence should use messageNumbers from the transcript brackets. If uncertain, omit the entry instead of guessing.",
       "- For indexes.relationships: represent the CURRENT dynamic state (not a timeline). Keep only one entry per pair. Update/overwrite the pair instead of adding duplicates. Prefer stable ordering for pairs.",
+      "- Preserve Open Threads quality. Track the questions/tensions a reader would still care about.",
       "- If nothing changed, return the previous state with a refreshed updatedAt.",
       "- Never generate dialogue or actions for the player character; this is metadata only.",
     ].join("\n"),
@@ -346,11 +363,81 @@ export function parseStoryStateData(text: string): StoryStateData | null {
   return parsed;
 }
 
-export function formatStoryLongTermMemoryForPrompt(storyStateData: StoryStateData) {
+function trimStringList(value: unknown, maxItems: number) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim())
+    .slice(0, maxItems);
+}
+
+export function formatStoryLongTermMemoryForPrompt(
+  storyStateData: StoryStateData,
+  opts?: { playerName?: string | null },
+) {
   const lines: string[] = [];
 
-  const characterNames = Object.keys(storyStateData.characters || {}).slice(0, 24);
+  if (storyStateData.summaries && typeof storyStateData.summaries === "object") {
+    const premise = (storyStateData.summaries as any).premise;
+    const protagonistSummary = (storyStateData.summaries as any).protagonistSummary;
+    const currentSituation = (storyStateData.summaries as any).currentSituation;
+    const recentDevelopments = trimStringList((storyStateData.summaries as any).recentDevelopments, 8);
+    const worldSummary = (storyStateData.summaries as any).worldSummary;
+    const relationshipSummary = (storyStateData.summaries as any).relationshipSummary;
+
+    if (typeof premise === "string" && premise.trim()) {
+      lines.push("Story Premise:");
+      lines.push(`- ${premise.trim()}`);
+    }
+    if (typeof protagonistSummary === "string" && protagonistSummary.trim()) {
+      lines.push("");
+      lines.push("Protagonist Focus:");
+      lines.push(`- ${protagonistSummary.trim()}`);
+    }
+    if (typeof currentSituation === "string" && currentSituation.trim()) {
+      lines.push("");
+      lines.push("Current Situation:");
+      lines.push(`- ${currentSituation.trim()}`);
+    }
+    if (recentDevelopments.length) {
+      lines.push("");
+      lines.push("Recent Developments:");
+      for (const development of recentDevelopments) {
+        lines.push(`- ${development}`);
+      }
+    }
+    if (typeof worldSummary === "string" && worldSummary.trim()) {
+      lines.push("");
+      lines.push("World Summary:");
+      lines.push(`- ${worldSummary.trim()}`);
+    }
+    if (typeof relationshipSummary === "string" && relationshipSummary.trim()) {
+      lines.push("");
+      lines.push("Relationship Summary:");
+      lines.push(`- ${relationshipSummary.trim()}`);
+    }
+  }
+
+  const playerName = opts?.playerName?.trim().toLowerCase() ?? "";
+  const characterNames = Object.keys(storyStateData.characters || {})
+    .sort((left, right) => {
+      if (playerName) {
+        const leftIsPlayer = left.trim().toLowerCase() === playerName;
+        const rightIsPlayer = right.trim().toLowerCase() === playerName;
+        if (leftIsPlayer !== rightIsPlayer) {
+          return leftIsPlayer ? -1 : 1;
+        }
+      }
+      return left.localeCompare(right);
+    })
+    .slice(0, 24);
   if (characterNames.length) {
+    if (lines.length) {
+      lines.push("");
+    }
     lines.push("Characters:");
     for (const name of characterNames) {
       const entry = storyStateData.characters[name];
@@ -372,6 +459,21 @@ export function formatStoryLongTermMemoryForPrompt(storyStateData: StoryStateDat
       }
 
       lines.push(`- ${name}${parts.length ? ` — ${parts.join("; ")}` : ""}`);
+
+      const statusBullets = trimStringList((entry as any).statusBullets, 4);
+      if (statusBullets.length) {
+        lines.push(`  status: ${statusBullets.join(" | ")}`);
+      }
+
+      const strengths = trimStringList((entry as any).strengths, 4);
+      if (strengths.length) {
+        lines.push(`  strengths: ${strengths.join(", ")}`);
+      }
+
+      const weaknesses = trimStringList((entry as any).weaknesses, 4);
+      if (weaknesses.length) {
+        lines.push(`  weaknesses: ${weaknesses.join(", ")}`);
+      }
     }
   }
 
@@ -481,21 +583,6 @@ export function formatStoryLongTermMemoryForPrompt(storyStateData: StoryStateDat
         parts.push(`tags: ${tags.slice(0, 4).join(", ")}`);
       }
       lines.push(`- ${name}${parts.length ? ` — ${parts.join("; ")}` : ""}`);
-    }
-  }
-
-  if (storyStateData.summaries && typeof storyStateData.summaries === "object") {
-    const worldSummary = (storyStateData.summaries as any).worldSummary;
-    const relationshipSummary = (storyStateData.summaries as any).relationshipSummary;
-    if (typeof worldSummary === "string" && worldSummary.trim()) {
-      lines.push("");
-      lines.push("World Summary:");
-      lines.push(`- ${worldSummary.trim()}`);
-    }
-    if (typeof relationshipSummary === "string" && relationshipSummary.trim()) {
-      lines.push("");
-      lines.push("Relationship Summary:");
-      lines.push(`- ${relationshipSummary.trim()}`);
     }
   }
 

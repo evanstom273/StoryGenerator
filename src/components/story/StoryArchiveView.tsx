@@ -6,6 +6,32 @@ import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
 
+const AUTO_DEEP_INDEX_THRESHOLD = 10;
+
+function trimStringList(value: unknown, maxItems: number) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim())
+    .slice(0, maxItems);
+}
+
+function getCharacterStatusLines(character: any) {
+  const bullets = trimStringList(character?.statusBullets, 4);
+  if (bullets.length) {
+    return bullets;
+  }
+
+  if (typeof character?.status === "string" && character.status.trim()) {
+    return [character.status.trim()];
+  }
+
+  return trimStringList(character?.notes, 3);
+}
+
 export function StoryArchiveView({ storyId }: { storyId: string }) {
   const { fetchStoryState, getMessagesForStory, rebuildStatus, updateIndexesDeep } =
     useStoryEngine();
@@ -87,31 +113,36 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
     const remaining = uniqueSorted.length - visible.length;
 
     return (
-      <div className="mt-2 flex flex-wrap gap-2">
-        {visible.map((number) => (
-          <button
-            key={number}
-            type="button"
-            className="rounded-full border border-divider bg-white/[0.03] px-2 py-1 text-xs font-semibold text-ink-soft transition hover:border-accent/50 hover:bg-accent/10"
-            onClick={() => navigateToStoryMessageNumber(storyId, number)}
-          >
-            #{number}
-          </button>
-        ))}
-        {remaining > 0 ? (
-          <button
-            type="button"
-            className="rounded-full border border-divider bg-white/[0.03] px-2 py-1 text-xs font-semibold text-ink-muted transition hover:border-accent/50 hover:bg-accent/10"
-            onClick={() =>
-              setExpandedEvidenceKeys((current) => ({
-                ...current,
-                [key]: true,
-              }))
-            }
-          >
-            +{remaining} more
-          </button>
-        ) : null}
+      <div className="mt-3 rounded-2xl border border-accent/15 bg-accent/5 px-3 py-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent-soft">
+          Evidence
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {visible.map((number) => (
+            <button
+              key={number}
+              type="button"
+              className="rounded-full border border-accent/30 bg-black/20 px-2.5 py-1 text-xs font-semibold text-ink-soft transition hover:border-accent hover:bg-accent/15"
+              onClick={() => navigateToStoryMessageNumber(storyId, number)}
+            >
+              Jump to #{number}
+            </button>
+          ))}
+          {remaining > 0 ? (
+            <button
+              type="button"
+              className="rounded-full border border-divider bg-white/[0.03] px-2.5 py-1 text-xs font-semibold text-ink-muted transition hover:border-accent/50 hover:bg-accent/10"
+              onClick={() =>
+                setExpandedEvidenceKeys((current) => ({
+                  ...current,
+                  [key]: true,
+                }))
+              }
+            >
+              +{remaining} more
+            </button>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -152,9 +183,16 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
   const worldFacts = storyStateData.indexes?.worldFacts ?? [];
   const openThreads = storyStateData.indexes?.openThreads ?? [];
   const characters = storyStateData.indexes?.characters ? Object.values(storyStateData.indexes.characters) : [];
+  const characterStates = Object.entries(storyStateData.characters ?? {});
   const locations = storyStateData.indexes?.locations ? Object.values(storyStateData.indexes.locations) : [];
   const relationships = storyStateData.indexes?.relationships ?? [];
   const significantMemories = (storyStateData.indexes as any)?.significantMemories ?? [];
+  const premise = storyStateData.summaries?.premise?.trim() ?? "";
+  const protagonistSummary = storyStateData.summaries?.protagonistSummary?.trim() ?? "";
+  const currentSituation = storyStateData.summaries?.currentSituation?.trim() ?? "";
+  const recentDevelopments = trimStringList(storyStateData.summaries?.recentDevelopments, 6);
+  const messagesSinceDeep = Math.max(0, storyStateData.messagesSinceDeepIndexUpdate ?? staleBy);
+  const messagesUntilAutoDeep = Math.max(0, AUTO_DEEP_INDEX_THRESHOLD - Math.min(messagesSinceDeep, AUTO_DEEP_INDEX_THRESHOLD));
 
   return (
     <div className="space-y-4">
@@ -193,10 +231,72 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
               {staleBy ? `Stale (+${staleBy})` : "Up to date"}
             </div>
           </div>
+          <div className="flex items-center justify-between gap-3">
+            <div>Auto deep index</div>
+            <div className="text-ink-soft">
+              {messagesUntilAutoDeep === 0
+                ? "Ready on next pass"
+                : `In ${messagesUntilAutoDeep} message${messagesUntilAutoDeep === 1 ? "" : "s"}`}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+          Automatic deep indexing runs every {AUTO_DEEP_INDEX_THRESHOLD} new messages and now
+          boots itself even if the story had no prior archive state.
+          {messagesSinceDeep > 0 ? ` Progress: ${messagesSinceDeep}/${AUTO_DEEP_INDEX_THRESHOLD}.` : " Progress: 0/10."}
         </div>
       </Panel>
 
       <div className="grid gap-4 md:grid-cols-2">
+        {premise || protagonistSummary || currentSituation || recentDevelopments.length ? (
+          <Panel padding="sm" className="md:col-span-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+              Story State
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              {premise ? (
+                <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+                    Premise
+                  </div>
+                  <div className="mt-2 text-sm text-ink-soft">{premise}</div>
+                </div>
+              ) : null}
+              {protagonistSummary ? (
+                <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+                    Protagonist
+                  </div>
+                  <div className="mt-2 text-sm text-ink-soft">{protagonistSummary}</div>
+                </div>
+              ) : null}
+              {currentSituation ? (
+                <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+                    Current Situation
+                  </div>
+                  <div className="mt-2 text-sm text-ink-soft">{currentSituation}</div>
+                </div>
+              ) : null}
+            </div>
+            {recentDevelopments.length ? (
+              <div className="mt-3 rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+                  Recent Developments
+                </div>
+                <div className="mt-2 space-y-2">
+                  {recentDevelopments.map((entry) => (
+                    <div key={entry} className="text-sm text-ink-soft">
+                      {entry}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </Panel>
+        ) : null}
+
         {openThreads.length ? (
           <Panel padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
@@ -235,6 +335,53 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
           </Panel>
         ) : null}
 
+        {characterStates.length ? (
+          <Panel padding="sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+              Character Status
+            </div>
+            <div className="mt-3 space-y-3">
+              {characterStates
+                .slice()
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([name, entry]) => {
+                  const statusLines = getCharacterStatusLines(entry);
+                  const strengths = trimStringList((entry as any)?.strengths, 3);
+                  const weaknesses = trimStringList((entry as any)?.weaknesses, 3);
+                  if (!statusLines.length && !strengths.length && !weaknesses.length) {
+                    return null;
+                  }
+
+                  return (
+                    <div
+                      key={name}
+                      className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
+                    >
+                      <div className="font-semibold text-ink-soft">{name}</div>
+                      <div className="mt-2 space-y-2">
+                        {statusLines.map((line) => (
+                          <div key={line} className="text-sm text-ink-soft">
+                            {line}
+                          </div>
+                        ))}
+                        {strengths.length ? (
+                          <div className="text-xs text-emerald-200/90">
+                            Strengths: {strengths.join(", ")}
+                          </div>
+                        ) : null}
+                        {weaknesses.length ? (
+                          <div className="text-xs text-amber-100/90">
+                            Weaknesses: {weaknesses.join(", ")}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </Panel>
+        ) : null}
+
         {characters.length ? (
           <Panel padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
@@ -251,7 +398,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
                   >
                     <div className="font-semibold text-ink-soft">{entry.name}</div>
                     {entry.description ? (
-                      <div className="mt-1 text-xs text-ink-muted">{entry.description}</div>
+                      <div className="mt-1 text-sm text-ink-muted">{entry.description}</div>
                     ) : null}
                     {renderEvidencePills(entry.evidence?.messageNumbers, `char-${entry.name}`)}
                   </div>
@@ -331,4 +478,3 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
     </div>
   );
 }
-

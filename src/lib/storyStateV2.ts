@@ -103,6 +103,21 @@ function normalizeKey(value: string) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function isHighPriorityCharacterDescription(value: unknown) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return /(currently|now|injured|wounded|blind|coma|missing|detained|captured|wanted|fugitive|under arrest|under investigation|in hiding|transformed|poisoned|recovering|acting ruler|exposed|disguised|undercover|promoted|demoted|dead|dying)/.test(
+    normalized,
+  );
+}
+
 function mergeEvidence(left: any, right: any) {
   const leftNumbers = Array.isArray(left?.messageNumbers) ? left.messageNumbers : [];
   const rightNumbers = Array.isArray(right?.messageNumbers) ? right.messageNumbers : [];
@@ -234,6 +249,20 @@ function reconcileIndexedEntities(
 
     const mergedAliases = new Set([...match.aliases, ...normalizedAliases]);
     const mergedEvidence = mergeEvidence(match.entity.evidence, (value as any).evidence);
+    const nextDescription =
+      typeof (value as any).description === "string" && (value as any).description.trim()
+        ? (value as any).description.trim()
+        : "";
+    const previousDescription =
+      typeof match.entity.description === "string" && match.entity.description.trim()
+        ? match.entity.description.trim()
+        : "";
+    const shouldPreferNextDescription =
+      !!nextDescription &&
+      (!previousDescription ||
+        isHighPriorityCharacterDescription(nextDescription) ||
+        (!isHighPriorityCharacterDescription(previousDescription) &&
+          nextDescription.length > previousDescription.length));
 
     match.aliases = mergedAliases;
     const mergedAliasList = Array.from(
@@ -254,11 +283,7 @@ function reconcileIndexedEntities(
       ...(typeof (value as any).id === "string" && (value as any).id.trim() ? { id: (value as any).id.trim() } : {}),
       name: match.entity.name,
       ...(mergedAliasList.length ? { aliases: mergedAliasList } : {}),
-      ...(typeof (value as any).description === "string" &&
-      (value as any).description.trim() &&
-      (!match.entity.description || (value as any).description.trim().length > String(match.entity.description).trim().length)
-        ? { description: (value as any).description.trim() }
-        : {}),
+      ...(shouldPreferNextDescription ? { description: nextDescription } : {}),
       ...(typeof (value as any).firstSeenMessage === "number" && Number.isFinite((value as any).firstSeenMessage)
         ? {
             firstSeenMessage:

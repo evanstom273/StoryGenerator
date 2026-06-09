@@ -153,7 +153,8 @@ export function buildStoryChatContext({
 
     return {
       longTerm:
-        formatStoryLongTermMemoryForPrompt(parsed) || "No long-term memory is recorded yet.",
+        formatStoryLongTermMemoryForPrompt(parsed, { playerName: playerCharacter.name }) ||
+        "No long-term memory is recorded yet.",
       scene: formatStorySceneStateForPrompt(parsed),
     };
   })();
@@ -162,6 +163,7 @@ export function buildStoryChatContext({
     [
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
+      "Stay anchored in the story's premise, protagonist, and current situation. Recent beats matter, but they should not erase what the story is fundamentally about.",
       "Do not automatically introduce cases, missions, mysteries, assignments, emergencies, villains, or conflicts simply because the story has started.",
       "Character interaction alone is a valid scene.",
       "Name resolution rule: treat nicknames, shortened names, last-name references, and informal variants as referring to the same character unless the story explicitly introduces a separate person.",

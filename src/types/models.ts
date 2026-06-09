@@ -170,6 +170,9 @@ export type StoryStateCharacterState = {
   titleOrRank?: string;
   relationships?: Record<string, string>;
   status?: string;
+  statusBullets?: string[];
+  strengths?: string[];
+  weaknesses?: string[];
   notes?: string[];
 };
 
@@ -218,6 +221,10 @@ export type StoryStateData = {
     }
   >;
   summaries?: {
+    premise?: string;
+    protagonistSummary?: string;
+    currentSituation?: string;
+    recentDevelopments?: string[];
     characterSummaries?: Record<string, string>;
     relationshipSummary?: string;
     worldSummary?: string;

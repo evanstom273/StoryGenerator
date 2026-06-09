@@ -87,8 +87,11 @@ export function createOpenAIProvider(): AIProvider {
         `You are a story summarizer. Summarize the story "${storyTitle}" for continuity.`,
         "Write in present tense.",
         "Keep it concise but specific.",
+        "Preserve three layers: core premise, current situation, and recent developments.",
+        "Keep the protagonist central: who they are, what the story is fundamentally about, and what condition/status they are in now.",
         "Include: key events, current goals, unresolved threads, and relevant character details.",
         "Explicitly track changes to: preferred names, aliases, pronouns, ranks/titles, relationships, injuries/recoveries, and major world events.",
+        "Major life-changing events should outweigh trivial recent beats.",
         "Do not invent new facts.",
         existingSummary?.trim()
           ? `Existing summary (update/extend it):\n${existingSummary.trim()}`
