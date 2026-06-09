@@ -4,6 +4,7 @@ import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
 import { PencilIcon } from "../components/icons";
+import { StoryArchiveView } from "../components/story/StoryArchiveView";
 import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
 import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
 import { Button, buttonClasses } from "../components/ui/Button";
@@ -75,6 +76,7 @@ export function StoryWorkspacePage() {
   const [isGeneratingAssist, setIsGeneratingAssist] = useState(false);
   const [assistError, setAssistError] = useState<string | null>(null);
   const [manualMode, setManualMode] = useState(false);
+  const [archiveMode, setArchiveMode] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [assistantEditMessage, setAssistantEditMessage] = useState<StoryMessage | null>(null);
   const [assistantEditContent, setAssistantEditContent] = useState("");
@@ -92,6 +94,7 @@ export function StoryWorkspacePage() {
     setIsGeneratingAssist(false);
     setAssistError(null);
     setManualMode(false);
+    setArchiveMode(false);
     setAssistantEditMessage(null);
     setAssistantEditContent("");
     setAssistantEditError(null);
@@ -292,8 +295,26 @@ export function StoryWorkspacePage() {
     setAssistError(null);
 
     try {
-      const suggestion = await generatePlayerAssistMessage(activeStory.id);
-      setChatInput(suggestion);
+      const existingText = chatInput;
+      const suggestion = await generatePlayerAssistMessage(activeStory.id, {
+        existingText: existingText.trim() ? existingText : undefined,
+      });
+
+      setChatInput((current) => {
+        const base = current ?? "";
+        if (!base.trim()) {
+          return suggestion;
+        }
+
+        const trimmedBase = base.replace(/[ \t]+\n/g, "\n").replace(/\s+$/g, "");
+        const trimmedSuggestion = suggestion.trim();
+        if (!trimmedSuggestion) {
+          return base;
+        }
+
+        const separator = trimmedBase.endsWith("\n") ? "\n" : "\n\n";
+        return `${trimmedBase}${separator}${trimmedSuggestion}`;
+      });
     } catch (error) {
       setAssistError(
         error instanceof Error ? error.message : "Unable to generate a player suggestion.",
@@ -520,12 +541,20 @@ export function StoryWorkspacePage() {
           </Button>
           <Button
             size="sm"
+            variant={archiveMode ? "secondary" : "ghost"}
+            onClick={() => setArchiveMode((current) => !current)}
+            disabled={isGenerating}
+          >
+            {archiveMode ? "Back to Story" : "Archive"}
+          </Button>
+          <Button
+            size="sm"
             variant={readerMode ? "secondary" : "ghost"}
             onClick={() => setReaderMode(!readerMode)}
           >
             {readerMode ? "Exit Reader" : "Reader Mode"}
           </Button>
-          {readerMode ? null : (
+          {readerMode || archiveMode ? null : (
             <Button
               variant={manualMode ? "secondary" : "ghost"}
               size="sm"
@@ -539,8 +568,10 @@ export function StoryWorkspacePage() {
         </div>
       </div>
 
-        <div className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
-        {messages.length ? (
+      <div className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
+        {archiveMode ? (
+          <StoryArchiveView storyId={activeStory.id} />
+        ) : messages.length ? (
           showChrome && !readerMode ? (
             <div className="space-y-1">
               {(() => {
@@ -598,7 +629,7 @@ export function StoryWorkspacePage() {
         )}
       </div>
 
-      {readerMode ? null : (
+      {readerMode || archiveMode ? null : (
         latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
           <Panel className="mt-4" padding="sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

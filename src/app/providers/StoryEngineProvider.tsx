@@ -30,6 +30,10 @@ import {
   buildCharacterGeneratorSystemPrompt,
   type PlayerCharacterField,
 } from "../../lib/ai/characterGenerator";
+import {
+  buildUniverseGeneratorSystemPrompt,
+  type UniverseField,
+} from "../../lib/ai/universeGenerator";
 import { extractFirstJsonObject, safeParseJsonObject } from "../../lib/ai/json";
 import {
   normalizeStoryStateToV2,
@@ -75,6 +79,7 @@ import type {
   Universe,
   UniverseDraft,
   UniverseImport,
+  UniversePackSnapshotV1,
 } from "../../types/models";
 
 interface StoryEngineContextValue {
@@ -109,6 +114,11 @@ interface StoryEngineContextValue {
   getStoriesForPlayerCharacter: (playerCharacterId: string) => Story[];
   createUniverse: (draft: UniverseDraft) => Promise<Universe>;
   updateUniverse: (id: string, draft: UniverseDraft) => Promise<Universe | null>;
+  generateUniverseDraft: (
+    universeId?: string,
+    fields?: Array<keyof UniverseDraft>,
+    existing?: Partial<UniverseDraft>,
+  ) => Promise<Record<string, string>>;
   deleteUniverse: (id: string) => Promise<GuardedDeleteResult>;
   createPlayerCharacter: (draft: PlayerCharacterDraft) => Promise<PlayerCharacter>;
   promoteStoryPlayerCharacter: (storyId: string) => Promise<PlayerCharacter>;
@@ -187,7 +197,10 @@ interface StoryEngineContextValue {
   listUniverseImports: (universeId: string) => Promise<UniverseImport[]>;
   saveUniverseImport: (next: Omit<UniverseImport, "id">) => Promise<UniverseImport>;
   listStorySummaries: (storyId: string) => Promise<StorySummary[]>;
-  generatePlayerAssistMessage: (storyId: string) => Promise<string>;
+  generatePlayerAssistMessage: (
+    storyId: string,
+    opts?: { existingText?: string },
+  ) => Promise<string>;
   generatePlayerCharacterDraft: (
     universeId: string,
     fields?: Array<keyof PlayerCharacterDraft>,
@@ -613,11 +626,26 @@ export function StoryEngineProvider({
           stories.filter((story) => story.playerCharacterId === playerCharacterId),
         ),
       async createUniverse(draft) {
+        const lorePrimer = (draft.lorePrimer ?? draft.description ?? "").trim();
         const nextUniverse: Universe = {
           id: createEntityId("universe"),
           name: draft.name.trim(),
-          description: draft.description.trim(),
+          description: lorePrimer,
           wikiUrl: draft.wikiUrl.trim(),
+          genreTheme: draft.genreTheme?.trim() || undefined,
+          tone: draft.tone?.trim() || undefined,
+          eraTechLevel: draft.eraTechLevel?.trim() || undefined,
+          powerSystemRules: draft.powerSystemRules?.trim() || undefined,
+          coreConflict: draft.coreConflict?.trim() || undefined,
+          everydayLifeVibe: draft.everydayLifeVibe?.trim() || undefined,
+          canonGuardrails: draft.canonGuardrails?.trim() || undefined,
+          playerBoundaries: draft.playerBoundaries?.trim() || undefined,
+          ratingContentNotes: draft.ratingContentNotes?.trim() || undefined,
+          lorePrimer: lorePrimer || undefined,
+          keyFactions: draft.keyFactions?.trim() || undefined,
+          keyLocations: draft.keyLocations?.trim() || undefined,
+          characterArchetypes: draft.characterArchetypes?.trim() || undefined,
+          notes: draft.notes?.trim() || undefined,
           importedLore: [],
           importedCharacters: [],
           importedLocations: [],
@@ -637,17 +665,126 @@ export function StoryEngineProvider({
           return null;
         }
 
+        const lorePrimer = (draft.lorePrimer ?? draft.description ?? "").trim();
         const nextUniverse: Universe = {
           ...currentUniverse,
           name: draft.name.trim(),
-          description: draft.description.trim(),
+          description: lorePrimer,
           wikiUrl: draft.wikiUrl.trim(),
+          genreTheme: draft.genreTheme?.trim() || undefined,
+          tone: draft.tone?.trim() || undefined,
+          eraTechLevel: draft.eraTechLevel?.trim() || undefined,
+          powerSystemRules: draft.powerSystemRules?.trim() || undefined,
+          coreConflict: draft.coreConflict?.trim() || undefined,
+          everydayLifeVibe: draft.everydayLifeVibe?.trim() || undefined,
+          canonGuardrails: draft.canonGuardrails?.trim() || undefined,
+          playerBoundaries: draft.playerBoundaries?.trim() || undefined,
+          ratingContentNotes: draft.ratingContentNotes?.trim() || undefined,
+          lorePrimer: lorePrimer || undefined,
+          keyFactions: draft.keyFactions?.trim() || undefined,
+          keyLocations: draft.keyLocations?.trim() || undefined,
+          characterArchetypes: draft.characterArchetypes?.trim() || undefined,
+          notes: draft.notes?.trim() || undefined,
         };
 
         await repository.saveUniverse(nextUniverse);
         await hydrate(false);
 
         return nextUniverse;
+      },
+      async generateUniverseDraft(universeId, fields, existing) {
+        const settings = await getNormalizedAISettings();
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings before generating universes.");
+        }
+
+        const providerType = settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(providerType);
+        const provider = createAIProvider(providerType);
+
+        const existingUniverse = universeId ? await repository.getUniverse(universeId) : null;
+        const imports = universeId ? await repository.listUniverseImports(universeId) : [];
+        const mostRecentImport = imports[0];
+        const importedLoreText = mostRecentImport?.importedText?.slice(0, 12000) ?? "";
+
+        const allowedFields: Array<UniverseField> = [
+          "name",
+          "genreTheme",
+          "tone",
+          "eraTechLevel",
+          "powerSystemRules",
+          "coreConflict",
+          "everydayLifeVibe",
+          "canonGuardrails",
+          "playerBoundaries",
+          "ratingContentNotes",
+          "lorePrimer",
+          "keyFactions",
+          "keyLocations",
+          "characterArchetypes",
+          "notes",
+        ];
+
+        const requestedFieldsRaw = fields?.length ? fields : allowedFields;
+        const requestedFields = requestedFieldsRaw.filter((field) =>
+          allowedFields.includes(field as UniverseField),
+        ) as UniverseField[];
+        const generatorFields = requestedFields;
+
+        const existingValues = existing
+          ? allowedFields.reduce(
+              (acc, key) => {
+                const value = (existing as any)[key];
+                if (typeof value === "string" && value.trim()) {
+                  acc[key] = value.trim();
+                }
+                return acc;
+              },
+              {} as Partial<Record<UniverseField, string>>,
+            )
+          : undefined;
+
+        const systemPrompt = buildUniverseGeneratorSystemPrompt({
+          universeIdea: (() => {
+            const primer =
+              typeof (existing as any)?.lorePrimer === "string"
+                ? (existing as any).lorePrimer
+                : typeof (existing as any)?.description === "string"
+                  ? (existing as any).description
+                  : "";
+            return primer?.trim() || undefined;
+          })(),
+          fields: generatorFields.length ? generatorFields : undefined,
+          existing: existingValues,
+          importedLoreText,
+          existingUniverse: existingUniverse ?? undefined,
+        });
+
+        const response = await provider.generateResponse({
+          apiKey,
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: "Generate the JSON now." },
+          ],
+        });
+
+        const jsonText = extractFirstJsonObject(response.content) ?? response.content.trim();
+        const parsed = safeParseJsonObject<Record<string, unknown>>(jsonText);
+
+        if (!parsed) {
+          throw new Error("Universe generator returned invalid JSON.");
+        }
+
+        const draft: Record<string, string> = {};
+        for (const key of requestedFields) {
+          const value = parsed[key];
+          if (typeof value === "string") {
+            draft[key] = value.trim();
+          }
+        }
+
+        return draft;
       },
       async deleteUniverse(id) {
         const linkedCharacters = playerCharacters.some(
@@ -881,11 +1018,23 @@ export function StoryEngineProvider({
       },
       async createStory(draft) {
         const now = new Date().toISOString();
+        const universePack = await repository.getUniverseExportBundle(draft.universeId);
+        const universePackSnapshot: UniversePackSnapshotV1 | undefined = universePack
+          ? {
+              snapshotVersion: 1,
+              exportedAt: universePack.exportedAt,
+              packVersion: universePack.packVersion ?? 1,
+              universe: universePack.universe,
+              universeImports: universePack.universeImports,
+            }
+          : undefined;
+
         const nextStory: Story = {
           id: createEntityId("story"),
           title: draft.title.trim(),
           universeId: draft.universeId,
           playerCharacterId: draft.playerCharacterId,
+          universePackSnapshot,
           currentSummary: draft.currentSummary.trim(),
           createdAt: now,
           updatedAt: now,
@@ -1092,11 +1241,14 @@ export function StoryEngineProvider({
           };
         });
 
+        const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
+        const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
+
         const context = buildStoryChatContext({
-          universe,
+          universe: effectiveUniverse,
           story,
           playerCharacter,
-          imports,
+          imports: effectiveImports,
           summaries,
           storyState,
           recentMessages: sanitizedHistoryMessages,
@@ -1795,7 +1947,12 @@ export function StoryEngineProvider({
       listStorySummaries(storyId) {
         return repository.listStorySummaries(storyId);
       },
-      async generatePlayerAssistMessage(storyId) {
+      async generatePlayerAssistMessage(
+        storyId,
+        opts?: {
+          existingText?: string;
+        },
+      ) {
         const story = await repository.getStory(storyId);
 
         if (!story) {
@@ -1828,13 +1985,16 @@ export function StoryEngineProvider({
         ]);
 
         const recentMessages = sortByTimestampAsc(refreshedMessages).slice(-30);
+        const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
+        const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
         const context = buildPlayerAssistContext({
-          universe,
+          universe: effectiveUniverse,
           story,
           playerCharacter,
-          imports,
+          imports: effectiveImports,
           summaries,
           recentMessages,
+          existingText: opts?.existingText,
         });
 
         const suggestion = await provider.generateResponse({
@@ -1843,7 +2003,21 @@ export function StoryEngineProvider({
           messages: context,
         });
 
-        return suggestion.content.trim();
+        const raw = suggestion.content.trim();
+        const existing = opts?.existingText;
+        if (!existing?.trim()) {
+          return raw;
+        }
+
+        const trimmedExisting = existing.trimEnd();
+        const normalizedRaw = raw.replace(/\r\n/g, "\n");
+        const normalizedExisting = trimmedExisting.replace(/\r\n/g, "\n");
+
+        if (normalizedRaw.startsWith(normalizedExisting)) {
+          return normalizedRaw.slice(normalizedExisting.length).trimStart();
+        }
+
+        return raw;
       },
       async generatePlayerCharacterDraft(universeId, fields, existing) {
         const universe = await repository.getUniverse(universeId);
@@ -2073,11 +2247,14 @@ export function StoryEngineProvider({
           };
         });
 
+        const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
+        const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
+
         const context = buildStoryChatContext({
-          universe,
+          universe: effectiveUniverse,
           story,
           playerCharacter,
-          imports,
+          imports: effectiveImports,
           summaries,
           storyState,
           recentMessages: sanitizedHistoryMessages,

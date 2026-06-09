@@ -5,6 +5,7 @@ import { Button, buttonClasses } from "../../components/ui/Button";
 import { Panel } from "../../components/ui/Panel";
 import { downloadFile } from "../../lib/download";
 import { serializeStoryExport } from "../../lib/storyExport";
+import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import type { ExportFormat } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { StoryListRow } from "../../components/story/StoryListRow";
@@ -54,6 +55,7 @@ export function V2RightSidebar({
   const playerCharacter = story ? getPlayerCharacterById(story.playerCharacterId) : undefined;
 
   const [pageError, setPageError] = useState<string | null>(null);
+  const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
 
   const recentStories = useMemo(() => stories.slice(0, 8), [stories]);
 
@@ -71,6 +73,31 @@ export function V2RightSidebar({
 
     const { content, mimeType } = serializeStoryExport(bundle, format);
     await downloadFile(createExportFilename(story.title, format), content, mimeType);
+  }
+
+  async function handleExportSupportBundle() {
+    if (!story) {
+      return;
+    }
+
+    setIsExportingSupportBundle(true);
+    setPageError(null);
+
+    try {
+      const bundle = await exportStory(story.id);
+
+      if (!bundle) {
+        setPageError("Unable to assemble export data for this story.");
+        return;
+      }
+
+      const zip = await buildStorySupportBundleZip(bundle);
+      await downloadFile(zip.filename, zip.content, zip.mimeType);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to export support bundle.");
+    } finally {
+      setIsExportingSupportBundle(false);
+    }
   }
 
   async function handleDeleteStory() {
@@ -145,6 +172,15 @@ export function V2RightSidebar({
                   >
                     <DownloadIcon className="h-4 w-4" />
                     Export JSON
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-2xl"
+                    onClick={() => void handleExportSupportBundle()}
+                    disabled={isExportingSupportBundle}
+                  >
+                    <DownloadIcon className="h-4 w-4" />
+                    {isExportingSupportBundle ? "Exporting..." : "Export Support Bundle"}
                   </Button>
                   <Button
                     variant="secondary"

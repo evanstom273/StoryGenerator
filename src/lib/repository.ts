@@ -196,7 +196,8 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
       return {
         exportVersion: 1,
         exportedAt: new Date().toISOString(),
-        type: "universe",
+        type: "universe_pack",
+        packVersion: 1,
         universe,
         universeImports: [...universeImports].sort(
           (left, right) =>
@@ -222,7 +223,11 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
       };
     },
     async importUniverseExportBundle(bundle) {
-      if (!bundle || bundle.exportVersion !== 1 || bundle.type !== "universe") {
+      if (
+        !bundle ||
+        bundle.exportVersion !== 1 ||
+        ((bundle as any).type !== "universe" && (bundle as any).type !== "universe_pack")
+      ) {
         throw new Error("Unsupported universe import format.");
       }
 

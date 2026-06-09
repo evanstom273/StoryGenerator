@@ -17,6 +17,20 @@ export interface Universe {
   name: string;
   description: string;
   wikiUrl: string;
+  genreTheme?: string;
+  tone?: string;
+  eraTechLevel?: string;
+  powerSystemRules?: string;
+  coreConflict?: string;
+  everydayLifeVibe?: string;
+  canonGuardrails?: string;
+  playerBoundaries?: string;
+  ratingContentNotes?: string;
+  lorePrimer?: string;
+  keyFactions?: string;
+  keyLocations?: string;
+  characterArchetypes?: string;
+  notes?: string;
   importedLore: string[];
   importedCharacters: string[];
   importedLocations: string[];
@@ -49,6 +63,7 @@ export interface Story {
   universeId: EntityId;
   playerCharacterId: EntityId;
   openingPrompt?: string;
+  universePackSnapshot?: UniversePackSnapshotV1;
   currentSummary: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -277,6 +292,20 @@ export interface UniverseDraft {
   name: string;
   description: string;
   wikiUrl: string;
+  genreTheme?: string;
+  tone?: string;
+  eraTechLevel?: string;
+  powerSystemRules?: string;
+  coreConflict?: string;
+  everydayLifeVibe?: string;
+  canonGuardrails?: string;
+  playerBoundaries?: string;
+  ratingContentNotes?: string;
+  lorePrimer?: string;
+  keyFactions?: string;
+  keyLocations?: string;
+  characterArchetypes?: string;
+  notes?: string;
 }
 
 export interface PlayerCharacterDraft {
@@ -362,7 +391,16 @@ export interface StoryExportBundle {
 export interface UniverseExportBundleV1 {
   exportVersion: 1;
   exportedAt: Timestamp;
-  type: "universe";
+  type: "universe" | "universe_pack";
+  packVersion?: number;
+  universe: Universe;
+  universeImports: UniverseImport[];
+}
+
+export interface UniversePackSnapshotV1 {
+  snapshotVersion: 1;
+  exportedAt: Timestamp;
+  packVersion: number;
   universe: Universe;
   universeImports: UniverseImport[];
 }

@@ -241,10 +241,112 @@ export function UniverseDetailPage() {
             <dl className="grid gap-5 md:grid-cols-2">
               <div className="md:col-span-2">
                 <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Description
+                  Lore Primer
                 </dt>
                 <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                  {activeUniverse.description || "No description written yet."}
+                  {activeUniverse.lorePrimer ||
+                    activeUniverse.description ||
+                    "No lore primer written yet."}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Genre / Theme
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.genreTheme || "Not set"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">Tone</dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.tone || "Not set"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Era / Tech Level
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.eraTechLevel || "Not set"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Core Conflict
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.coreConflict || "Not set"}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Canon Guardrails
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.canonGuardrails || "Not set"}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Power System Rules
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.powerSystemRules || "Not set"}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Everyday Life Vibe
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.everydayLifeVibe || "Not set"}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Key Factions
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.keyFactions || "Not set"}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Key Locations
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.keyLocations || "Not set"}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Character Archetypes
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.characterArchetypes || "Not set"}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">Notes</dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.notes || "Not set"}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Player Boundaries
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.playerBoundaries || "Not set"}
+                </dd>
+              </div>
+              <div className="md:col-span-2">
+                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  Rating / Content Notes
+                </dt>
+                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+                  {activeUniverse.ratingContentNotes || "Not set"}
                 </dd>
               </div>
               <div className="md:col-span-2">

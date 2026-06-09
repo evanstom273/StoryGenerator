@@ -91,10 +91,39 @@ export function buildStoryChatContext({
     recentMessages,
   });
 
+  const lorePrimer = universe.lorePrimer?.trim() || universe.description.trim();
+
   const universeInfo = normalizeWhitespace(
     [
       `Universe Name: ${universe.name}`,
-      universe.description.trim() ? `Universe Description: ${universe.description.trim()}` : "",
+      lorePrimer ? `Lore Primer: ${lorePrimer}` : "",
+      universe.genreTheme?.trim() ? `Genre/Theme: ${universe.genreTheme.trim()}` : "",
+      universe.tone?.trim() ? `Tone: ${universe.tone.trim()}` : "",
+      universe.eraTechLevel?.trim()
+        ? `Era / Tech Level: ${universe.eraTechLevel.trim()}`
+        : "",
+      universe.powerSystemRules?.trim()
+        ? `Power System Rules: ${universe.powerSystemRules.trim()}`
+        : "",
+      universe.coreConflict?.trim() ? `Core Conflict: ${universe.coreConflict.trim()}` : "",
+      universe.everydayLifeVibe?.trim()
+        ? `Everyday Life Vibe: ${universe.everydayLifeVibe.trim()}`
+        : "",
+      universe.canonGuardrails?.trim()
+        ? `Canon Guardrails: ${universe.canonGuardrails.trim()}`
+        : "",
+      universe.playerBoundaries?.trim()
+        ? `Player Boundaries: ${universe.playerBoundaries.trim()}`
+        : "",
+      universe.ratingContentNotes?.trim()
+        ? `Rating / Content Notes: ${universe.ratingContentNotes.trim()}`
+        : "",
+      universe.keyFactions?.trim() ? `Key Factions: ${universe.keyFactions.trim()}` : "",
+      universe.keyLocations?.trim() ? `Key Locations: ${universe.keyLocations.trim()}` : "",
+      universe.characterArchetypes?.trim()
+        ? `Character Archetypes: ${universe.characterArchetypes.trim()}`
+        : "",
+      universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       universe.wikiUrl.trim() ? `Universe Wiki URL: ${universe.wikiUrl.trim()}` : "",
       `Story Title: ${story.title}`,
       `Player Character: ${playerCharacter.name}`,

@@ -397,7 +397,10 @@ export function SettingsPage() {
       const parsed = JSON.parse(text);
 
       if (itemImportType === "universe") {
-        if (parsed?.exportVersion !== 1 || parsed?.type !== "universe") {
+        if (
+          parsed?.exportVersion !== 1 ||
+          (parsed?.type !== "universe" && parsed?.type !== "universe_pack")
+        ) {
           throw new Error("This file is not a supported universe export.");
         }
 

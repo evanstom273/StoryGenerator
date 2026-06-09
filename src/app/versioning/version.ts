@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.14.2";
+export const APP_VERSION = "1.15.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -225,6 +225,18 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     fixed: [
       "Automatic story-state updates now run the same full deep indexing pipeline as manual Re-indexing for consistent results",
     ],
+    knownIssues: [],
+  },
+  "1.15.0": {
+    title: "Universe Packs + Archive UX + Support Bundle + Additive Assist",
+    added: [
+      "Universe Form 2.0 (structured fields with Randomise / Fill with AI / Clear)",
+      "Universe Packs: universe export now produces a versioned universe_pack bundle, and new stories bind to a universe snapshot to prevent canon drift",
+      "Archive-native story navigation: Archive view tab in the story workspace (indexes + evidence jumping)",
+      "Export Support Bundle (.zip) containing story JSON + Archive PDF + diagnostics",
+      "Generate Response is additive when text already exists in the input box (continuation mode)",
+    ],
+    fixed: [],
     knownIssues: [],
   },
 };

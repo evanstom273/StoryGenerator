@@ -6,6 +6,7 @@ import { Panel } from "../../components/ui/Panel";
 import { downloadFile } from "../../lib/download";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
 import { serializeStoryExport } from "../../lib/storyExport";
+import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
@@ -61,6 +62,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     title: story?.title ?? "",
     currentSummary: story?.currentSummary ?? "",
   });
+  const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
   const [isSavingStory, setIsSavingStory] = useState(false);
   const [aiProviderType, setAiProviderType] = useState<AIProviderType>(
     aiSettings?.activeProviderType ?? "openai",
@@ -242,6 +244,31 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
     const { content, mimeType } = serializeStoryExport(bundle, format);
     await downloadFile(createExportFilename(story.title, format), content, mimeType);
+  }
+
+  async function handleExportSupportBundle() {
+    if (!story) {
+      return;
+    }
+
+    setIsExportingSupportBundle(true);
+    setPageError(null);
+
+    try {
+      const bundle = await exportStory(story.id);
+
+      if (!bundle) {
+        setPageError("Unable to assemble export data for this story.");
+        return;
+      }
+
+      const zip = await buildStorySupportBundleZip(bundle);
+      await downloadFile(zip.filename, zip.content, zip.mimeType);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to export support bundle.");
+    } finally {
+      setIsExportingSupportBundle(false);
+    }
   }
 
   async function handleSaveStoryDetails(event: React.FormEvent<HTMLFormElement>) {
@@ -546,6 +573,15 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   >
                     <DownloadIcon className="h-4 w-4" />
                     Export JSON
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-2xl"
+                    onClick={() => void handleExportSupportBundle()}
+                    disabled={isExportingSupportBundle}
+                  >
+                    <DownloadIcon className="h-4 w-4" />
+                    {isExportingSupportBundle ? "Exporting..." : "Export Support Bundle"}
                   </Button>
                   <Button
                     variant="secondary"

@@ -8,7 +8,7 @@ import type {
 } from "../../types/models";
 import type { AIChatMessage } from "./types";
 import { sortByTimestampAsc } from "../dates";
-import { buildPlayerAssistRequest } from "./playerAssist";
+import { buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "./playerAssist";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
@@ -55,6 +55,7 @@ export function buildPlayerAssistContext({
   imports,
   summaries,
   recentMessages,
+  existingText,
 }: {
   universe: Universe;
   story: Story;
@@ -62,14 +63,21 @@ export function buildPlayerAssistContext({
   imports: UniverseImport[];
   summaries: StorySummary[];
   recentMessages: StoryMessage[];
+  existingText?: string;
 }): AIChatMessage[] {
   const mostRecentImport = imports[0];
   const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
+  const lorePrimer = universe.lorePrimer?.trim() || universe.description.trim();
 
   const universeInfo = normalizeWhitespace(
     [
       `Universe Name: ${universe.name}`,
-      universe.description.trim() ? `Universe Description: ${universe.description.trim()}` : "",
+      lorePrimer ? `Lore Primer: ${lorePrimer}` : "",
+      universe.genreTheme?.trim() ? `Genre/Theme: ${universe.genreTheme.trim()}` : "",
+      universe.tone?.trim() ? `Tone: ${universe.tone.trim()}` : "",
+      universe.eraTechLevel?.trim()
+        ? `Era / Tech Level: ${universe.eraTechLevel.trim()}`
+        : "",
       universe.wikiUrl.trim() ? `Universe Wiki URL: ${universe.wikiUrl.trim()}` : "",
       `Story Title: ${story.title}`,
       `Player Character: ${playerCharacter.name}`,
@@ -111,12 +119,21 @@ export function buildPlayerAssistContext({
     .slice(-MAX_RECENT_MESSAGES)
     .map((message) => formatTimelineMessage(message, playerCharacter.name));
 
+  const effectiveExistingText = typeof existingText === "string" ? existingText.trimEnd() : "";
+
   return [
     { role: "system", content: `Universe Information\n\n${universeInfo}` },
     { role: "system", content: `Imported Lore\n\n${importedLore}` },
     { role: "system", content: `Story Summary\n\n${summaryBlock}` },
     { role: "system", content: `Player Assist Mode\n\n${assistGuidance}` },
     ...chatHistory,
-    { role: "user", content: normalizeWhitespace(buildPlayerAssistRequest(playerCharacter.name)) },
+    {
+      role: "user",
+      content: normalizeWhitespace(
+        effectiveExistingText
+          ? buildPlayerAssistContinuationRequest(playerCharacter.name, effectiveExistingText)
+          : buildPlayerAssistRequest(playerCharacter.name),
+      ),
+    },
   ];
 }
