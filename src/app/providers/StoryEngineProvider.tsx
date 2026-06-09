@@ -2709,10 +2709,6 @@ export function StoryEngineProvider({
               ? safeParseStoryStateData(latestStoryState.stateJson)
               : null;
 
-            if (!baseParsed || !latestStoryState?.stateJson) {
-              return;
-            }
-
             const baseState = normalizeStoryStateToV2(baseParsed);
             const lastDeepMessageCount =
               baseState.lastDeepIndexedMessageCount ??
@@ -2724,15 +2720,31 @@ export function StoryEngineProvider({
             if (baseState.messagesSinceDeepIndexUpdate !== nextDeepCounter) {
               const now = new Date().toISOString();
               const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages);
-              const patched = withIndexedMetadata({
-                ...baseState,
-                memoryArchitectureVersion: "2.0",
-                messagesSinceDeepIndexUpdate: nextDeepCounter,
-                indexes: reconciledIndexes ?? {
-                  messageCount: totalMessages,
-                  messageNumberingVersion: "1.0",
-                },
-              });
+              const patched = withIndexedMetadata(
+                baseParsed
+                  ? {
+                      ...baseState,
+                      memoryArchitectureVersion: "2.0",
+                      messagesSinceDeepIndexUpdate: nextDeepCounter,
+                      indexes: reconciledIndexes ?? {
+                        messageCount: totalMessages,
+                        messageNumberingVersion: "1.0",
+                      },
+                    }
+                  : {
+                      updatedAt: now,
+                      characters: {},
+                      worldFacts: [],
+                      unresolvedThreads: [],
+                      memoryArchitectureVersion: "2.0",
+                      messagesSinceDeepIndexUpdate: nextDeepCounter,
+                      indexes: reconciledIndexes ?? {
+                        messageCount: totalMessages,
+                        messageNumberingVersion: "1.0",
+                      },
+                    },
+                { indexedAt: now, memoryArchitectureVersion: "2.0" },
+              );
 
               await repository.saveStoryState({
                 id: `story-state:${storyId}`,
