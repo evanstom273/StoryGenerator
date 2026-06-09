@@ -28,9 +28,11 @@ function toChatMessages(messages: AIChatMessage[]) {
 async function callChatCompletions(
   apiKey: string,
   payload: OpenRouterChatCompletionRequest,
+  opts?: { timeoutMs?: number },
 ) {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -71,17 +73,17 @@ export function createOpenRouterProvider(): AIProvider {
         throw new Error("OpenRouter validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages }) {
+    async generateResponse({ apiKey, model, messages, timeoutMs }) {
       const content = await callChatCompletions(apiKey, {
         model,
         messages: toChatMessages(messages),
         temperature: 0.8,
         max_tokens: 700,
-      });
+      }, { timeoutMs });
 
       return { content };
     },
-    async generateSummary({ apiKey, model, storyTitle, messages, existingSummary }) {
+    async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs }) {
       const prompt = [
         `You are a story summarizer. Summarize the story "${storyTitle}" for continuity.`,
         "Write in present tense.",
@@ -104,7 +106,7 @@ export function createOpenRouterProvider(): AIProvider {
         messages: [{ role: "system", content: prompt }, ...toChatMessages(messages)],
         temperature: 0.2,
         max_tokens: 350,
-      });
+      }, { timeoutMs });
 
       return content;
     },

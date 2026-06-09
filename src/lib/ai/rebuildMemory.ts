@@ -5,6 +5,8 @@ import { sortByTimestampAsc } from "../dates";
 import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storyStateExtractor";
 import { normalizeStoryStateToV2, safeParseStoryStateData, withIndexedMetadata } from "../storyStateV2";
 
+const REBUILD_REQUEST_TIMEOUT_MS = 120_000;
+
 function chunkMessages(messages: StoryMessage[], chunkSize: number) {
   const chunks: StoryMessage[][] = [];
   for (let i = 0; i < messages.length; i += chunkSize) {
@@ -94,6 +96,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       apiKey,
       model,
       messages: extractionContext,
+      timeoutMs: REBUILD_REQUEST_TIMEOUT_MS,
     });
 
     if (signal?.aborted) {

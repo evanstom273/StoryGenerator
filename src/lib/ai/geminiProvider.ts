@@ -61,9 +61,15 @@ async function extractGeminiErrorMessage(response: Response) {
   return message;
 }
 
-async function callGenerateContent(apiKey: string, model: string, messages: AIChatMessage[]) {
+async function callGenerateContent(
+  apiKey: string,
+  model: string,
+  messages: AIChatMessage[],
+  opts?: { timeoutMs?: number },
+) {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(
@@ -119,11 +125,11 @@ export function createGeminiProvider(): AIProvider {
         throw new Error("Gemini validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages }) {
-      const content = await callGenerateContent(apiKey, model, messages);
+    async generateResponse({ apiKey, model, messages, timeoutMs }) {
+      const content = await callGenerateContent(apiKey, model, messages, { timeoutMs });
       return { content };
     },
-    async generateSummary({ apiKey, model, storyTitle, messages, existingSummary }) {
+    async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs }) {
       const summaryInstruction = [
         `You are a story summarizer. Summarize the story "${storyTitle}" for continuity.`,
         "Write in present tense.",
@@ -144,7 +150,7 @@ export function createGeminiProvider(): AIProvider {
       const content = await callGenerateContent(apiKey, model, [
         { role: "system", content: summaryInstruction },
         ...messages,
-      ]);
+      ], { timeoutMs });
 
       return content;
     },
