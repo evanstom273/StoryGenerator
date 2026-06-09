@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.15.1";
+export const APP_VERSION = "1.16.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -239,13 +239,21 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     fixed: [],
     knownIssues: [],
   },
-  "1.15.1": {
-    title: "Additive Continuation + Retry + Yes, And",
-    added: [],
+  "1.16.0": {
+    title: "Universe Blueprint UX + Collaboration + Archive Quality",
+    added: [
+      "Universe creation now supports the referenced/custom blueprint workflow with separate Concept and Description fields",
+      "Archive view now surfaces Story Premise, Protagonist Focus, Current Situation, Recent Developments, and Character Status",
+      "Archive view now shows automatic deep-index progress so you can see when the next auto refresh is due",
+    ],
     fixed: [
       "Additive Generate Response now continues inline when the existing draft ends with an open delimiter like * or quotes",
       "AI generation now retries transient failures and surfaces clearer human-readable error categories",
       "Narrator guidance now more strongly treats explicit player-declared outcomes as canon and builds forward from them",
+      "Android import pickers now allow JSON files to be selected reliably even when the OS mislabels the MIME type",
+      "Edited assistant messages now preserve manual *action* formatting in the transcript instead of being re-sanitised away on display",
+      "Automatic indexing now bootstraps correctly even when a story has no prior story-state record yet",
+      "Archive extraction now better preserves premise, protagonist state, character status, and major turning points without dumping personal conditions into World Facts",
     ],
     knownIssues: [],
   },
