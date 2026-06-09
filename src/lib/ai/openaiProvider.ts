@@ -74,17 +74,17 @@ export function createOpenAIProvider(): AIProvider {
         throw new Error("OpenAI validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages }) {
+    async generateResponse({ apiKey, model, messages, timeoutMs }) {
       const content = await callChatCompletions(apiKey, {
         model,
         messages: toOpenAIMessages(messages),
         temperature: 0.8,
         max_tokens: 700,
-      }, { timeoutMs: arguments[0].timeoutMs });
+      }, { timeoutMs });
 
       return { content };
     },
-    async generateSummary({ apiKey, model, storyTitle, messages, existingSummary }) {
+    async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs }) {
       const prompt = [
         `You are a story summarizer. Summarize the story "${storyTitle}" for continuity.`,
         "Write in present tense.",
@@ -110,7 +110,7 @@ export function createOpenAIProvider(): AIProvider {
         ],
         temperature: 0.2,
         max_tokens: 350,
-      }, { timeoutMs: arguments[0].timeoutMs });
+      }, { timeoutMs });
 
       return content;
     },
