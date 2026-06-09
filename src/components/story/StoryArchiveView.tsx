@@ -32,12 +32,22 @@ function getCharacterStatusLines(character: any) {
   return trimStringList(character?.notes, 3);
 }
 
+async function isAndroidNativePlatform() {
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+  } catch {
+    return false;
+  }
+}
+
 export function StoryArchiveView({ storyId }: { storyId: string }) {
   const { fetchStoryState, getMessagesForStory, rebuildStatus, updateIndexesDeep } =
     useStoryEngine();
   const [storyStateJson, setStoryStateJson] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [expandedEvidenceKeys, setExpandedEvidenceKeys] = useState<Record<string, boolean>>({});
 
   const storyStateData = useMemo(() => {
@@ -85,10 +95,14 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
 
   async function handleReindex() {
     setErrorMessage(null);
+    setSuccessMessage(null);
     try {
       await updateIndexesDeep(storyId);
       const updated = await fetchStoryState(storyId);
       setStoryStateJson(updated?.stateJson ?? "");
+      if (await isAndroidNativePlatform()) {
+        setSuccessMessage("Re-index complete on Android. Archive state has been refreshed.");
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to re-index.");
     }
@@ -217,6 +231,11 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
               ? rebuildInfo.error || "Rebuild failed."
               : rebuildInfo.message ||
                 `Rebuilding… ${rebuildInfo.processedMessages}/${rebuildInfo.totalMessages} messages`}
+          </div>
+        ) : null}
+        {successMessage ? (
+          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+            {successMessage}
           </div>
         ) : null}
 
@@ -467,7 +486,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
                   key={index}
                   className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
                 >
-                  <div className="text-ink-soft">{entry?.memory ?? entry?.fact ?? "—"}</div>
+                  <div className="text-ink-soft">{entry?.moment ?? entry?.memory ?? entry?.fact ?? "—"}</div>
                   {renderEvidencePills(entry?.evidence?.messageNumbers, `mem-${index}`)}
                 </div>
               ))}

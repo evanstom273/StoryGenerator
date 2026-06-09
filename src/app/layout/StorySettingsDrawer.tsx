@@ -59,6 +59,15 @@ function getCharacterStatusLines(character: any) {
   return trimStringList(character?.notes, 3);
 }
 
+async function isAndroidNativePlatform() {
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+  } catch {
+    return false;
+  }
+}
+
 export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const navigate = useNavigate();
   const { storySettingsOpen, setStorySettingsOpen } = useUiPrefs();
@@ -103,6 +112,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
   const [cleanupSummary, setCleanupSummary] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [pageNotice, setPageNotice] = useState<string | null>(null);
   const [storyStateData, setStoryStateData] = useState<ReturnType<typeof normalizeStoryStateToV2> | null>(
     null,
   );
@@ -115,6 +125,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
     setIsPromotingCharacter(true);
     setPageError(null);
+    setPageNotice(null);
     setCleanupSummary(null);
 
     try {
@@ -132,6 +143,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   async function handleCleanupDuplicates() {
     setIsCleaningDuplicates(true);
     setPageError(null);
+    setPageNotice(null);
     setCleanupSummary(null);
 
     try {
@@ -372,8 +384,12 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     }
 
     setPageError(null);
+    setPageNotice(null);
     try {
       await updateIndexesDeep(story.id);
+      if (await isAndroidNativePlatform()) {
+        setPageNotice("Re-index complete on Android. Archive state has been refreshed.");
+      }
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to re-index.");
     }
@@ -1032,6 +1048,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           {pageError ? (
             <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
               {pageError}
+            </div>
+          ) : null}
+          {pageNotice ? (
+            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+              {pageNotice}
             </div>
           ) : null}
         </div>

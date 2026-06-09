@@ -4,6 +4,17 @@ import { formatDateTime, sortByTimestampAsc } from "./dates";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "./storyStateV2";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 
+function trimStringList(value: unknown, maxItems: number): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim())
+    .slice(0, maxItems);
+}
+
 function coerceEvidenceNumbers(value: unknown): number[] {
   const raw = (value as any)?.evidence?.messageNumbers;
   if (!Array.isArray(raw)) {
@@ -151,6 +162,18 @@ export function serializeStoryArchivePdf(
     y += 4;
   }
 
+  function writeListSection(title: string, entries: string[]) {
+    const cleaned = entries.filter((entry) => typeof entry === "string" && entry.trim());
+    if (!cleaned.length) {
+      return;
+    }
+
+    writeSubheading(title);
+    for (const entry of cleaned) {
+      writeParagraph(`• ${entry}`);
+    }
+  }
+
   function writeMonospace(text: string) {
     doc.setFont("courier", "bold");
     doc.setFontSize(10);
@@ -187,6 +210,31 @@ export function serializeStoryArchivePdf(
   if (bestSummary) {
     writeHeading("Current Summary", 14);
     writeParagraph(bestSummary);
+  }
+
+  const premise = storyStateData?.summaries?.premise?.trim() ?? "";
+  const protagonistFocus = storyStateData?.summaries?.protagonistSummary?.trim() ?? "";
+  const currentSituation = storyStateData?.summaries?.currentSituation?.trim() ?? "";
+  const recentDevelopments = trimStringList(storyStateData?.summaries?.recentDevelopments, 8);
+
+  if (premise || protagonistFocus || currentSituation || recentDevelopments.length) {
+    writeHeading("Archive Story State", 14);
+    if (premise) {
+      writeSubheading("Premise");
+      writeParagraph(premise);
+    }
+    if (protagonistFocus) {
+      writeSubheading("Protagonist Focus");
+      writeParagraph(protagonistFocus);
+    }
+    if (currentSituation) {
+      writeSubheading("Current Situation");
+      writeParagraph(currentSituation);
+    }
+    if (recentDevelopments.length) {
+      writeListSection("Recent Developments", recentDevelopments);
+    }
+    y += 10;
   }
 
   writeHeading("Player Character Sheet", 14);
@@ -251,6 +299,47 @@ export function serializeStoryArchivePdf(
     y += 10;
   }
 
+  const characterStatusEntries = Object.entries(storyStateData?.characters ?? {})
+    .map(([name, entry]: [string, any]) => {
+      const statusBullets = trimStringList(entry?.statusBullets, 5);
+      const fallbackStatus =
+        !statusBullets.length && typeof entry?.status === "string" && entry.status.trim()
+          ? [entry.status.trim()]
+          : [];
+      const strengths = trimStringList(entry?.strengths, 4);
+      const weaknesses = trimStringList(entry?.weaknesses, 4);
+      const combinedStatus = [...statusBullets, ...fallbackStatus];
+
+      return {
+        name: name.trim(),
+        status: combinedStatus,
+        strengths,
+        weaknesses,
+      };
+    })
+    .filter((entry) => entry.name && (entry.status.length || entry.strengths.length || entry.weaknesses.length))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (characterStatusEntries.length) {
+    writeHeading("Character Status", 14);
+    for (const entry of characterStatusEntries) {
+      writeSubheading(entry.name);
+      if (entry.status.length) {
+        for (const item of entry.status) {
+          writeParagraph(`• ${item}`);
+        }
+      }
+      if (entry.strengths.length) {
+        writeBullet("Strengths", entry.strengths.join(", "));
+      }
+      if (entry.weaknesses.length) {
+        writeBullet("Weaknesses", entry.weaknesses.join(", "));
+      }
+      y += 6;
+    }
+    y += 6;
+  }
+
   const characterRegistryRaw =
     indexes?.characters && typeof indexes.characters === "object" && !Array.isArray(indexes.characters)
       ? Object.values(indexes.characters)
@@ -275,6 +364,16 @@ export function serializeStoryArchivePdf(
       if (entry.firstSeenMessage) writeBullet("First seen", `Message ${entry.firstSeenMessage}`);
       if (entry.lastSeenMessage) writeBullet("Last seen", `Message ${entry.lastSeenMessage}`);
       if (entry.description) writeParagraph(entry.description);
+      const stateEntry = (storyStateData?.characters as Record<string, any> | undefined)?.[entry.name];
+      const statusBullets = trimStringList(stateEntry?.statusBullets, 4);
+      if (statusBullets.length) writeBullet("Current status", statusBullets.join(" | "));
+      else if (typeof stateEntry?.status === "string" && stateEntry.status.trim()) {
+        writeBullet("Current status", stateEntry.status.trim());
+      }
+      const strengths = trimStringList(stateEntry?.strengths, 4);
+      const weaknesses = trimStringList(stateEntry?.weaknesses, 4);
+      if (strengths.length) writeBullet("Strengths", strengths.join(", "));
+      if (weaknesses.length) writeBullet("Weaknesses", weaknesses.join(", "));
       if (entry.evidence) writeBullet("Evidence", entry.evidence);
       y += 6;
     }

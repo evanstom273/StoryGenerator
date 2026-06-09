@@ -105,6 +105,7 @@ export function buildStoryStateExtractionPrompt({
       "}",
       "Rules:",
       "- Include identity changes (preferred name, alias, undercover identity, pronouns).",
+      "- Treat major identity transitions as significant memories when they are story-defining or emotionally pivotal, such as coming out, a stable name change, a gender identity reveal, or a lasting change in how the protagonist is known.",
       "- Always include the player character as an entry in characters (canonicalName = the player name). If the transcript uses nicknames/short forms for the player, add them to aliases and update displayName if the nickname becomes the primary address.",
       "- Include relationship changes and rank/title changes when they occur.",
       "- Preserve three summary layers inside summaries: premise, currentSituation, and recentDevelopments.",
