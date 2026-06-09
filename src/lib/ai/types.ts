@@ -9,6 +9,7 @@ export interface GenerateResponseRequest {
   apiKey: string;
   model: string;
   messages: AIChatMessage[];
+  timeoutMs?: number;
 }
 
 export interface GenerateResponseResult {
@@ -21,6 +22,7 @@ export interface GenerateSummaryRequest {
   storyTitle: string;
   messages: AIChatMessage[];
   existingSummary?: string;
+  timeoutMs?: number;
 }
 
 export interface AIProvider {
@@ -28,4 +30,3 @@ export interface AIProvider {
   generateResponse: (request: GenerateResponseRequest) => Promise<GenerateResponseResult>;
   generateSummary: (request: GenerateSummaryRequest) => Promise<string>;
 }
-
