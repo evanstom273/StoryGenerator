@@ -11,6 +11,7 @@ export type ExportFormat = "json" | "markdown" | "txt" | "pdf" | "archive_pdf";
 export type AIProviderType = "openai" | "gemini" | "openrouter";
 export type DeveloperBugStatus = "open" | "in-progress" | "resolved" | "closed";
 export type DeveloperFeaturePriority = "low" | "medium" | "high";
+export type AutoIndexInterval = 5 | 10 | 15 | 20 | "disabled";
 
 export interface Universe {
   id: EntityId;
@@ -56,6 +57,7 @@ export interface Story {
   playerCharacterId: EntityId;
   openingPrompt?: string;
   universePackSnapshot?: UniversePackSnapshotV1;
+  autoIndexInterval?: AutoIndexInterval;
   currentSummary: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -173,6 +175,8 @@ export type StoryStateCharacterState = {
   statusBullets?: string[];
   strengths?: string[];
   weaknesses?: string[];
+  characterTraitsPersistent?: string[];
+  characterStateTransient?: string[];
   notes?: string[];
 };
 
@@ -233,8 +237,10 @@ export type StoryStateData = {
   indexedAt?: Timestamp;
   lastIndexedAt?: Timestamp;
   lastDeepIndexedAt?: Timestamp;
+  lastAutoDeepIndexedAt?: Timestamp;
   lastIndexedMessageCount?: number;
   lastDeepIndexedMessageCount?: number;
+  lastAutoDeepIndexedMessageCount?: number;
   messagesSinceDeepIndexUpdate?: number;
   indexes?: StoryIndexesV2;
   scene?: StorySceneSnapshotV2;
@@ -320,6 +326,7 @@ export interface StoryDraft {
   title: string;
   universeId: EntityId;
   playerCharacterId: EntityId;
+  autoIndexInterval?: AutoIndexInterval;
   currentSummary: string;
 }
 

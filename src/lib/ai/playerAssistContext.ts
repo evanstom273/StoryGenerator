@@ -91,11 +91,18 @@ export function buildPlayerAssistContext({
       universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,
       `Player Character: ${playerCharacter.name}`,
+      playerCharacter.age.trim() ? `Player Age: ${playerCharacter.age.trim()}` : "",
       playerCharacter.gender.trim() ? `Player Gender: ${playerCharacter.gender.trim()}` : "",
       playerCharacter.species?.trim()
         ? `Player Species: ${playerCharacter.species.trim()}`
         : "",
       playerCharacter.pronouns.trim() ? `Player Pronouns: ${playerCharacter.pronouns.trim()}` : "",
+      playerCharacter.characterConcept?.trim()
+        ? `Player Concept/Role: ${playerCharacter.characterConcept.trim()}`
+        : "",
+      playerCharacter.background.trim() ? `Player Background: ${playerCharacter.background.trim()}` : "",
+      playerCharacter.goals.trim() ? `Player Goals: ${playerCharacter.goals.trim()}` : "",
+      playerCharacter.notes.trim() ? `Player Notes: ${playerCharacter.notes.trim()}` : "",
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -122,6 +129,7 @@ export function buildPlayerAssistContext({
       "This is a suggested player turn and is not canon until the user chooses to send it.",
       "Output only the player's message in the required format. No other speakers. No narration. No commentary.",
       "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+      "The player character sheet is authoritative canon for identity facts. Do not contradict it or introduce genre-default assumptions about the protagonist.",
     ].join("\n"),
   );
 

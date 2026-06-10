@@ -115,11 +115,18 @@ export function buildStoryChatContext({
       universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,
       `Player Character: ${playerCharacter.name}`,
+      playerCharacter.age.trim() ? `Player Age: ${playerCharacter.age.trim()}` : "",
       playerCharacter.gender.trim() ? `Player Gender: ${playerCharacter.gender.trim()}` : "",
       playerCharacter.species?.trim()
         ? `Player Species: ${playerCharacter.species.trim()}`
         : "",
       playerCharacter.pronouns.trim() ? `Player Pronouns: ${playerCharacter.pronouns.trim()}` : "",
+      playerCharacter.characterConcept?.trim()
+        ? `Player Concept/Role: ${playerCharacter.characterConcept.trim()}`
+        : "",
+      playerCharacter.background.trim() ? `Player Background: ${playerCharacter.background.trim()}` : "",
+      playerCharacter.goals.trim() ? `Player Goals: ${playerCharacter.goals.trim()}` : "",
+      playerCharacter.notes.trim() ? `Player Notes: ${playerCharacter.notes.trim()}` : "",
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -163,6 +170,7 @@ export function buildStoryChatContext({
     [
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
+      "The player character sheet is authoritative canon for identity facts (name, age, gender, pronouns, species, role/occupation, disabilities/limitations). Do not contradict it with genre assumptions or defaults.",
       "Stay anchored in the story's premise, protagonist, and current situation. Recent beats matter, but they should not erase what the story is fundamentally about.",
       "Do not automatically introduce cases, missions, mysteries, assignments, emergencies, villains, or conflicts simply because the story has started.",
       "Character interaction alone is a valid scene.",

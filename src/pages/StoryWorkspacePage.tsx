@@ -140,6 +140,16 @@ export function StoryWorkspacePage() {
     setEditingMessage(null);
   }, [readerMode]);
 
+  const latestAssistantMessage = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message?.role === "assistant") {
+        return message;
+      }
+    }
+    return null;
+  }, [messages]);
+
   if (!story || !universe || !playerCharacter) {
     return (
       <div className="space-y-8">
@@ -164,15 +174,6 @@ export function StoryWorkspacePage() {
   const activeStory = story;
   const activeUniverse = universe;
   const activePlayerCharacter = playerCharacter;
-  const latestAssistantMessage = useMemo(() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
-      if (message?.role === "assistant") {
-        return message;
-      }
-    }
-    return null;
-  }, [messages]);
 
   async function handleSendChat() {
     if (!chatInput.trim()) {

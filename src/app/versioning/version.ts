@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.16.0";
+export const APP_VERSION = "1.17.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -255,6 +255,22 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Edited assistant messages now preserve manual *action* formatting in the transcript instead of being re-sanitised away on display",
       "Automatic indexing now bootstraps correctly even when a story has no prior story-state record yet",
       "Archive extraction now better preserves premise, protagonist state, character status, and major turning points without dumping personal conditions into World Facts",
+    ],
+    knownIssues: [],
+  },
+  "1.17.0": {
+    title: "Indexing Independence + Canon Consistency",
+    added: [
+      "Automatic indexing can now be configured per story with Disabled, 5, 10, 15, and 20 message intervals",
+      "Story Settings now includes an Automatic Indexing selector for per-story auto-index cadence",
+      "Story state now tracks automatic deep-index progress separately from manual re-indexing",
+      "Archive extraction now separates persistent character traits from transient scene state",
+    ],
+    fixed: [
+      "Manual Re-index no longer resets or delays the next automatic index run",
+      "Archive and Settings countdowns now calculate from the current story-specific auto-index interval",
+      "Player character sheet facts are now treated as stronger canon across narration, player assist, indexing, summaries, and memory rebuilds",
+      "Temporary emotions, goals, and short-term reactions are less likely to drift into permanent character descriptions",
     ],
     knownIssues: [],
   },

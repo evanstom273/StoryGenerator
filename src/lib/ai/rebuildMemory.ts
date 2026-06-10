@@ -85,6 +85,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
     const extractionContext = buildStoryStateExtractionPrompt({
       playerName: playerCharacter.name,
+      playerCharacter,
       summaryText,
       recentMessages: chunk,
       existingStateJson,

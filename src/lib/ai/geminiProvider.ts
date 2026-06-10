@@ -136,6 +136,7 @@ export function createGeminiProvider(): AIProvider {
         "Keep it concise but specific.",
         "Preserve three layers: core premise, current situation, and recent developments.",
         "Keep the protagonist central: who they are, what the story is fundamentally about, and what condition/status they are in now.",
+        "Do not introduce protagonist identity facts (age/gender/pronouns/occupation/disabilities) unless explicitly supported by the transcript or existing summary. Avoid genre-default assumptions.",
         "Include: key events, current goals, unresolved threads, and relevant character details.",
         "Explicitly track changes to: preferred names, aliases, pronouns, ranks/titles, relationships, injuries/recoveries, and major world events.",
         "Major life-changing events should outweigh trivial recent beats.",

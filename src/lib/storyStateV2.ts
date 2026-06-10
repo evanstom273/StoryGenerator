@@ -347,6 +347,7 @@ export function finalizeStoryStateForSave(params: {
   totalMessages: number;
   now: string;
   mode: "auto" | "deep";
+  deepIndexTrigger?: "auto" | "manual";
 }): string {
   const previous = (() => {
     const json = params.previousStateJson?.trim() ?? "";
@@ -371,6 +372,12 @@ export function finalizeStoryStateForSave(params: {
           ...base,
           lastIndexedAt: params.now,
           lastDeepIndexedAt: params.now,
+          ...(params.deepIndexTrigger === "auto"
+            ? {
+                lastAutoDeepIndexedAt: params.now,
+                lastAutoDeepIndexedMessageCount: params.totalMessages,
+              }
+            : {}),
           lastIndexedMessageCount: params.totalMessages,
           lastDeepIndexedMessageCount: params.totalMessages,
           messagesSinceDeepIndexUpdate: 0,

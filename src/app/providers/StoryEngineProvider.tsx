@@ -1137,6 +1137,7 @@ export function StoryEngineProvider({
           universeId: draft.universeId,
           playerCharacterId: draft.playerCharacterId,
           universePackSnapshot,
+          autoIndexInterval: draft.autoIndexInterval ?? 20,
           currentSummary: draft.currentSummary.trim(),
           createdAt: now,
           updatedAt: now,
@@ -1161,6 +1162,7 @@ export function StoryEngineProvider({
           universeId: patch.universeId ?? currentStory.universeId,
           playerCharacterId:
             patch.playerCharacterId ?? currentStory.playerCharacterId,
+          autoIndexInterval: patch.autoIndexInterval ?? currentStory.autoIndexInterval,
           updatedAt: new Date().toISOString(),
         };
 
@@ -1430,6 +1432,7 @@ export function StoryEngineProvider({
           "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
           "Ownership rules (strict):",
           `- The player character is: ${playerCharacter.name}`,
+          `- Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
           "- Never write dialogue/actions/thoughts/decisions for the player character.",
           "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
           "Sanitization rules:",
@@ -1440,6 +1443,7 @@ export function StoryEngineProvider({
         const ownershipRewritePrompt = [
           "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
           `The player character is: ${playerCharacter.name}.`,
+          `Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
           "Never include a speaker header for the player character.",
           "Never narrate actions/thoughts for the player character.",
           "Remove any repetition of the latest player message.",
@@ -1468,6 +1472,7 @@ export function StoryEngineProvider({
           "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
           `The latest player message is:\n${previousMessage.content}`,
           `The player character is: ${playerCharacter.name}.`,
+          `Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
           "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
           "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "Do not attribute extra details to what the player said.",
@@ -1499,6 +1504,7 @@ export function StoryEngineProvider({
           "Never use asterisks for emphasis.",
           "Ownership rules:",
           `- The player character is: ${playerCharacter.name}`,
+          `- Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
           "- Never write dialogue/actions/thoughts/decisions for the player character.",
         ].join("\n");
 
@@ -1876,6 +1882,7 @@ export function StoryEngineProvider({
                 totalMessages: allMessages.length,
                 now,
                 mode: "deep",
+                deepIndexTrigger: "manual",
               });
             } catch {
               return result.stateJson;
@@ -2716,8 +2723,16 @@ export function StoryEngineProvider({
               baseState.indexes?.messageCount ??
               0;
             const nextDeepCounter = Math.max(0, totalMessages - lastDeepMessageCount);
+            const autoDeepBootstrapAnchor =
+              baseState.lastAutoDeepIndexedMessageCount ?? lastDeepMessageCount;
+            const shouldBootstrapAutoDeepAnchor =
+              baseState.lastAutoDeepIndexedMessageCount === undefined &&
+              autoDeepBootstrapAnchor > 0;
 
-            if (baseState.messagesSinceDeepIndexUpdate !== nextDeepCounter) {
+            if (
+              baseState.messagesSinceDeepIndexUpdate !== nextDeepCounter ||
+              shouldBootstrapAutoDeepAnchor
+            ) {
               const now = new Date().toISOString();
               const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages);
               const patched = withIndexedMetadata(
@@ -2726,6 +2741,9 @@ export function StoryEngineProvider({
                       ...baseState,
                       memoryArchitectureVersion: "2.0",
                       messagesSinceDeepIndexUpdate: nextDeepCounter,
+                      ...(shouldBootstrapAutoDeepAnchor
+                        ? { lastAutoDeepIndexedMessageCount: autoDeepBootstrapAnchor }
+                        : {}),
                       indexes: reconciledIndexes ?? {
                         messageCount: totalMessages,
                         messageNumberingVersion: "1.0",
@@ -2738,6 +2756,9 @@ export function StoryEngineProvider({
                       unresolvedThreads: [],
                       memoryArchitectureVersion: "2.0",
                       messagesSinceDeepIndexUpdate: nextDeepCounter,
+                      ...(shouldBootstrapAutoDeepAnchor
+                        ? { lastAutoDeepIndexedMessageCount: autoDeepBootstrapAnchor }
+                        : {}),
                       indexes: reconciledIndexes ?? {
                         messageCount: totalMessages,
                         messageNumberingVersion: "1.0",
@@ -2757,7 +2778,16 @@ export function StoryEngineProvider({
               await hydrate(false);
             }
 
-            if (nextDeepCounter < 10) {
+            const autoIndexInterval = story.autoIndexInterval ?? 20;
+            if (autoIndexInterval === "disabled") {
+              return;
+            }
+
+            const lastAutoMessageCount =
+              baseState.lastAutoDeepIndexedMessageCount ?? autoDeepBootstrapAnchor;
+            const messagesSinceAutoDeepIndex = Math.max(0, totalMessages - lastAutoMessageCount);
+
+            if (messagesSinceAutoDeepIndex < autoIndexInterval) {
               return;
             }
 
@@ -2783,6 +2813,7 @@ export function StoryEngineProvider({
                   totalMessages,
                   now,
                   mode: "deep",
+                  deepIndexTrigger: "auto",
                 });
               } catch {
                 return rebuilt.stateJson;

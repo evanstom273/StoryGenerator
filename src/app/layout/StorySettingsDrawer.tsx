@@ -10,12 +10,10 @@ import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
-import type { AIProviderType, ExportFormat } from "../../types/models";
+import type { AIProviderType, AutoIndexInterval, ExportFormat } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useUiPrefs } from "../ui/UiPrefsContext";
-
-const AUTO_DEEP_INDEX_THRESHOLD = 10;
 
 function createExportFilename(title: string, format: ExportFormat) {
   const sanitizedTitle = title
@@ -96,6 +94,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [storyFields, setStoryFields] = useState({
     title: story?.title ?? "",
     currentSummary: story?.currentSummary ?? "",
+    autoIndexInterval: (story?.autoIndexInterval ?? 20) as AutoIndexInterval,
   });
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
   const [isSavingStory, setIsSavingStory] = useState(false);
@@ -167,6 +166,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     setStoryFields({
       title: story.title,
       currentSummary: story.currentSummary,
+      autoIndexInterval: (story.autoIndexInterval ?? 20) as AutoIndexInterval,
     });
   }, [story]);
 
@@ -217,7 +217,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       void updateStory(story.id, storyFields).catch(() => {});
     },
     800,
-    [story?.id, storyFields.title, storyFields.currentSummary],
+    [story?.id, storyFields.title, storyFields.currentSummary, storyFields.autoIndexInterval],
   );
 
   useEffect(() => {
@@ -625,6 +625,40 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
               <Panel padding="sm">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Automatic Indexing
+                </div>
+                <div className="mt-4 space-y-3">
+                  <label className="block space-y-2">
+                    <div className="text-xs text-ink-muted">Auto index interval</div>
+                    <select
+                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                      value={storyFields.autoIndexInterval}
+                      onChange={(event) =>
+                        setStoryFields((current) => ({
+                          ...current,
+                          autoIndexInterval: (event.target.value === "disabled"
+                            ? "disabled"
+                            : Number(event.target.value)) as AutoIndexInterval,
+                        }))
+                      }
+                    >
+                      <option value="disabled">Disabled</option>
+                      <option value={5}>Every 5 messages</option>
+                      <option value={10}>Every 10 messages</option>
+                      <option value={15}>Every 15 messages</option>
+                      <option value={20}>Every 20 messages</option>
+                    </select>
+                  </label>
+                  <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+                    {storyFields.autoIndexInterval === "disabled"
+                      ? "Automatic indexing is disabled. Manual re-index still works."
+                      : `Next auto index runs every ${storyFields.autoIndexInterval} messages (manual re-index does not affect this schedule).`}
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel padding="sm">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   Export
                 </div>
                 <div className="mt-4 space-y-2">
@@ -744,15 +778,21 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     const protagonistSummary = storyStateData.summaries?.protagonistSummary?.trim() ?? "";
                     const currentSituation = storyStateData.summaries?.currentSituation?.trim() ?? "";
                     const recentDevelopments = trimStringList(storyStateData.summaries?.recentDevelopments, 6);
-                    const messagesSinceDeep = Math.max(
+                    const autoIndexInterval = story.autoIndexInterval ?? 20;
+                    const lastAutoDeepIndexMessageCount =
+                      storyStateData.lastAutoDeepIndexedMessageCount ?? 0;
+                    const messagesSinceAutoDeep = Math.max(
                       0,
-                      storyStateData.messagesSinceDeepIndexUpdate ?? staleBy,
+                      totalMessages - lastAutoDeepIndexMessageCount,
                     );
-                    const messagesUntilAutoDeep = Math.max(
-                      0,
-                      AUTO_DEEP_INDEX_THRESHOLD -
-                        Math.min(messagesSinceDeep, AUTO_DEEP_INDEX_THRESHOLD),
-                    );
+                    const messagesUntilAutoDeep =
+                      autoIndexInterval === "disabled"
+                        ? null
+                        : Math.max(
+                            0,
+                            autoIndexInterval -
+                              Math.min(messagesSinceAutoDeep, autoIndexInterval),
+                          );
 
                     return (
                       <div className="space-y-4 rounded-2xl border border-white/8 bg-black/15 px-4 py-4 text-sm">
@@ -780,18 +820,29 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                             </div>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <div>Auto deep index</div>
+                            <div>Auto deep indexed</div>
                             <div className="text-ink-soft">
-                              {messagesUntilAutoDeep === 0
-                                ? "Ready on next pass"
-                                : `In ${messagesUntilAutoDeep} message${messagesUntilAutoDeep === 1 ? "" : "s"}`}
+                              {storyStateData.lastAutoDeepIndexedAt
+                                ? new Date(storyStateData.lastAutoDeepIndexedAt).toLocaleString()
+                                : "—"}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <div>Next auto index</div>
+                            <div className="text-ink-soft">
+                              {autoIndexInterval === "disabled"
+                                ? "Disabled"
+                                : messagesUntilAutoDeep === 0
+                                  ? "Ready on next pass"
+                                  : `In ${messagesUntilAutoDeep} message${messagesUntilAutoDeep === 1 ? "" : "s"}`}
                             </div>
                           </div>
                         </div>
 
                         <div className="rounded-2xl border border-white/8 bg-black/20 px-3 py-3 text-sm text-ink-muted">
-                          Automatic deep indexing runs every {AUTO_DEEP_INDEX_THRESHOLD} new
-                          messages. Progress: {messagesSinceDeep}/{AUTO_DEEP_INDEX_THRESHOLD}.
+                          {autoIndexInterval === "disabled"
+                            ? "Automatic indexing is disabled for this story."
+                            : `Automatic indexing runs every ${autoIndexInterval} new messages. Progress: ${Math.min(messagesSinceAutoDeep, autoIndexInterval)}/${autoIndexInterval}.`}
                         </div>
 
                         <div className="space-y-5">

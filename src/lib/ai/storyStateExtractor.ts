@@ -1,4 +1,4 @@
-import type { StoryMessage, StoryStateData } from "../../types/models";
+import type { PlayerCharacter, StoryMessage, StoryStateData } from "../../types/models";
 import type { AIChatMessage } from "./types";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
 
@@ -40,6 +40,7 @@ function formatRecentMessages(
 
 export function buildStoryStateExtractionPrompt({
   playerName,
+  playerCharacter,
   summaryText,
   recentMessages,
   existingStateJson,
@@ -47,6 +48,7 @@ export function buildStoryStateExtractionPrompt({
   messageNumberTotal,
 }: {
   playerName: string;
+  playerCharacter?: PlayerCharacter | null;
   summaryText: string;
   recentMessages: StoryMessage[];
   existingStateJson?: string;
@@ -57,6 +59,7 @@ export function buildStoryStateExtractionPrompt({
     [
       "You extract and maintain current story-state for continuity.",
       "Story events define current truth. The character sheet and transcript define the starting state.",
+      "The player character sheet is authoritative canon for the protagonist's identity facts (name, age, gender, pronouns, species, role/occupation, disabilities/limitations). Do not contradict it with genre assumptions.",
       "Prefer existing story-state; update only when new evidence appears.",
       "Track only explicit, high-confidence changes. Do not invent facts.",
       "Transcript is the source of truth. Indexes are derived and rebuildable.",
@@ -78,6 +81,8 @@ export function buildStoryStateExtractionPrompt({
       '      "statusBullets"?: string[],',
       '      "strengths"?: string[],',
       '      "weaknesses"?: string[],',
+      '      "characterTraitsPersistent"?: string[],',
+      '      "characterStateTransient"?: string[],',
       '      "notes"?: string[]',
       "    }",
       "  },",
@@ -118,6 +123,8 @@ export function buildStoryStateExtractionPrompt({
       "- Character entries and indexes.characters descriptions should answer 'who are they now?' not just who they were at the start.",
       "- Use status/statusBullets for live character conditions such as injuries, captivity, blindness, wanted status, political danger, disguises, or recent transformations.",
       "- Use strengths/weaknesses for enduring characterization that should influence future narration.",
+      "- Use characterTraitsPersistent for durable personality/identity traits that should not change scene-to-scene. Update these rarely, only with strong evidence or story-defining events.",
+      "- Use characterStateTransient for short-term mood/emotion/current goal that can change frequently and should NOT be promoted into characterTraitsPersistent.",
       "- Major life-changing events should aggressively update character status and registry descriptions.",
       "- Put short-term scene specifics (current location/participants/active situation) in sceneState.",
       "- Put only lasting, story-changing events in significantMemories (diagnoses, deaths, betrayals, promotions, major injuries, identity changes).",
@@ -141,6 +148,24 @@ export function buildStoryStateExtractionPrompt({
 
   const user = normalizeWhitespace(
     [
+      playerCharacter
+        ? [
+            "Player Character Sheet (authoritative canon):",
+            `- Name: ${playerCharacter.name}`,
+            playerCharacter.age?.trim() ? `- Age: ${playerCharacter.age.trim()}` : "",
+            playerCharacter.gender?.trim() ? `- Gender: ${playerCharacter.gender.trim()}` : "",
+            playerCharacter.species?.trim() ? `- Species: ${playerCharacter.species.trim()}` : "",
+            playerCharacter.pronouns?.trim() ? `- Pronouns: ${playerCharacter.pronouns.trim()}` : "",
+            playerCharacter.characterConcept?.trim()
+              ? `- Concept/Role: ${playerCharacter.characterConcept.trim()}`
+              : "",
+            playerCharacter.background?.trim() ? `- Background: ${playerCharacter.background.trim()}` : "",
+            playerCharacter.goals?.trim() ? `- Goals: ${playerCharacter.goals.trim()}` : "",
+            playerCharacter.notes?.trim() ? `- Notes: ${playerCharacter.notes.trim()}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : "",
       summaryText.trim() ? `Current Summary:\n${summaryText.trim()}` : "",
       existingStateJson?.trim() ? `Existing Story State JSON:\n${existingStateJson.trim()}` : "",
       `Recent Transcript:\n${formatRecentMessages(recentMessages, playerName, { messageNumberStart, messageNumberTotal })}`,
@@ -475,6 +500,11 @@ export function formatStoryLongTermMemoryForPrompt(
       if (weaknesses.length) {
         lines.push(`  weaknesses: ${weaknesses.join(", ")}`);
       }
+
+      const traitsPersistent = trimStringList((entry as any).characterTraitsPersistent, 4);
+      if (traitsPersistent.length) {
+        lines.push(`  traits: ${traitsPersistent.join(", ")}`);
+      }
     }
   }
 
@@ -614,6 +644,26 @@ export function formatStorySceneStateForPrompt(storyStateData: StoryStateData) {
       lines.push(`- ${item}`);
     }
   }
+
+  const transientEntries = Object.entries(storyStateData.characters ?? {})
+    .map(([name, entry]) => ({ name, entry }))
+    .filter(({ entry }) => Array.isArray((entry as any)?.characterStateTransient))
+    .map(({ name, entry }) => ({
+      name,
+      state: trimStringList((entry as any).characterStateTransient, 2),
+    }))
+    .filter(({ state }) => state.length);
+
+  if (transientEntries.length) {
+    const sorted = transientEntries
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 8);
+
+    for (const entry of sorted) {
+      lines.push(`- ${entry.name}: ${entry.state.join(" | ")}`);
+    }
+  }
+
   const formatted = lines.join("\n").trim();
   return formatted.length > 1200 ? `${formatted.slice(0, 1200).trim()}…` : formatted;
 }

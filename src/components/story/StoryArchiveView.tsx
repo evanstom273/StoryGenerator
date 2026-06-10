@@ -6,8 +6,6 @@ import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
 
-const AUTO_DEEP_INDEX_THRESHOLD = 10;
-
 function trimStringList(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) {
     return [];
@@ -42,7 +40,7 @@ async function isAndroidNativePlatform() {
 }
 
 export function StoryArchiveView({ storyId }: { storyId: string }) {
-  const { fetchStoryState, getMessagesForStory, rebuildStatus, updateIndexesDeep } =
+  const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, updateIndexesDeep } =
     useStoryEngine();
   const [storyStateJson, setStoryStateJson] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -190,6 +188,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
     );
   }
 
+  const story = getStoryById(storyId);
   const totalMessages = getMessagesForStory(storyId).length;
   const indexedMessageCount =
     storyStateData.indexes?.messageCount ?? storyStateData.lastIndexedMessageCount ?? 0;
@@ -205,8 +204,13 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
   const protagonistSummary = storyStateData.summaries?.protagonistSummary?.trim() ?? "";
   const currentSituation = storyStateData.summaries?.currentSituation?.trim() ?? "";
   const recentDevelopments = trimStringList(storyStateData.summaries?.recentDevelopments, 6);
-  const messagesSinceDeep = Math.max(0, storyStateData.messagesSinceDeepIndexUpdate ?? staleBy);
-  const messagesUntilAutoDeep = Math.max(0, AUTO_DEEP_INDEX_THRESHOLD - Math.min(messagesSinceDeep, AUTO_DEEP_INDEX_THRESHOLD));
+  const autoIndexInterval = story?.autoIndexInterval ?? 20;
+  const lastAutoDeepIndexMessageCount = storyStateData.lastAutoDeepIndexedMessageCount ?? 0;
+  const messagesSinceAutoDeep = Math.max(0, totalMessages - lastAutoDeepIndexMessageCount);
+  const messagesUntilAutoDeep =
+    autoIndexInterval === "disabled"
+      ? null
+      : Math.max(0, autoIndexInterval - Math.min(messagesSinceAutoDeep, autoIndexInterval));
 
   return (
     <div className="space-y-4">
@@ -253,7 +257,9 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
           <div className="flex items-center justify-between gap-3">
             <div>Auto deep index</div>
             <div className="text-ink-soft">
-              {messagesUntilAutoDeep === 0
+              {autoIndexInterval === "disabled"
+                ? "Disabled"
+                : messagesUntilAutoDeep === 0
                 ? "Ready on next pass"
                 : `In ${messagesUntilAutoDeep} message${messagesUntilAutoDeep === 1 ? "" : "s"}`}
             </div>
@@ -261,9 +267,9 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
         </div>
 
         <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
-          Automatic deep indexing runs every {AUTO_DEEP_INDEX_THRESHOLD} new messages and now
-          boots itself even if the story had no prior archive state.
-          {messagesSinceDeep > 0 ? ` Progress: ${messagesSinceDeep}/${AUTO_DEEP_INDEX_THRESHOLD}.` : " Progress: 0/10."}
+          {autoIndexInterval === "disabled"
+            ? "Automatic indexing is disabled for this story."
+            : `Automatic indexing runs every ${autoIndexInterval} new messages. Progress: ${Math.min(messagesSinceAutoDeep, autoIndexInterval)}/${autoIndexInterval}.`}
         </div>
       </Panel>
 
