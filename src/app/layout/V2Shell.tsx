@@ -31,6 +31,9 @@ export function V2Shell() {
   const [showChrome, setShowChrome] = useState(() =>
     readStoredBoolean(UI_PREFS_KEYS.showChrome, false),
   );
+  const [showArchivedStories, setShowArchivedStories] = useState(() =>
+    readStoredBoolean(UI_PREFS_KEYS.showArchivedStories, false),
+  );
   const [textSize, setTextSize] = useState<"sm" | "md" | "lg" | "xl">(() =>
     readStoredTextSize(UI_PREFS_KEYS.textSize, "md"),
   );
@@ -61,6 +64,10 @@ export function V2Shell() {
   useEffect(() => {
     writeStoredBoolean(UI_PREFS_KEYS.showChrome, showChrome);
   }, [showChrome]);
+
+  useEffect(() => {
+    writeStoredBoolean(UI_PREFS_KEYS.showArchivedStories, showArchivedStories);
+  }, [showArchivedStories]);
 
   useEffect(() => {
     writeStoredTextSize(UI_PREFS_KEYS.textSize, textSize);
@@ -147,6 +154,8 @@ export function V2Shell() {
         setReaderMode,
         showChrome,
         setShowChrome,
+        showArchivedStories,
+        setShowArchivedStories,
         textSize,
         setTextSize,
         storySettingsOpen,

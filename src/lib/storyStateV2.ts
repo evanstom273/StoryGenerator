@@ -147,6 +147,14 @@ function mergeRelationship(left: RelationshipIndexEntry, right: RelationshipInde
     ...(pick(right.trust, left.trust) !== undefined ? { trust: pick(right.trust, left.trust) } : {}),
     ...(pick(right.respect, left.respect) !== undefined ? { respect: pick(right.respect, left.respect) } : {}),
     ...(pick(right.loyalty, left.loyalty) !== undefined ? { loyalty: pick(right.loyalty, left.loyalty) } : {}),
+    ...(pick(right.comfort, left.comfort) !== undefined ? { comfort: pick(right.comfort, left.comfort) } : {}),
+    ...(pick(right.suspicion, left.suspicion) !== undefined
+      ? { suspicion: pick(right.suspicion, left.suspicion) }
+      : {}),
+    ...(pick(right.fear, left.fear) !== undefined ? { fear: pick(right.fear, left.fear) } : {}),
+    ...(pick(right.affection, left.affection) !== undefined
+      ? { affection: pick(right.affection, left.affection) }
+      : {}),
     ...(pick(right.tension, left.tension) !== undefined ? { tension: pick(right.tension, left.tension) } : {}),
     ...(pick(right.hostility, left.hostility) !== undefined ? { hostility: pick(right.hostility, left.hostility) } : {}),
     ...(summary ? { summary } : {}),
@@ -186,6 +194,10 @@ function reconcileRelationships(
       ...(typeof entry.trust === "number" ? { trust: entry.trust } : {}),
       ...(typeof entry.respect === "number" ? { respect: entry.respect } : {}),
       ...(typeof entry.loyalty === "number" ? { loyalty: entry.loyalty } : {}),
+      ...(typeof entry.comfort === "number" ? { comfort: entry.comfort } : {}),
+      ...(typeof entry.suspicion === "number" ? { suspicion: entry.suspicion } : {}),
+      ...(typeof entry.fear === "number" ? { fear: entry.fear } : {}),
+      ...(typeof entry.affection === "number" ? { affection: entry.affection } : {}),
       ...(typeof entry.tension === "number" ? { tension: entry.tension } : {}),
       ...(typeof entry.hostility === "number" ? { hostility: entry.hostility } : {}),
       ...(typeof entry.summary === "string" && entry.summary.trim() ? { summary: entry.summary.trim() } : {}),

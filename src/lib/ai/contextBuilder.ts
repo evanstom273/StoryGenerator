@@ -1,4 +1,5 @@
 import type {
+  DirectorIntent,
   PlayerCharacter,
   Story,
   StoryMessage,
@@ -70,6 +71,7 @@ export interface BuildStoryChatContextInput {
   storyState?: StoryState | null;
   recentMessages: StoryMessage[];
   latestUserMessage: string;
+  directorIntent?: DirectorIntent | null;
 }
 
 export function buildStoryChatContext({
@@ -81,6 +83,7 @@ export function buildStoryChatContext({
   storyState,
   recentMessages,
   latestUserMessage,
+  directorIntent,
 }: BuildStoryChatContextInput): AIChatMessage[] {
   const sceneDepth = inferSceneDepth(latestUserMessage);
   const wordTarget = getSceneWordTarget(sceneDepth);
@@ -166,6 +169,38 @@ export function buildStoryChatContext({
     };
   })();
 
+  const directorIntentBlock = (() => {
+    if (!directorIntent) return "";
+    const parts: string[] = [];
+    if (directorIntent.timeSkip) {
+      parts.push(`timeSkip: ${directorIntent.timeSkip.amount} ${directorIntent.timeSkip.unit}`);
+    }
+    if (directorIntent.sceneCut) {
+      parts.push("sceneCut: true");
+    }
+    if (directorIntent.target?.trim()) {
+      parts.push(`target: ${directorIntent.target.trim()}`);
+    }
+    return parts.length ? normalizeWhitespace(parts.join("\n")) : "";
+  })();
+
+  const temporalConsequencesBlock = (() => {
+    if (!directorIntent?.timeSkip) return "";
+    const { amount, unit } = directorIntent.timeSkip;
+    return normalizeWhitespace(
+      [
+        `Time has advanced: ${amount} ${unit}. Treat this as a strong director instruction.`,
+        "Show believable consequences of elapsed time. Do not treat the skip as purely cosmetic.",
+        "Update the world and relationships appropriately:",
+        "- Injuries: healing, worsening, new complications, ongoing limitations.",
+        "- Open threads: investigations progress, plans advance/stall, secrets spread, pressure changes.",
+        "- Relationships: trust/loyalty/comfort/suspicion/fear/affection shift based on events and contact (or lack of it).",
+        "- Reputation/resources: rumours travel, resources change, obligations accrue, deadlines approach or pass.",
+        "Stay consistent with Long-Term Memory and the transcript. Prefer 'Yes, and...' consequences over resetting the scene.",
+      ].join("\n"),
+    );
+  })();
+
   const sceneGuidance = normalizeWhitespace(
     [
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
@@ -203,6 +238,9 @@ export function buildStoryChatContext({
       "Character authenticity is the highest priority. Characters must sound like themselves.",
       "Maintain character authenticity: personality, speech patterns, relationships, and emotional continuity.",
       "Relationship awareness: characters should behave differently depending on who they are speaking to and their power dynamics.",
+      directorIntent?.sceneCut
+        ? "Director intent: the player has requested a scene cut/transition. Treat this as permission to transition scenes cleanly without re-litigating the previous beat."
+        : "",
       "Avoid generic AI phrasing; match each character's cadence, vocabulary, humor/formality, and emotional baseline.",
       "Do not generate suggested player lines or options unless explicitly asked via Player Assist. Focus on canon characters, NPCs, and narration.",
       "Drive the story forward with complications, discoveries, and tension, but never remove player agency.",
@@ -239,6 +277,12 @@ export function buildStoryChatContext({
     { role: "system", content: `Long-Term Memory\n\n${storyStateBlock.longTerm}` },
     ...(storyStateBlock.scene
       ? [{ role: "system" as const, content: `Current Scene State\n\n${storyStateBlock.scene}` }]
+      : []),
+    ...(directorIntentBlock
+      ? [{ role: "system" as const, content: `Director Intent\n\n${directorIntentBlock}` }]
+      : []),
+    ...(temporalConsequencesBlock
+      ? [{ role: "system" as const, content: `Temporal Consequences\n\n${temporalConsequencesBlock}` }]
       : []),
     { role: "system", content: `Scene Direction\n\n${sceneGuidance}` },
     ...chatHistory,

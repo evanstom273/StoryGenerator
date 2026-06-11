@@ -61,6 +61,8 @@ import {
   sanitizeAssistantTranscript,
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
+import { detectDirectorIntent } from "../../lib/storyText/directorIntent";
+import { detectChapterEnd } from "../../lib/storyText/chapterDetection";
 import type {
   AIProviderType,
   AISettings,
@@ -80,6 +82,8 @@ import type {
   StoryEngineBackup,
   StoryDraft,
   StoryExportBundle,
+  StoryChapter,
+  StoryMetaMessage,
   StoryMessage,
   StoryMessageDraft,
   StoryState,
@@ -99,6 +103,8 @@ interface StoryEngineContextValue {
   playerCharacters: PlayerCharacter[];
   stories: Story[];
   messages: StoryMessage[];
+  metaMessages: StoryMetaMessage[];
+  chapters: StoryChapter[];
   aiSettings: AISettings | null;
   developerBugs: DeveloperBug[];
   developerFeatureRequests: DeveloperFeatureRequest[];
@@ -118,6 +124,8 @@ interface StoryEngineContextValue {
   getDeveloperFeatureRequestById: (id: string) => DeveloperFeatureRequest | undefined;
   getDeveloperTestingNoteById: (id: string) => DeveloperTestingNote | undefined;
   getMessagesForStory: (storyId: string) => StoryMessage[];
+  getMetaMessagesForStory: (storyId: string) => StoryMetaMessage[];
+  getChaptersForStory: (storyId: string) => StoryChapter[];
   getPlayerCharactersForUniverse: (universeId: string) => PlayerCharacter[];
   getStoriesForUniverse: (universeId: string) => Story[];
   getStoriesForPlayerCharacter: (playerCharacterId: string) => Story[];
@@ -156,6 +164,11 @@ interface StoryEngineContextValue {
     draft: Omit<StoryMessageDraft, "storyId">,
   ) => Promise<StoryMessage | null>;
   deleteMessage: (id: string) => Promise<void>;
+  setMessageDirectorIntent: (
+    messageId: string,
+    intent: StoryMessage["directorIntent"] | null,
+  ) => Promise<StoryMessage | null>;
+  sendMetaChatMessage: (storyId: string, content: string) => Promise<StoryMetaMessage>;
   createDeveloperBug: (draft: DeveloperBugDraft) => Promise<DeveloperBug>;
   updateDeveloperBug: (id: string, draft: DeveloperBugDraft) => Promise<DeveloperBug | null>;
   deleteDeveloperBug: (id: string) => Promise<void>;
@@ -402,6 +415,8 @@ export function StoryEngineProvider({
   const [playerCharacters, setPlayerCharacters] = useState<PlayerCharacter[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [messages, setMessages] = useState<StoryMessage[]>([]);
+  const [metaMessages, setMetaMessages] = useState<StoryMetaMessage[]>([]);
+  const [chapters, setChapters] = useState<StoryChapter[]>([]);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const [developerBugs, setDeveloperBugs] = useState<DeveloperBug[]>([]);
   const [developerFeatureRequests, setDeveloperFeatureRequests] = useState<
@@ -480,6 +495,8 @@ export function StoryEngineProvider({
           nextPlayerCharacters,
           nextStories,
           nextMessages,
+          nextMetaMessages,
+          nextChapters,
           nextAISettings,
           nextDeveloperBugs,
           nextDeveloperFeatureRequests,
@@ -489,6 +506,8 @@ export function StoryEngineProvider({
           repository.listPlayerCharacters(),
           repository.listStories(),
           repository.listAllMessages(),
+          repository.listAllStoryMetaMessages(),
+          repository.listAllStoryChapters(),
           getNormalizedAISettings().catch(() => null),
           repository.listDeveloperBugs(),
           repository.listDeveloperFeatureRequests(),
@@ -507,6 +526,8 @@ export function StoryEngineProvider({
         );
         setStories(sortByUpdatedAtDesc(nextStories));
         setMessages(sortByTimestampAsc(nextMessages));
+        setMetaMessages(sortByTimestampAsc(nextMetaMessages));
+        setChapters([...nextChapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex));
         setAiSettings(nextAISettings);
         setDeveloperBugs(
           [...nextDeveloperBugs].sort(
@@ -721,6 +742,8 @@ export function StoryEngineProvider({
       playerCharacters,
       stories,
       messages,
+      metaMessages,
+      chapters,
       aiSettings,
       developerBugs,
       developerFeatureRequests,
@@ -737,6 +760,12 @@ export function StoryEngineProvider({
         developerTestingNotes.find((note) => note.id === id),
       getMessagesForStory: (storyId) =>
         sortByTimestampAsc(messages.filter((message) => message.storyId === storyId)),
+      getMetaMessagesForStory: (storyId) =>
+        sortByTimestampAsc(metaMessages.filter((message) => message.storyId === storyId)),
+      getChaptersForStory: (storyId) =>
+        [...chapters]
+          .filter((chapter) => chapter.storyId === storyId)
+          .sort((a, b) => a.endsAtIndex - b.endsAtIndex),
       getPlayerCharactersForUniverse: (universeId) =>
         sortByCreatedAtDesc(
           playerCharacters.filter(
@@ -1162,6 +1191,8 @@ export function StoryEngineProvider({
           universeId: patch.universeId ?? currentStory.universeId,
           playerCharacterId:
             patch.playerCharacterId ?? currentStory.playerCharacterId,
+          isArchived: patch.isArchived ?? currentStory.isArchived,
+          autoIndexMode: patch.autoIndexMode ?? currentStory.autoIndexMode,
           autoIndexInterval: patch.autoIndexInterval ?? currentStory.autoIndexInterval,
           updatedAt: new Date().toISOString(),
         };
@@ -1185,6 +1216,7 @@ export function StoryEngineProvider({
           timestamp: new Date().toISOString(),
           speakerName: draft.speakerName?.trim() || prefix?.speakerLabel || undefined,
           speakerType: draft.speakerType,
+          directorIntent: draft.directorIntent,
           editedAt: draft.editedAt,
           regeneratedAt: draft.regeneratedAt,
           revision: draft.revision,
@@ -1210,6 +1242,7 @@ export function StoryEngineProvider({
           content: (prefix?.strippedContent ?? draft.content).trim(),
           speakerName: draft.speakerName?.trim() || prefix?.speakerLabel || undefined,
           speakerType: draft.speakerType,
+          directorIntent: draft.directorIntent ?? currentMessage.directorIntent,
           editedAt: draft.editedAt ?? currentMessage.editedAt,
           regeneratedAt: draft.regeneratedAt ?? currentMessage.regeneratedAt,
           revision: draft.revision ?? currentMessage.revision,
@@ -1357,6 +1390,7 @@ export function StoryEngineProvider({
           storyState,
           recentMessages: sanitizedHistoryMessages,
           latestUserMessage: previousMessage.content,
+          directorIntent: previousMessage.directorIntent ?? null,
         });
 
         const assistantContent = await generateResponseWithRetry({
@@ -1622,6 +1656,123 @@ export function StoryEngineProvider({
         await repository.deleteStoryMessage(id);
         await touchStory(currentMessage.storyId);
         await hydrate(false);
+      },
+      async setMessageDirectorIntent(messageId, intent) {
+        const currentMessage = await repository.getStoryMessage(messageId);
+
+        if (!currentMessage) {
+          return null;
+        }
+
+        const nextMessage: StoryMessage = {
+          ...currentMessage,
+          directorIntent: intent ?? undefined,
+        };
+
+        await repository.saveStoryMessage(nextMessage);
+        await touchStory(currentMessage.storyId);
+        await hydrate(false);
+
+        return nextMessage;
+      },
+      async sendMetaChatMessage(storyId, content) {
+        const trimmed = content.trim();
+        if (!trimmed) {
+          throw new Error("Message content is required.");
+        }
+
+        const story = await repository.getStory(storyId);
+        if (!story) {
+          throw new Error("Story not found.");
+        }
+
+        const [universe, playerCharacter, storyConfig, storyState] = await Promise.all([
+          repository.getUniverse(story.universeId),
+          repository.getPlayerCharacter(story.playerCharacterId),
+          repository.getStoryAIConfig(storyId),
+          repository.getStoryState(storyId),
+        ]);
+
+        if (!universe || !playerCharacter) {
+          throw new Error("Story references missing universe or player character.");
+        }
+
+        const settings = await getNormalizedAISettings();
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings before generating messages.");
+        }
+
+        const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+        const provider = createAIProvider(providerType);
+
+        const userMessage: StoryMetaMessage = {
+          id: createEntityId("story-meta-message"),
+          storyId,
+          role: "user",
+          content: trimmed,
+          timestamp: new Date().toISOString(),
+        };
+
+        await repository.saveStoryMetaMessage(userMessage);
+
+        const normalizedState = (() => {
+          const json = storyState?.stateJson?.trim() ?? "";
+          if (!json) return null;
+          const parsed = safeParseStoryStateData(json);
+          return normalizeStoryStateToV2(parsed);
+        })();
+
+        const contextBlock = [
+          `Story title: ${story.title}`,
+          `Universe: ${universe.name}`,
+          `Player character: ${playerCharacter.name}`,
+          normalizedState?.summaries?.premise?.trim()
+            ? `Premise: ${normalizedState.summaries.premise.trim()}`
+            : null,
+          story.currentSummary?.trim() ? `Current summary: ${story.currentSummary.trim()}` : null,
+          normalizedState?.summaries?.currentSituation?.trim()
+            ? `Current situation: ${normalizedState.summaries.currentSituation.trim()}`
+            : null,
+          normalizedState?.threads?.openThreads?.length
+            ? `Open threads: ${normalizedState.threads.openThreads.slice(0, 8).join(" | ")}`
+            : null,
+        ]
+          .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+          .join("\n");
+
+        const systemPrompt = [
+          "You are MetaChat, an out-of-canon writer's room assistant for Story Engine.",
+          "Hard rule: MetaChat is NOT canon and must never be treated as story reality.",
+          "Do not write the next story scene or in-character narration unless the user explicitly asks you to draft an out-of-canon example.",
+          "Prefer analysis, planning, options, and questions. Be concise and practical.",
+        ].join("\n");
+
+        const assistantText = (
+          await generateResponseWithRetry({
+            providerType,
+            provider,
+            apiKey,
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "system", content: `Context (canon reference only):\n${contextBlock}` },
+              { role: "user", content: trimmed },
+            ],
+          })
+        ).content;
+
+        const assistantMessage: StoryMetaMessage = {
+          id: createEntityId("story-meta-message"),
+          storyId,
+          role: "assistant",
+          content: assistantText.trim(),
+          timestamp: new Date().toISOString(),
+        };
+
+        await repository.saveStoryMetaMessage(assistantMessage);
+        await hydrate(false);
+        return assistantMessage;
       },
       async createDeveloperBug(draft) {
         const now = new Date().toISOString();
@@ -2283,20 +2434,32 @@ export function StoryEngineProvider({
           lastMessage.storyId === storyId;
 
         const prefix = extractSpeakerPrefix(trimmed);
+        const strippedUserContent = (prefix?.strippedContent ?? trimmed).trim();
+        const detectedDirectorIntent = detectDirectorIntent(strippedUserContent);
+        const detectedChapterEnd = detectChapterEnd(strippedUserContent);
         const userMessage: StoryMessage = shouldReuseLastUserMessage
           ? lastMessage
           : {
               id: createEntityId("story-message"),
               storyId,
               role: "user",
-              content: (prefix?.strippedContent ?? trimmed).trim(),
+              content: strippedUserContent,
               timestamp: new Date().toISOString(),
               speakerName: prefix?.speakerLabel,
               speakerType: "player",
+              ...(detectedDirectorIntent ? { directorIntent: detectedDirectorIntent } : {}),
             };
 
         if (!shouldReuseLastUserMessage) {
           await repository.saveStoryMessage(userMessage);
+        } else if (
+          detectedDirectorIntent &&
+          JSON.stringify(lastMessage.directorIntent ?? null) !== JSON.stringify(detectedDirectorIntent)
+        ) {
+          await repository.saveStoryMessage({
+            ...lastMessage,
+            directorIntent: detectedDirectorIntent,
+          });
         }
 
         {
@@ -2315,13 +2478,40 @@ export function StoryEngineProvider({
           }
         }
 
-        const [imports, summaries, refreshedMessages, storyConfig, storyState] = await Promise.all([
+        const [imports, summaries, refreshedMessages, storyConfig, storyState, storedChapters] = await Promise.all([
           repository.listUniverseImports(universe.id),
           repository.listStorySummaries(storyId),
           repository.listStoryMessages(storyId),
           repository.getStoryAIConfig(storyId),
           repository.getStoryState(storyId),
+          repository.listStoryChapters(storyId),
         ]);
+
+        const sortedForNumbering = sortByTimestampAsc(refreshedMessages);
+        const userMessageIndex = Math.max(
+          0,
+          sortedForNumbering.findIndex((message) => message.id === userMessage.id),
+        );
+        const userMessageNumber = userMessageIndex + 1;
+
+        const createdChapter = (() => {
+          if (!detectedChapterEnd.detected) return null;
+          if (storedChapters.some((chapter) => chapter.endsAtMessageId === userMessage.id)) {
+            return null;
+          }
+          return {
+            id: createEntityId("story-chapter"),
+            storyId,
+            label: detectedChapterEnd.label ?? "Chapter End",
+            endsAtMessageId: userMessage.id,
+            endsAtIndex: userMessageNumber,
+            createdAt: new Date().toISOString(),
+          } satisfies StoryChapter;
+        })();
+
+        if (createdChapter) {
+          await repository.saveStoryChapter(createdChapter);
+        }
 
         const settings = await getNormalizedAISettings();
 
@@ -2403,6 +2593,7 @@ export function StoryEngineProvider({
           storyState,
           recentMessages: sanitizedHistoryMessages,
           latestUserMessage: userMessage.content,
+          directorIntent: userMessage.directorIntent ?? null,
         });
 
         const assistantContent = await generateResponseWithRetry({
@@ -2707,6 +2898,87 @@ export function StoryEngineProvider({
         await touchStory(storyId);
         await hydrate(false);
 
+        if (createdChapter) {
+          void (async () => {
+            try {
+              const [latestChapters, latestStoryState] = await Promise.all([
+                repository.listStoryChapters(storyId),
+                repository.getStoryState(storyId),
+              ]);
+
+              const sortedChapters = [...latestChapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex);
+              const chapterIndex = sortedChapters.findIndex((chapter) => chapter.id === createdChapter.id);
+              const previousChapter = chapterIndex > 0 ? sortedChapters[chapterIndex - 1] : null;
+              const startIndex = (previousChapter?.endsAtIndex ?? 0) + 1;
+              const endIndex = createdChapter.endsAtIndex;
+
+              const slice = updatedMessages.slice(Math.max(0, startIndex - 1), Math.max(0, endIndex));
+              const transcript = slice
+                .map((message, idx) => {
+                  const number = startIndex + idx;
+                  const label =
+                    message.role === "user"
+                      ? `USER (${message.speakerName?.trim() || playerCharacter.name})`
+                      : message.speakerType === "narrator"
+                        ? "NARRATOR"
+                        : message.speakerName?.trim()
+                          ? `CANON (${message.speakerName.trim()})`
+                          : "ASSISTANT";
+                  const content = (message.content ?? "").trim().replace(/\s+/g, " ");
+                  return `[${number}] ${label}: ${content}`;
+                })
+                .join("\n");
+
+              const normalizedState = (() => {
+                const json = latestStoryState?.stateJson?.trim() ?? "";
+                if (!json) return null;
+                const parsed = safeParseStoryStateData(json);
+                return normalizeStoryStateToV2(parsed);
+              })();
+
+              const chapterPrompt = [
+                "Write a chapter summary for the following canon chapter transcript.",
+                "This summary is for the archive, not for narration. Do not write prose scenes.",
+                "Keep it compact and spoiler-aware: focus on what actually happened, key reveals, and state changes.",
+                "Output format:",
+                "- 1 short paragraph summary",
+                "- Then 3-6 bullet points of major beats",
+              ].join("\n");
+
+              const contextBlock = [
+                `Story title: ${story.title}`,
+                `Chapter: ${createdChapter.label}`,
+                normalizedState?.summaries?.premise?.trim()
+                  ? `Premise: ${normalizedState.summaries.premise.trim()}`
+                  : null,
+                story.currentSummary?.trim() ? `Current summary: ${story.currentSummary.trim()}` : null,
+              ]
+                .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+                .join("\n");
+
+              const chapterSummaryText = (
+                await generateResponseWithRetry({
+                  providerType,
+                  provider,
+                  apiKey,
+                  model,
+                  messages: [
+                    { role: "system", content: chapterPrompt },
+                    { role: "system", content: `Context:\n${contextBlock}` },
+                    { role: "user", content: transcript.slice(0, 12000) },
+                  ],
+                })
+              ).content;
+
+              await repository.saveStoryChapter({
+                ...createdChapter,
+                summary: chapterSummaryText.trim(),
+              });
+              await hydrate(false);
+            } catch {}
+          })();
+        }
+
         const totalMessages = updatedMessages.length;
 
         void (async () => {
@@ -2778,17 +3050,38 @@ export function StoryEngineProvider({
               await hydrate(false);
             }
 
-            const autoIndexInterval = story.autoIndexInterval ?? 20;
-            if (autoIndexInterval === "disabled") {
+            const autoIndexMode =
+              story.autoIndexMode ??
+              (story.autoIndexInterval === "disabled" ? "disabled" : "messages");
+
+            if (autoIndexMode === "disabled") {
               return;
             }
 
             const lastAutoMessageCount =
               baseState.lastAutoDeepIndexedMessageCount ?? autoDeepBootstrapAnchor;
-            const messagesSinceAutoDeepIndex = Math.max(0, totalMessages - lastAutoMessageCount);
 
-            if (messagesSinceAutoDeepIndex < autoIndexInterval) {
-              return;
+            if (autoIndexMode === "messages") {
+              const autoIndexInterval = story.autoIndexInterval ?? 20;
+              if (autoIndexInterval === "disabled") {
+                return;
+              }
+
+              const messagesSinceAutoDeepIndex = Math.max(
+                0,
+                totalMessages - lastAutoMessageCount,
+              );
+              if (messagesSinceAutoDeepIndex < autoIndexInterval) {
+                return;
+              }
+            } else if (autoIndexMode === "chapter") {
+              const chapterBoundaries = await repository.listStoryChapters(storyId);
+              const hasNewChapter = chapterBoundaries.some(
+                (chapter) => chapter.endsAtIndex > lastAutoMessageCount,
+              );
+              if (!hasNewChapter) {
+                return;
+              }
             }
 
             const rebuilt = await rebuildStoryMemoryAndIndexes({

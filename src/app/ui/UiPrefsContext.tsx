@@ -7,6 +7,8 @@ export type UiPrefs = {
   setReaderMode: (next: boolean) => void;
   showChrome: boolean;
   setShowChrome: (next: boolean) => void;
+  showArchivedStories: boolean;
+  setShowArchivedStories: (next: boolean) => void;
   textSize: "sm" | "md" | "lg" | "xl";
   setTextSize: (next: "sm" | "md" | "lg" | "xl") => void;
   storySettingsOpen: boolean;
@@ -17,6 +19,7 @@ export const UI_PREFS_KEYS = {
   rightSidebarCollapsed: "story-engine:v2:right-collapsed",
   readerMode: "story-engine:v2:reader-mode",
   showChrome: "story-engine:v2:show-chrome",
+  showArchivedStories: "story-engine:v2:show-archived-stories",
   textSize: "story-engine:v2:text-size",
 } as const;
 

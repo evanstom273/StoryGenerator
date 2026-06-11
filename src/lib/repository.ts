@@ -10,6 +10,8 @@ import type {
   StoryAIConfig,
   StoryEngineBackup,
   StoryExportBundle,
+  StoryChapter,
+  StoryMetaMessage,
   StoryState,
   StoryMessage,
   StorySummary,
@@ -52,6 +54,14 @@ export interface StoryEngineRepository {
   getStoryMessage(id: EntityId): Promise<StoryMessage | null>;
   saveStoryMessage(message: StoryMessage): Promise<StoryMessage>;
   deleteStoryMessage(id: EntityId): Promise<void>;
+  listAllStoryMetaMessages(): Promise<StoryMetaMessage[]>;
+  listStoryMetaMessages(storyId: EntityId): Promise<StoryMetaMessage[]>;
+  saveStoryMetaMessage(message: StoryMetaMessage): Promise<StoryMetaMessage>;
+  deleteStoryMetaMessage(id: EntityId): Promise<void>;
+  listAllStoryChapters(): Promise<StoryChapter[]>;
+  listStoryChapters(storyId: EntityId): Promise<StoryChapter[]>;
+  saveStoryChapter(record: StoryChapter): Promise<StoryChapter>;
+  deleteStoryChapter(id: EntityId): Promise<void>;
   getStoryExportBundle(storyId: EntityId): Promise<StoryExportBundle | null>;
   getUniverseExportBundle(universeId: EntityId): Promise<UniverseExportBundleV1 | null>;
   getPlayerCharacterExportBundle(
@@ -156,6 +166,34 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     deleteStoryMessage(id) {
       return deleteFromStore("messages", id);
     },
+    async listAllStoryMetaMessages() {
+      const messages = await getAllFromStore<StoryMetaMessage>("storyMetaMessages");
+      return sortByTimestampAsc(messages);
+    },
+    async listStoryMetaMessages(storyId) {
+      const messages = await getAllByIndex<StoryMetaMessage>("storyMetaMessages", "storyId", storyId);
+      return sortByTimestampAsc(messages);
+    },
+    saveStoryMetaMessage(message) {
+      return putInStore("storyMetaMessages", message);
+    },
+    deleteStoryMetaMessage(id) {
+      return deleteFromStore("storyMetaMessages", id);
+    },
+    async listAllStoryChapters() {
+      const chapters = await getAllFromStore<StoryChapter>("storyChapters");
+      return [...chapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex);
+    },
+    async listStoryChapters(storyId) {
+      const chapters = await getAllByIndex<StoryChapter>("storyChapters", "storyId", storyId);
+      return [...chapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex);
+    },
+    saveStoryChapter(record) {
+      return putInStore("storyChapters", record);
+    },
+    deleteStoryChapter(id) {
+      return deleteFromStore("storyChapters", id);
+    },
     async getStoryExportBundle(storyId) {
       const story = await getFromStore<Story>("stories", storyId);
 
@@ -163,11 +201,12 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         return null;
       }
 
-      const [universe, playerCharacter, messages, storyState] = await Promise.all([
+      const [universe, playerCharacter, messages, storyState, chapters] = await Promise.all([
         getFromStore<Universe>("universes", story.universeId),
         getFromStore<PlayerCharacter>("playerCharacters", story.playerCharacterId),
         getAllByIndex<StoryMessage>("messages", "storyId", storyId),
         getFromStore<StoryState>("storyStates", `story-state:${storyId}`),
+        getAllByIndex<StoryChapter>("storyChapters", "storyId", storyId),
       ]);
 
       if (!universe || !playerCharacter) {
@@ -181,6 +220,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         playerCharacter,
         messages: sortByTimestampAsc(messages),
         storyState: storyState ?? undefined,
+        chapters: [...chapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex),
       };
     },
     async getUniverseExportBundle(universeId) {

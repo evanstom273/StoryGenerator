@@ -1,24 +1,180 @@
 import { Link } from "react-router-dom";
+import { useMemo, useState } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { StoryListRow } from "../components/story/StoryListRow";
+import { useUiPrefs } from "../app/ui/UiPrefsContext";
+
+function includesQuery(query: string, values: Array<string | undefined | null>) {
+  if (!query) return true;
+  return values.some((value) => value?.toLowerCase().includes(query));
+}
 
 export function HomePage() {
   const {
     stories,
     universes,
+    playerCharacters,
     getPlayerCharacterById,
     getUniverseById,
   } = useStoryEngine();
+  const { showArchivedStories, setShowArchivedStories } = useUiPrefs();
+  const [query, setQuery] = useState("");
 
-  const continueStory = stories[0];
-  const recentStories = stories.slice(0, 8);
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const visibleStories = useMemo(
+    () => stories.filter((story) => (showArchivedStories ? true : !story.isArchived)),
+    [showArchivedStories, stories],
+  );
+
+  const continueStory = visibleStories[0];
+  const recentStories = visibleStories.slice(0, 8);
   const recentUniverses = universes.slice(0, 6);
+
+  const searchResults = useMemo(() => {
+    if (!normalizedQuery) {
+      return null;
+    }
+
+    const matchedStories = visibleStories
+      .filter((story) =>
+        includesQuery(normalizedQuery, [
+          story.title,
+          story.currentSummary,
+          getUniverseById(story.universeId)?.name,
+        ]),
+      )
+      .slice(0, 8);
+    const matchedUniverses = universes
+      .filter((universe) =>
+        includesQuery(normalizedQuery, [
+          universe.name,
+          universe.description,
+          universe.concept,
+          universe.genreTheme,
+          universe.tone,
+          universe.universeBlueprint,
+          universe.notes,
+          universe.wikiUrl,
+        ]),
+      )
+      .slice(0, 6);
+    const matchedCharacters = playerCharacters
+      .filter((character) => (character.scope ?? "library") === "library")
+      .filter((character) =>
+        includesQuery(normalizedQuery, [
+          character.name,
+          character.characterConcept,
+          character.background,
+          character.goals,
+          character.notes,
+          character.gender,
+          character.pronouns,
+          character.species,
+        ]),
+      )
+      .slice(0, 8);
+
+    return { matchedStories, matchedUniverses, matchedCharacters };
+  }, [getUniverseById, normalizedQuery, playerCharacters, universes, visibleStories]);
 
   return (
     <div className="space-y-10">
+      <section className="space-y-4">
+        <Panel padding="lg" className="bg-gradient-to-br from-white/[0.06] to-white/[0.03]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+              Search
+            </div>
+            <button
+              type="button"
+              className="rounded-2xl border border-divider bg-panel-muted px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-ink-soft transition hover:bg-panel-strong"
+              onClick={() => setShowArchivedStories(!showArchivedStories)}
+            >
+              {showArchivedStories ? "Showing archived" : "Hiding archived"}
+            </button>
+          </div>
+          <div className="mt-4">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search stories, universes, characters..."
+              className="w-full rounded-2xl border border-divider bg-panel-muted px-4 py-3 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+            />
+          </div>
+
+          {searchResults ? (
+            <div className="mt-5 grid gap-3 lg:grid-cols-3">
+              <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Stories
+                </div>
+                <div className="mt-2 space-y-1">
+                  {searchResults.matchedStories.length ? (
+                    searchResults.matchedStories.map((story) => (
+                      <Link
+                        key={story.id}
+                        to={`/stories/${story.id}`}
+                        className="block truncate rounded-xl px-2 py-2 text-sm text-ink-soft transition hover:bg-white/[0.04]"
+                      >
+                        {story.title}
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="px-2 py-2 text-sm text-ink-muted">No story matches.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Universes
+                </div>
+                <div className="mt-2 space-y-1">
+                  {searchResults.matchedUniverses.length ? (
+                    searchResults.matchedUniverses.map((universe) => (
+                      <Link
+                        key={universe.id}
+                        to={`/universes/${universe.id}`}
+                        className="block truncate rounded-xl px-2 py-2 text-sm text-ink-soft transition hover:bg-white/[0.04]"
+                      >
+                        {universe.name}
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="px-2 py-2 text-sm text-ink-muted">No universe matches.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Characters
+                </div>
+                <div className="mt-2 space-y-1">
+                  {searchResults.matchedCharacters.length ? (
+                    searchResults.matchedCharacters.map((character) => (
+                      <Link
+                        key={character.id}
+                        to={`/player-characters/${character.id}`}
+                        className="block truncate rounded-xl px-2 py-2 text-sm text-ink-soft transition hover:bg-white/[0.04]"
+                      >
+                        {character.name}
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="px-2 py-2 text-sm text-ink-muted">No character matches.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </Panel>
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Panel padding="lg" className="bg-gradient-to-br from-white/[0.06] to-white/[0.03]">
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">

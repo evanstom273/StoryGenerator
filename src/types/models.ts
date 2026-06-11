@@ -12,6 +12,13 @@ export type AIProviderType = "openai" | "gemini" | "openrouter";
 export type DeveloperBugStatus = "open" | "in-progress" | "resolved" | "closed";
 export type DeveloperFeaturePriority = "low" | "medium" | "high";
 export type AutoIndexInterval = 5 | 10 | 15 | 20 | "disabled";
+export type AutoIndexMode = "disabled" | "messages" | "chapter";
+
+export type DirectorIntent = {
+  timeSkip?: { unit: "hours" | "days" | "weeks" | "months"; amount: number };
+  sceneCut?: boolean;
+  target?: string;
+};
 
 export interface Universe {
   id: EntityId;
@@ -57,6 +64,8 @@ export interface Story {
   playerCharacterId: EntityId;
   openingPrompt?: string;
   universePackSnapshot?: UniversePackSnapshotV1;
+  isArchived?: boolean;
+  autoIndexMode?: AutoIndexMode;
   autoIndexInterval?: AutoIndexInterval;
   currentSummary: string;
   createdAt: Timestamp;
@@ -71,9 +80,28 @@ export interface StoryMessage {
   timestamp: Timestamp;
   speakerName?: string;
   speakerType?: StoryMessageSpeakerType;
+  directorIntent?: DirectorIntent;
   editedAt?: Timestamp;
   regeneratedAt?: Timestamp;
   revision?: number;
+}
+
+export interface StoryMetaMessage {
+  id: EntityId;
+  storyId: EntityId;
+  role: StoryMessageRole;
+  content: string;
+  timestamp: Timestamp;
+}
+
+export interface StoryChapter {
+  id: EntityId;
+  storyId: EntityId;
+  label: string;
+  endsAtMessageId: EntityId;
+  endsAtIndex: number;
+  createdAt: Timestamp;
+  summary?: string;
 }
 
 export interface AISettings {
@@ -133,6 +161,10 @@ export type RelationshipIndexEntry = {
   trust?: number;
   respect?: number;
   loyalty?: number;
+  comfort?: number;
+  suspicion?: number;
+  fear?: number;
+  affection?: number;
   tension?: number;
   hostility?: number;
   summary?: string;
@@ -326,6 +358,8 @@ export interface StoryDraft {
   title: string;
   universeId: EntityId;
   playerCharacterId: EntityId;
+  isArchived?: boolean;
+  autoIndexMode?: AutoIndexMode;
   autoIndexInterval?: AutoIndexInterval;
   currentSummary: string;
 }
@@ -336,6 +370,7 @@ export interface StoryMessageDraft {
   content: string;
   speakerName?: string;
   speakerType?: StoryMessageSpeakerType;
+  directorIntent?: DirectorIntent;
   editedAt?: Timestamp;
   regeneratedAt?: Timestamp;
   revision?: number;
@@ -384,6 +419,7 @@ export interface StoryExportBundle {
   playerCharacter: PlayerCharacter;
   messages: StoryMessage[];
   storyState?: StoryState;
+  chapters?: StoryChapter[];
 }
 
 export interface UniverseExportBundleV1 {

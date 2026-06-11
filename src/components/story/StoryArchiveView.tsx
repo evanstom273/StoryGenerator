@@ -39,6 +39,29 @@ async function isAndroidNativePlatform() {
   }
 }
 
+function getRelationshipMetricChips(entry: any) {
+  const chips: Array<{ label: string; value: number }> = [];
+  const push = (label: string, value: unknown) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return;
+    }
+    chips.push({ label, value: Math.round(value) });
+  };
+
+  push("Trust", entry?.trust);
+  push("Respect", entry?.respect);
+  push("Loyalty", entry?.loyalty);
+  push("Friendship", entry?.friendship);
+  push("Comfort", entry?.comfort);
+  push("Suspicion", entry?.suspicion);
+  push("Fear", entry?.fear);
+  push("Affection", entry?.affection);
+  push("Tension", entry?.tension);
+  push("Hostility", entry?.hostility);
+
+  return chips;
+}
+
 export function StoryArchiveView({ storyId }: { storyId: string }) {
   const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, updateIndexesDeep } =
     useStoryEngine();
@@ -474,6 +497,22 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
                   {entry.summary ? (
                     <div className="mt-1 text-xs text-ink-muted">{entry.summary}</div>
                   ) : null}
+                  {(() => {
+                    const chips = getRelationshipMetricChips(entry);
+                    if (!chips.length) return null;
+                    return (
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-ink-muted">
+                        {chips.map((chip) => (
+                          <span
+                            key={chip.label}
+                            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1"
+                          >
+                            {chip.label}: {chip.value}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   {renderEvidencePills(entry.evidence?.messageNumbers, `rel-${index}`)}
                 </div>
               ))}

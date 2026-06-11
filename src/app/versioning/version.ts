@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.17.0";
+export const APP_VERSION = "1.18.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -271,6 +271,22 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Archive and Settings countdowns now calculate from the current story-specific auto-index interval",
       "Player character sheet facts are now treated as stronger canon across narration, player assist, indexing, summaries, and memory rebuilds",
       "Temporary emotions, goals, and short-term reactions are less likely to drift into permanent character descriptions",
+    ],
+    knownIssues: [],
+  },
+  "1.18.0": {
+    title: "Usability + Narrative Intelligence Upgrade",
+    added: [
+      "Archive PDF exports now re-index first, stay transcript-first, and include chapter summaries",
+      "Story view now supports quicker daily use with theme switching, MetaChat, story archiving, and chapter-aware indexing",
+      "Library search now covers stories, universes, and player characters using summaries, notes, and key lore fields",
+      "Library browsing now includes stronger filtering/sorting across stories, universes, and player characters",
+      "Implicit director intent now recognises time skips and scene cuts, and generation guidance applies temporal consequences",
+      "Relationship dynamics now track richer evolving metrics including comfort, suspicion, fear, and affection",
+    ],
+    fixed: [
+      "Archive and settings relationship views now surface dynamic metric values instead of only pair summaries",
+      "Chapter-aware exports now present the reading experience first without losing index-driven analysis sections",
     ],
     knownIssues: [],
   },

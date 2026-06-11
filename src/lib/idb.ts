@@ -1,11 +1,13 @@
 const DATABASE_NAME = "story-engine-db";
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 
 export type StoreName =
   | "universes"
   | "playerCharacters"
   | "stories"
   | "messages"
+  | "storyMetaMessages"
+  | "storyChapters"
   | "aiSettings"
   | "storyAiConfigs"
   | "universeImports"
@@ -77,6 +79,12 @@ export function openStoryEngineDatabase() {
       const messages = ensureStore("messages", { keyPath: "id" });
       ensureIndex(messages, "storyId", "storyId", { unique: false });
 
+      const storyMetaMessages = ensureStore("storyMetaMessages", { keyPath: "id" });
+      ensureIndex(storyMetaMessages, "storyId", "storyId", { unique: false });
+
+      const storyChapters = ensureStore("storyChapters", { keyPath: "id" });
+      ensureIndex(storyChapters, "storyId", "storyId", { unique: false });
+
       ensureStore("aiSettings", { keyPath: "id" });
 
       const storyAiConfigs = ensureStore("storyAiConfigs", { keyPath: "id" });
@@ -105,6 +113,10 @@ export function openStoryEngineDatabase() {
         }
 
         if (fromVersion < 4 && toVersion >= 4) {
+          return;
+        }
+
+        if (fromVersion < 5 && toVersion >= 5) {
           return;
         }
       };

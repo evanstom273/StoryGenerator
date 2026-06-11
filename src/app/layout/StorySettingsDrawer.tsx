@@ -10,9 +10,12 @@ import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
-import type { AIProviderType, AutoIndexInterval, ExportFormat } from "../../types/models";
+import type { AIProviderType, AutoIndexInterval, AutoIndexMode, ExportFormat } from "../../types/models";
 import { cn } from "../../utils/cn";
+import { MetaChatOverlay } from "../../components/story/MetaChatOverlay";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
+import { useTheme } from "../theming/ThemeContext";
+import { themes } from "../theming/themes";
 import { useUiPrefs } from "../ui/UiPrefsContext";
 
 function createExportFilename(title: string, format: ExportFormat) {
@@ -75,6 +78,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     getUniverseById,
     getPlayerCharacterById,
     getMessagesForStory,
+    getChaptersForStory,
     exportStory,
     fetchStoryState,
     promoteStoryPlayerCharacter,
@@ -94,8 +98,12 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [storyFields, setStoryFields] = useState({
     title: story?.title ?? "",
     currentSummary: story?.currentSummary ?? "",
+    autoIndexMode: (story?.autoIndexMode ??
+      (story?.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode,
     autoIndexInterval: (story?.autoIndexInterval ?? 20) as AutoIndexInterval,
   });
+  const { themeKey, setThemeKey } = useTheme();
+  const [metaChatOpen, setMetaChatOpen] = useState(false);
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
   const [isSavingStory, setIsSavingStory] = useState(false);
   const [aiProviderType, setAiProviderType] = useState<AIProviderType>(
@@ -166,6 +174,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     setStoryFields({
       title: story.title,
       currentSummary: story.currentSummary,
+      autoIndexMode: (story.autoIndexMode ??
+        (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode,
       autoIndexInterval: (story.autoIndexInterval ?? 20) as AutoIndexInterval,
     });
   }, [story]);
@@ -205,7 +215,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
       if (
         storyFields.title === story.title &&
-        storyFields.currentSummary === story.currentSummary
+        storyFields.currentSummary === story.currentSummary &&
+        storyFields.autoIndexMode ===
+          ((story.autoIndexMode ??
+            (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode) &&
+        storyFields.autoIndexInterval === (story.autoIndexInterval ?? 20)
       ) {
         return;
       }
@@ -217,7 +231,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       void updateStory(story.id, storyFields).catch(() => {});
     },
     800,
-    [story?.id, storyFields.title, storyFields.currentSummary, storyFields.autoIndexInterval],
+    [
+      story?.id,
+      storyFields.title,
+      storyFields.currentSummary,
+      storyFields.autoIndexMode,
+      storyFields.autoIndexInterval,
+    ],
   );
 
   useEffect(() => {
@@ -273,15 +293,30 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       return;
     }
 
-    const bundle = await exportStory(story.id);
+    setPageError(null);
+    setPageNotice(null);
 
-    if (!bundle) {
-      setPageError("Unable to assemble export data for this story.");
-      return;
+    try {
+      if (format === "archive_pdf") {
+        setPageNotice("Updating archive…");
+        await updateIndexesDeep(story.id);
+        setPageNotice("Generating PDF…");
+      }
+
+      const bundle = await exportStory(story.id);
+
+      if (!bundle) {
+        setPageError("Unable to assemble export data for this story.");
+        return;
+      }
+
+      const { content, mimeType } = serializeStoryExport(bundle, format);
+      await downloadFile(createExportFilename(story.title, format), content, mimeType);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to export.");
+    } finally {
+      setPageNotice(null);
     }
-
-    const { content, mimeType } = serializeStoryExport(bundle, format);
-    await downloadFile(createExportFilename(story.title, format), content, mimeType);
   }
 
   async function handleExportSupportBundle() {
@@ -291,8 +326,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
     setIsExportingSupportBundle(true);
     setPageError(null);
+    setPageNotice("Updating archive…");
 
     try {
+      await updateIndexesDeep(story.id);
+      setPageNotice("Generating support bundle…");
       const bundle = await exportStory(story.id);
 
       if (!bundle) {
@@ -306,6 +344,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       setPageError(error instanceof Error ? error.message : "Unable to export support bundle.");
     } finally {
       setIsExportingSupportBundle(false);
+      setPageNotice(null);
     }
   }
 
@@ -625,34 +664,80 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
               <Panel padding="sm">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Theme
+                </div>
+                <div className="mt-4 space-y-3">
+                  <label className="block space-y-2">
+                    <div className="text-xs text-ink-muted">Theme</div>
+                    <select
+                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                      value={themeKey}
+                      onChange={(event) => setThemeKey(event.target.value as any)}
+                    >
+                      {Object.keys(themes).map((key) => (
+                        <option key={key} value={key}>
+                          {key}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </Panel>
+
+              <Panel padding="sm">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   Automatic Indexing
                 </div>
                 <div className="mt-4 space-y-3">
                   <label className="block space-y-2">
-                    <div className="text-xs text-ink-muted">Auto index interval</div>
+                    <div className="text-xs text-ink-muted">Indexing mode</div>
                     <select
                       className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
-                      value={storyFields.autoIndexInterval}
+                      value={storyFields.autoIndexMode}
                       onChange={(event) =>
                         setStoryFields((current) => ({
                           ...current,
-                          autoIndexInterval: (event.target.value === "disabled"
-                            ? "disabled"
-                            : Number(event.target.value)) as AutoIndexInterval,
+                          autoIndexMode: event.target.value as AutoIndexMode,
+                          autoIndexInterval:
+                            event.target.value === "disabled"
+                              ? "disabled"
+                              : current.autoIndexInterval === "disabled"
+                                ? 20
+                                : current.autoIndexInterval,
                         }))
                       }
                     >
                       <option value="disabled">Disabled</option>
-                      <option value={5}>Every 5 messages</option>
-                      <option value={10}>Every 10 messages</option>
-                      <option value={15}>Every 15 messages</option>
-                      <option value={20}>Every 20 messages</option>
+                      <option value="messages">Every N messages</option>
+                      <option value="chapter">After every chapter</option>
                     </select>
                   </label>
+                  {storyFields.autoIndexMode === "messages" ? (
+                    <label className="block space-y-2">
+                      <div className="text-xs text-ink-muted">Interval</div>
+                      <select
+                        className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                        value={storyFields.autoIndexInterval === "disabled" ? 20 : storyFields.autoIndexInterval}
+                        onChange={(event) =>
+                          setStoryFields((current) => ({
+                            ...current,
+                            autoIndexInterval: Number(event.target.value) as AutoIndexInterval,
+                          }))
+                        }
+                      >
+                        <option value={5}>Every 5 messages</option>
+                        <option value={10}>Every 10 messages</option>
+                        <option value={15}>Every 15 messages</option>
+                        <option value={20}>Every 20 messages</option>
+                      </select>
+                    </label>
+                  ) : null}
                   <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
-                    {storyFields.autoIndexInterval === "disabled"
+                    {storyFields.autoIndexMode === "disabled"
                       ? "Automatic indexing is disabled. Manual re-index still works."
-                      : `Next auto index runs every ${storyFields.autoIndexInterval} messages (manual re-index does not affect this schedule).`}
+                      : storyFields.autoIndexMode === "chapter"
+                        ? "Automatic indexing runs after every chapter end."
+                        : `Automatic indexing runs every ${storyFields.autoIndexInterval === "disabled" ? 20 : storyFields.autoIndexInterval} messages (manual re-index does not affect this schedule).`}
                   </div>
                 </div>
               </Panel>
@@ -735,6 +820,29 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   >
                     {isCleaningDuplicates ? "Cleaning..." : "Cleanup Duplicates"}
                   </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-2xl"
+                    onClick={() => setMetaChatOpen(true)}
+                  >
+                    MetaChat
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-2xl"
+                    onClick={() => {
+                      if (!story) {
+                        return;
+                      }
+                      setPageError(null);
+                      setPageNotice(null);
+                      void updateStory(story.id, { isArchived: !story.isArchived }).catch((error) => {
+                        setPageError(error instanceof Error ? error.message : "Unable to update story.");
+                      });
+                    }}
+                  >
+                    {story?.isArchived ? "Restore Story" : "Archive Story"}
+                  </Button>
                   {cleanupSummary ? (
                     <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
                       {cleanupSummary}
@@ -774,11 +882,15 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       : [];
                     const relationships = storyStateData.indexes?.relationships ?? [];
                     const significantMemories = (storyStateData.indexes as any)?.significantMemories ?? [];
+                    const chapters = getChaptersForStory(story.id);
                     const premise = storyStateData.summaries?.premise?.trim() ?? "";
                     const protagonistSummary = storyStateData.summaries?.protagonistSummary?.trim() ?? "";
                     const currentSituation = storyStateData.summaries?.currentSituation?.trim() ?? "";
                     const recentDevelopments = trimStringList(storyStateData.summaries?.recentDevelopments, 6);
+                    const autoIndexMode = (story.autoIndexMode ??
+                      (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode;
                     const autoIndexInterval = story.autoIndexInterval ?? 20;
+                    const intervalValue = autoIndexInterval === "disabled" ? 20 : autoIndexInterval;
                     const lastAutoDeepIndexMessageCount =
                       storyStateData.lastAutoDeepIndexedMessageCount ?? 0;
                     const messagesSinceAutoDeep = Math.max(
@@ -786,12 +898,12 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       totalMessages - lastAutoDeepIndexMessageCount,
                     );
                     const messagesUntilAutoDeep =
-                      autoIndexInterval === "disabled"
+                      autoIndexMode !== "messages"
                         ? null
                         : Math.max(
                             0,
-                            autoIndexInterval -
-                              Math.min(messagesSinceAutoDeep, autoIndexInterval),
+                            intervalValue -
+                              Math.min(messagesSinceAutoDeep, intervalValue),
                           );
 
                     return (
@@ -830,22 +942,56 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                           <div className="flex items-center justify-between gap-3">
                             <div>Next auto index</div>
                             <div className="text-ink-soft">
-                              {autoIndexInterval === "disabled"
+                              {autoIndexMode === "disabled"
                                 ? "Disabled"
-                                : messagesUntilAutoDeep === 0
-                                  ? "Ready on next pass"
-                                  : `In ${messagesUntilAutoDeep} message${messagesUntilAutoDeep === 1 ? "" : "s"}`}
+                                : autoIndexMode === "chapter"
+                                  ? "After next chapter"
+                                  : messagesUntilAutoDeep === 0
+                                    ? "Ready on next pass"
+                                    : `In ${messagesUntilAutoDeep} message${messagesUntilAutoDeep === 1 ? "" : "s"}`}
                             </div>
                           </div>
                         </div>
 
                         <div className="rounded-2xl border border-white/8 bg-black/20 px-3 py-3 text-sm text-ink-muted">
-                          {autoIndexInterval === "disabled"
+                          {autoIndexMode === "disabled"
                             ? "Automatic indexing is disabled for this story."
-                            : `Automatic indexing runs every ${autoIndexInterval} new messages. Progress: ${Math.min(messagesSinceAutoDeep, autoIndexInterval)}/${autoIndexInterval}.`}
+                            : autoIndexMode === "chapter"
+                              ? "Automatic indexing runs after every chapter end."
+                              : `Automatic indexing runs every ${intervalValue} new messages. Progress: ${Math.min(messagesSinceAutoDeep, intervalValue)}/${intervalValue}.`}
                         </div>
 
                         <div className="space-y-5">
+                          {chapters.length
+                            ? renderArchiveDropdown({
+                                title: "Chapters",
+                                countLabel: String(chapters.length),
+                                children: (
+                                  <div className="space-y-3">
+                                    {chapters.map((chapter) => (
+                                      <div
+                                        key={chapter.id}
+                                        className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
+                                      >
+                                        <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+                                          <span className="truncate">{chapter.label}</span>
+                                          <span className="shrink-0">Ends at #{chapter.endsAtIndex}</span>
+                                        </div>
+                                        {chapter.summary?.trim() ? (
+                                          <div className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">
+                                            {chapter.summary.trim()}
+                                          </div>
+                                        ) : (
+                                          <div className="mt-2 text-sm text-ink-muted">
+                                            No summary yet.
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ),
+                              })
+                            : null}
                           {premise || protagonistSummary || currentSituation || recentDevelopments.length
                             ? renderArchiveDropdown({
                                 title: "Story State",
@@ -1037,6 +1183,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                             typeof entry.trust === "number" ? `Trust ${Math.round(entry.trust)}` : null,
                                             typeof entry.respect === "number" ? `Respect ${Math.round(entry.respect)}` : null,
                                             typeof entry.loyalty === "number" ? `Loyalty ${Math.round(entry.loyalty)}` : null,
+                                            typeof entry.comfort === "number" ? `Comfort ${Math.round(entry.comfort)}` : null,
+                                            typeof entry.suspicion === "number" ? `Suspicion ${Math.round(entry.suspicion)}` : null,
+                                            typeof entry.fear === "number" ? `Fear ${Math.round(entry.fear)}` : null,
+                                            typeof entry.affection === "number" ? `Affection ${Math.round(entry.affection)}` : null,
                                             typeof entry.tension === "number" ? `Tension ${Math.round(entry.tension)}` : null,
                                             typeof entry.hostility === "number" ? `Hostility ${Math.round(entry.hostility)}` : null,
                                           ].filter(Boolean);
@@ -1108,6 +1258,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           ) : null}
         </div>
       </div>
+
+      {story ? (
+        <MetaChatOverlay
+          open={metaChatOpen}
+          storyId={story.id}
+          onClose={() => setMetaChatOpen(false)}
+        />
+      ) : null}
 
       <div
         className={cn(

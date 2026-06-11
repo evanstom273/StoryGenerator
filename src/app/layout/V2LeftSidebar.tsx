@@ -4,7 +4,13 @@ import { BrandMark } from "../../components/BrandMark";
 import { buttonClasses } from "../../components/ui/Button";
 import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
+import { useUiPrefs } from "../ui/UiPrefsContext";
 import { APP_NAME, APP_VERSION } from "../versioning/version";
+
+function includesQuery(query: string, values: Array<string | undefined | null>) {
+  if (!query) return true;
+  return values.some((value) => value?.toLowerCase().includes(query));
+}
 
 interface V2LeftSidebarProps {
   activeStoryId?: string;
@@ -17,7 +23,9 @@ export function V2LeftSidebar({
   className,
   onNavigate,
 }: V2LeftSidebarProps) {
-  const { universes, getStoriesForUniverse, getPlayerCharacterById } = useStoryEngine();
+  const { universes, stories, playerCharacters, getStoriesForUniverse, getPlayerCharacterById, getUniverseById } =
+    useStoryEngine();
+  const { showArchivedStories, setShowArchivedStories } = useUiPrefs();
   const [query, setQuery] = useState("");
   const [collapsedUniverses, setCollapsedUniverses] = useState<Record<string, boolean>>(
     {},
@@ -28,7 +36,9 @@ export function V2LeftSidebar({
   const universeRows = useMemo(() => {
     return universes
       .map((universe) => {
-        const stories = getStoriesForUniverse(universe.id);
+        const stories = getStoriesForUniverse(universe.id).filter(
+          (story) => showArchivedStories || !story.isArchived,
+        );
         const storyRows = stories.map((story) => {
           const playerCharacter = getPlayerCharacterById(story.playerCharacterId);
           return {
@@ -44,13 +54,78 @@ export function V2LeftSidebar({
           return true;
         }
 
-        if (universe.name.toLowerCase().includes(normalizedQuery)) {
+        if (
+          includesQuery(normalizedQuery, [
+            universe.name,
+            universe.description,
+            universe.concept,
+            universe.genreTheme,
+            universe.tone,
+            universe.universeBlueprint,
+            universe.notes,
+            universe.wikiUrl,
+          ])
+        ) {
           return true;
         }
 
-        return stories.some(({ story }) => story.title.toLowerCase().includes(normalizedQuery));
+        return stories.some(({ story, playerCharacterName }) =>
+          includesQuery(normalizedQuery, [
+            story.title,
+            story.currentSummary,
+            playerCharacterName,
+          ]),
+        );
       });
-  }, [getPlayerCharacterById, getStoriesForUniverse, normalizedQuery, universes]);
+  }, [getPlayerCharacterById, getStoriesForUniverse, normalizedQuery, showArchivedStories, universes]);
+
+  const searchResults = useMemo(() => {
+    if (!normalizedQuery) {
+      return null;
+    }
+
+    const matchedStories = stories
+      .filter((story) => (showArchivedStories ? true : !story.isArchived))
+      .filter((story) =>
+        includesQuery(normalizedQuery, [
+          story.title,
+          story.currentSummary,
+          getUniverseById(story.universeId)?.name,
+        ]),
+      )
+      .slice(0, 8);
+    const matchedUniverses = universes
+      .filter((universe) =>
+        includesQuery(normalizedQuery, [
+          universe.name,
+          universe.description,
+          universe.concept,
+          universe.genreTheme,
+          universe.tone,
+          universe.universeBlueprint,
+          universe.notes,
+          universe.wikiUrl,
+        ]),
+      )
+      .slice(0, 6);
+    const matchedCharacters = playerCharacters
+      .filter((character) => (character.scope ?? "library") === "library")
+      .filter((character) =>
+        includesQuery(normalizedQuery, [
+          character.name,
+          character.characterConcept,
+          character.background,
+          character.goals,
+          character.notes,
+          character.gender,
+          character.pronouns,
+          character.species,
+        ]),
+      )
+      .slice(0, 8);
+
+    return { matchedStories, matchedUniverses, matchedCharacters };
+  }, [getUniverseById, normalizedQuery, playerCharacters, showArchivedStories, stories, universes]);
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
@@ -64,9 +139,80 @@ export function V2LeftSidebar({
             className="w-full rounded-2xl border border-divider bg-panel-muted px-4 py-3 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
           />
         </div>
+        <button
+          type="button"
+          className="mt-3 w-full rounded-2xl border border-divider bg-panel-muted px-4 py-2 text-left text-xs font-semibold uppercase tracking-[0.18em] text-ink-soft transition hover:bg-panel-strong"
+          onClick={() => setShowArchivedStories(!showArchivedStories)}
+        >
+          {showArchivedStories ? "Showing archived" : "Hiding archived"}
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 space-y-2 overflow-auto px-3 pb-4">
+        {searchResults ? (
+          <div className="space-y-2">
+            {searchResults.matchedStories.length ? (
+              <div className="rounded-2xl border border-divider bg-panel-muted p-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Stories
+                </div>
+                <div className="mt-2 space-y-1">
+                  {searchResults.matchedStories.map((story) => (
+                    <Link
+                      key={story.id}
+                      to={`/stories/${story.id}`}
+                      onClick={onNavigate}
+                      className="block truncate rounded-xl px-2 py-2 text-sm text-ink-soft transition hover:bg-white/[0.04]"
+                    >
+                      {story.title}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {searchResults.matchedUniverses.length ? (
+              <div className="rounded-2xl border border-divider bg-panel-muted p-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Universes
+                </div>
+                <div className="mt-2 space-y-1">
+                  {searchResults.matchedUniverses.map((universe) => (
+                    <Link
+                      key={universe.id}
+                      to={`/universes/${universe.id}`}
+                      onClick={onNavigate}
+                      className="block truncate rounded-xl px-2 py-2 text-sm text-ink-soft transition hover:bg-white/[0.04]"
+                    >
+                      {universe.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {searchResults.matchedCharacters.length ? (
+              <div className="rounded-2xl border border-divider bg-panel-muted p-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Characters
+                </div>
+                <div className="mt-2 space-y-1">
+                  {searchResults.matchedCharacters.map((character) => (
+                    <Link
+                      key={character.id}
+                      to={`/player-characters/${character.id}`}
+                      onClick={onNavigate}
+                      className="block truncate rounded-xl px-2 py-2 text-sm text-ink-soft transition hover:bg-white/[0.04]"
+                    >
+                      {character.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {universeRows.map(({ universe, stories }) => {
           const collapsed = collapsedUniverses[universe.id] ?? false;
           const hasActiveStory = stories.some(({ story }) => story.id === activeStoryId);

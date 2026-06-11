@@ -47,6 +47,7 @@ export function V2RightSidebar({
     getUniverseById,
     getPlayerCharacterById,
     exportStory,
+    updateIndexesDeep,
     deleteStory,
   } = useStoryEngine();
 
@@ -55,6 +56,7 @@ export function V2RightSidebar({
   const playerCharacter = story ? getPlayerCharacterById(story.playerCharacterId) : undefined;
 
   const [pageError, setPageError] = useState<string | null>(null);
+  const [pageNotice, setPageNotice] = useState<string | null>(null);
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
 
   const recentStories = useMemo(() => stories.slice(0, 8), [stories]);
@@ -64,15 +66,30 @@ export function V2RightSidebar({
       return;
     }
 
-    const bundle = await exportStory(story.id);
+    setPageError(null);
+    setPageNotice(null);
 
-    if (!bundle) {
-      setPageError("Unable to assemble export data for this story.");
-      return;
+    try {
+      if (format === "archive_pdf") {
+        setPageNotice("Updating archive…");
+        await updateIndexesDeep(story.id);
+        setPageNotice("Generating PDF…");
+      }
+
+      const bundle = await exportStory(story.id);
+
+      if (!bundle) {
+        setPageError("Unable to assemble export data for this story.");
+        return;
+      }
+
+      const { content, mimeType } = serializeStoryExport(bundle, format);
+      await downloadFile(createExportFilename(story.title, format), content, mimeType);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to export.");
+    } finally {
+      setPageNotice(null);
     }
-
-    const { content, mimeType } = serializeStoryExport(bundle, format);
-    await downloadFile(createExportFilename(story.title, format), content, mimeType);
   }
 
   async function handleExportSupportBundle() {
@@ -82,8 +99,11 @@ export function V2RightSidebar({
 
     setIsExportingSupportBundle(true);
     setPageError(null);
+    setPageNotice("Updating archive…");
 
     try {
+      await updateIndexesDeep(story.id);
+      setPageNotice("Generating support bundle…");
       const bundle = await exportStory(story.id);
 
       if (!bundle) {
@@ -97,6 +117,7 @@ export function V2RightSidebar({
       setPageError(error instanceof Error ? error.message : "Unable to export support bundle.");
     } finally {
       setIsExportingSupportBundle(false);
+      setPageNotice(null);
     }
   }
 
@@ -273,6 +294,12 @@ export function V2RightSidebar({
               )}
             </>
           )}
+
+          {pageNotice ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-ink-soft">
+              {pageNotice}
+            </div>
+          ) : null}
 
           {pageError ? (
             <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">

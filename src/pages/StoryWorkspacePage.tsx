@@ -47,6 +47,7 @@ export function StoryWorkspacePage() {
     createMessage,
     deleteMessage,
     getMessagesForStory,
+    getChaptersForStory,
     getPlayerCharacterById,
     getStoryById,
     getUniverseById,
@@ -54,6 +55,7 @@ export function StoryWorkspacePage() {
     generatePlayerAssistMessage,
     regenerateLastAssistantMessage,
     sendChatMessage,
+    setMessageDirectorIntent,
     updateMessage,
   } = useStoryEngine();
   const story = storyId ? getStoryById(storyId) : undefined;
@@ -150,6 +152,16 @@ export function StoryWorkspacePage() {
     return null;
   }, [messages]);
 
+  const latestDirectorIntentMessage = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message?.role === "user" && message.directorIntent) {
+        return message;
+      }
+    }
+    return null;
+  }, [messages]);
+
   if (!story || !universe || !playerCharacter) {
     return (
       <div className="space-y-8">
@@ -239,6 +251,35 @@ export function StoryWorkspacePage() {
       );
     } finally {
       setIsRegenerating(false);
+    }
+  }
+
+  function formatDirectorIntent(intent: NonNullable<StoryMessage["directorIntent"]>) {
+    const parts: string[] = [];
+    if (intent.timeSkip) {
+      parts.push(`Time skip: ${intent.timeSkip.amount} ${intent.timeSkip.unit}`);
+    }
+    if (intent.sceneCut) {
+      parts.push(intent.target?.trim() ? `Scene cut: ${intent.target.trim()}` : "Scene cut");
+    }
+    return parts.length ? parts.join(" · ") : "Director intent";
+  }
+
+  async function handleUndoDirectorIntent() {
+    if (!latestDirectorIntentMessage) {
+      return;
+    }
+
+    if (!latestAssistantMessage || messages[messages.length - 1]?.id !== latestAssistantMessage.id) {
+      return;
+    }
+
+    setChatError(null);
+    try {
+      await setMessageDirectorIntent(latestDirectorIntentMessage.id, null);
+      await regenerateLastAssistantMessage(activeStory.id);
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : "Unable to undo director intent.");
     }
   }
 
@@ -600,6 +641,7 @@ export function StoryWorkspacePage() {
             <StoryTranscriptView
               messages={messages}
               playerCharacterName={activePlayerCharacter.name}
+              chapters={getChaptersForStory(activeStory.id)}
               highlightedMessageId={highlightedMessageId}
               className={[
                 readerMode ? "pb-8" : "",
@@ -626,6 +668,24 @@ export function StoryWorkspacePage() {
       {readerMode || archiveMode ? null : (
         latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
           <Panel className="mt-4" padding="sm">
+            {latestDirectorIntentMessage?.directorIntent ? (
+              <div className="mb-3 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-ink-muted">
+                  Director intent applied:{" "}
+                  <span className="text-ink-soft">
+                    {formatDirectorIntent(latestDirectorIntentMessage.directorIntent)}
+                  </span>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void handleUndoDirectorIntent()}
+                  disabled={isGenerating || isGeneratingAssist || isRegenerating}
+                >
+                  Undo
+                </Button>
+              </div>
+            ) : null}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-ink-muted">Last AI message</div>
               <div className="flex flex-col gap-3 sm:flex-row">

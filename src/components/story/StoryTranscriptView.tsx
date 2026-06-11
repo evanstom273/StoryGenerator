@@ -1,4 +1,5 @@
-import type { StoryMessage } from "../../types/models";
+import { Fragment } from "react";
+import type { StoryChapter, StoryMessage } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
@@ -7,6 +8,7 @@ import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitiz
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
   playerCharacterName: string;
+  chapters?: StoryChapter[];
   className?: string;
   highlightedMessageId?: string | null;
 };
@@ -122,32 +124,47 @@ function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
 export function StoryTranscriptView({
   messages,
   playerCharacterName,
+  chapters,
   className,
   highlightedMessageId,
 }: StoryTranscriptViewProps) {
   let latestUserMessage: string | null = null;
+  const chapterMarkers = new Map<number, string>();
+  for (const chapter of chapters ?? []) {
+    if (typeof chapter.endsAtIndex === "number" && chapter.endsAtIndex >= 1) {
+      chapterMarkers.set(chapter.endsAtIndex, chapter.label);
+    }
+  }
   return (
     <div className={cn("space-y-6", className)}>
-      {messages.map((message) => {
+      {messages.map((message, messageIndex) => {
         const highlight = highlightedMessageId === message.id;
+        const chapterLabel = chapterMarkers.get(messageIndex + 1);
+
         if (message.role === "system") {
           const tag = getSpeakerTag("System", "system");
           return (
-            <div
-              key={message.id}
-              id={`story-message-${message.id}`}
-              className={cn(
-                tag.rowClass,
-                highlight ? "border-accent/60 bg-accent/10 ring-2 ring-accent/35" : "",
-              )}
-            >
-              <div className="flex items-start gap-3 text-sm leading-7">
-                <div className={tag.tagClass}>{tag.label}:</div>
-                <div className={cn("min-w-0 flex-1 whitespace-pre-wrap break-words", tag.contentClass)}>
-                  {message.content}
+            <Fragment key={message.id}>
+              <div
+                id={`story-message-${message.id}`}
+                className={cn(
+                  tag.rowClass,
+                  highlight ? "border-accent/60 bg-accent/10 ring-2 ring-accent/35" : "",
+                )}
+              >
+                <div className="flex items-start gap-3 text-sm leading-7">
+                  <div className={tag.tagClass}>{tag.label}:</div>
+                  <div className={cn("min-w-0 flex-1 whitespace-pre-wrap break-words", tag.contentClass)}>
+                    {message.content}
+                  </div>
                 </div>
               </div>
-            </div>
+              {chapterLabel ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
+                  Chapter End · {chapterLabel}
+                </div>
+              ) : null}
+            </Fragment>
           );
         }
 
@@ -157,23 +174,29 @@ export function StoryTranscriptView({
           const label = message.speakerName?.trim() || playerCharacterName || "Player";
           const tag = getSpeakerTag(label, "player");
           return (
-            <div
-              key={message.id}
-              id={`story-message-${message.id}`}
-              className={cn(
-                tag.rowClass,
-                highlight ? "ring-2 ring-accent/35" : "",
-              )}
-            >
-              <div className="flex items-start gap-3 text-sm leading-7">
-                <div className={tag.tagClass}>{tag.label}:</div>
-                <div className={cn("min-w-0 flex-1 space-y-2", tag.contentClass)}>
-                  {lines.map((line, index) => (
-                    <div key={index}>{renderLine(line, { forceItalic: false })}</div>
-                  ))}
+            <Fragment key={message.id}>
+              <div
+                id={`story-message-${message.id}`}
+                className={cn(
+                  tag.rowClass,
+                  highlight ? "ring-2 ring-accent/35" : "",
+                )}
+              >
+                <div className="flex items-start gap-3 text-sm leading-7">
+                  <div className={tag.tagClass}>{tag.label}:</div>
+                  <div className={cn("min-w-0 flex-1 space-y-2", tag.contentClass)}>
+                    {lines.map((line, index) => (
+                      <div key={index}>{renderLine(line, { forceItalic: false })}</div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+              {chapterLabel ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
+                  Chapter End · {chapterLabel}
+                </div>
+              ) : null}
+            </Fragment>
           );
         }
 
@@ -184,36 +207,42 @@ export function StoryTranscriptView({
         });
         const blocks = parseSceneBlocks(sanitized);
         return (
-          <div
-            key={message.id}
-            id={`story-message-${message.id}`}
-            className={cn(
-              "space-y-4",
-              highlight ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
-            )}
-          >
-            {blocks.map((block, blockIndex) => {
-              const isNarration = !block.speakerLabel || block.speakerLabel === "Narrator";
-              const lines = block.text.split("\n");
-              const tag = isNarration
-                ? getSpeakerTag("Narrator", "narrator")
-                : getSpeakerTag(block.speakerLabel?.trim() || "Unknown", "npc");
-              return (
-                <div key={blockIndex} className={tag.rowClass}>
-                  <div className="flex items-start gap-3 text-sm leading-7">
-                    <div className={tag.tagClass}>{tag.label}:</div>
-                    <div className={cn("min-w-0 flex-1 space-y-2 whitespace-pre-wrap break-words", tag.contentClass)}>
-                      {isNarration
-                        ? lines.map((line, index) => (
-                            <div key={index}>{renderLine(line, { forceItalic: true })}</div>
-                          ))
-                        : renderInlineContent(lines.join(" ").replace(/\s+/g, " "))}
+          <Fragment key={message.id}>
+            <div
+              id={`story-message-${message.id}`}
+              className={cn(
+                "space-y-4",
+                highlight ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
+              )}
+            >
+              {blocks.map((block, blockIndex) => {
+                const isNarration = !block.speakerLabel || block.speakerLabel === "Narrator";
+                const lines = block.text.split("\n");
+                const tag = isNarration
+                  ? getSpeakerTag("Narrator", "narrator")
+                  : getSpeakerTag(block.speakerLabel?.trim() || "Unknown", "npc");
+                return (
+                  <div key={blockIndex} className={tag.rowClass}>
+                    <div className="flex items-start gap-3 text-sm leading-7">
+                      <div className={tag.tagClass}>{tag.label}:</div>
+                      <div className={cn("min-w-0 flex-1 space-y-2 whitespace-pre-wrap break-words", tag.contentClass)}>
+                        {isNarration
+                          ? lines.map((line, index) => (
+                              <div key={index}>{renderLine(line, { forceItalic: true })}</div>
+                            ))
+                          : renderInlineContent(lines.join(" ").replace(/\s+/g, " "))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+            {chapterLabel ? (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
+                Chapter End · {chapterLabel}
+              </div>
+            ) : null}
+          </Fragment>
         );
       })}
     </div>

@@ -206,70 +206,79 @@ export function serializeStoryArchivePdf(
   }
   y += 10;
 
+  writeHeading("Full Transcript", 14);
+  const sortedMessages = sortByTimestampAsc(bundle.messages);
+  let latestUserMessage: string | null = null;
+  const chapterMarkers = new Map<number, string>();
+  for (const chapter of bundle.chapters ?? []) {
+    const index = typeof (chapter as any)?.endsAtIndex === "number" ? Math.trunc((chapter as any).endsAtIndex) : 0;
+    const label = typeof (chapter as any)?.label === "string" ? (chapter as any).label.trim() : "";
+    if (index >= 1 && label) {
+      chapterMarkers.set(index, label);
+    }
+  }
+
+  for (let index = 0; index < sortedMessages.length; index += 1) {
+    const message = sortedMessages[index];
+    const number = index + 1;
+
+    if (index > 0) {
+      ensureSpace(18);
+      y += 18;
+    }
+
+    if (message.role === "user") {
+      latestUserMessage = message.content;
+    }
+
+    writeMonospace(`[Message ${number}]`);
+    writeSubheading(resolveTranscriptSpeakerLabel(message, bundle.playerCharacter.name));
+
+    const resolvedContent =
+      message.role === "assistant"
+        ? sanitizeAssistantTranscript({
+            text: message.content,
+            latestUserMessage,
+            playerName: bundle.playerCharacter.name,
+          }).text
+        : message.content;
+    writeParagraph((resolvedContent ?? "").trim());
+    writeMonospace(`Time: ${formatDateTime(message.timestamp)}`);
+    ensureSpace(18);
+    y += 18;
+
+    const chapterLabel = chapterMarkers.get(number);
+    if (chapterLabel) {
+      writeMonospace(`----- CHAPTER END: ${chapterLabel} -----`);
+      ensureSpace(18);
+      y += 18;
+    }
+  }
+
   const bestSummary = bundle.story.currentSummary?.trim() || storyStateData?.summaries?.worldSummary?.trim() || "";
   if (bestSummary) {
     writeHeading("Current Summary", 14);
     writeParagraph(bestSummary);
   }
 
-  const premise = storyStateData?.summaries?.premise?.trim() ?? "";
-  const protagonistFocus = storyStateData?.summaries?.protagonistSummary?.trim() ?? "";
-  const currentSituation = storyStateData?.summaries?.currentSituation?.trim() ?? "";
-  const recentDevelopments = trimStringList(storyStateData?.summaries?.recentDevelopments, 8);
-
-  if (premise || protagonistFocus || currentSituation || recentDevelopments.length) {
-    writeHeading("Archive Story State", 14);
-    if (premise) {
-      writeSubheading("Premise");
-      writeParagraph(premise);
+  const chapterSummaries = (bundle.chapters ?? [])
+    .map((chapter) => ({
+      label: typeof chapter.label === "string" ? chapter.label.trim() : "",
+      endsAtIndex: typeof chapter.endsAtIndex === "number" ? Math.trunc(chapter.endsAtIndex) : null,
+      summary: typeof chapter.summary === "string" ? chapter.summary.trim() : "",
+    }))
+    .filter((chapter) => chapter.label);
+  if (chapterSummaries.length) {
+    writeHeading("Chapter Summaries", 14);
+    for (const chapter of chapterSummaries) {
+      writeSubheading(chapter.label);
+      if (chapter.endsAtIndex && chapter.endsAtIndex >= 1) {
+        writeBullet("Ends at", `Message ${chapter.endsAtIndex}`);
+      }
+      writeParagraph(chapter.summary || "No chapter summary available yet.");
+      y += 6;
     }
-    if (protagonistFocus) {
-      writeSubheading("Protagonist Focus");
-      writeParagraph(protagonistFocus);
-    }
-    if (currentSituation) {
-      writeSubheading("Current Situation");
-      writeParagraph(currentSituation);
-    }
-    if (recentDevelopments.length) {
-      writeListSection("Recent Developments", recentDevelopments);
-    }
-    y += 10;
-  }
-
-  writeHeading("Player Character Sheet", 14);
-  writeBullet("Name", bundle.playerCharacter.name);
-  writeBullet("Age", bundle.playerCharacter.age || "Not specified");
-  writeBullet("Gender", bundle.playerCharacter.gender || "Not specified");
-  writeBullet("Species", bundle.playerCharacter.species || "Not specified");
-  writeBullet("Pronouns", bundle.playerCharacter.pronouns || "Not specified");
-  writeBullet("Appearance", bundle.playerCharacter.appearance || "Not specified");
-  writeBullet("Personality", bundle.playerCharacter.personality || "Not specified");
-  writeBullet("Background", bundle.playerCharacter.background || "Not specified");
-  writeBullet("Goals", bundle.playerCharacter.goals || "Not specified");
-  writeBullet("Notes", bundle.playerCharacter.notes || "Not specified");
-  y += 10;
-
-  const scene = (storyStateData as any)?.scene;
-  const snapshot = {
-    currentLocation: typeof scene?.currentLocation === "string" ? scene.currentLocation.trim() : "",
-    currentObjective: typeof scene?.currentObjective === "string" ? scene.currentObjective.trim() : "",
-    activeParticipants: Array.isArray(scene?.activeParticipants)
-      ? scene.activeParticipants.filter((value: unknown) => typeof value === "string" && value.trim())
-      : [],
-    sceneSummary: typeof scene?.sceneSummary === "string" ? scene.sceneSummary.trim() : "",
-  };
-
-  if (snapshot.currentLocation || snapshot.currentObjective || snapshot.activeParticipants.length || snapshot.sceneSummary) {
-    writeHeading("Story State Snapshot", 14);
-    if (snapshot.currentLocation) writeBullet("Current location", snapshot.currentLocation);
-    if (snapshot.currentObjective) writeBullet("Current objective", snapshot.currentObjective);
-    if (snapshot.activeParticipants.length) writeBullet("Active participants", snapshot.activeParticipants.join(", "));
-    if (snapshot.sceneSummary) {
-      writeSubheading("Scene summary");
-      writeParagraph(snapshot.sceneSummary);
-    }
-    y += 10;
+    y += 6;
   }
 
   const indexes = (storyStateData as any)?.indexes;
@@ -299,47 +308,6 @@ export function serializeStoryArchivePdf(
     y += 10;
   }
 
-  const characterStatusEntries = Object.entries(storyStateData?.characters ?? {})
-    .map(([name, entry]: [string, any]) => {
-      const statusBullets = trimStringList(entry?.statusBullets, 5);
-      const fallbackStatus =
-        !statusBullets.length && typeof entry?.status === "string" && entry.status.trim()
-          ? [entry.status.trim()]
-          : [];
-      const strengths = trimStringList(entry?.strengths, 4);
-      const weaknesses = trimStringList(entry?.weaknesses, 4);
-      const combinedStatus = [...statusBullets, ...fallbackStatus];
-
-      return {
-        name: name.trim(),
-        status: combinedStatus,
-        strengths,
-        weaknesses,
-      };
-    })
-    .filter((entry) => entry.name && (entry.status.length || entry.strengths.length || entry.weaknesses.length))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  if (characterStatusEntries.length) {
-    writeHeading("Character Status", 14);
-    for (const entry of characterStatusEntries) {
-      writeSubheading(entry.name);
-      if (entry.status.length) {
-        for (const item of entry.status) {
-          writeParagraph(`• ${item}`);
-        }
-      }
-      if (entry.strengths.length) {
-        writeBullet("Strengths", entry.strengths.join(", "));
-      }
-      if (entry.weaknesses.length) {
-        writeBullet("Weaknesses", entry.weaknesses.join(", "));
-      }
-      y += 6;
-    }
-    y += 6;
-  }
-
   const characterRegistryRaw =
     indexes?.characters && typeof indexes.characters === "object" && !Array.isArray(indexes.characters)
       ? Object.values(indexes.characters)
@@ -364,16 +332,6 @@ export function serializeStoryArchivePdf(
       if (entry.firstSeenMessage) writeBullet("First seen", `Message ${entry.firstSeenMessage}`);
       if (entry.lastSeenMessage) writeBullet("Last seen", `Message ${entry.lastSeenMessage}`);
       if (entry.description) writeParagraph(entry.description);
-      const stateEntry = (storyStateData?.characters as Record<string, any> | undefined)?.[entry.name];
-      const statusBullets = trimStringList(stateEntry?.statusBullets, 4);
-      if (statusBullets.length) writeBullet("Current status", statusBullets.join(" | "));
-      else if (typeof stateEntry?.status === "string" && stateEntry.status.trim()) {
-        writeBullet("Current status", stateEntry.status.trim());
-      }
-      const strengths = trimStringList(stateEntry?.strengths, 4);
-      const weaknesses = trimStringList(stateEntry?.weaknesses, 4);
-      if (strengths.length) writeBullet("Strengths", strengths.join(", "));
-      if (weaknesses.length) writeBullet("Weaknesses", weaknesses.join(", "));
       if (entry.evidence) writeBullet("Evidence", entry.evidence);
       y += 6;
     }
@@ -419,6 +377,10 @@ export function serializeStoryArchivePdf(
       trust: typeof entry?.trust === "number" ? entry.trust : null,
       respect: typeof entry?.respect === "number" ? entry.respect : null,
       loyalty: typeof entry?.loyalty === "number" ? entry.loyalty : null,
+      comfort: typeof entry?.comfort === "number" ? entry.comfort : null,
+      suspicion: typeof entry?.suspicion === "number" ? entry.suspicion : null,
+      fear: typeof entry?.fear === "number" ? entry.fear : null,
+      affection: typeof entry?.affection === "number" ? entry.affection : null,
       tension: typeof entry?.tension === "number" ? entry.tension : null,
       hostility: typeof entry?.hostility === "number" ? entry.hostility : null,
       summary: typeof entry?.summary === "string" ? entry.summary.trim() : "",
@@ -434,6 +396,10 @@ export function serializeStoryArchivePdf(
       if (entry.trust != null) writeBullet("Trust", String(Math.round(entry.trust)));
       if (entry.respect != null) writeBullet("Respect", String(Math.round(entry.respect)));
       if (entry.loyalty != null) writeBullet("Loyalty", String(Math.round(entry.loyalty)));
+      if (entry.comfort != null) writeBullet("Comfort", String(Math.round(entry.comfort)));
+      if (entry.suspicion != null) writeBullet("Suspicion", String(Math.round(entry.suspicion)));
+      if (entry.fear != null) writeBullet("Fear", String(Math.round(entry.fear)));
+      if (entry.affection != null) writeBullet("Affection", String(Math.round(entry.affection)));
       if (entry.tension != null) writeBullet("Tension", String(Math.round(entry.tension)));
       if (entry.hostility != null) writeBullet("Hostility", String(Math.round(entry.hostility)));
       if (entry.summary) writeParagraph(entry.summary);
@@ -493,38 +459,120 @@ export function serializeStoryArchivePdf(
     y += 10;
   }
 
-  writeHeading("Full Transcript", 14);
-  const sortedMessages = sortByTimestampAsc(bundle.messages);
-  let latestUserMessage: string | null = null;
+  const appendixChunks: Array<() => void> = [];
 
-  for (let index = 0; index < sortedMessages.length; index += 1) {
-    const message = sortedMessages[index];
-    const number = index + 1;
+  const premise = storyStateData?.summaries?.premise?.trim() ?? "";
+  const protagonistFocus = storyStateData?.summaries?.protagonistSummary?.trim() ?? "";
+  const currentSituation = storyStateData?.summaries?.currentSituation?.trim() ?? "";
+  const recentDevelopments = trimStringList(storyStateData?.summaries?.recentDevelopments, 8);
+  if (premise || protagonistFocus || currentSituation || recentDevelopments.length) {
+    appendixChunks.push(() => {
+      writeHeading("Archive Story State", 14);
+      if (premise) {
+        writeSubheading("Premise");
+        writeParagraph(premise);
+      }
+      if (protagonistFocus) {
+        writeSubheading("Protagonist Focus");
+        writeParagraph(protagonistFocus);
+      }
+      if (currentSituation) {
+        writeSubheading("Current Situation");
+        writeParagraph(currentSituation);
+      }
+      if (recentDevelopments.length) {
+        writeListSection("Recent Developments", recentDevelopments);
+      }
+      y += 10;
+    });
+  }
 
-    if (index > 0) {
-      ensureSpace(18);
-      y += 18;
+  appendixChunks.push(() => {
+    writeHeading("Player Character Sheet", 14);
+    writeBullet("Name", bundle.playerCharacter.name);
+    writeBullet("Age", bundle.playerCharacter.age || "Not specified");
+    writeBullet("Gender", bundle.playerCharacter.gender || "Not specified");
+    writeBullet("Species", bundle.playerCharacter.species || "Not specified");
+    writeBullet("Pronouns", bundle.playerCharacter.pronouns || "Not specified");
+    writeBullet("Appearance", bundle.playerCharacter.appearance || "Not specified");
+    writeBullet("Personality", bundle.playerCharacter.personality || "Not specified");
+    writeBullet("Background", bundle.playerCharacter.background || "Not specified");
+    writeBullet("Goals", bundle.playerCharacter.goals || "Not specified");
+    writeBullet("Notes", bundle.playerCharacter.notes || "Not specified");
+    y += 10;
+  });
+
+  const scene = (storyStateData as any)?.scene;
+  const snapshot = {
+    currentLocation: typeof scene?.currentLocation === "string" ? scene.currentLocation.trim() : "",
+    currentObjective: typeof scene?.currentObjective === "string" ? scene.currentObjective.trim() : "",
+    activeParticipants: Array.isArray(scene?.activeParticipants)
+      ? scene.activeParticipants.filter((value: unknown) => typeof value === "string" && value.trim())
+      : [],
+    sceneSummary: typeof scene?.sceneSummary === "string" ? scene.sceneSummary.trim() : "",
+  };
+  if (snapshot.currentLocation || snapshot.currentObjective || snapshot.activeParticipants.length || snapshot.sceneSummary) {
+    appendixChunks.push(() => {
+      writeHeading("Story State Snapshot", 14);
+      if (snapshot.currentLocation) writeBullet("Current location", snapshot.currentLocation);
+      if (snapshot.currentObjective) writeBullet("Current objective", snapshot.currentObjective);
+      if (snapshot.activeParticipants.length) writeBullet("Active participants", snapshot.activeParticipants.join(", "));
+      if (snapshot.sceneSummary) {
+        writeSubheading("Scene summary");
+        writeParagraph(snapshot.sceneSummary);
+      }
+      y += 10;
+    });
+  }
+
+  const characterStatusEntries = Object.entries(storyStateData?.characters ?? {})
+    .map(([name, entry]: [string, any]) => {
+      const statusBullets = trimStringList(entry?.statusBullets, 5);
+      const fallbackStatus =
+        !statusBullets.length && typeof entry?.status === "string" && entry.status.trim()
+          ? [entry.status.trim()]
+          : [];
+      const strengths = trimStringList(entry?.strengths, 4);
+      const weaknesses = trimStringList(entry?.weaknesses, 4);
+      const combinedStatus = [...statusBullets, ...fallbackStatus];
+
+      return {
+        name: name.trim(),
+        status: combinedStatus,
+        strengths,
+        weaknesses,
+      };
+    })
+    .filter((entry) => entry.name && (entry.status.length || entry.strengths.length || entry.weaknesses.length))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (characterStatusEntries.length) {
+    appendixChunks.push(() => {
+      writeHeading("Character Status", 14);
+      for (const entry of characterStatusEntries) {
+        writeSubheading(entry.name);
+        if (entry.status.length) {
+          for (const item of entry.status) {
+            writeParagraph(`• ${item}`);
+          }
+        }
+        if (entry.strengths.length) {
+          writeBullet("Strengths", entry.strengths.join(", "));
+        }
+        if (entry.weaknesses.length) {
+          writeBullet("Weaknesses", entry.weaknesses.join(", "));
+        }
+        y += 6;
+      }
+      y += 6;
+    });
+  }
+
+  if (appendixChunks.length) {
+    writeHeading("Appendix", 14);
+    for (const chunk of appendixChunks) {
+      chunk();
     }
-
-    if (message.role === "user") {
-      latestUserMessage = message.content;
-    }
-
-    writeMonospace(`[Message ${number}]`);
-    writeSubheading(resolveTranscriptSpeakerLabel(message, bundle.playerCharacter.name));
-
-    const resolvedContent =
-      message.role === "assistant"
-        ? sanitizeAssistantTranscript({
-            text: message.content,
-            latestUserMessage,
-            playerName: bundle.playerCharacter.name,
-          }).text
-        : message.content;
-    writeParagraph((resolvedContent ?? "").trim());
-    writeMonospace(`Time: ${formatDateTime(message.timestamp)}`);
-    ensureSpace(18);
-    y += 18;
   }
 
   const buffer = doc.output("arraybuffer") as ArrayBuffer;

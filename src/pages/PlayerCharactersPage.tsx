@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useMemo, useState } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
 import { CharacterCard } from "../components/cards/CharacterCard";
@@ -10,11 +11,30 @@ export function PlayerCharactersPage() {
     playerCharacters,
     getStoriesForPlayerCharacter,
     getUniverseById,
+    universes,
   } = useStoryEngine();
+  const [sortMode, setSortMode] = useState<"created" | "alpha">("created");
+  const [universeFilter, setUniverseFilter] = useState<string>("all");
 
   const libraryCharacters = playerCharacters.filter(
     (character) => (character.scope ?? "library") === "library",
   );
+
+  const filteredCharacters = useMemo(() => {
+    let items = libraryCharacters;
+    if (universeFilter !== "all") {
+      items = items.filter((character) => character.universeId === universeFilter);
+    }
+
+    const sorted = [...items];
+    if (sortMode === "alpha") {
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+
+    return sorted;
+  }, [libraryCharacters, sortMode, universeFilter]);
 
   return (
     <div className="space-y-8">
@@ -29,9 +49,44 @@ export function PlayerCharactersPage() {
         }
       />
 
-      {libraryCharacters.length ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {libraryCharacters.map((character) => (
+      {filteredCharacters.length ? (
+        <>
+          <div className="grid gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
+                Universe
+              </div>
+              <select
+                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                value={universeFilter}
+                onChange={(event) => setUniverseFilter(event.target.value)}
+              >
+                <option value="all">All universes</option>
+                {universes.map((universe) => (
+                  <option key={universe.id} value={universe.id}>
+                    {universe.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
+                Sort
+              </div>
+              <select
+                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as "created" | "alpha")}
+              >
+                <option value="created">Recently created</option>
+                <option value="alpha">Alphabetical</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredCharacters.map((character) => (
             <CharacterCard
               key={character.id}
               character={character}
@@ -46,8 +101,9 @@ export function PlayerCharactersPage() {
                 </Link>
               }
             />
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       ) : (
         <EmptyState
           title="No player characters yet"
