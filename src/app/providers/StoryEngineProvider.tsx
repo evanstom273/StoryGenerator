@@ -52,6 +52,10 @@ import {
   withIndexedMetadata,
 } from "../../lib/storyStateV2";
 import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
+import {
+  formatStoryLongTermMemoryForPrompt,
+  formatStorySceneStateForPrompt,
+} from "../../lib/ai/storyStateExtractor";
 import { runAndroidAutoBackupIfNeeded } from "../../lib/androidAutoBackup";
 import {
   getPlayerCharacterAuthorshipViolation,
@@ -347,6 +351,134 @@ function rethrowUserFacingGenerationError(error: unknown, providerType: string):
       attempts: 1,
       maxAttempts: 1,
     }),
+  );
+}
+
+function normalizeMetaChatWhitespace(value: string) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function formatMetaChatCanonMessage(message: StoryMessage, playerCharacterName: string) {
+  const content = normalizeMetaChatWhitespace(message.content ?? "");
+  if (!content) {
+    return "";
+  }
+
+  if (message.role === "user") {
+    return `Player (${message.speakerName?.trim() || playerCharacterName}): ${content}`;
+  }
+
+  if (message.speakerType === "canon") {
+    return `Canon (${message.speakerName?.trim() || "Unknown"}): ${content}`;
+  }
+
+  if (message.speakerType === "narrator") {
+    return `Narrator: ${content}`;
+  }
+
+  if (message.role === "system" || message.speakerType === "system") {
+    return `System: ${content}`;
+  }
+
+  return `Assistant: ${content}`;
+}
+
+function buildMetaChatCanonContext(params: {
+  story: Story;
+  universe: Universe;
+  playerCharacter: PlayerCharacter;
+  storyState: StoryState | null;
+  messages: StoryMessage[];
+  chapters: StoryChapter[];
+}) {
+  const normalizedState = (() => {
+    const json = params.storyState?.stateJson?.trim() ?? "";
+    if (!json) return null;
+    const parsed = safeParseStoryStateData(json);
+    return normalizeStoryStateToV2(parsed);
+  })();
+
+  const universeBlock = [
+    `Universe name: ${params.universe.name}`,
+    params.universe.description?.trim() ? `Universe description: ${params.universe.description.trim()}` : null,
+    params.universe.concept?.trim() ? `Universe concept: ${params.universe.concept.trim()}` : null,
+    params.universe.genreTheme?.trim() ? `Genre/theme: ${params.universe.genreTheme.trim()}` : null,
+    params.universe.tone?.trim() ? `Tone: ${params.universe.tone.trim()}` : null,
+    params.universe.universeBlueprint?.trim()
+      ? `Universe blueprint:\n${params.universe.universeBlueprint.trim()}`
+      : null,
+    params.universe.notes?.trim() ? `Universe notes: ${params.universe.notes.trim()}` : null,
+    params.universe.wikiUrl?.trim() ? `Reference URL: ${params.universe.wikiUrl.trim()}` : null,
+  ]
+    .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+    .join("\n");
+
+  const playerBlock = [
+    `Name: ${params.playerCharacter.name}`,
+    params.playerCharacter.age?.trim() ? `Age: ${params.playerCharacter.age.trim()}` : null,
+    params.playerCharacter.gender?.trim() ? `Gender: ${params.playerCharacter.gender.trim()}` : null,
+    params.playerCharacter.species?.trim() ? `Species: ${params.playerCharacter.species.trim()}` : null,
+    params.playerCharacter.pronouns?.trim() ? `Pronouns: ${params.playerCharacter.pronouns.trim()}` : null,
+    params.playerCharacter.characterConcept?.trim()
+      ? `Concept/role: ${params.playerCharacter.characterConcept.trim()}`
+      : null,
+    params.playerCharacter.appearance?.trim()
+      ? `Appearance: ${params.playerCharacter.appearance.trim()}`
+      : null,
+    params.playerCharacter.personality?.trim()
+      ? `Personality: ${params.playerCharacter.personality.trim()}`
+      : null,
+    params.playerCharacter.background?.trim()
+      ? `Background: ${params.playerCharacter.background.trim()}`
+      : null,
+    params.playerCharacter.goals?.trim() ? `Goals: ${params.playerCharacter.goals.trim()}` : null,
+    params.playerCharacter.notes?.trim() ? `Notes: ${params.playerCharacter.notes.trim()}` : null,
+  ]
+    .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+    .join("\n");
+
+  const chaptersBlock = params.chapters.length
+    ? params.chapters
+        .map((chapter) =>
+          [
+            `${chapter.label} (ends at message #${chapter.endsAtIndex})`,
+            chapter.summary?.trim() ? chapter.summary.trim() : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        )
+        .join("\n\n")
+    : "No chapters recorded yet.";
+
+  const recentTranscript = sortByTimestampAsc(params.messages)
+    .slice(-80)
+    .map((message) => formatMetaChatCanonMessage(message, params.playerCharacter.name))
+    .filter(Boolean)
+    .join("\n\n");
+
+  return normalizeMetaChatWhitespace(
+    [
+      `Story title: ${params.story.title}`,
+      params.story.currentSummary?.trim() ? `Current summary: ${params.story.currentSummary.trim()}` : null,
+      universeBlock ? `Universe Reference\n${universeBlock}` : null,
+      playerBlock ? `Player Character Sheet\n${playerBlock}` : null,
+      normalizedState
+        ? `Full Indexed Memory\n${formatStoryLongTermMemoryForPrompt(normalizedState, {
+            playerName: params.playerCharacter.name,
+          })}`
+        : "Full Indexed Memory\nNo indexed archive available yet.",
+      normalizedState
+        ? `Current Scene State\n${formatStorySceneStateForPrompt(normalizedState) || "No current scene state recorded yet."}`
+        : null,
+      `Chapters\n${chaptersBlock}`,
+      recentTranscript ? `Recent Canon Transcript\n${recentTranscript}` : null,
+    ]
+      .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+      .join("\n\n"),
   );
 }
 
@@ -1686,11 +1818,13 @@ export function StoryEngineProvider({
           throw new Error("Story not found.");
         }
 
-        const [universe, playerCharacter, storyConfig, storyState] = await Promise.all([
+        const [universe, playerCharacter, storyConfig, storyState, storyMessages, storyChapters] = await Promise.all([
           repository.getUniverse(story.universeId),
           repository.getPlayerCharacter(story.playerCharacterId),
           repository.getStoryAIConfig(storyId),
           repository.getStoryState(storyId),
+          repository.listStoryMessages(storyId),
+          repository.listStoryChapters(storyId),
         ]);
 
         if (!universe || !playerCharacter) {
@@ -1716,34 +1850,30 @@ export function StoryEngineProvider({
 
         await repository.saveStoryMetaMessage(userMessage);
 
-        const normalizedState = (() => {
-          const json = storyState?.stateJson?.trim() ?? "";
-          if (!json) return null;
-          const parsed = safeParseStoryStateData(json);
-          return normalizeStoryStateToV2(parsed);
-        })();
+        const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
+        const contextBlock = buildMetaChatCanonContext({
+          story,
+          universe: effectiveUniverse,
+          playerCharacter,
+          storyState,
+          messages: storyMessages,
+          chapters: storyChapters,
+        });
 
-        const contextBlock = [
-          `Story title: ${story.title}`,
-          `Universe: ${universe.name}`,
-          `Player character: ${playerCharacter.name}`,
-          normalizedState?.summaries?.premise?.trim()
-            ? `Premise: ${normalizedState.summaries.premise.trim()}`
-            : null,
-          story.currentSummary?.trim() ? `Current summary: ${story.currentSummary.trim()}` : null,
-          normalizedState?.summaries?.currentSituation?.trim()
-            ? `Current situation: ${normalizedState.summaries.currentSituation.trim()}`
-            : null,
-          normalizedState?.threads?.openThreads?.length
-            ? `Open threads: ${normalizedState.threads.openThreads.slice(0, 8).join(" | ")}`
-            : null,
-        ]
-          .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
-          .join("\n");
+        const priorMetaHistory = sortByTimestampAsc(await repository.listStoryMetaMessages(storyId))
+          .slice(-20)
+          .map(
+            (message) =>
+              ({
+                role: message.role === "assistant" ? "assistant" : "user",
+                content: message.content,
+              }) satisfies AIChatMessage,
+          );
 
         const systemPrompt = [
           "You are MetaChat, an out-of-canon writer's room assistant for Story Engine.",
           "Hard rule: MetaChat is NOT canon and must never be treated as story reality.",
+          "You have access to the full canon reference block below: use it freely for analysis, planning, questions, continuity checks, and archive discussion.",
           "Do not write the next story scene or in-character narration unless the user explicitly asks you to draft an out-of-canon example.",
           "Prefer analysis, planning, options, and questions. Be concise and practical.",
         ].join("\n");
@@ -1757,7 +1887,7 @@ export function StoryEngineProvider({
             messages: [
               { role: "system", content: systemPrompt },
               { role: "system", content: `Context (canon reference only):\n${contextBlock}` },
-              { role: "user", content: trimmed },
+              ...priorMetaHistory,
             ],
           })
         ).content;
@@ -1772,7 +1902,7 @@ export function StoryEngineProvider({
 
         await repository.saveStoryMetaMessage(assistantMessage);
         await hydrate(false);
-        return assistantMessage;
+        return assistantMessage ?? userMessage;
       },
       async createDeveloperBug(draft) {
         const now = new Date().toISOString();
@@ -2583,286 +2713,291 @@ export function StoryEngineProvider({
 
         const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
         const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
+        const shouldSkipAssistantReply = detectedChapterEnd.detected;
+        let assistantMessage: StoryMessage | null = null;
+        let updatedMessages: StoryMessage[] = [];
 
-        const context = buildStoryChatContext({
-          universe: effectiveUniverse,
-          story,
-          playerCharacter,
-          imports: effectiveImports,
-          summaries,
-          storyState,
-          recentMessages: sanitizedHistoryMessages,
-          latestUserMessage: userMessage.content,
-          directorIntent: userMessage.directorIntent ?? null,
-        });
-
-        const assistantContent = await generateResponseWithRetry({
-          providerType,
-          provider,
-          apiKey,
-          model,
-          messages: context,
-        });
-
-        const sceneDepth = inferSceneDepth(userMessage.content);
-        const target = getSceneWordTarget(sceneDepth);
-        const wordCount = assistantContent.content.split(/\s+/).filter(Boolean).length;
-        const shouldRewriteForSize = sceneDepth === "light" && wordCount > target.maxWords * 2;
-        const finalAssistantText = shouldRewriteForSize
-          ? (
-              await generateResponseWithRetry({
-                providerType,
-                provider,
-                apiKey,
-                model,
-                messages: [
-                  {
-                    role: "system",
-                    content: [
-                      "Rewrite the following story scene to match a light interaction.",
-                      `Target length: ${target.minWords}-${target.maxWords} words.`,
-                      "Keep character voice and only the essential beats.",
-                      "Do not reintroduce unchanged environments or participants.",
-                      "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
-                      "Not every character needs to speak; keep participation natural.",
-                      "Never speak for the player character. Do not generate suggested player lines or options.",
-                      "Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
-                      "Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
-                      "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
-                      "Formatting rules:",
-                      "- Every character line must start with 'Name:'.",
-                      "- Actions must be wrapped as *...* (asterisks only for actions).",
-                      '- Dialogue must be wrapped in double quotes like "..."',
-                      "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-                      "- Narration must be standalone italic narration (stored as *...*), never 'Narrator:' labels.",
-                      "Mystery rule:",
-                      "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
-                    ].join("\n"),
-                  },
-                  {
-                    role: "user",
-                    content: assistantContent.content,
-                  },
-                ],
-              })
-            ).content
-          : assistantContent.content;
-
-        const formatRewritePrompt = [
-          "Rewrite the following story scene into the required Story Engine transcript grammar.",
-          "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
-          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
-          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
-          "Only resolve success or failure when the player's message leaves the outcome open as an attempt.",
-          "Formatting rules (strict):",
-          "- Every character line must start with 'Name:'.",
-          "- Actions must be wrapped as *...* (asterisks only for actions).",
-          '- Dialogue must be wrapped in double quotes like "..."',
-          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
-          "- Never use narrator labels like 'Narrator:' anywhere.",
-          "Mystery rule (strict):",
-          "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
-          "Information ownership rule (strict):",
-          "- Do not invent facts that could only have been communicated by the player character off-screen.",
-          "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
-          "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
-          "Ownership rules (strict):",
-          `- The player character is: ${playerCharacter.name}`,
-          "- Never write dialogue/actions/thoughts/decisions for the player character.",
-          "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
-          "Sanitization rules:",
-          "- Never repeat the latest player message.",
-          "- Never use asterisks for emphasis.",
-        ].join("\n");
-
-        const ownershipRewritePrompt = [
-          "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
-          `The player character is: ${playerCharacter.name}.`,
-          "Never include a speaker header for the player character.",
-          "Never narrate actions/thoughts for the player character.",
-          "Remove any repetition of the latest player message.",
-          "Never use narrator labels like 'Narrator:' anywhere in the output.",
-          "Keep continuity, character voice, and natural pacing.",
-          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
-          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
-          "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
-          "Formatting rules:",
-          "- Every character line must start with 'Name:'.",
-          "- Actions must be wrapped as *...* (asterisks only for actions).",
-          '- Dialogue must be wrapped in double quotes like "..."',
-          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
-          "Mystery rule:",
-          "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
-          "Information ownership rule:",
-          "- Do not invent facts that could only have been communicated by the player character off-screen.",
-          "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
-          "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
-        ].join("\n");
-
-        const hiddenDialogueInferencePattern =
-          /\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
-        const hiddenDialogueRewritePrompt = [
-          "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
-          `The latest player message is:\n${userMessage.content}`,
-          `The player character is: ${playerCharacter.name}.`,
-          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
-          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
-          "Do not attribute extra details to what the player said.",
-          "If NPCs need details, have them ask clarifying questions.",
-          "Do not invent diagnoses, causes, or specifics unless already established in prior story events/state or explicitly present in the latest player message.",
-          "Formatting rules:",
-          "- Every character line must start with 'Name:'.",
-          "- Actions must be wrapped as *...* (asterisks only for actions).",
-          '- Dialogue must be wrapped in double quotes like \"...\"',
-          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
-          "Never use narrator labels like 'Narrator:' anywhere in the output.",
-          "Never use asterisks for emphasis.",
-        ].join("\n");
-
-        const sceneStateRewritePrompt = [
-          "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
-          `The latest player message is canon scene state:\n${userMessage.content}`,
-          "Do not restate those facts in new words. Continue from the current moment and show consequences and NPC/world reactions.",
-          "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
-          "If a character enters/arrives or a reveal is already stated by the player, start after that moment (reactions, responses, new beats).",
-          "Formatting rules:",
-          "- Every character line must start with 'Name:'.",
-          "- Actions must be wrapped as *...* (asterisks only for actions).",
-          '- Dialogue must be wrapped in double quotes like \"...\"',
-          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
-          "Never use narrator labels like 'Narrator:' anywhere in the output.",
-          "Never use asterisks for emphasis.",
-          "Ownership rules:",
-          `- The player character is: ${playerCharacter.name}`,
-          "- Never write dialogue/actions/thoughts/decisions for the player character.",
-        ].join("\n");
-
-        let candidateAssistantText = finalAssistantText;
-        let finalSanitizedText: string | null = null;
-
-        for (let attempt = 0; attempt < 6; attempt += 1) {
-          const candidateSanitized = sanitizeAssistantTranscript({
-            text: candidateAssistantText,
+        if (!shouldSkipAssistantReply) {
+          const context = buildStoryChatContext({
+            universe: effectiveUniverse,
+            story,
+            playerCharacter,
+            imports: effectiveImports,
+            summaries,
+            storyState,
+            recentMessages: sanitizedHistoryMessages,
             latestUserMessage: userMessage.content,
-            playerName: playerNameForValidation,
+            directorIntent: userMessage.directorIntent ?? null,
           });
 
-          if (!candidateSanitized.formatValid) {
-            console.groupCollapsed("story-format:invalid");
-            console.log("issues", candidateSanitized.formatIssues);
-            console.log("rawAssistantBeforeSanitize", candidateAssistantText);
-            console.log("assistantAfterSanitize", candidateSanitized.text);
-            console.groupEnd();
-
-            candidateAssistantText = (
-              await generateResponseWithRetry({
-                providerType,
-                provider,
-                apiKey,
-                model,
-                messages: [
-                  { role: "system", content: formatRewritePrompt },
-                  { role: "user", content: candidateAssistantText },
-                ],
-              })
-            ).content;
-            continue;
-          }
-
-          const violation = getPlayerCharacterAuthorshipViolation({
-            playerName: playerNameForValidation,
-            text: candidateSanitized.text,
+          const assistantContent = await generateResponseWithRetry({
+            providerType,
+            provider,
+            apiKey,
+            model,
+            messages: context,
           });
 
-          if (violation) {
-            console.groupCollapsed("ownership-validator:blocked (loop)");
-            console.log("rule", violation.rule);
-            console.log("match", violation.match);
-            console.log("line", violation.line ?? null);
-            console.log("rawAssistantBeforeSanitize", candidateAssistantText);
-            console.log("assistantAfterSanitize", candidateSanitized.text);
-            console.groupEnd();
+          const sceneDepth = inferSceneDepth(userMessage.content);
+          const target = getSceneWordTarget(sceneDepth);
+          const wordCount = assistantContent.content.split(/\s+/).filter(Boolean).length;
+          const shouldRewriteForSize = sceneDepth === "light" && wordCount > target.maxWords * 2;
+          const finalAssistantText = shouldRewriteForSize
+            ? (
+                await generateResponseWithRetry({
+                  providerType,
+                  provider,
+                  apiKey,
+                  model,
+                  messages: [
+                    {
+                      role: "system",
+                      content: [
+                        "Rewrite the following story scene to match a light interaction.",
+                        `Target length: ${target.minWords}-${target.maxWords} words.`,
+                        "Keep character voice and only the essential beats.",
+                        "Do not reintroduce unchanged environments or participants.",
+                        "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
+                        "Not every character needs to speak; keep participation natural.",
+                        "Never speak for the player character. Do not generate suggested player lines or options.",
+                        "Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
+                        "Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
+                        "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+                        "Formatting rules:",
+                        "- Every character line must start with 'Name:'.",
+                        "- Actions must be wrapped as *...* (asterisks only for actions).",
+                        '- Dialogue must be wrapped in double quotes like "..."',
+                        "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+                        "- Narration must be standalone italic narration (stored as *...*), never 'Narrator:' labels.",
+                        "Mystery rule:",
+                        "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+                      ].join("\n"),
+                    },
+                    {
+                      role: "user",
+                      content: assistantContent.content,
+                    },
+                  ],
+                })
+              ).content
+            : assistantContent.content;
 
-            candidateAssistantText = (
-              await generateResponseWithRetry({
-                providerType,
-                provider,
-                apiKey,
-                model,
-                messages: [
-                  { role: "system", content: ownershipRewritePrompt },
-                  { role: "user", content: candidateSanitized.text },
-                ],
-              })
-            ).content;
-            continue;
+          const formatRewritePrompt = [
+            "Rewrite the following story scene into the required Story Engine transcript grammar.",
+            "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
+            "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+            "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
+            "Only resolve success or failure when the player's message leaves the outcome open as an attempt.",
+            "Formatting rules (strict):",
+            "- Every character line must start with 'Name:'.",
+            "- Actions must be wrapped as *...* (asterisks only for actions).",
+            '- Dialogue must be wrapped in double quotes like "..."',
+            "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+            "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+            "- Never use narrator labels like 'Narrator:' anywhere.",
+            "Mystery rule (strict):",
+            "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+            "Information ownership rule (strict):",
+            "- Do not invent facts that could only have been communicated by the player character off-screen.",
+            "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
+            "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
+            "Ownership rules (strict):",
+            `- The player character is: ${playerCharacter.name}`,
+            "- Never write dialogue/actions/thoughts/decisions for the player character.",
+            "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
+            "Sanitization rules:",
+            "- Never repeat the latest player message.",
+            "- Never use asterisks for emphasis.",
+          ].join("\n");
+
+          const ownershipRewritePrompt = [
+            "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
+            `The player character is: ${playerCharacter.name}.`,
+            "Never include a speaker header for the player character.",
+            "Never narrate actions/thoughts for the player character.",
+            "Remove any repetition of the latest player message.",
+            "Never use narrator labels like 'Narrator:' anywhere in the output.",
+            "Keep continuity, character voice, and natural pacing.",
+            "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+            "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
+            "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+            "Formatting rules:",
+            "- Every character line must start with 'Name:'.",
+            "- Actions must be wrapped as *...* (asterisks only for actions).",
+            '- Dialogue must be wrapped in double quotes like "..."',
+            "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+            "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+            "Mystery rule:",
+            "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+            "Information ownership rule:",
+            "- Do not invent facts that could only have been communicated by the player character off-screen.",
+            "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
+            "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
+          ].join("\n");
+
+          const hiddenDialogueInferencePattern =
+            /\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
+          const hiddenDialogueRewritePrompt = [
+            "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
+            `The latest player message is:\n${userMessage.content}`,
+            `The player character is: ${playerCharacter.name}.`,
+            "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+            "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
+            "Do not attribute extra details to what the player said.",
+            "If NPCs need details, have them ask clarifying questions.",
+            "Do not invent diagnoses, causes, or specifics unless already established in prior story events/state or explicitly present in the latest player message.",
+            "Formatting rules:",
+            "- Every character line must start with 'Name:'.",
+            "- Actions must be wrapped as *...* (asterisks only for actions).",
+            '- Dialogue must be wrapped in double quotes like \"...\"',
+            "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+            "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+            "Never use narrator labels like 'Narrator:' anywhere in the output.",
+            "Never use asterisks for emphasis.",
+          ].join("\n");
+
+          const sceneStateRewritePrompt = [
+            "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
+            `The latest player message is canon scene state:\n${userMessage.content}`,
+            "Do not restate those facts in new words. Continue from the current moment and show consequences and NPC/world reactions.",
+            "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
+            "If a character enters/arrives or a reveal is already stated by the player, start after that moment (reactions, responses, new beats).",
+            "Formatting rules:",
+            "- Every character line must start with 'Name:'.",
+            "- Actions must be wrapped as *...* (asterisks only for actions).",
+            '- Dialogue must be wrapped in double quotes like \"...\"',
+            "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+            "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+            "Never use narrator labels like 'Narrator:' anywhere in the output.",
+            "Never use asterisks for emphasis.",
+            "Ownership rules:",
+            `- The player character is: ${playerCharacter.name}`,
+            "- Never write dialogue/actions/thoughts/decisions for the player character.",
+          ].join("\n");
+
+          let candidateAssistantText = finalAssistantText;
+          let finalSanitizedText: string | null = null;
+
+          for (let attempt = 0; attempt < 6; attempt += 1) {
+            const candidateSanitized = sanitizeAssistantTranscript({
+              text: candidateAssistantText,
+              latestUserMessage: userMessage.content,
+              playerName: playerNameForValidation,
+            });
+
+            if (!candidateSanitized.formatValid) {
+              console.groupCollapsed("story-format:invalid");
+              console.log("issues", candidateSanitized.formatIssues);
+              console.log("rawAssistantBeforeSanitize", candidateAssistantText);
+              console.log("assistantAfterSanitize", candidateSanitized.text);
+              console.groupEnd();
+
+              candidateAssistantText = (
+                await generateResponseWithRetry({
+                  providerType,
+                  provider,
+                  apiKey,
+                  model,
+                  messages: [
+                    { role: "system", content: formatRewritePrompt },
+                    { role: "user", content: candidateAssistantText },
+                  ],
+                })
+              ).content;
+              continue;
+            }
+
+            const violation = getPlayerCharacterAuthorshipViolation({
+              playerName: playerNameForValidation,
+              text: candidateSanitized.text,
+            });
+
+            if (violation) {
+              console.groupCollapsed("ownership-validator:blocked (loop)");
+              console.log("rule", violation.rule);
+              console.log("match", violation.match);
+              console.log("line", violation.line ?? null);
+              console.log("rawAssistantBeforeSanitize", candidateAssistantText);
+              console.log("assistantAfterSanitize", candidateSanitized.text);
+              console.groupEnd();
+
+              candidateAssistantText = (
+                await generateResponseWithRetry({
+                  providerType,
+                  provider,
+                  apiKey,
+                  model,
+                  messages: [
+                    { role: "system", content: ownershipRewritePrompt },
+                    { role: "user", content: candidateSanitized.text },
+                  ],
+                })
+              ).content;
+              continue;
+            }
+
+            if (hiddenDialogueInferencePattern.test(candidateSanitized.text)) {
+              candidateAssistantText = (
+                await generateResponseWithRetry({
+                  providerType,
+                  provider,
+                  apiKey,
+                  model,
+                  messages: [
+                    { role: "system", content: hiddenDialogueRewritePrompt },
+                    { role: "user", content: candidateSanitized.text },
+                  ],
+                })
+              ).content;
+              continue;
+            }
+
+            const sceneDup = detectSceneStateRenarration({
+              latestUserMessage: userMessage.content,
+              assistantText: candidateSanitized.text,
+            });
+            if (sceneDup.triggered) {
+              console.groupCollapsed("scene-state:renarration");
+              console.log("reason", sceneDup.reason);
+              console.log("snippet", sceneDup.snippet);
+              console.groupEnd();
+
+              candidateAssistantText = (
+                await generateResponseWithRetry({
+                  providerType,
+                  provider,
+                  apiKey,
+                  model,
+                  messages: [
+                    { role: "system", content: sceneStateRewritePrompt },
+                    { role: "user", content: candidateSanitized.text },
+                  ],
+                })
+              ).content;
+              continue;
+            }
+
+            finalSanitizedText = candidateSanitized.text;
+            break;
           }
 
-          if (hiddenDialogueInferencePattern.test(candidateSanitized.text)) {
-            candidateAssistantText = (
-              await generateResponseWithRetry({
-                providerType,
-                provider,
-                apiKey,
-                model,
-                messages: [
-                  { role: "system", content: hiddenDialogueRewritePrompt },
-                  { role: "user", content: candidateSanitized.text },
-                ],
-              })
-            ).content;
-            continue;
+          if (!finalSanitizedText) {
+            throw new Error("Unable to generate a response. Please try again.");
           }
 
-          const sceneDup = detectSceneStateRenarration({
-            latestUserMessage: userMessage.content,
-            assistantText: candidateSanitized.text,
-          });
-          if (sceneDup.triggered) {
-            console.groupCollapsed("scene-state:renarration");
-            console.log("reason", sceneDup.reason);
-            console.log("snippet", sceneDup.snippet);
-            console.groupEnd();
+          assistantMessage = {
+            id: createEntityId("story-message"),
+            storyId,
+            role: "assistant",
+            content: finalSanitizedText,
+            timestamp: new Date().toISOString(),
+            speakerType: "narrator",
+          };
 
-            candidateAssistantText = (
-              await generateResponseWithRetry({
-                providerType,
-                provider,
-                apiKey,
-                model,
-                messages: [
-                  { role: "system", content: sceneStateRewritePrompt },
-                  { role: "user", content: candidateSanitized.text },
-                ],
-              })
-            ).content;
-            continue;
-          }
-
-          finalSanitizedText = candidateSanitized.text;
-          break;
+          await repository.saveStoryMessage(assistantMessage);
         }
 
-        if (!finalSanitizedText) {
-          throw new Error("Unable to generate a response. Please try again.");
-        }
-
-        const assistantMessage: StoryMessage = {
-          id: createEntityId("story-message"),
-          storyId,
-          role: "assistant",
-          content: finalSanitizedText,
-          timestamp: new Date().toISOString(),
-          speakerType: "narrator",
-        };
-
-        await repository.saveStoryMessage(assistantMessage);
-
-        const updatedMessages = await repository.listStoryMessages(storyId);
+        updatedMessages = await repository.listStoryMessages(storyId);
 
         if (updatedMessages.length > 0 && updatedMessages.length % 20 === 0) {
           const summaryContext = buildStorySummaryContext({

@@ -15,6 +15,112 @@ type StoryTranscriptViewProps = {
 
 type SpeakerKind = "player" | "narrator" | "npc" | "system";
 
+const NUMBER_WORDS = [
+  "Zero",
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+  "Thirteen",
+  "Fourteen",
+  "Fifteen",
+  "Sixteen",
+  "Seventeen",
+  "Eighteen",
+  "Nineteen",
+  "Twenty",
+];
+
+function parseRomanNumeral(value: string) {
+  const roman = value.trim().toUpperCase();
+  if (!roman || !/^[IVXLCDM]+$/.test(roman)) {
+    return null;
+  }
+
+  const numerals: Record<string, number> = {
+    I: 1,
+    V: 5,
+    X: 10,
+    L: 50,
+    C: 100,
+    D: 500,
+    M: 1000,
+  };
+
+  let total = 0;
+  for (let index = 0; index < roman.length; index += 1) {
+    const current = numerals[roman[index]];
+    const next = numerals[roman[index + 1]] ?? 0;
+    total += current < next ? -current : current;
+  }
+  return total > 0 ? total : null;
+}
+
+function toRomanNumeral(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  const table: Array<[number, string]> = [
+    [1000, "M"],
+    [900, "CM"],
+    [500, "D"],
+    [400, "CD"],
+    [100, "C"],
+    [90, "XC"],
+    [50, "L"],
+    [40, "XL"],
+    [10, "X"],
+    [9, "IX"],
+    [5, "V"],
+    [4, "IV"],
+    [1, "I"],
+  ];
+
+  let remaining = Math.trunc(value);
+  let result = "";
+  for (const [amount, token] of table) {
+    while (remaining >= amount) {
+      result += token;
+      remaining -= amount;
+    }
+  }
+
+  return result || null;
+}
+
+function getNextChapterBannerLabel(label: string) {
+  const match = label.trim().match(/^Chapter\s+(.+)$/i);
+  if (!match?.[1]) {
+    return "Next Chapter";
+  }
+
+  const token = match[1].trim();
+  if (/^\d+$/.test(token)) {
+    return `Chapter ${Number.parseInt(token, 10) + 1}`;
+  }
+
+  const roman = parseRomanNumeral(token);
+  if (roman) {
+    return `Chapter ${toRomanNumeral(roman + 1) ?? roman + 1}`;
+  }
+
+  const wordIndex = NUMBER_WORDS.findIndex((word) => word.toLowerCase() === token.toLowerCase());
+  if (wordIndex >= 1 && wordIndex + 1 < NUMBER_WORDS.length) {
+    return `Chapter ${NUMBER_WORDS[wordIndex + 1]}`;
+  }
+
+  return "Next Chapter";
+}
+
 function getSpeakerTag(label: string, kind: SpeakerKind) {
   const baseTagClass = "shrink-0 font-semibold";
   const baseRowClass = "rounded-2xl px-3 py-2";
@@ -129,22 +235,46 @@ export function StoryTranscriptView({
   highlightedMessageId,
 }: StoryTranscriptViewProps) {
   let latestUserMessage: string | null = null;
-  const chapterMarkers = new Map<number, string>();
+  const chapterEndByMessageId = new Map<string, string>();
+  const chapterStartBeforeMessage = new Map<number, string>();
   for (const chapter of chapters ?? []) {
+    if (chapter.endsAtMessageId) {
+      chapterEndByMessageId.set(chapter.endsAtMessageId, chapter.label);
+    }
     if (typeof chapter.endsAtIndex === "number" && chapter.endsAtIndex >= 1) {
-      chapterMarkers.set(chapter.endsAtIndex, chapter.label);
+      const nextMessageIndex = chapter.endsAtIndex + 1;
+      if (nextMessageIndex <= messages.length) {
+        chapterStartBeforeMessage.set(nextMessageIndex, getNextChapterBannerLabel(chapter.label));
+      }
     }
   }
   return (
     <div className={cn("space-y-6", className)}>
       {messages.map((message, messageIndex) => {
         const highlight = highlightedMessageId === message.id;
-        const chapterLabel = chapterMarkers.get(messageIndex + 1);
+        const chapterEndLabel = chapterEndByMessageId.get(message.id);
+        const chapterStartLabel = chapterStartBeforeMessage.get(messageIndex + 1);
+
+        if (chapterEndLabel) {
+          return (
+            <div
+              key={message.id}
+              className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted"
+            >
+              Chapter End · {chapterEndLabel}
+            </div>
+          );
+        }
 
         if (message.role === "system") {
           const tag = getSpeakerTag("System", "system");
           return (
             <Fragment key={message.id}>
+              {chapterStartLabel ? (
+                <div className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  {chapterStartLabel}
+                </div>
+              ) : null}
               <div
                 id={`story-message-${message.id}`}
                 className={cn(
@@ -159,11 +289,6 @@ export function StoryTranscriptView({
                   </div>
                 </div>
               </div>
-              {chapterLabel ? (
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
-                  Chapter End · {chapterLabel}
-                </div>
-              ) : null}
             </Fragment>
           );
         }
@@ -175,6 +300,11 @@ export function StoryTranscriptView({
           const tag = getSpeakerTag(label, "player");
           return (
             <Fragment key={message.id}>
+              {chapterStartLabel ? (
+                <div className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  {chapterStartLabel}
+                </div>
+              ) : null}
               <div
                 id={`story-message-${message.id}`}
                 className={cn(
@@ -191,11 +321,6 @@ export function StoryTranscriptView({
                   </div>
                 </div>
               </div>
-              {chapterLabel ? (
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
-                  Chapter End · {chapterLabel}
-                </div>
-              ) : null}
             </Fragment>
           );
         }
@@ -208,6 +333,11 @@ export function StoryTranscriptView({
         const blocks = parseSceneBlocks(sanitized);
         return (
           <Fragment key={message.id}>
+            {chapterStartLabel ? (
+              <div className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                {chapterStartLabel}
+              </div>
+            ) : null}
             <div
               id={`story-message-${message.id}`}
               className={cn(
@@ -237,11 +367,6 @@ export function StoryTranscriptView({
                 );
               })}
             </div>
-            {chapterLabel ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
-                Chapter End · {chapterLabel}
-              </div>
-            ) : null}
           </Fragment>
         );
       })}

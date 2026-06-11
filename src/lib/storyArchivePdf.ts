@@ -79,6 +79,10 @@ export function serializeStoryArchivePdf(
     const parsed = safeParseStoryStateData(json);
     return normalizeStoryStateToV2(parsed);
   })();
+  const currentSceneLocation =
+    typeof (storyStateData as any)?.scene?.currentLocation === "string"
+      ? (storyStateData as any).scene.currentLocation.trim()
+      : "";
 
   function ensureSpace(nextHeight: number) {
     if (y + nextHeight <= pageHeight - marginY) {
@@ -190,10 +194,12 @@ export function serializeStoryArchivePdf(
   writeHeading(bundle.story.title, 22);
   writeBullet("Universe", bundle.universe.name);
   writeBullet("Player Character", bundle.playerCharacter.name);
+  writeBullet("Creation date", formatDateTime(bundle.story.createdAt));
+  writeBullet("Last updated", formatDateTime(bundle.story.updatedAt));
   writeBullet("Exported", formatDateTime(bundle.exportedAt));
   y += 8;
 
-  writeHeading("Export Metadata", 14);
+  writeHeading("Basic Metadata", 14);
   writeBullet("Exported at", formatDateTime(bundle.exportedAt));
   if (storyStateData?.indexedAt) {
     writeBullet("Indexed at", formatDateTime(storyStateData.indexedAt));
@@ -204,6 +210,7 @@ export function serializeStoryArchivePdf(
   if (typeof storyStateData?.indexes?.messageCount === "number" && Number.isFinite(storyStateData.indexes.messageCount)) {
     writeBullet("Indexed messages", String(Math.trunc(storyStateData.indexes.messageCount)));
   }
+  writeBullet("Transcript messages", String(bundle.messages.length));
   y += 10;
 
   writeHeading("Full Transcript", 14);
@@ -261,26 +268,6 @@ export function serializeStoryArchivePdf(
     writeParagraph(bestSummary);
   }
 
-  const chapterSummaries = (bundle.chapters ?? [])
-    .map((chapter) => ({
-      label: typeof chapter.label === "string" ? chapter.label.trim() : "",
-      endsAtIndex: typeof chapter.endsAtIndex === "number" ? Math.trunc(chapter.endsAtIndex) : null,
-      summary: typeof chapter.summary === "string" ? chapter.summary.trim() : "",
-    }))
-    .filter((chapter) => chapter.label);
-  if (chapterSummaries.length) {
-    writeHeading("Chapter Summaries", 14);
-    for (const chapter of chapterSummaries) {
-      writeSubheading(chapter.label);
-      if (chapter.endsAtIndex && chapter.endsAtIndex >= 1) {
-        writeBullet("Ends at", `Message ${chapter.endsAtIndex}`);
-      }
-      writeParagraph(chapter.summary || "No chapter summary available yet.");
-      y += 6;
-    }
-    y += 6;
-  }
-
   const indexes = (storyStateData as any)?.indexes;
   const openThreadsRaw = Array.isArray(indexes?.openThreads)
     ? indexes.openThreads
@@ -327,11 +314,24 @@ export function serializeStoryArchivePdf(
   if (characterRegistry.length) {
     writeHeading("Character Registry", 14);
     for (const entry of characterRegistry) {
+      const stateEntry = (storyStateData?.characters as Record<string, any> | undefined)?.[entry.name];
+      const statusBullets = trimStringList(stateEntry?.statusBullets, 4);
+      const fallbackStatus =
+        !statusBullets.length && typeof stateEntry?.status === "string" && stateEntry.status.trim()
+          ? [stateEntry.status.trim()]
+          : [];
+      const currentState = trimStringList(stateEntry?.characterStateTransient, 4);
       writeSubheading(entry.name);
       if (entry.aliases.length) writeBullet("Aliases", entry.aliases.join(", "));
       if (entry.firstSeenMessage) writeBullet("First seen", `Message ${entry.firstSeenMessage}`);
       if (entry.lastSeenMessage) writeBullet("Last seen", `Message ${entry.lastSeenMessage}`);
-      if (entry.description) writeParagraph(entry.description);
+      if (entry.description) writeBullet("Description", entry.description);
+      if (statusBullets.length || fallbackStatus.length) {
+        writeBullet("Status", [...statusBullets, ...fallbackStatus].join(" | "));
+      }
+      if (currentState.length) {
+        writeBullet("Current state", currentState.join(" | "));
+      }
       if (entry.evidence) writeBullet("Evidence", entry.evidence);
       y += 6;
     }
@@ -361,7 +361,12 @@ export function serializeStoryArchivePdf(
       if (entry.aliases.length) writeBullet("Aliases", entry.aliases.join(", "));
       if (entry.firstSeenMessage) writeBullet("First seen", `Message ${entry.firstSeenMessage}`);
       if (entry.lastSeenMessage) writeBullet("Last seen", `Message ${entry.lastSeenMessage}`);
-      if (entry.description) writeParagraph(entry.description);
+      if (entry.description) writeBullet("Description", entry.description);
+      if (currentSceneLocation && currentSceneLocation.toLowerCase() === entry.name.toLowerCase()) {
+        writeBullet("Current relevance", "Active scene location");
+      } else if (entry.lastSeenMessage) {
+        writeBullet("Current relevance", `Last referenced around message ${entry.lastSeenMessage}`);
+      }
       if (entry.evidence) writeBullet("Evidence", entry.evidence);
       y += 6;
     }
