@@ -17,6 +17,7 @@ import {
   formatStorySceneStateForPrompt,
 } from "./storyStateExtractor";
 import { safeParseStoryStateData } from "../storyStateV2";
+import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
@@ -201,9 +202,14 @@ export function buildStoryChatContext({
     );
   })();
 
+  const matureFictionPolicy = buildMatureFictionPolicyBlock({
+    includeParity: true,
+  });
+
   const sceneGuidance = normalizeWhitespace(
     [
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
+      matureFictionPolicy,
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
       "The player character sheet is authoritative canon for identity facts (name, age, gender, pronouns, species, role/occupation, disabilities/limitations). Do not contradict it with genre assumptions or defaults.",
       "Stay anchored in the story's premise, protagonist, and current situation. Recent beats matter, but they should not erase what the story is fundamentally about.",

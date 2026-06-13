@@ -1,5 +1,6 @@
 import type { AIProvider, AIChatMessage } from "./types";
-import { normalizeAIError, AIError } from "./errors";
+import { normalizeAIError, AIError, looksLikeSafetyRefusal } from "./errors";
+import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 
 const REQUEST_TIMEOUT_MS = 45_000;
 
@@ -101,6 +102,12 @@ async function callGenerateContent(
       }
 
       const message = await extractGeminiErrorMessage(response);
+      if (looksLikeSafetyRefusal(message)) {
+        throw new AIError("safety_refusal", message, response.status, {
+          retryable: false,
+          kind: "safety",
+        });
+      }
       throw new AIError("generation_failed", message, response.status);
     }
 
@@ -115,6 +122,10 @@ async function callGenerateContent(
 }
 
 export function createGeminiProvider(): AIProvider {
+  const matureFictionSummaryPolicy = buildMatureFictionPolicyBlock({
+    includeExtractionFocus: true,
+  });
+
   return {
     async validateConnection(apiKey, model) {
       const content = await callGenerateContent(apiKey, model, [
@@ -140,6 +151,7 @@ export function createGeminiProvider(): AIProvider {
         "Include: key events, current goals, unresolved threads, and relevant character details.",
         "Explicitly track changes to: preferred names, aliases, pronouns, ranks/titles, relationships, injuries/recoveries, and major world events.",
         "Major life-changing events should outweigh trivial recent beats.",
+        matureFictionSummaryPolicy,
         "Do not invent new facts.",
         existingSummary?.trim()
           ? `Existing summary (update/extend it):\n${existingSummary.trim()}`

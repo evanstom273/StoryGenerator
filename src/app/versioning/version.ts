@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.18.0";
+export const APP_VERSION = "1.18.1";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -287,6 +287,22 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     fixed: [
       "Archive and settings relationship views now surface dynamic metric values instead of only pair summaries",
       "Chapter-aware exports now present the reading experience first without losing index-driven analysis sections",
+    ],
+    knownIssues: [],
+  },
+  "1.18.1": {
+    title: "Mature Fiction Context + Android Sync Hotfix",
+    added: [
+      "Story generation now uses a shared mature-fiction policy block that better recognises police, detective, military, action, fantasy, and psychological-drama storytelling as legitimate narrative context",
+      "Player Assist now follows the same mature-fiction and narrative-parity rules as the main narrator, so suggested turns are less likely to get over-sanitised",
+      "MetaChat now analyses difficult themes with the same serious, non-gratuitous fiction framing while staying firmly out of canon",
+      "Summary and indexing prompts now preserve mature-but-legitimate story consequences in clear, non-sensational language",
+    ],
+    fixed: [
+      "Normal genre-fiction themes such as shootouts, combat injuries, trauma, grief, panic, depression, relapse, and recovery are less likely to be misread as inherently unsafe just because the subject matter is intense",
+      "Provider-side safety refusals are now classified more clearly, with user-facing messaging that explains the hard boundary still applies to exploitative, eroticised, predatory, illegal, or instructional harm",
+      "Android Studio sync now receives the latest web bundle again after rebuilding and copying the updated app into the Android project",
+      "Version wiring is now aligned to 1.18.1 across the app label, changelog, npm metadata, and Android release metadata",
     ],
     knownIssues: [],
   },

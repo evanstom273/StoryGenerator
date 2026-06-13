@@ -9,6 +9,7 @@ import type {
 import type { AIChatMessage } from "./types";
 import { sortByTimestampAsc } from "../dates";
 import { buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "./playerAssist";
+import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
@@ -130,6 +131,9 @@ export function buildPlayerAssistContext({
       "Output only the player's message in the required format. No other speakers. No narration. No commentary.",
       "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
       "The player character sheet is authoritative canon for identity facts. Do not contradict it or introduce genre-default assumptions about the protagonist.",
+      buildMatureFictionPolicyBlock({
+        includeParity: true,
+      }),
     ].join("\n"),
   );
 

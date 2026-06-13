@@ -3,6 +3,7 @@ export type AIErrorCode =
   | "rate_limited"
   | "provider_unavailable"
   | "timeout"
+  | "safety_refusal"
   | "parsing_failed"
   | "validation_failed"
   | "request_too_large"
@@ -12,6 +13,7 @@ export type AIErrorCode =
 export type AIGenerationFailureKind =
   | "timeout"
   | "provider"
+  | "safety"
   | "parse"
   | "validation"
   | "context"
@@ -57,6 +59,8 @@ function inferKind(code: AIErrorCode): AIGenerationFailureKind {
       return "quota";
     case "provider_unavailable":
       return "provider";
+    case "safety_refusal":
+      return "safety";
     case "timeout":
       return "timeout";
     case "parsing_failed":
@@ -118,6 +122,14 @@ export async function normalizeOpenAIError(response: Response) {
     return new AIError("provider_unavailable", message, status, { diagnostic });
   }
 
+  if (looksLikeSafetyRefusal(message)) {
+    return new AIError("safety_refusal", message, status, {
+      diagnostic,
+      retryable: false,
+      kind: "safety",
+    });
+  }
+
   if (status === 400 && looksLikeContextLimit(message)) {
     return new AIError("request_too_large", message, status, {
       diagnostic,
@@ -169,6 +181,14 @@ export async function normalizeOpenRouterError(response: Response) {
     });
   }
 
+  if (looksLikeSafetyRefusal(message)) {
+    return new AIError("safety_refusal", message, status, {
+      diagnostic,
+      retryable: false,
+      kind: "safety",
+    });
+  }
+
   if (status === 400 && looksLikeContextLimit(message)) {
     return new AIError("request_too_large", message, status, {
       diagnostic,
@@ -202,6 +222,14 @@ export function normalizeAIError(error: unknown) {
     if (looksLikeQuotaLimit(error.message)) {
       return new AIError("rate_limited", error.message, undefined, {
         diagnostic: error.message,
+      });
+    }
+
+    if (looksLikeSafetyRefusal(error.message)) {
+      return new AIError("safety_refusal", error.message, undefined, {
+        diagnostic: error.message,
+        retryable: false,
+        kind: "safety",
       });
     }
 
@@ -242,6 +270,8 @@ export function createAIGenerationError(
         ? "parsing_failed"
         : kind === "validation"
           ? "validation_failed"
+        : kind === "safety"
+          ? "safety_refusal"
           : kind === "context"
             ? "request_too_large"
             : kind === "quota"
@@ -282,6 +312,14 @@ export function classifyAIGenerationError(error: unknown): ClassifiedAIGeneratio
         retryable: normalized.retryable,
         diagnostic,
         message: "This request may be too large for the current provider or model.",
+      };
+    case "safety":
+      return {
+        kind: "safety",
+        retryable: normalized.retryable,
+        diagnostic,
+        message:
+          "The provider refused this request under its safety rules. Story Engine supports serious fiction, but exploitative, gratuitously graphic, or instructional harm remains blocked.",
       };
     case "parse":
       return {
@@ -342,6 +380,12 @@ export function formatAIGenerationError(
 
 function looksLikeQuotaLimit(message: string) {
   return /\b(rate limit|too many requests|quota|capacity)\b/i.test(message);
+}
+
+export function looksLikeSafetyRefusal(message: string) {
+  return /\b(safety|policy|disallowed|not allowed|not permitted|refus|unsafe|harmful content|content violation|violates?.*policy|sexual content involving minors|self-harm instructions)\b/i.test(
+    message,
+  );
 }
 
 function looksLikeContextLimit(message: string) {

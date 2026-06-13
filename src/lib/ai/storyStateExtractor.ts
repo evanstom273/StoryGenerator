@@ -1,6 +1,7 @@
 import type { PlayerCharacter, StoryMessage, StoryStateData } from "../../types/models";
 import type { AIChatMessage } from "./types";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
+import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 
 const MAX_RECENT_MESSAGES = 40;
 
@@ -11,6 +12,10 @@ function normalizeWhitespace(value: string) {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+const MATURE_FICTION_EXTRACTION_POLICY = buildMatureFictionPolicyBlock({
+  includeExtractionFocus: true,
+});
 
 function formatRecentMessages(
   messages: StoryMessage[],
@@ -64,6 +69,7 @@ export function buildStoryStateExtractionPrompt({
       "Track only explicit, high-confidence changes. Do not invent facts.",
       "Transcript is the source of truth. Indexes are derived and rebuildable.",
       "Evidence rule: any indexed fact should reference the stable message numbers where it appears (messageNumbers).",
+      MATURE_FICTION_EXTRACTION_POLICY,
       "Return STRICT JSON only. No markdown. No commentary. No trailing text.",
       "Schema (keys must match exactly):",
       "{",
@@ -122,6 +128,8 @@ export function buildStoryStateExtractionPrompt({
       "- Include major injuries/recoveries and major world events.",
       "- Character entries and indexes.characters descriptions should answer 'who are they now?' not just who they were at the start.",
       "- Use status/statusBullets for live character conditions such as injuries, captivity, blindness, wanted status, political danger, disguises, or recent transformations.",
+      "- Treat standard crime, war, combat, danger, trauma, grief, panic, depression, self-destructive behaviour, recovery, relapse, and aftermath as legitimate story material when the transcript supports them.",
+      "- Preserve serious mental health and trauma context in clear, non-sensational language. Keep the narrative consequences; do not erase them just because they are uncomfortable.",
       "- Use strengths/weaknesses for enduring characterization that should influence future narration.",
       "- Use characterTraitsPersistent for durable personality/identity traits that should not change scene-to-scene. Update these rarely, only with strong evidence or story-defining events.",
       "- Use characterStateTransient for short-term mood/emotion/current goal that can change frequently and should NOT be promoted into characterTraitsPersistent.",

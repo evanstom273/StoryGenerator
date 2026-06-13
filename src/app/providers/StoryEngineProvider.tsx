@@ -34,6 +34,7 @@ import {
   buildUniverseBlueprintSystemPrompt,
 } from "../../lib/ai/universeGenerator";
 import { extractFirstJsonObject, safeParseJsonObject } from "../../lib/ai/json";
+import { buildMatureFictionPolicyBlock } from "../../lib/ai/matureFictionPolicy";
 import {
   classifyAIGenerationError,
   createAIGenerationError,
@@ -1874,6 +1875,10 @@ export function StoryEngineProvider({
           "You are MetaChat, an out-of-canon writer's room assistant for Story Engine.",
           "Hard rule: MetaChat is NOT canon and must never be treated as story reality.",
           "You have access to the full canon reference block below: use it freely for analysis, planning, questions, continuity checks, and archive discussion.",
+          buildMatureFictionPolicyBlock({
+            includeParity: true,
+            includeAnalysisFocus: true,
+          }),
           "Do not write the next story scene or in-character narration unless the user explicitly asks you to draft an out-of-canon example.",
           "Prefer analysis, planning, options, and questions. Be concise and practical.",
         ].join("\n");
