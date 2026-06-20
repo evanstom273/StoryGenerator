@@ -100,10 +100,10 @@ export function V2LeftSidebar({
 
       {/* My Worlds header */}
       <div className="flex flex-shrink-0 items-center justify-between px-[18px] pb-2 pt-3.5">
-        <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+        <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/30">
           My Worlds
         </span>
-        <span className="rounded-full bg-panel px-2 py-0.5 text-[9px] font-semibold text-white/20">
+        <span className="rounded-full bg-panel px-2 py-0.5 text-[9px] font-semibold text-white/30">
           {universes.length}
         </span>
       </div>
@@ -143,14 +143,14 @@ export function V2LeftSidebar({
                       "mt-0.5 flex-shrink-0 rounded-full px-[7px] py-0.5 text-[9px] font-semibold",
                       isActive
                         ? "bg-accent/[0.12] text-accent-soft"
-                        : "bg-panel text-white/20",
+                        : "bg-panel text-white/30",
                     )}
                   >
                     {universeStories.length}
                   </span>
                 </div>
                 {universe.description ? (
-                  <p className="mb-2 line-clamp-2 text-[11px] leading-[1.55] text-white/25">
+                  <p className="mb-2 line-clamp-2 text-[11px] leading-[1.55] text-white/40">
                     {universe.description}
                   </p>
                 ) : null}
@@ -159,8 +159,8 @@ export function V2LeftSidebar({
                     className={cn(
                       "inline-block rounded-full border px-2 py-0.5 text-[9px] font-medium tracking-[0.04em]",
                       isActive
-                        ? "border-divider/[0.5] bg-panel-muted text-white/25"
-                        : "border-divider/[0.4] bg-app text-white/20",
+                        ? "border-divider/[0.5] bg-panel-muted text-white/35"
+                        : "border-divider/[0.4] bg-app text-white/30",
                     )}
                   >
                     {universe.genreTheme}
@@ -184,7 +184,7 @@ export function V2LeftSidebar({
 
       {/* Characters strip */}
       <div className="flex-shrink-0 border-t border-divider/[0.4] px-2.5 pb-0 pt-3">
-        <div className="mb-2.5 px-1.5 text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+        <div className="mb-2.5 px-1.5 text-[9px] font-bold uppercase tracking-[0.22em] text-white/30">
           Characters
         </div>
         <div className="flex gap-3 overflow-x-auto px-1.5 pb-3">
@@ -204,12 +204,12 @@ export function V2LeftSidebar({
                     "flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
                     isFirst
                       ? "border-accent/[0.21] bg-accent/[0.12] text-accent-secondary"
-                      : "border-divider/[0.5] bg-panel text-white/20",
+                      : "border-divider/[0.5] bg-panel text-white/30",
                   )}
                 >
                   {initials}
                 </div>
-                <span className="max-w-[40px] truncate text-[9px] text-white/22">
+                <span className="max-w-[40px] truncate text-[9px] text-white/35">
                   {character.name.split(" ")[0]}
                 </span>
               </Link>
@@ -247,7 +247,7 @@ export function V2LeftSidebar({
         <Link
           to="/settings"
           onClick={onNavigate}
-          className="flex items-center gap-1.5 text-white/20 transition hover:text-white/40"
+          className="flex items-center gap-1.5 text-white/30 transition hover:text-white/50"
         >
           <svg
             width="13"
