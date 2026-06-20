@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { buttonClasses } from "../components/ui/Button";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
@@ -7,6 +7,11 @@ import { useChangelog } from "../app/versioning/ChangelogContext";
 import { formatRelativeTime } from "../lib/dates";
 import { APP_VERSION, CHANGELOG } from "../app/versioning/version";
 import { cn } from "../utils/cn";
+
+function includesQuery(query: string, values: Array<string | undefined | null>) {
+  if (!query) return true;
+  return values.some((value) => value?.toLowerCase().includes(query));
+}
 
 function getInitials(name: string): string {
   return name
@@ -26,8 +31,10 @@ export function HomePage() {
     getUniverseById,
     getStoriesForUniverse,
   } = useStoryEngine();
-  const { showArchivedStories } = useUiPrefs();
+  const { showArchivedStories, setShowArchivedStories } = useUiPrefs();
   const { openChangelog } = useChangelog();
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
 
   const visibleStories = useMemo(
     () => stories.filter((s) => (showArchivedStories ? true : !s.isArchived)),
@@ -50,6 +57,22 @@ export function HomePage() {
     const versions = Object.keys(CHANGELOG).reverse().slice(0, 3);
     return versions.map((v, i) => ({ version: v, entry: CHANGELOG[v]!, isLatest: i === 0 }));
   }, []);
+
+  const searchResults = useMemo(() => {
+    if (!normalizedQuery) return null;
+    return {
+      matchedStories: visibleStories
+        .filter((s) => includesQuery(normalizedQuery, [s.title, s.currentSummary, getUniverseById(s.universeId)?.name]))
+        .slice(0, 8),
+      matchedUniverses: universes
+        .filter((u) => includesQuery(normalizedQuery, [u.name, u.description, u.concept, u.genreTheme, u.tone, u.universeBlueprint, u.notes, u.wikiUrl]))
+        .slice(0, 6),
+      matchedCharacters: playerCharacters
+        .filter((c) => (c.scope ?? "library") === "library")
+        .filter((c) => includesQuery(normalizedQuery, [c.name, c.characterConcept, c.background, c.goals, c.notes, c.gender, c.pronouns, c.species]))
+        .slice(0, 8),
+    };
+  }, [normalizedQuery, visibleStories, universes, playerCharacters, getUniverseById]);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -133,6 +156,69 @@ export function HomePage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ── Search ── */}
+      <div className="flex-shrink-0 pt-4">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <svg
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/25"
+              width="13" height="13" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search stories, universes, characters…"
+              className="w-full rounded-[8px] border border-divider/[0.5] bg-panel-muted py-2 pl-8 pr-3 text-[13px] text-ink outline-none transition placeholder:text-white/25 focus:border-accent/[0.35] focus:ring-2 focus:ring-accent/[0.12]"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowArchivedStories(!showArchivedStories)}
+            className={cn(
+              "flex-shrink-0 rounded-[8px] border px-3 py-2 text-[11px] font-medium transition",
+              showArchivedStories
+                ? "border-accent/[0.3] bg-accent/[0.08] text-accent-soft"
+                : "border-divider/[0.45] bg-panel-muted text-white/35 hover:border-divider/[0.65] hover:text-white/50",
+            )}
+          >
+            {showArchivedStories ? "Archived on" : "Archived off"}
+          </button>
+        </div>
+
+        {searchResults && (
+          <div className="mt-2.5 grid gap-2 rounded-[10px] border border-divider/[0.45] bg-app px-[18px] py-[15px] lg:grid-cols-3">
+            {[
+              { label: "Stories", items: searchResults.matchedStories, getTo: (s: typeof searchResults.matchedStories[0]) => `/stories/${s.id}`, getName: (s: typeof searchResults.matchedStories[0]) => s.title },
+              { label: "Universes", items: searchResults.matchedUniverses, getTo: (u: typeof searchResults.matchedUniverses[0]) => `/universes/${u.id}`, getName: (u: typeof searchResults.matchedUniverses[0]) => u.name },
+              { label: "Characters", items: searchResults.matchedCharacters, getTo: (c: typeof searchResults.matchedCharacters[0]) => `/player-characters/${c.id}`, getName: (c: typeof searchResults.matchedCharacters[0]) => c.name },
+            ].map(({ label, items, getTo, getName }) => (
+              <div key={label}>
+                <div className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.22em] text-white/30">{label}</div>
+                <div className="flex flex-col">
+                  {items.length ? (
+                    (items as any[]).map((item) => (
+                      <Link
+                        key={item.id}
+                        to={getTo(item)}
+                        className="truncate rounded-[7px] px-2 py-1.5 text-[13px] text-ink-soft transition hover:bg-white/[0.04]"
+                      >
+                        {getName(item)}
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="px-2 py-1.5 text-[13px] text-white/25">No matches.</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── 2-col layout ── */}
