@@ -32,3 +32,18 @@ export function sortByTimestampAsc<T extends { timestamp: string }>(items: T[]) 
   );
 }
 
+export function formatRelativeTime(timestamp: string): string {
+  const diffMs = Date.now() - new Date(timestamp).getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSecs < 60) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return formatDate(timestamp);
+}
+

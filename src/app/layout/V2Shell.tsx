@@ -194,8 +194,8 @@ export function V2Shell() {
               readerActive
                 ? "lg:grid-cols-[minmax(0,1fr)]"
                 : rightSidebarCollapsed
-                  ? "lg:grid-cols-[320px_minmax(0,1fr)]"
-                  : "lg:grid-cols-[320px_minmax(0,1fr)_360px]",
+                  ? "lg:grid-cols-[266px_minmax(0,1fr)]"
+                  : "lg:grid-cols-[266px_minmax(0,1fr)_360px]",
             )}
           >
             {readerActive ? null : (

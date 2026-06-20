@@ -1,15 +1,17 @@
-import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
-import { BrandMark } from "../../components/BrandMark";
+import { Link, useNavigate } from "react-router-dom";
+import { useMemo } from "react";
 import { buttonClasses } from "../../components/ui/Button";
 import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
-import { useUiPrefs } from "../ui/UiPrefsContext";
-import { APP_NAME, APP_VERSION } from "../versioning/version";
+import { APP_VERSION } from "../versioning/version";
 
-function includesQuery(query: string, values: Array<string | undefined | null>) {
-  if (!query) return true;
-  return values.some((value) => value?.toLowerCase().includes(query));
+function getInitials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .slice(0, 2)
+    .join("");
 }
 
 interface V2LeftSidebarProps {
@@ -23,346 +25,271 @@ export function V2LeftSidebar({
   className,
   onNavigate,
 }: V2LeftSidebarProps) {
-  const { universes, stories, playerCharacters, getStoriesForUniverse, getPlayerCharacterById, getUniverseById } =
-    useStoryEngine();
-  const { showArchivedStories, setShowArchivedStories } = useUiPrefs();
-  const [query, setQuery] = useState("");
-  const [collapsedUniverses, setCollapsedUniverses] = useState<Record<string, boolean>>(
-    {},
+  const navigate = useNavigate();
+  const {
+    universes,
+    stories,
+    playerCharacters,
+    getStoriesForUniverse,
+  } = useStoryEngine();
+
+  const activeStory = useMemo(
+    () => (activeStoryId ? stories.find((s) => s.id === activeStoryId) : undefined),
+    [activeStoryId, stories],
   );
 
-  useEffect(() => {
-    // #region debug-point version-mismatch:sidebar-version
-    void fetch("http://127.0.0.1:7777/event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "in-app-version-mismatch",
-        runId: "pre-fix",
-        hypothesisId: "A",
-        location: "V2LeftSidebar.tsx",
-        msg: "[DEBUG] sidebar version render",
-        data: {
-          appVersion: APP_VERSION,
-          href: typeof window !== "undefined" ? window.location.href : null,
-          userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-        },
-        ts: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-  }, []);
+  const activeUniverseId = useMemo(() => {
+    if (activeStory) return activeStory.universeId;
+    return stories[0]?.universeId;
+  }, [activeStory, stories]);
 
-  const normalizedQuery = query.trim().toLowerCase();
-
-  const universeRows = useMemo(() => {
-    return universes
-      .map((universe) => {
-        const stories = getStoriesForUniverse(universe.id).filter(
-          (story) => showArchivedStories || !story.isArchived,
-        );
-        const storyRows = stories.map((story) => {
-          const playerCharacter = getPlayerCharacterById(story.playerCharacterId);
-          return {
-            story,
-            playerCharacterName: playerCharacter?.name ?? "Unknown character",
-          };
-        });
-
-        return { universe, stories: storyRows };
-      })
-      .filter(({ universe, stories }) => {
-        if (!normalizedQuery) {
-          return true;
-        }
-
-        if (
-          includesQuery(normalizedQuery, [
-            universe.name,
-            universe.description,
-            universe.concept,
-            universe.genreTheme,
-            universe.tone,
-            universe.universeBlueprint,
-            universe.notes,
-            universe.wikiUrl,
-          ])
-        ) {
-          return true;
-        }
-
-        return stories.some(({ story, playerCharacterName }) =>
-          includesQuery(normalizedQuery, [
-            story.title,
-            story.currentSummary,
-            playerCharacterName,
-          ]),
-        );
-      });
-  }, [getPlayerCharacterById, getStoriesForUniverse, normalizedQuery, showArchivedStories, universes]);
-
-  const searchResults = useMemo(() => {
-    if (!normalizedQuery) {
-      return null;
-    }
-
-    const matchedStories = stories
-      .filter((story) => (showArchivedStories ? true : !story.isArchived))
-      .filter((story) =>
-        includesQuery(normalizedQuery, [
-          story.title,
-          story.currentSummary,
-          getUniverseById(story.universeId)?.name,
-        ]),
-      )
-      .slice(0, 8);
-    const matchedUniverses = universes
-      .filter((universe) =>
-        includesQuery(normalizedQuery, [
-          universe.name,
-          universe.description,
-          universe.concept,
-          universe.genreTheme,
-          universe.tone,
-          universe.universeBlueprint,
-          universe.notes,
-          universe.wikiUrl,
-        ]),
-      )
-      .slice(0, 6);
-    const matchedCharacters = playerCharacters
-      .filter((character) => (character.scope ?? "library") === "library")
-      .filter((character) =>
-        includesQuery(normalizedQuery, [
-          character.name,
-          character.characterConcept,
-          character.background,
-          character.goals,
-          character.notes,
-          character.gender,
-          character.pronouns,
-          character.species,
-        ]),
-      )
-      .slice(0, 8);
-
-    return { matchedStories, matchedUniverses, matchedCharacters };
-  }, [getUniverseById, normalizedQuery, playerCharacters, showArchivedStories, stories, universes]);
+  const libraryCharacters = useMemo(
+    () =>
+      playerCharacters
+        .filter((c) => (c.scope ?? "library") === "library")
+        .slice(0, 6),
+    [playerCharacters],
+  );
 
   return (
-    <div className={cn("flex h-full flex-col", className)}>
-      <div className="px-4 pb-4 pt-5">
-        <BrandMark compact />
-        <div className="mt-5">
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search universes or stories..."
-            className="w-full rounded-2xl border border-divider bg-panel-muted px-4 py-3 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
-          />
+    <div className={cn("flex h-full flex-col bg-[#0C0C0C]", className)}>
+
+      {/* Header: brandmark + quick actions */}
+      <div className="flex-shrink-0 border-b border-[#161616] px-5 pb-4 pt-[22px]">
+        <div className="mb-4 flex items-center gap-2.5">
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#7C3AED"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="2.2" />
+            <path d="M4 14c2.1 3.5 5.3 5.5 8 5.5s5.9-2 8-5.5c-2.1-3.5-5.3-5.5-8-5.5S6.1 10.5 4 14Z" />
+            <path d="M9.5 4.5c-1.4 3.8-.9 7.4 1 9.3s5.5 2.4 9.3 1c-1.4-3.8-3.8-6.2-5.7-7.1-1.9-.9-3.8-.8-4.6-3.2Z" />
+          </svg>
+          <Link
+            to="/"
+            onClick={onNavigate}
+            className="text-[13px] font-bold tracking-[0.07em] text-[#F8FAFC]"
+          >
+            STORY ENGINE
+          </Link>
         </div>
-        <button
-          type="button"
-          className="mt-3 w-full rounded-2xl border border-divider bg-panel-muted px-4 py-2 text-left text-xs font-semibold uppercase tracking-[0.18em] text-ink-soft transition hover:bg-panel-strong"
-          onClick={() => setShowArchivedStories(!showArchivedStories)}
-        >
-          {showArchivedStories ? "Showing archived" : "Hiding archived"}
-        </button>
-      </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-auto px-3 pb-4">
-        {searchResults ? (
-          <div className="space-y-2">
-            {searchResults.matchedStories.length ? (
-              <div className="rounded-2xl border border-divider bg-panel-muted p-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                  Stories
-                </div>
-                <div className="mt-2 space-y-1">
-                  {searchResults.matchedStories.map((story) => (
-                    <Link
-                      key={story.id}
-                      to={`/stories/${story.id}`}
-                      onClick={onNavigate}
-                      className="block truncate rounded-xl px-2 py-2 text-sm text-ink-soft transition hover:bg-white/[0.04]"
-                    >
-                      {story.title}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {searchResults.matchedUniverses.length ? (
-              <div className="rounded-2xl border border-divider bg-panel-muted p-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                  Universes
-                </div>
-                <div className="mt-2 space-y-1">
-                  {searchResults.matchedUniverses.map((universe) => (
-                    <Link
-                      key={universe.id}
-                      to={`/universes/${universe.id}`}
-                      onClick={onNavigate}
-                      className="block truncate rounded-xl px-2 py-2 text-sm text-ink-soft transition hover:bg-white/[0.04]"
-                    >
-                      {universe.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {searchResults.matchedCharacters.length ? (
-              <div className="rounded-2xl border border-divider bg-panel-muted p-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                  Characters
-                </div>
-                <div className="mt-2 space-y-1">
-                  {searchResults.matchedCharacters.map((character) => (
-                    <Link
-                      key={character.id}
-                      to={`/player-characters/${character.id}`}
-                      onClick={onNavigate}
-                      className="block truncate rounded-xl px-2 py-2 text-sm text-ink-soft transition hover:bg-white/[0.04]"
-                    >
-                      {character.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {universeRows.map(({ universe, stories }) => {
-          const collapsed = collapsedUniverses[universe.id] ?? false;
-          const hasActiveStory = stories.some(({ story }) => story.id === activeStoryId);
-
-          return (
-            <div
-              key={universe.id}
-              className={cn(
-                "rounded-2xl border border-divider bg-panel-muted p-2 ring-1 ring-accent/8",
-                hasActiveStory ? "border-accent/35 bg-accent/10 ring-accent/12" : "",
-              )}
-            >
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-white/[0.04]"
-                onClick={() =>
-                  setCollapsedUniverses((current) => ({
-                    ...current,
-                    [universe.id]: !collapsed,
-                  }))
-                }
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-ink">
-                    {universe.name}
-                  </div>
-                  <div className="mt-0.5 text-xs text-ink-muted">
-                    {stories.length} {stories.length === 1 ? "story" : "stories"}
-                  </div>
-                </div>
-                <div className="shrink-0 text-xs text-ink-muted">
-                  {collapsed ? "▸" : "▾"}
-                </div>
-              </button>
-
-              {!collapsed ? (
-                <div className="mt-1 space-y-1">
-                  {stories.length ? (
-                    stories.map(({ story }) => {
-                      const isActive = story.id === activeStoryId;
-
-                      return (
-                        <Link
-                          key={story.id}
-                          to={`/stories/${story.id}`}
-                          onClick={onNavigate}
-                          className={cn(
-                            "flex items-center gap-2 rounded-xl px-2 py-2 text-sm transition",
-                            isActive
-                              ? "bg-accent/14 text-ink"
-                              : "text-ink-soft hover:bg-white/[0.04]",
-                          )}
-                        >
-                          <span className="text-ink-muted">#</span>
-                          <span className="truncate">{story.title}</span>
-                        </Link>
-                      );
-                    })
-                  ) : (
-                    <div className="px-2 py-2 text-xs text-ink-muted">
-                      No stories yet.
-                    </div>
-                  )}
-
-                  <Link
-                    to="/stories/new"
-                    onClick={onNavigate}
-                    className={cn(
-                      "mt-2 flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-accent-soft transition hover:bg-panel-strong",
-                    )}
-                  >
-                    <span className="text-ink-muted">+</span>
-                    <span>New Story</span>
-                  </Link>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-
-        <div className="pt-2">
+        <div className="flex gap-2">
+          <Link
+            to="/stories/new"
+            onClick={onNavigate}
+            className="flex-1 rounded-[7px] border border-[#252525] bg-[#1A1A1A] py-2 text-center text-xs font-medium text-[#DBE4F0] transition hover:bg-[#222]"
+          >
+            New Story
+          </Link>
           <Link
             to="/universes/new"
             onClick={onNavigate}
-            className={cn(
-              "flex items-center gap-2 rounded-2xl border border-dashed border-divider bg-panel-muted px-4 py-3 text-sm text-ink-soft transition hover:border-accent/25 hover:bg-panel-strong",
-            )}
+            className="flex-1 rounded-[7px] bg-[#7C3AED] py-2 text-center text-xs font-semibold text-white transition hover:bg-[#6d28d9]"
           >
-            <span className="text-ink-muted">+</span>
-            <span>New Universe</span>
+            New Universe
           </Link>
         </div>
       </div>
 
-      <div className="border-t border-divider p-4">
-        <div className="grid gap-2">
+      {/* My Worlds header */}
+      <div className="flex flex-shrink-0 items-center justify-between px-[18px] pb-2 pt-3.5">
+        <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+          My Worlds
+        </span>
+        <span className="rounded-full bg-[#1A1A1A] px-2 py-0.5 text-[9px] font-semibold text-white/20">
+          {universes.length}
+        </span>
+      </div>
+
+      {/* Universe cards (scrollable) */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-2">
+        <div className="flex flex-col gap-[5px]">
+          {universes.map((universe) => {
+            const universeStories = getStoriesForUniverse(universe.id).filter(
+              (s) => !s.isArchived,
+            );
+            const isActive = universe.id === activeUniverseId;
+
+            return (
+              <Link
+                key={universe.id}
+                to={`/universes/${universe.id}`}
+                onClick={onNavigate}
+                className={cn(
+                  "block rounded-[10px] border px-[15px] py-3.5 transition",
+                  isActive
+                    ? "border-[#7C3AED26] bg-[#7C3AED09]"
+                    : "border-[#191919] bg-[#111] hover:border-[#222] hover:bg-[#161616]",
+                )}
+              >
+                <div className="mb-1.5 flex items-start justify-between gap-2">
+                  <span
+                    className={cn(
+                      "text-[13px] font-bold leading-tight",
+                      isActive ? "text-[#F8FAFC]" : "text-[#DBE4F0]",
+                    )}
+                  >
+                    {universe.name}
+                  </span>
+                  <span
+                    className={cn(
+                      "mt-0.5 flex-shrink-0 rounded-full px-[7px] py-0.5 text-[9px] font-semibold",
+                      isActive
+                        ? "bg-[#7C3AED1E] text-[#C4B5FD]"
+                        : "bg-[#1A1A1A] text-white/20",
+                    )}
+                  >
+                    {universeStories.length}
+                  </span>
+                </div>
+                {universe.description ? (
+                  <p className="mb-2 line-clamp-2 text-[11px] leading-[1.55] text-white/25">
+                    {universe.description}
+                  </p>
+                ) : null}
+                {universe.genreTheme ? (
+                  <span
+                    className={cn(
+                      "inline-block rounded-full border px-2 py-0.5 text-[9px] font-medium tracking-[0.04em]",
+                      isActive
+                        ? "border-[#222] bg-[#1A1A1A] text-white/25"
+                        : "border-[#1A1A1A] bg-[#111] text-white/20",
+                    )}
+                  >
+                    {universe.genreTheme}
+                  </span>
+                ) : null}
+              </Link>
+            );
+          })}
+
+          {/* New Universe dashed button */}
           <Link
-            to="/settings"
+            to="/universes/new"
             onClick={onNavigate}
-            className={buttonClasses({ variant: "ghost", className: "w-full justify-start" })}
+            className="flex items-center gap-2 rounded-[10px] border border-dashed border-[#1C1C1C] px-[15px] py-[11px] transition hover:border-[#282828]"
           >
-            Settings
-          </Link>
-          <Link
-            to="/universes"
-            onClick={onNavigate}
-            className={buttonClasses({ variant: "ghost", className: "w-full justify-start" })}
-          >
-            Manage Universes
-          </Link>
-          <Link
-            to="/player-characters"
-            onClick={onNavigate}
-            className={buttonClasses({ variant: "ghost", className: "w-full justify-start" })}
-          >
-            Manage Characters
-          </Link>
-          <Link
-            to="/developer-notes"
-            onClick={onNavigate}
-            className={buttonClasses({ variant: "ghost", className: "w-full justify-start" })}
-          >
-            Developer Notes
+            <span className="text-[15px] leading-none text-white/15">+</span>
+            <span className="text-xs text-white/15">New Universe</span>
           </Link>
         </div>
-        <div className="mt-4 text-center text-xs text-ink-muted">
-          {APP_NAME} v{APP_VERSION}
+      </div>
+
+      {/* Characters strip */}
+      <div className="flex-shrink-0 border-t border-[#161616] px-2.5 pb-0 pt-3">
+        <div className="mb-2.5 px-1.5 text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+          Characters
         </div>
+        <div className="flex gap-3 overflow-x-auto px-1.5 pb-3">
+          {libraryCharacters.map((character, i) => {
+            const initials = getInitials(character.name);
+            const isFirst = i === 0;
+
+            return (
+              <Link
+                key={character.id}
+                to={`/player-characters/${character.id}`}
+                onClick={onNavigate}
+                className="flex flex-col items-center gap-1"
+              >
+                <div
+                  className={cn(
+                    "flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
+                    isFirst
+                      ? "border-[#7C3AED36] bg-[#7C3AED1E] text-[#A78BFA]"
+                      : "border-[#222] bg-[#1A1A1A] text-white/20",
+                  )}
+                >
+                  {initials}
+                </div>
+                <span className="max-w-[40px] truncate text-[9px] text-white/22">
+                  {character.name.split(" ")[0]}
+                </span>
+              </Link>
+            );
+          })}
+
+          {/* New character button */}
+          <Link
+            to="/player-characters/new"
+            onClick={onNavigate}
+            className="flex flex-col items-center gap-1"
+          >
+            <div className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full border border-dashed border-[#1C1C1C] bg-[#111]">
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="rgba(255,255,255,0.15)"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+            </div>
+            <span className="text-[9px] text-white/15">New</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex flex-shrink-0 items-center justify-between border-t border-[#161616] px-[18px] py-2.5">
+        <span className="font-mono text-[10px] text-white/15">v{APP_VERSION}</span>
+        <Link
+          to="/settings"
+          onClick={onNavigate}
+          className="flex items-center gap-1.5 text-white/20 transition hover:text-white/40"
+        >
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 2.75v3" />
+            <path d="m18.54 5.46-2.12 2.12" />
+            <path d="M21.25 12h-3" />
+            <path d="m18.54 18.54-2.12-2.12" />
+            <path d="M12 18.25v3" />
+            <path d="m7.58 16.42-2.12 2.12" />
+            <path d="M5.75 12h-3" />
+            <path d="m7.58 7.58-2.12-2.12" />
+            <circle cx="12" cy="12" r="3.5" />
+          </svg>
+          <span className="text-[11px]">Settings</span>
+        </Link>
+      </div>
+
+      {/* Hidden accessibility links */}
+      <div className="sr-only">
+        <Link to="/player-characters" onClick={onNavigate}
+          className={buttonClasses({ variant: "ghost", className: "w-full justify-start" })}>
+          Manage Characters
+        </Link>
+        <Link to="/universes" onClick={onNavigate}
+          className={buttonClasses({ variant: "ghost", className: "w-full justify-start" })}>
+          Manage Universes
+        </Link>
+        <button
+          type="button"
+          onClick={() => { navigate("/developer-notes"); onNavigate?.(); }}
+          className={buttonClasses({ variant: "ghost", className: "w-full justify-start" })}
+        >
+          Developer Notes
+        </button>
       </div>
     </div>
   );
