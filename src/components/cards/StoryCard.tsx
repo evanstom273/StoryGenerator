@@ -20,7 +20,7 @@ export function StoryCard({
   actions,
 }: StoryCardProps) {
   return (
-    <Panel className="h-full">
+    <Panel className="h-full bg-panel-muted">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-wrap gap-2">
           <Badge variant="accent">{universeName}</Badge>

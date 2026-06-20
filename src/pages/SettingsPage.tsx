@@ -650,7 +650,7 @@ export function SettingsPage() {
             Version tracking and release notes for the current build.
           </p>
           <div className="mt-4 space-y-4">
-            <Panel className="border-white/8 bg-black/15">
+            <Panel className="border-divider/[0.5] bg-panel-muted/50">
               <div className="text-sm text-ink-soft">{APP_NAME} v{APP_VERSION}</div>
             </Panel>
             <div className="flex flex-wrap gap-3">
@@ -668,7 +668,7 @@ export function SettingsPage() {
               </Button>
             </div>
             {versionCopyStatus ? (
-              <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+              <div className="rounded-xl border border-divider/[0.5] bg-panel-muted/50 px-4 py-3 text-sm text-ink-muted">
                 {versionCopyStatus}
               </div>
             ) : null}
@@ -696,7 +696,7 @@ export function SettingsPage() {
               </SelectInput>
             </Field>
 
-            <Panel className="border-white/8 bg-black/15">
+            <Panel className="border-divider/[0.5] bg-panel-muted/50">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 OpenAI
               </div>
@@ -725,7 +725,7 @@ export function SettingsPage() {
               </div>
             </Panel>
 
-            <Panel className="border-white/8 bg-black/15">
+            <Panel className="border-divider/[0.5] bg-panel-muted/50">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   Gemini
@@ -759,7 +759,7 @@ export function SettingsPage() {
               </div>
             </Panel>
 
-            <Panel className="border-white/8 bg-black/15">
+            <Panel className="border-divider/[0.5] bg-panel-muted/50">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   OpenRouter
@@ -1010,7 +1010,7 @@ export function SettingsPage() {
               ) : null}
             </div>
 
-            <div className="space-y-3 border-t border-white/8 pt-5">
+            <div className="space-y-3 border-t border-divider/[0.5] pt-5">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 Import Item
               </div>
@@ -1115,7 +1115,7 @@ export function SettingsPage() {
               <dt>Messages</dt>
               <dd>{storageStatus.messagesCount}</dd>
             </div>
-            <div className="flex items-center justify-between gap-4 border-t border-white/8 pt-3">
+            <div className="flex items-center justify-between gap-4 border-t border-divider/[0.5] pt-3">
               <dt>Total Records</dt>
               <dd>{storageStatus.totalRecords}</dd>
             </div>

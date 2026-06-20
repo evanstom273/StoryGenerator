@@ -52,17 +52,17 @@ export function V2LeftSidebar({
   );
 
   return (
-    <div className={cn("flex h-full flex-col bg-[#0C0C0C]", className)}>
+    <div className={cn("flex h-full flex-col bg-app", className)}>
 
       {/* Header: brandmark + quick actions */}
-      <div className="flex-shrink-0 border-b border-[#161616] px-5 pb-4 pt-[22px]">
+      <div className="flex-shrink-0 border-b border-divider/[0.4] px-5 pb-4 pt-[22px]">
         <div className="mb-4 flex items-center gap-2.5">
           <svg
             width="22"
             height="22"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="#7C3AED"
+            stroke="rgb(var(--accent-rgb))"
             strokeWidth="1.8"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -74,7 +74,7 @@ export function V2LeftSidebar({
           <Link
             to="/"
             onClick={onNavigate}
-            className="text-[13px] font-bold tracking-[0.07em] text-[#F8FAFC]"
+            className="text-[13px] font-bold tracking-[0.07em] text-ink"
           >
             STORY ENGINE
           </Link>
@@ -84,14 +84,14 @@ export function V2LeftSidebar({
           <Link
             to="/stories/new"
             onClick={onNavigate}
-            className="flex-1 rounded-[7px] border border-[#252525] bg-[#1A1A1A] py-2 text-center text-xs font-medium text-[#DBE4F0] transition hover:bg-[#222]"
+            className="flex-1 rounded-[7px] border border-divider/[0.5] bg-panel-muted py-2 text-center text-xs font-medium text-ink-soft transition hover:bg-panel"
           >
             New Story
           </Link>
           <Link
             to="/universes/new"
             onClick={onNavigate}
-            className="flex-1 rounded-[7px] bg-[#7C3AED] py-2 text-center text-xs font-semibold text-white transition hover:bg-[#6d28d9]"
+            className="flex-1 rounded-[7px] bg-accent py-2 text-center text-xs font-semibold text-accent-foreground transition hover:bg-accent-hover"
           >
             New Universe
           </Link>
@@ -103,7 +103,7 @@ export function V2LeftSidebar({
         <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
           My Worlds
         </span>
-        <span className="rounded-full bg-[#1A1A1A] px-2 py-0.5 text-[9px] font-semibold text-white/20">
+        <span className="rounded-full bg-panel px-2 py-0.5 text-[9px] font-semibold text-white/20">
           {universes.length}
         </span>
       </div>
@@ -125,15 +125,15 @@ export function V2LeftSidebar({
                 className={cn(
                   "block rounded-[10px] border px-[15px] py-3.5 transition",
                   isActive
-                    ? "border-[#7C3AED26] bg-[#7C3AED09]"
-                    : "border-[#191919] bg-[#111] hover:border-[#222] hover:bg-[#161616]",
+                    ? "border-accent/[0.15] bg-accent/[0.035]"
+                    : "border-divider/[0.4] bg-app hover:border-divider/[0.5] hover:bg-panel-muted",
                 )}
               >
                 <div className="mb-1.5 flex items-start justify-between gap-2">
                   <span
                     className={cn(
                       "text-[13px] font-bold leading-tight",
-                      isActive ? "text-[#F8FAFC]" : "text-[#DBE4F0]",
+                      isActive ? "text-ink" : "text-ink-soft",
                     )}
                   >
                     {universe.name}
@@ -142,8 +142,8 @@ export function V2LeftSidebar({
                     className={cn(
                       "mt-0.5 flex-shrink-0 rounded-full px-[7px] py-0.5 text-[9px] font-semibold",
                       isActive
-                        ? "bg-[#7C3AED1E] text-[#C4B5FD]"
-                        : "bg-[#1A1A1A] text-white/20",
+                        ? "bg-accent/[0.12] text-accent-soft"
+                        : "bg-panel text-white/20",
                     )}
                   >
                     {universeStories.length}
@@ -159,8 +159,8 @@ export function V2LeftSidebar({
                     className={cn(
                       "inline-block rounded-full border px-2 py-0.5 text-[9px] font-medium tracking-[0.04em]",
                       isActive
-                        ? "border-[#222] bg-[#1A1A1A] text-white/25"
-                        : "border-[#1A1A1A] bg-[#111] text-white/20",
+                        ? "border-divider/[0.5] bg-panel-muted text-white/25"
+                        : "border-divider/[0.4] bg-app text-white/20",
                     )}
                   >
                     {universe.genreTheme}
@@ -174,7 +174,7 @@ export function V2LeftSidebar({
           <Link
             to="/universes/new"
             onClick={onNavigate}
-            className="flex items-center gap-2 rounded-[10px] border border-dashed border-[#1C1C1C] px-[15px] py-[11px] transition hover:border-[#282828]"
+            className="flex items-center gap-2 rounded-[10px] border border-dashed border-divider/[0.4] px-[15px] py-[11px] transition hover:border-divider/[0.6]"
           >
             <span className="text-[15px] leading-none text-white/15">+</span>
             <span className="text-xs text-white/15">New Universe</span>
@@ -183,7 +183,7 @@ export function V2LeftSidebar({
       </div>
 
       {/* Characters strip */}
-      <div className="flex-shrink-0 border-t border-[#161616] px-2.5 pb-0 pt-3">
+      <div className="flex-shrink-0 border-t border-divider/[0.4] px-2.5 pb-0 pt-3">
         <div className="mb-2.5 px-1.5 text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
           Characters
         </div>
@@ -203,8 +203,8 @@ export function V2LeftSidebar({
                   className={cn(
                     "flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
                     isFirst
-                      ? "border-[#7C3AED36] bg-[#7C3AED1E] text-[#A78BFA]"
-                      : "border-[#222] bg-[#1A1A1A] text-white/20",
+                      ? "border-accent/[0.21] bg-accent/[0.12] text-accent-secondary"
+                      : "border-divider/[0.5] bg-panel text-white/20",
                   )}
                 >
                   {initials}
@@ -222,7 +222,7 @@ export function V2LeftSidebar({
             onClick={onNavigate}
             className="flex flex-col items-center gap-1"
           >
-            <div className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full border border-dashed border-[#1C1C1C] bg-[#111]">
+            <div className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full border border-dashed border-divider/[0.4] bg-app">
               <svg
                 width="11"
                 height="11"
@@ -242,7 +242,7 @@ export function V2LeftSidebar({
       </div>
 
       {/* Footer */}
-      <div className="flex flex-shrink-0 items-center justify-between border-t border-[#161616] px-[18px] py-2.5">
+      <div className="flex flex-shrink-0 items-center justify-between border-t border-divider/[0.4] px-[18px] py-2.5">
         <span className="font-mono text-[10px] text-white/15">v{APP_VERSION}</span>
         <Link
           to="/settings"

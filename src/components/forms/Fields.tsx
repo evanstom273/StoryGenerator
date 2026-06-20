@@ -32,7 +32,7 @@ export function Field({
 }
 
 export const inputClasses =
-  "w-full rounded-2xl border border-divider bg-panel-muted px-4 py-3 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25";
+  "w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted/[0.6] focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]";
 
 export function TextInput({
   className,

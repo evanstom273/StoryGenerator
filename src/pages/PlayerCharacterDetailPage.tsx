@@ -164,7 +164,7 @@ export function PlayerCharacterDetailPage() {
                   <Link
                     key={story.id}
                     to={`/stories/${story.id}`}
-                    className="block rounded-2xl border border-white/8 bg-black/15 px-4 py-4 text-sm text-ink-soft transition hover:border-white/16 hover:bg-white/[0.04]"
+                    className="block rounded-xl border border-divider/[0.5] bg-panel-muted/50 px-4 py-3 text-sm text-ink-soft transition hover:border-divider/[0.7] hover:bg-panel-muted"
                   >
                     <div className="font-medium text-ink">{story.title}</div>
                     <div className="mt-2 text-ink-muted">

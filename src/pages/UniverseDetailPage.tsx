@@ -92,7 +92,7 @@ function ImportedLoreSection({
               <dd className="mt-1">{latestImport.title || "Untitled wiki page"}</dd>
             </div>
           </dl>
-          <div className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-2xl border border-white/8 bg-black/15 p-4 text-sm leading-7 text-ink-soft">
+          <div className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-xl border border-divider/[0.5] bg-panel-muted/50 p-4 text-sm leading-7 text-ink-soft">
             {latestImport.importedText}
           </div>
         </div>
@@ -392,7 +392,7 @@ export function UniverseDetailPage() {
                   <Link
                     key={character.id}
                     to={`/player-characters/${character.id}`}
-                    className="block rounded-2xl border border-white/8 bg-black/15 px-4 py-4 text-sm text-ink-soft transition hover:border-white/16 hover:bg-white/[0.04]"
+                    className="block rounded-xl border border-divider/[0.5] bg-panel-muted/50 px-4 py-3 text-sm text-ink-soft transition hover:border-divider/[0.7] hover:bg-panel-muted"
                   >
                     {character.name}
                   </Link>
@@ -411,7 +411,7 @@ export function UniverseDetailPage() {
                   <Link
                     key={story.id}
                     to={`/stories/${story.id}`}
-                    className="block rounded-2xl border border-white/8 bg-black/15 px-4 py-4 text-sm text-ink-soft transition hover:border-white/16 hover:bg-white/[0.04]"
+                    className="block rounded-xl border border-divider/[0.5] bg-panel-muted/50 px-4 py-3 text-sm text-ink-soft transition hover:border-divider/[0.7] hover:bg-panel-muted"
                   >
                     {story.title}
                   </Link>
