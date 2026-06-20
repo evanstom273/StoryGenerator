@@ -1,230 +1,404 @@
 import { Link } from "react-router-dom";
 import { useMemo } from "react";
+import { buttonClasses } from "../components/ui/Button";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
-import { APP_VERSION } from "../app/versioning/version";
-import { BrandMark } from "../components/BrandMark";
-import { buttonClasses } from "../components/ui/Button";
+import { formatRelativeTime } from "../lib/dates";
+import { APP_VERSION, CHANGELOG } from "../app/versioning/version";
+import { cn } from "../utils/cn";
 
-function formatCount(value: number) {
-  return value.toString().padStart(2, "0");
+function getInitials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .slice(0, 2)
+    .join("");
 }
 
 export function HomePage() {
-  const { stories, universes, playerCharacters } = useStoryEngine();
+  const {
+    stories,
+    universes,
+    playerCharacters,
+    getPlayerCharacterById,
+    getUniverseById,
+    getStoriesForUniverse,
+  } = useStoryEngine();
   const { showArchivedStories } = useUiPrefs();
 
   const visibleStories = useMemo(
-    () => stories.filter((story) => (showArchivedStories ? true : !story.isArchived)),
+    () => stories.filter((s) => (showArchivedStories ? true : !s.isArchived)),
     [showArchivedStories, stories],
   );
 
+  const heroStory = visibleStories[0];
+  const heroUniverse = heroStory ? getUniverseById(heroStory.universeId) : undefined;
+  const heroCharacter = heroStory ? getPlayerCharacterById(heroStory.playerCharacterId) : undefined;
+
+  const recentStories = visibleStories.slice(0, 5);
+  const recentUniverses = universes.slice(0, 4);
+
   const libraryCharacters = useMemo(
-    () => playerCharacters.filter((character) => (character.scope ?? "library") === "library"),
+    () => playerCharacters.filter((c) => (c.scope ?? "library") === "library").slice(0, 5),
     [playerCharacters],
   );
 
-  const northStarChips = [
-    "Story memory",
-    "Character relationships",
-    "Wiki ingestion",
-    "Scene orchestration",
-    "Export / import",
-    "Local ownership",
-    "AI integration",
-  ];
-
-  const foundationCards = [
-    {
-      title: "Continuity comes first",
-      body: "Story Engine starts from memory, consequences, and long-running narrative state instead of disposable one-off chats.",
-    },
-    {
-      title: "Built for ensembles",
-      body: "The shell already frames stories, characters, and universes as connected systems instead of isolated roleplay threads.",
-    },
-    {
-      title: "User-owned by design",
-      body: "The interface is structured around local ownership, future exportability, and preserving story state outside any provider.",
-    },
-    {
-      title: "Canon meets original",
-      body: "Universe and character cards make room for original casts to interact with established worlds without losing identity.",
-    },
-  ];
-
-  const stats = [
-    {
-      label: "Story shells",
-      value: formatCount(visibleStories.length),
-      body: "Starter campaigns ready to expand into long-form continuity.",
-    },
-    {
-      label: "Character anchors",
-      value: formatCount(libraryCharacters.length),
-      body: "A mix of original and canon roles designed for ensemble play.",
-    },
-    {
-      label: "Universe lanes",
-      value: formatCount(universes.length),
-      body: "Distinct worlds prepared as future ingestion targets.",
-    },
-  ];
+  const changelogEntries = useMemo(() => {
+    const versions = Object.keys(CHANGELOG).reverse().slice(0, 3);
+    return versions.map((v, i) => ({ version: v, entry: CHANGELOG[v]!, isLatest: i === 0 }));
+  }, []);
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.95fr)]">
-        <div className="relative overflow-hidden rounded-[18px] border border-divider/[0.72] bg-app-elevated px-6 py-6 shadow-[0_30px_70px_rgba(0,0,0,0.35)] md:px-8 md:py-8">
+    <div className="flex min-h-full flex-col">
+
+      {/* ── Hero: Now Playing ── */}
+      <div className="-mx-4 -mt-6 flex-shrink-0 border-b border-[#141414] sm:-mx-6 sm:-mt-6 lg:-mx-10 lg:-mt-10">
+        <div className="relative overflow-hidden px-4 pb-8 pt-10 sm:px-6 lg:px-10 lg:pb-8 lg:pt-[42px]">
+          {/* Gradient accents */}
           <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0"
+            className="pointer-events-none absolute right-0 top-0 h-[280px] w-[500px]"
             style={{
-              background:
-                "radial-gradient(circle at 100% 0%, var(--accent-gradient-start) 0%, var(--accent-gradient-end) 36%, transparent 62%)",
+              background: "radial-gradient(ellipse at 100% 0%, rgba(124,58,237,0.08) 0%, transparent 68%)",
             }}
           />
-          <div className="relative z-10 space-y-8">
-            <div className="inline-flex items-center rounded-full border border-accent/[0.21] bg-accent/[0.11] px-3 py-1 text-[11px] font-semibold text-accent-soft">
-              Application Shell · Version 1
-            </div>
-
-            <div className="max-w-3xl space-y-5">
-              <div className="flex items-center gap-3">
-                <div className="rounded-[12px] border border-divider/[0.8] bg-panel-muted px-3 py-2">
-                  <BrandMark compact className="gap-3 [&_span:last-child]:hidden [&_span:first-child]:text-base" />
-                </div>
-                <div className="rounded-full border border-divider/[0.8] bg-panel-muted px-2.5 py-1 text-[11px] font-medium text-ink-muted">
-                  v{APP_VERSION}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.26em] text-accent-soft">
-                  <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                  Now Playing
-                </div>
-                <h1 className="max-w-4xl text-[42px] font-extrabold leading-[0.95] tracking-[-0.05em] text-ink md:text-[58px]">
-                  Create stories inside living fictional worlds.
-                </h1>
-                <p className="max-w-2xl text-base leading-relaxed text-ink-soft">
-                  Story Engine is a modern storytelling workspace for building original
-                  characters, placing them beside canon casts, and preserving
-                  long-term continuity across ensemble narratives.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Link to="/stories/new" className={buttonClasses({ variant: "primary", size: "lg" })}>
-                New Story →
-              </Link>
-              <Link
-                to="/universes/import"
-                className="inline-flex items-center justify-center rounded-full border border-divider/[0.8] bg-panel-muted px-5 py-[11px] text-[13px] font-semibold text-ink-soft transition hover:border-accent/[0.25] hover:bg-panel"
-              >
-                Import Universe
-              </Link>
-              <Link
-                to="/player-characters/new"
-                className="inline-flex items-center justify-center rounded-full border border-divider/[0.8] bg-panel-muted px-5 py-[11px] text-[13px] font-semibold text-ink-soft transition hover:border-accent/[0.25] hover:bg-panel"
-              >
-                Create Character
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-[18px] border border-divider/[0.72] bg-app-elevated px-6 py-6 shadow-[0_30px_70px_rgba(0,0,0,0.28)]">
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-ink-muted/[0.7]">
-                Design North Star
-              </div>
-              <h2 className="max-w-sm text-[34px] font-bold leading-[1.02] tracking-[-0.04em] text-ink">
-                A shell that already thinks like a story system.
-              </h2>
-              <p className="max-w-md text-sm leading-relaxed text-ink-soft">
-                Version 1 focuses on structure and clarity: stories, characters,
-                universes, and settings are separated cleanly so future memory,
-                orchestration, and import systems can drop in without a rewrite.
-              </p>
-            </div>
-
-            <div className="rounded-[16px] border border-divider/[0.8] bg-app px-4 py-4">
-              <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-ink-muted/[0.7]">
-                Future Systems
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {northStarChips.map((chip) => (
-                  <span
-                    key={chip}
-                    className="rounded-full border border-divider/[0.8] bg-panel-muted px-3 py-1 text-[11px] font-medium text-ink-soft"
-                  >
-                    {chip}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-3">
-        {stats.map((stat) => (
           <div
-            key={stat.label}
-            className="rounded-[18px] border border-divider/[0.72] bg-app-elevated px-6 py-5 shadow-[0_24px_50px_rgba(0,0,0,0.18)]"
-          >
-            <div className="text-xs text-ink-muted">{stat.label}</div>
-            <div className="mt-3 text-[42px] font-bold tracking-[-0.05em] text-ink">
-              {stat.value}
+            className="pointer-events-none absolute bottom-0 left-[200px] h-[120px] w-[300px]"
+            style={{
+              background: "radial-gradient(ellipse at 50% 100%, rgba(124,58,237,0.05) 0%, transparent 70%)",
+            }}
+          />
+
+          <div className="relative">
+            {/* Now Playing label */}
+            <div className="mb-3.5 flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.26em] text-white/20">
+              <div className="h-[5px] w-[5px] rounded-full bg-[#7C3AED]" />
+              Now Playing
             </div>
-            <p className="mt-3 max-w-sm text-sm leading-relaxed text-ink-soft">
-              {stat.body}
-            </p>
-          </div>
-        ))}
-      </section>
 
-      <section className="space-y-5">
-        <div className="space-y-2">
-          <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-accent-soft">
-            Foundation
-          </div>
-          <h2 className="text-[34px] font-bold leading-[1.04] tracking-[-0.04em] text-ink">
-            Purpose-built for scalable storytelling
-          </h2>
-        </div>
+            {heroStory ? (
+              <>
+                <h1 className="mb-4 text-[40px] font-extrabold leading-[1.02] tracking-[-0.04em] text-[#F8FAFC]">
+                  {heroStory.title}
+                </h1>
 
-        <div className="grid gap-4 xl:grid-cols-4 md:grid-cols-2">
-          {foundationCards.map((card) => (
-            <div
-              key={card.title}
-              className="rounded-[18px] border border-divider/[0.72] bg-app-elevated px-5 py-5 shadow-[0_24px_50px_rgba(0,0,0,0.18)]"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-[12px] border border-divider/[0.8] bg-panel-muted">
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="rgb(var(--accent-rgb))"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+                <div className="mb-4 flex flex-wrap items-center gap-2.5">
+                  {heroUniverse && (
+                    <span className="rounded-full border border-[#7C3AED3C] bg-[#7C3AED1E] px-3 py-0.5 text-[11px] font-semibold tracking-[0.02em] text-[#C4B5FD]">
+                      {heroUniverse.name}
+                    </span>
+                  )}
+                  {heroUniverse && heroCharacter && (
+                    <span className="inline-block h-3 w-px bg-[#1E1E1E]" />
+                  )}
+                  {heroCharacter && (
+                    <span className="text-xs text-[#484848]">{heroCharacter.name}</span>
+                  )}
+                  <span className="inline-block h-3 w-px bg-[#1E1E1E]" />
+                  <span className="text-xs text-[#383838]">
+                    {formatRelativeTime(heroStory.updatedAt)}
+                  </span>
+                </div>
+
+                {heroStory.currentSummary && (
+                  <p className="mb-5 max-w-[560px] text-[13px] leading-[1.72] text-[#4a4a4a]">
+                    {heroStory.currentSummary}
+                  </p>
+                )}
+
+                <Link
+                  to={`/stories/${heroStory.id}`}
+                  className="inline-flex items-center rounded-[8px] bg-[#7C3AED] px-6 py-[11px] text-[13px] font-bold tracking-[0.015em] text-white transition hover:bg-[#6d28d9]"
                 >
-                  <path d="M12 3v18" />
-                  <path d="M7 8.5c0-1.7 2.2-3 5-3s5 1.3 5 3-2.2 3-5 3-5 1.3-5 3 2.2 3 5 3 5-1.3 5-3" />
-                </svg>
+                  Continue Writing →
+                </Link>
+              </>
+            ) : (
+              <div className="py-4">
+                <h1 className="mb-4 text-[32px] font-extrabold leading-tight tracking-tight text-[#F8FAFC]">
+                  Your stories begin here
+                </h1>
+                <p className="mb-5 max-w-[480px] text-[13px] leading-[1.72] text-[#4a4a4a]">
+                  Create a universe, add a character, and start your first story.
+                </p>
+                <Link
+                  to="/stories/new"
+                  className="inline-flex items-center rounded-[8px] bg-[#7C3AED] px-6 py-[11px] text-[13px] font-bold tracking-[0.015em] text-white transition hover:bg-[#6d28d9]"
+                >
+                  Create Story →
+                </Link>
               </div>
-              <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.03em] text-ink">
-                {card.title}
-              </h3>
-              <p className="mt-4 text-sm leading-relaxed text-ink-soft">{card.body}</p>
-            </div>
-          ))}
+            )}
+          </div>
         </div>
-      </section>
+      </div>
+
+      {/* ── 2-col layout ── */}
+      <div className="grid flex-1 gap-5 pt-5 lg:grid-cols-[1.15fr_0.85fr]">
+
+        {/* Left column */}
+        <div className="flex flex-col gap-3.5">
+
+          {/* Recent Stories */}
+          <div className="rounded-[10px] border border-[#181818] bg-[#0D0D0D] px-[18px] py-[15px]">
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+                Recent Stories
+              </span>
+              <Link
+                to="/stories"
+                className="text-[11px] font-medium text-[#7C3AED] transition hover:text-[#9d6cff]"
+              >
+                All →
+              </Link>
+            </div>
+
+            <div className="flex flex-col">
+              {recentStories.length ? (
+                recentStories.map((story, i) => {
+                  const universe = getUniverseById(story.universeId);
+                  const isFirst = i === 0;
+                  return (
+                    <Link
+                      key={story.id}
+                      to={`/stories/${story.id}`}
+                      className={cn(
+                        "flex items-center justify-between rounded-[7px] px-2.5 py-2 transition hover:bg-white/[0.03]",
+                        isFirst ? "bg-[#141414]" : "",
+                      )}
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span
+                          className={cn(
+                            "truncate text-xs font-semibold",
+                            isFirst ? "text-[#F8FAFC]" : "text-[#94A3B8]",
+                          )}
+                        >
+                          {story.title}
+                        </span>
+                        {universe && (
+                          <span className="flex-shrink-0 text-[10px] text-white/22">
+                            {universe.name}
+                          </span>
+                        )}
+                      </div>
+                      <span className="ml-3 flex-shrink-0 text-[10px] text-white/18">
+                        {formatRelativeTime(story.updatedAt)}
+                      </span>
+                    </Link>
+                  );
+                })
+              ) : (
+                <div className="py-3 text-xs text-white/25">No stories yet.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Universes grid */}
+          <div className="flex flex-1 flex-col rounded-[10px] border border-[#181818] bg-[#0D0D0D] px-[18px] py-[15px]">
+            <div className="mb-2.5 flex flex-shrink-0 items-center justify-between">
+              <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+                Universes
+              </span>
+              <Link
+                to="/universes"
+                className="text-[11px] font-medium text-[#7C3AED] transition hover:text-[#9d6cff]"
+              >
+                Manage →
+              </Link>
+            </div>
+
+            <div className="grid flex-1 grid-cols-2 gap-2">
+              {recentUniverses.map((universe) => {
+                const universeStories = getStoriesForUniverse(universe.id).filter(
+                  (s) => !s.isArchived,
+                );
+                const isActive = universe.id === visibleStories[0]?.universeId;
+
+                return (
+                  <Link
+                    key={universe.id}
+                    to={`/universes/${universe.id}`}
+                    className={cn(
+                      "flex flex-col justify-between rounded-[9px] border p-3.5 transition",
+                      isActive
+                        ? "border-[#7C3AED1C] bg-[#1A1A1A]"
+                        : "bg-[#141414] hover:bg-[#1A1A1A]",
+                    )}
+                    style={isActive ? { borderColor: "rgba(124,58,237,0.11)" } : {}}
+                  >
+                    <div>
+                      <div className={cn("mb-0.5 text-xs font-semibold", isActive ? "text-[#F8FAFC]" : "text-[#DBE4F0]")}>
+                        {universe.name}
+                      </div>
+                      <div className="mb-2 text-[10px] text-white/28">
+                        {universe.genreTheme ?? ""}
+                      </div>
+                    </div>
+                    <span
+                      className={cn(
+                        "w-fit rounded-full px-2 py-0.5 text-[9px] font-semibold",
+                        isActive
+                          ? "bg-[#7C3AED1E] text-[#C4B5FD]"
+                          : "bg-[#1E1E1E] text-white/22",
+                      )}
+                    >
+                      {universeStories.length} {universeStories.length === 1 ? "story" : "stories"}
+                    </span>
+                  </Link>
+                );
+              })}
+
+              {/* New Universe card */}
+              <Link
+                to="/universes/new"
+                className="flex items-center justify-center gap-1.5 rounded-[9px] border border-dashed border-[#1A1A1A] py-4 transition hover:border-[#252525]"
+              >
+                <span className="text-[15px] leading-none text-white/15">+</span>
+                <span className="text-[11px] text-white/15">New World</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Right column */}
+        <div className="flex flex-col gap-3.5">
+
+          {/* Characters */}
+          <div className="rounded-[10px] border border-[#181818] bg-[#0D0D0D] px-[18px] py-[15px]">
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+                Characters
+              </span>
+              <Link
+                to="/player-characters"
+                className="text-[11px] font-medium text-[#7C3AED] transition hover:text-[#9d6cff]"
+              >
+                Manage →
+              </Link>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              {libraryCharacters.length ? (
+                libraryCharacters.map((character, i) => {
+                  const initials = getInitials(character.name);
+                  const isFirst = i === 0;
+                  const activeStoryCount = stories.filter(
+                    (s) => s.playerCharacterId === character.id && !s.isArchived,
+                  ).length;
+
+                  return (
+                    <Link
+                      key={character.id}
+                      to={`/player-characters/${character.id}`}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-[7px] px-2.5 py-2 transition hover:bg-white/[0.03]",
+                        isFirst ? "bg-[#141414]" : "",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
+                          isFirst
+                            ? "border-[#7C3AED36] bg-[#7C3AED1E] text-[#A78BFA]"
+                            : "border-[#1E1E1E] bg-[#1A1A1A] text-white/22",
+                        )}
+                      >
+                        {initials}
+                      </div>
+                      <div>
+                        <div className={cn("text-xs font-medium", isFirst ? "text-[#DBE4F0]" : "text-[#94A3B8]")}>
+                          {character.name}
+                        </div>
+                        <div className="text-[10px] text-white/22">
+                          {character.characterConcept
+                            ? `${character.characterConcept.slice(0, 20)}${character.characterConcept.length > 20 ? "…" : ""}`
+                            : activeStoryCount > 0
+                              ? `${activeStoryCount} ${activeStoryCount === 1 ? "story" : "stories"}`
+                              : "idle"}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })
+              ) : (
+                <div className="py-2 text-xs text-white/25">No characters yet.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="rounded-[10px] border border-[#181818] bg-[#0D0D0D] px-[18px] py-[15px]">
+            <span className="mb-2.5 block text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+              Quick Actions
+            </span>
+            <div className="flex flex-col gap-1.5">
+              {[
+                { label: "New Story", to: "/stories/new" },
+                { label: "New Universe", to: "/universes/new" },
+                { label: "New Character", to: "/player-characters/new" },
+              ].map(({ label, to }) => (
+                <Link
+                  key={label}
+                  to={to}
+                  className="flex items-center gap-2.5 rounded-[8px] border border-[#1C1C1C] bg-[#141414] px-3 py-2.5 text-xs font-medium text-[#DBE4F0] transition hover:border-[#252525] hover:bg-[#1A1A1A]"
+                >
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#7C3AED"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  >
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* What's New (Changelog) */}
+          <div className="flex flex-1 flex-col overflow-hidden rounded-[10px] border border-[#181818] bg-[#0D0D0D] px-[18px] py-[15px]">
+            <span className="mb-2.5 flex-shrink-0 text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+              What's New
+            </span>
+            <div className="flex flex-col gap-2.5 overflow-hidden">
+              {changelogEntries.map(({ version, entry, isLatest }, i) => (
+                <div key={version}>
+                  <span
+                    className={cn(
+                      "mb-1 inline-block rounded-[3px] px-[7px] py-0.5 font-mono text-[9px] font-bold",
+                      isLatest
+                        ? "bg-[#7C3AED1A] text-[#C4B5FD]"
+                        : "border border-[#1A1A1A] bg-[#141414] text-white/18",
+                    )}
+                  >
+                    v{version}
+                  </span>
+                  <p className={cn("text-xs leading-[1.55]", isLatest ? "text-white/28" : "text-white/18")}>
+                    {entry.title}
+                    {entry.added?.[0] ? ` — ${entry.added[0]}` : ""}
+                  </p>
+                  {i < changelogEntries.length - 1 && (
+                    <div className="mt-2.5 h-px bg-[#161616]" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* "v{version}" bottom link */}
+          <div className="hidden">
+            <Link to="/settings" className={buttonClasses({ variant: "ghost", size: "sm" })}>
+              v{APP_VERSION}
+            </Link>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
