@@ -626,9 +626,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     return (
       <details
         open={args.defaultOpen}
-        className="rounded-2xl border border-white/8 bg-white/[0.02] px-3 py-3"
+        className="rounded-[9px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3"
       >
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft marker:content-none">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft marker:content-none">
           <span>{args.title}</span>
           {args.countLabel ? <span className="text-[11px] text-ink-muted">{args.countLabel}</span> : null}
         </summary>
@@ -649,20 +649,20 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         type="button"
         aria-label="Close story settings"
         className={cn(
-          "absolute inset-0 bg-slate-950/65 backdrop-blur-sm transition-opacity duration-200",
+          "absolute inset-0 bg-app/80 backdrop-blur-sm transition-opacity duration-200",
           storySettingsOpen ? "opacity-100" : "opacity-0",
         )}
         onClick={() => setStorySettingsOpen(false)}
       />
       <div
         className={cn(
-          "absolute inset-y-0 right-0 flex w-[min(92vw,28rem)] flex-col border-l border-divider bg-app-elevated shadow-hero transition-transform duration-200",
+          "absolute inset-y-0 right-0 flex w-[min(92vw,28rem)] flex-col border-l border-divider/[0.4] bg-app shadow-2xl transition-transform duration-200",
           storySettingsOpen ? "translate-x-0" : "translate-x-full",
         )}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-divider px-4 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-divider/[0.3] px-4 py-3.5">
           <div className="min-w-0">
-            <div className="truncate text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+            <div className="truncate text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
               Story Settings
             </div>
             <div className="mt-1 truncate text-sm font-semibold text-ink">{heading}</div>
@@ -672,14 +672,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           </Button>
         </div>
 
-        <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+        <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-auto p-3.5">
           {story && universe && playerCharacter ? (
             <>
               <Panel padding="sm">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Story Information
                 </div>
-                <dl className="mt-4 space-y-3 text-sm text-ink-soft">
+                <dl className="mt-3 space-y-2.5 text-sm text-ink-soft">
                   <div className="flex items-center justify-between gap-3">
                     <dt className="text-ink-muted">Universe</dt>
                     <dd className="truncate">{universe.name}</dd>
@@ -692,15 +692,15 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               </Panel>
 
               {(playerCharacter.scope ?? "library") === "story" ? (
-                <Panel padding="sm" className="border-dashed border-white/12 bg-white/[0.03]">
-                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <Panel padding="sm" className="border-dashed border-divider/[0.4]">
+                  <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                     Quick Character
                   </div>
-                  <p className="mt-3 text-sm leading-7 text-ink-muted">
+                  <p className="mt-2.5 text-[13px] leading-6 text-ink-muted">
                     This story is using a story-local protagonist. You can save them into your Player Characters library.
                   </p>
                   <Button
-                    className="mt-4 w-full"
+                    className="mt-3 w-full"
                     variant="secondary"
                     onClick={() => void handlePromoteCharacter()}
                     disabled={isPromotingCharacter}
@@ -711,9 +711,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               ) : null}
 
               <Panel padding="sm">
-                <form className="space-y-4" onSubmit={handleSaveStoryAI}>
+                <form className="space-y-3" onSubmit={handleSaveStoryAI}>
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                    <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                       Story AI
                     </div>
                     <div className="text-xs uppercase tracking-[0.18em] text-ink-muted">
@@ -724,7 +724,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Provider</div>
                     <select
-                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={aiProviderType}
                       onChange={(event) => {
                         const nextProvider = event.target.value as AIProviderType;
@@ -744,7 +744,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Model</div>
                     <select
-                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={aiModel}
                       onChange={(event) => setAiModel(event.target.value)}
                     >
@@ -763,14 +763,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               </Panel>
 
               <Panel padding="sm">
-                <form className="space-y-4" onSubmit={handleSaveStoryDetails}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <form className="space-y-3" onSubmit={handleSaveStoryDetails}>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                     Edit Story
                   </div>
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Title</div>
                     <input
-                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.title}
                       onChange={(event) =>
                         setStoryFields((current) => ({ ...current, title: event.target.value }))
@@ -780,7 +780,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Current Summary</div>
                     <textarea
-                      className="min-h-[100px] w-full resize-y rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                      className="min-h-[100px] w-full resize-y rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.currentSummary}
                       onChange={(event) =>
                         setStoryFields((current) => ({
@@ -798,14 +798,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               </Panel>
 
               <Panel padding="sm">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Theme
                 </div>
-                <div className="mt-4 space-y-3">
+                <div className="mt-3 space-y-3">
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Theme</div>
                     <select
-                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={themeKey}
                       onChange={(event) => setThemeKey(event.target.value as any)}
                     >
@@ -820,14 +820,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               </Panel>
 
               <Panel padding="sm">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Automatic Indexing
                 </div>
-                <div className="mt-4 space-y-3">
+                <div className="mt-3 space-y-3">
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Indexing mode</div>
                     <select
-                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.autoIndexMode}
                       onChange={(event) =>
                         setStoryFields((current) => ({
@@ -851,7 +851,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <label className="block space-y-2">
                       <div className="text-xs text-ink-muted">Interval</div>
                       <select
-                        className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                        className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                         value={storyFields.autoIndexInterval === "disabled" ? 20 : storyFields.autoIndexInterval}
                         onChange={(event) =>
                           setStoryFields((current) => ({
@@ -867,7 +867,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       </select>
                     </label>
                   ) : null}
-                  <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+                  <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
                     {storyFields.autoIndexMode === "disabled"
                       ? "Automatic indexing is disabled. Manual re-index still works."
                       : storyFields.autoIndexMode === "chapter"
@@ -878,14 +878,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               </Panel>
 
               <Panel padding="sm">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Content Mode
                 </div>
-                <div className="mt-4 space-y-3">
+                <div className="mt-3 space-y-3">
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Mature fiction (non-graphic)</div>
                     <select
-                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.matureFictionMode ? "on" : "off"}
                       onChange={(event) =>
                         setStoryFields((current) => ({
@@ -898,20 +898,20 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       <option value="on">On</option>
                     </select>
                   </label>
-                  <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+                  <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
                     When enabled, prompts and transmit-safe retries are tuned for serious fiction: injury aftermath, trauma, grief, and recovery are treated as legitimate narrative context (still non-graphic, still no harmful instructions).
                   </div>
                 </div>
               </Panel>
 
               <Panel padding="sm">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Export
                 </div>
-                <div className="mt-4 space-y-2">
+                <div className="mt-3 space-y-2">
                   <Button
                     variant="secondary"
-                    className="w-full justify-start rounded-2xl"
+                    className="w-full justify-start rounded-[8px]"
                     onClick={() => handleExport("json")}
                   >
                     <DownloadIcon className="h-4 w-4" />
@@ -919,7 +919,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </Button>
                   <Button
                     variant="secondary"
-                    className="w-full justify-start rounded-2xl"
+                    className="w-full justify-start rounded-[8px]"
                     onClick={() => void handleExportSupportBundle()}
                     disabled={isExportingSupportBundle}
                   >
@@ -928,7 +928,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </Button>
                   <Button
                     variant="secondary"
-                    className="w-full justify-start rounded-2xl"
+                    className="w-full justify-start rounded-[8px]"
                     onClick={() => handleExport("markdown")}
                   >
                     <DownloadIcon className="h-4 w-4" />
@@ -936,7 +936,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </Button>
                   <Button
                     variant="secondary"
-                    className="w-full justify-start rounded-2xl"
+                    className="w-full justify-start rounded-[8px]"
                     onClick={() => handleExport("txt")}
                   >
                     <DownloadIcon className="h-4 w-4" />
@@ -944,7 +944,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </Button>
                   <Button
                     variant="secondary"
-                    className="w-full justify-start rounded-2xl"
+                    className="w-full justify-start rounded-[8px]"
                     onClick={() => handleExport("pdf")}
                   >
                     <DownloadIcon className="h-4 w-4" />
@@ -952,7 +952,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </Button>
                   <Button
                     variant="secondary"
-                    className="w-full justify-start rounded-2xl"
+                    className="w-full justify-start rounded-[8px]"
                     onClick={() => handleExport("archive_pdf")}
                   >
                     <DownloadIcon className="h-4 w-4" />
@@ -962,13 +962,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               </Panel>
 
               <Panel padding="sm">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Index / Archive
                 </div>
-                <div className="mt-4 space-y-3">
+                <div className="mt-3 space-y-3">
                   <Button
                     variant="secondary"
-                    className="w-full justify-start rounded-2xl"
+                    className="w-full justify-start rounded-[8px]"
                     disabled={isRebuilding}
                     onClick={handleReindex}
                   >
@@ -976,7 +976,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </Button>
                   <Button
                     variant="secondary"
-                    className="w-full justify-start rounded-2xl"
+                    className="w-full justify-start rounded-[8px]"
                     disabled={isCleaningDuplicates}
                     onClick={() => setIsCleanupConfirmOpen(true)}
                   >
@@ -984,14 +984,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </Button>
                   <Button
                     variant="secondary"
-                    className="w-full justify-start rounded-2xl"
+                    className="w-full justify-start rounded-[8px]"
                     onClick={() => setMetaChatOpen(true)}
                   >
                     MetaChat
                   </Button>
                   <Button
                     variant="secondary"
-                    className="w-full justify-start rounded-2xl"
+                    className="w-full justify-start rounded-[8px]"
                     onClick={() => {
                       if (!story) {
                         return;
@@ -1011,7 +1011,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     </div>
                   ) : null}
                   {rebuildInfo ? (
-                    <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+                    <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
                       {rebuildInfo.phase === "error"
                         ? rebuildInfo.error || "Rebuild failed."
                         : rebuildInfo.message ||
@@ -1023,7 +1023,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       {storyJobs.slice(0, 6).map((job) => (
                         <div
                           key={job.id}
-                          className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted"
+                          className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
@@ -1057,7 +1057,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   {(() => {
                     if (!story || !storyStateData) {
                       return (
-                        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+                        <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
                           No indexed state available yet.
                         </div>
                       );
@@ -1105,7 +1105,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                           );
 
                     return (
-                      <div className="space-y-4 rounded-2xl border border-white/8 bg-black/15 px-4 py-4 text-sm">
+                      <div className="space-y-4 rounded-[9px] border border-divider/[0.4] bg-panel-muted/30 px-4 py-4 text-sm">
                         <div className="space-y-2 text-ink-muted">
                           <div className="flex items-center justify-between gap-3">
                             <div>Message count</div>
@@ -1151,7 +1151,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                           </div>
                         </div>
 
-                        <div className="rounded-2xl border border-white/8 bg-black/20 px-3 py-3 text-sm text-ink-muted">
+                        <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3 text-sm text-ink-muted">
                           {autoIndexMode === "disabled"
                             ? "Automatic indexing is disabled for this story."
                             : autoIndexMode === "chapter"
@@ -1169,7 +1169,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                     {chapters.map((chapter) => (
                                       <div
                                         key={chapter.id}
-                                        className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
+                                        className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3"
                                       >
                                         <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
                                           <span className="truncate">{chapter.label}</span>
@@ -1197,7 +1197,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                 children: (
                                   <div className="space-y-3">
                                     {premise ? (
-                                      <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                      <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
                                           Premise
                                         </div>
@@ -1205,7 +1205,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                       </div>
                                     ) : null}
                                     {protagonistSummary ? (
-                                      <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                      <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
                                           Protagonist
                                         </div>
@@ -1213,7 +1213,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                       </div>
                                     ) : null}
                                     {currentSituation ? (
-                                      <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                      <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
                                           Current Situation
                                         </div>
@@ -1221,7 +1221,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                       </div>
                                     ) : null}
                                     {recentDevelopments.length ? (
-                                      <div className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                      <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
                                           Recent Developments
                                         </div>
@@ -1247,7 +1247,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                 children: (
                                   <div className="space-y-3">
                                     {openThreads.slice(0, 8).map((entry, index) => (
-                                      <div key={index} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                      <div key={index} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                         <div className="text-ink-soft">{entry.thread}</div>
                                         {renderEvidencePills(entry.evidence?.messageNumbers, `thread-${index}`)}
                                       </div>
@@ -1264,7 +1264,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                 children: (
                                   <div className="space-y-3">
                                     {worldFacts.slice(0, 8).map((entry, index) => (
-                                      <div key={index} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                      <div key={index} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                         <div className="text-ink-soft">{entry.fact}</div>
                                         {renderEvidencePills(entry.evidence?.messageNumbers, `fact-${index}`)}
                                       </div>
@@ -1291,7 +1291,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                           return null;
                                         }
                                         return (
-                                          <div key={name} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                          <div key={name} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                             <div className="font-semibold text-ink-soft">{name}</div>
                                             <div className="mt-2 space-y-2">
                                               {statusLines.map((line) => (
@@ -1328,7 +1328,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                       .slice(0, 12)
                                       .sort((a, b) => a.name.localeCompare(b.name))
                                       .map((entry) => (
-                                        <div key={entry.name} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                        <div key={entry.name} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                           <div className="font-semibold text-ink-soft">{entry.name}</div>
                                           {entry.description ? (
                                             <div className="mt-1 text-sm text-ink-muted">{entry.description}</div>
@@ -1351,7 +1351,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                       .slice(0, 12)
                                       .sort((a, b) => a.name.localeCompare(b.name))
                                       .map((entry) => (
-                                        <div key={entry.name} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                        <div key={entry.name} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                           <div className="font-semibold text-ink-soft">{entry.name}</div>
                                           {entry.description ? (
                                             <div className="mt-1 text-sm text-ink-muted">{entry.description}</div>
@@ -1371,7 +1371,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                 children: (
                                   <div className="space-y-3">
                                     {relationships.slice(0, 12).map((entry, index) => (
-                                      <div key={`${entry.a}-${entry.b}-${index}`} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                      <div key={`${entry.a}-${entry.b}-${index}`} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                         <div className="font-semibold text-ink-soft">
                                           {entry.a} ↔ {entry.b}
                                         </div>
@@ -1410,7 +1410,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                 children: (
                                   <div className="space-y-3">
                                     {significantMemories.slice(0, 8).map((entry: any, index: number) => (
-                                      <div key={index} className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3">
+                                      <div key={index} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                         <div className="text-ink-soft">{entry?.moment ?? entry?.memory ?? entry?.fact ?? "—"}</div>
                                         {renderEvidencePills(entry?.evidence?.messageNumbers, `mem-${index}`)}
                                       </div>
@@ -1427,10 +1427,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               </Panel>
 
               <Panel padding="sm">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Controls
                 </div>
-                <div className="mt-4 grid gap-2">
+                <div className="mt-3 grid gap-2">
                   <Button variant="ghost" className="w-full" onClick={handleDeleteStory}>
                     <TrashIcon className="h-4 w-4" />
                     Delete Story
@@ -1489,7 +1489,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           type="button"
           aria-label="Close cleanup dialog"
           className={cn(
-            "absolute inset-0 bg-slate-950/65 backdrop-blur-sm transition-opacity duration-200",
+            "absolute inset-0 bg-app/80 backdrop-blur-sm transition-opacity duration-200",
             isCleanupConfirmOpen ? "opacity-100" : "opacity-0",
           )}
           onClick={() => setIsCleanupConfirmOpen(false)}
@@ -1502,10 +1502,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         >
           <div className="w-full max-w-lg">
             <Panel padding="lg" role="dialog" aria-modal="true">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                 Cleanup
               </div>
-              <div className="mt-3 text-xl font-semibold tracking-tight text-ink">
+              <div className="mt-2 text-[18px] font-bold tracking-tight text-ink">
                 Cleanup Duplicates
               </div>
               <div className="mt-3 text-sm leading-7 text-ink-muted">

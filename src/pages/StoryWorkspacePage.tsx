@@ -3,7 +3,6 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
-import { PencilIcon } from "../components/icons";
 import { StoryArchiveView } from "../components/story/StoryArchiveView";
 import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
 import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
@@ -12,6 +11,7 @@ import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
+import { cn } from "../utils/cn";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
@@ -43,6 +43,37 @@ function reportWorkspaceUiAudit(args: {
     }),
   }).catch(() => {});
   // #endregion
+}
+
+function WorkspaceIconBtn({
+  icon,
+  label,
+  active,
+  onClick,
+  disabled,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "rounded-[6px] p-[7px] transition disabled:opacity-40",
+        active
+          ? "bg-panel-muted text-accent"
+          : "text-white/35 hover:bg-white/[0.05] hover:text-white/60",
+      )}
+    >
+      {icon}
+    </button>
+  );
 }
 
 interface MessageComposerState {
@@ -571,7 +602,7 @@ export function StoryWorkspacePage() {
           type="button"
           aria-label="Close editor"
           className={[
-            "absolute inset-0 bg-slate-950/65 backdrop-blur-sm transition-opacity duration-200",
+            "absolute inset-0 bg-app/80 backdrop-blur-sm transition-opacity duration-200",
             assistantEditMessage ? "opacity-100" : "opacity-0",
           ].join(" ")}
           onClick={handleCloseAssistantEdit}
@@ -584,7 +615,7 @@ export function StoryWorkspacePage() {
         >
           <div className="w-full max-w-2xl">
             <Panel padding="lg" role="dialog" aria-modal="true">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                 Edit Last AI Message
               </div>
               <div className="mt-4 space-y-4">
@@ -593,7 +624,7 @@ export function StoryWorkspacePage() {
                   onChange={(event) => setAssistantEditContent(event.target.value)}
                 />
                 {assistantEditError ? (
-                  <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                  <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
                     {assistantEditError}
                   </div>
                 ) : null}
@@ -610,64 +641,58 @@ export function StoryWorkspacePage() {
           </div>
         </div>
       </div>
-      <div className="border-b border-white/8 pb-5">
-        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+      <div className="border-b border-divider/[0.3] pb-4">
+        <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
           {activeUniverse.name} · {activePlayerCharacter.name}
         </div>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink">
+        <h1 className="mt-2 text-[22px] font-extrabold leading-tight tracking-[-0.02em] text-ink">
           {activeStory.title}
         </h1>
-        {readerMode ? null : (
-          <div className="mt-3 text-sm leading-7 text-ink-muted">
-            {activeStory.currentSummary || "No summary yet."}
-          </div>
-        )}
+        {!readerMode && activeStory.currentSummary ? (
+          <p className="mt-1.5 line-clamp-2 text-[13px] leading-6 text-ink-muted">
+            {activeStory.currentSummary}
+          </p>
+        ) : null}
       </div>
 
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <div className="flex items-center gap-2 text-sm text-ink-muted">
-          {messages.length} entries
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
+      <div className="mt-3 flex items-center justify-between">
+        <span className="text-[11px] text-white/30">
+          {messages.length} {messages.length === 1 ? "entry" : "entries"}
+        </span>
+        <div className="flex items-center gap-0.5">
+          <WorkspaceIconBtn
+            label="Settings"
             onClick={() => setStorySettingsOpen(true)}
-          >
-            Settings
-          </Button>
-          <Button
-            size="sm"
-            variant={showChrome ? "secondary" : "ghost"}
+            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>}
+          />
+          <WorkspaceIconBtn
+            label="Bubble view"
+            active={showChrome}
             onClick={() => setShowChrome(!showChrome)}
-          >
-            {showChrome ? "Hide Details" : "Details"}
-          </Button>
-          <Button
-            size="sm"
-            variant={archiveMode ? "secondary" : "ghost"}
-            onClick={() => setArchiveMode((current) => !current)}
             disabled={isGenerating}
-          >
-            {archiveMode ? "Back to Story" : "Archive"}
-          </Button>
-          <Button
-            size="sm"
-            variant={readerMode ? "secondary" : "ghost"}
+            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
+          />
+          <WorkspaceIconBtn
+            label="Archive"
+            active={archiveMode}
+            onClick={() => setArchiveMode((c) => !c)}
+            disabled={isGenerating}
+            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>}
+          />
+          <WorkspaceIconBtn
+            label="Reader mode"
+            active={readerMode}
             onClick={() => setReaderMode(!readerMode)}
-          >
-            {readerMode ? "Exit Reader" : "Reader Mode"}
-          </Button>
+            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>}
+          />
           {readerMode || archiveMode ? null : (
-            <Button
-              variant={manualMode ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setManualMode((current) => !current)}
+            <WorkspaceIconBtn
+              label="Manual entry"
+              active={manualMode}
+              onClick={() => setManualMode((c) => !c)}
               disabled={isGenerating}
-            >
-              <PencilIcon className="h-4 w-4" />
-              {manualMode ? "Hide Manual" : "Manual Entry"}
-            </Button>
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
+            />
           )}
         </div>
       </div>
@@ -738,7 +763,7 @@ export function StoryWorkspacePage() {
         latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
           <Panel className="mt-4" padding="sm">
             {latestDirectorIntentMessage?.directorIntent ? (
-              <div className="mb-3 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mb-3 flex flex-col gap-3 rounded-[9px] border border-divider/[0.4] bg-panel-muted/50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-ink-muted">
                   Director intent applied:{" "}
                   <span className="text-ink-soft">
@@ -783,10 +808,10 @@ export function StoryWorkspacePage() {
           <div className="space-y-5">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Chat
                 </div>
-                <div className="mt-2 text-lg font-semibold text-ink">
+                <div className="mt-2 text-[15px] font-semibold text-ink">
                   Send a turn and generate the next reply
                 </div>
               </div>
@@ -811,13 +836,13 @@ export function StoryWorkspacePage() {
             </Field>
 
             {chatError ? (
-              <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
                 {chatError}
               </div>
             ) : null}
 
             {assistError ? (
-              <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
                 {assistError}
               </div>
             ) : null}
@@ -850,10 +875,10 @@ export function StoryWorkspacePage() {
         <form className="space-y-5" onSubmit={handleSubmitMessage}>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                 {editingMessage ? "Edit Entry" : "Add Entry"}
               </div>
-              <div className="mt-2 text-lg font-semibold text-ink">
+              <div className="mt-2 text-[15px] font-semibold text-ink">
                 Manual timeline entry
               </div>
             </div>
