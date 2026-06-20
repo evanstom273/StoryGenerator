@@ -12,7 +12,10 @@ export function NotFoundPage() {
         description="Use the navigation to jump back into the Story Engine workspace."
       />
       <Panel className="max-w-xl">
-        <p className="text-sm leading-7 text-ink-muted">
+        <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+          Route Not Found
+        </div>
+        <p className="mt-4 text-sm leading-relaxed text-ink-soft">
           The requested route is outside the current Version 1 scope.
         </p>
         <Link to="/" className={buttonClasses({ variant: "primary", className: "mt-6" })}>

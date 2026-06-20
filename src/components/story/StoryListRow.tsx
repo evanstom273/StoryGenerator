@@ -24,10 +24,10 @@ export function StoryListRow({
     <Link
       to={to}
       className={cn(
-        "group block rounded-2xl border px-4 py-3 transition",
+        "group block rounded-[7px] border px-2.5 py-2 transition",
         active
-          ? "border-accent/25 bg-accent/12"
-          : "border-white/8 bg-white/[0.03] hover:border-white/16 hover:bg-white/[0.05]",
+          ? "border-accent/[0.24] bg-panel-muted"
+          : "border-divider/[0.6] bg-app hover:bg-white/[0.03]",
         className,
       )}
     >
@@ -38,7 +38,7 @@ export function StoryListRow({
             {universeName} · {playerCharacterName}
           </div>
         </div>
-        <div className="shrink-0 text-xs text-ink-muted">
+        <div className="shrink-0 text-[11px] text-ink-muted">
           {formatDateTime(story.updatedAt)}
         </div>
       </div>

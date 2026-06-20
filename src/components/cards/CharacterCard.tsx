@@ -18,7 +18,7 @@ export function CharacterCard({
   actions,
 }: CharacterCardProps) {
   return (
-    <Panel className="h-full">
+    <Panel className="h-full border-divider/[0.6] bg-panel-muted p-3.5">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-wrap gap-2">
           <Badge variant="accent">Player Character</Badge>
@@ -26,18 +26,18 @@ export function CharacterCard({
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      <h3 className="mt-5 text-xl font-semibold tracking-tight text-ink">
+      <h3 className="mt-5 text-lg font-semibold text-ink">
         {character.name}
       </h3>
-      <p className="mt-2 text-sm text-accent-soft">
+      <p className="mt-2 text-[11px] font-medium text-accent">
         {character.age ? `Age ${character.age}` : "Age not specified"}
       </p>
-      <p className="mt-4 text-sm leading-6 text-ink-muted">
+      <p className="mt-4 text-sm leading-relaxed text-ink-soft">
         {character.background || "No background written yet."}
       </p>
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <div>
-          <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+          <dt className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
             Goals
           </dt>
           <dd className="mt-1 text-sm text-ink-soft">
@@ -45,7 +45,7 @@ export function CharacterCard({
           </dd>
         </div>
         <div>
-          <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+          <dt className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
             Linked Stories
           </dt>
           <dd className="mt-1 text-sm text-ink-soft">{linkedStoryCount}</dd>
@@ -57,4 +57,3 @@ export function CharacterCard({
     </Panel>
   );
 }
-

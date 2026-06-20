@@ -21,20 +21,20 @@ export function buttonClasses({
   className,
 }: ButtonClassOptions = {}) {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-full font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-app disabled:pointer-events-none disabled:opacity-50";
+    "inline-flex items-center justify-center gap-2 rounded-[8px] font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 focus-visible:ring-offset-2 focus-visible:ring-offset-app disabled:pointer-events-none disabled:opacity-50";
 
   const variants: Record<ButtonVariant, string> = {
     primary:
-      "bg-accent text-accent-foreground shadow-[0_18px_40px_rgb(var(--accent-rgb)/0.35)] hover:-translate-y-0.5 hover:bg-accent-hover",
+      "bg-accent text-[13px] font-bold text-accent-foreground hover:bg-accent-hover",
     secondary:
-      "border border-divider bg-panel-muted text-ink hover:-translate-y-0.5 hover:border-accent/35 hover:bg-panel-strong",
+      "border border-divider bg-panel-muted text-xs font-medium text-ink-soft hover:border-accent/[0.25] hover:bg-panel",
     ghost: "text-ink-soft hover:bg-panel-muted",
   };
 
   const sizes: Record<ButtonSize, string> = {
-    sm: "px-3.5 py-2 text-sm",
-    md: "px-5 py-2.5 text-sm",
-    lg: "px-6 py-3 text-base",
+    sm: "px-3 py-2 text-xs",
+    md: "px-3 py-2.5 text-sm",
+    lg: "px-6 py-[11px] text-[13px]",
   };
 
   return cn(base, variants[variant], sizes[size], className);

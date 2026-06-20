@@ -51,13 +51,13 @@ export function PlayerCharactersPage() {
 
       {filteredCharacters.length ? (
         <>
-          <div className="grid gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-4 md:grid-cols-2">
+          <div className="grid gap-3 rounded-[10px] border border-divider/[0.7] bg-app px-[18px] py-[15px] md:grid-cols-2">
             <label className="space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
                 Universe
               </div>
               <select
-                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                 value={universeFilter}
                 onChange={(event) => setUniverseFilter(event.target.value)}
               >
@@ -71,11 +71,11 @@ export function PlayerCharactersPage() {
             </label>
 
             <label className="space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
                 Sort
               </div>
               <select
-                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                 value={sortMode}
                 onChange={(event) => setSortMode(event.target.value as "created" | "alpha")}
               >
