@@ -20,7 +20,7 @@ export function StoryCard({
   actions,
 }: StoryCardProps) {
   return (
-    <Panel className="h-full border-divider/[0.6] bg-panel-muted p-3.5">
+    <Panel className="h-full">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-wrap gap-2">
           <Badge variant="accent">{universeName}</Badge>
@@ -28,21 +28,21 @@ export function StoryCard({
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      <h3 className="mt-5 text-lg font-semibold text-ink">
+      <h3 className="mt-5 text-xl font-semibold tracking-tight text-ink">
         {story.title}
       </h3>
-      <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+      <p className="mt-3 text-sm leading-6 text-ink-muted">
         {story.currentSummary || "No summary yet."}
       </p>
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <div>
-          <dt className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+          <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
             Conversation Entries
           </dt>
           <dd className="mt-1 text-sm text-ink-soft">{messageCount}</dd>
         </div>
         <div>
-          <dt className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+          <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
             Updated
           </dt>
           <dd className="mt-1 text-sm text-ink-soft">

@@ -596,7 +596,7 @@ export function SettingsPage() {
                       setCustomAccentInput(next);
                       setCustomAccent(next);
                     }}
-                    placeholder="#RRGGBB"
+                    placeholder="#7C3AED"
                   />
                   <input
                     type="color"
@@ -650,7 +650,7 @@ export function SettingsPage() {
             Version tracking and release notes for the current build.
           </p>
           <div className="mt-4 space-y-4">
-            <Panel className="border-divider/[0.6] bg-panel-muted">
+            <Panel className="border-white/8 bg-black/15">
               <div className="text-sm text-ink-soft">{APP_NAME} v{APP_VERSION}</div>
             </Panel>
             <div className="flex flex-wrap gap-3">
@@ -668,7 +668,7 @@ export function SettingsPage() {
               </Button>
             </div>
             {versionCopyStatus ? (
-              <div className="rounded-[8px] border border-divider bg-panel-muted px-4 py-3 text-sm text-ink-muted">
+              <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
                 {versionCopyStatus}
               </div>
             ) : null}
@@ -696,7 +696,7 @@ export function SettingsPage() {
               </SelectInput>
             </Field>
 
-            <Panel className="border-divider/[0.6] bg-panel-muted">
+            <Panel className="border-white/8 bg-black/15">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 OpenAI
               </div>
@@ -725,7 +725,7 @@ export function SettingsPage() {
               </div>
             </Panel>
 
-            <Panel className="border-divider/[0.6] bg-panel-muted">
+            <Panel className="border-white/8 bg-black/15">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   Gemini
@@ -759,7 +759,7 @@ export function SettingsPage() {
               </div>
             </Panel>
 
-            <Panel className="border-divider/[0.6] bg-panel-muted">
+            <Panel className="border-white/8 bg-black/15">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   OpenRouter
@@ -845,7 +845,7 @@ export function SettingsPage() {
               </div>
               <input
                 type="file"
-                className="block w-full text-sm text-ink-muted file:mr-4 file:rounded-[8px] file:border-0 file:bg-panel file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-panel-strong"
+                className="block w-full text-sm text-ink-muted file:mr-4 file:rounded-2xl file:border-0 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
                 onChange={(event) => setBackupFile(event.target.files?.[0] ?? null)}
               />
               <div className="text-xs text-ink-muted">
@@ -1032,7 +1032,7 @@ export function SettingsPage() {
 
               <input
                 type="file"
-                className="block w-full text-sm text-ink-muted file:mr-4 file:rounded-[8px] file:border-0 file:bg-panel file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-panel-strong"
+                className="block w-full text-sm text-ink-muted file:mr-4 file:rounded-2xl file:border-0 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
                 onChange={(event) => setItemImportFile(event.target.files?.[0] ?? null)}
               />
               <div className="text-xs text-ink-muted">

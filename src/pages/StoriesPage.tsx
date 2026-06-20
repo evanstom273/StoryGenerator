@@ -13,7 +13,7 @@ export function StoriesPage() {
     getPlayerCharacterById,
     getUniverseById,
   } = useStoryEngine();
-  const { showArchivedStories, setShowArchivedStories } = useUiPrefs();
+  const { showArchivedStories } = useUiPrefs();
 
   const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "all">(
     showArchivedStories ? "all" : "active",
@@ -52,39 +52,30 @@ export function StoriesPage() {
     <div className="space-y-8">
       {filteredStories.length ? (
         <section className="space-y-5">
-          <div className="flex flex-col gap-4 border-b border-divider/[0.7] pb-6 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-4 border-b border-white/8 pb-6 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 Stories
               </div>
-              <h1 className="mt-3 text-[28px] font-extrabold tracking-[-0.03em] text-ink md:text-[40px]">
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink md:text-4xl">
                 Continue a story
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-soft md:text-base">
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-ink-muted md:text-base">
                 Stories are your active channels. Pick one and keep writing.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                className={buttonClasses({ variant: "secondary" })}
-                onClick={() => setShowArchivedStories(!showArchivedStories)}
-              >
-                {showArchivedStories ? "Archive visible" : "Archive hidden"}
-              </button>
-              <Link to="/stories/new" className={buttonClasses()}>
-                New Story
-              </Link>
-            </div>
+            <Link to="/stories/new" className={buttonClasses()}>
+              New Story
+            </Link>
           </div>
 
-          <div className="grid gap-3 rounded-[10px] border border-divider/[0.7] bg-app px-[18px] py-[15px] md:grid-cols-3">
+          <div className="grid gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-4 md:grid-cols-3">
             <label className="space-y-2">
-              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
                 Status
               </div>
               <select
-                className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted/[0.6] focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value as any)}
               >
@@ -95,11 +86,11 @@ export function StoriesPage() {
             </label>
 
             <label className="space-y-2">
-              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
                 Universe
               </div>
               <select
-                className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted/[0.6] focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
                 value={universeFilter}
                 onChange={(event) => setUniverseFilter(event.target.value)}
               >
@@ -113,11 +104,11 @@ export function StoriesPage() {
             </label>
 
             <label className="space-y-2">
-              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
                 Sort
               </div>
               <select
-                className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted/[0.6] focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
                 value={sortMode}
                 onChange={(event) => setSortMode(event.target.value as any)}
               >

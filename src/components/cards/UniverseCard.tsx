@@ -18,7 +18,7 @@ export function UniverseCard({
   actions,
 }: UniverseCardProps) {
   return (
-    <Panel className="h-full border-divider/[0.6] bg-panel-muted p-3.5">
+    <Panel className="h-full">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-wrap gap-2">
           <Badge variant="accent">Universe</Badge>
@@ -26,21 +26,21 @@ export function UniverseCard({
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      <h3 className="mt-5 text-lg font-semibold text-ink">
+      <h3 className="mt-5 text-xl font-semibold tracking-tight text-ink">
         {universe.name}
       </h3>
-      <p className="mt-4 text-sm leading-relaxed text-ink-soft">
+      <p className="mt-4 text-sm leading-6 text-ink-muted">
         {universe.description || "No description written yet."}
       </p>
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <div>
-          <dt className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+          <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
             Player Characters
           </dt>
           <dd className="mt-1 text-sm text-ink-soft">{linkedCharacterCount}</dd>
         </div>
         <div>
-          <dt className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+          <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
             Stories
           </dt>
           <dd className="mt-1 text-sm text-ink-soft">{linkedStoryCount}</dd>
@@ -52,3 +52,4 @@ export function UniverseCard({
     </Panel>
   );
 }
+

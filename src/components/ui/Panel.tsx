@@ -14,15 +14,15 @@ export function Panel({
 }: PanelProps) {
   const paddings: Record<PanelPadding, string> = {
     none: "",
-    sm: "px-[18px] py-[15px]",
-    md: "px-[18px] py-[15px]",
-    lg: "px-[18px] py-[15px]",
+    sm: "p-4",
+    md: "p-6",
+    lg: "p-8",
   };
 
   return (
     <div
       className={cn(
-        "rounded-[10px] border border-divider/[0.7] bg-app",
+        "rounded-card border border-divider bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.55),0_0_42px_rgb(var(--accent-rgb)/0.06)] backdrop-blur-xl ring-1 ring-accent/10",
         paddings[padding],
         className,
       )}

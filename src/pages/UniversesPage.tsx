@@ -26,15 +26,15 @@ export function UniversesPage() {
     <div className="space-y-8">
       {sortedUniverses.length ? (
         <section className="space-y-5">
-          <div className="flex flex-col gap-4 border-b border-divider/[0.7] pb-6 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-4 border-b border-white/8 pb-6 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 Universes
               </div>
-              <h1 className="mt-3 text-[28px] font-extrabold tracking-[-0.03em] text-ink md:text-[40px]">
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink md:text-4xl">
                 Fictional worlds
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-soft md:text-base">
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-ink-muted md:text-base">
                 Each universe holds the context your stories live inside.
               </p>
             </div>
@@ -48,13 +48,13 @@ export function UniversesPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 rounded-[10px] border border-divider/[0.7] bg-app px-[18px] py-[15px] md:grid-cols-2">
+          <div className="grid gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-4 md:grid-cols-2">
             <label className="space-y-2">
-              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-ink-muted/[0.5]">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
                 Sort
               </div>
               <select
-                className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
                 value={sortMode}
                 onChange={(event) => setSortMode(event.target.value as "created" | "alpha")}
               >
@@ -73,17 +73,17 @@ export function UniversesPage() {
                 <Link
                   key={universe.id}
                   to={`/universes/${universe.id}`}
-                  className="group rounded-[9px] border border-divider/[0.6] bg-panel-muted p-3.5 transition hover:bg-white/[0.03]"
+                  className="group rounded-2xl border border-white/8 bg-white/[0.03] p-5 transition hover:border-white/16 hover:bg-white/[0.05]"
                 >
                   <div className="text-lg font-semibold text-ink">{universe.name}</div>
-                  <div className="mt-3 text-sm leading-relaxed text-ink-soft">
+                  <div className="mt-3 text-sm leading-7 text-ink-muted">
                     {universe.description || "No description written yet."}
                   </div>
                   <div className="mt-5 flex flex-wrap gap-2 text-xs text-ink-muted">
-                    <span className="rounded-full border border-divider bg-app px-3 py-1">
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">
                       {storyCount} {storyCount === 1 ? "story" : "stories"}
                     </span>
-                    <span className="rounded-full border border-divider bg-app px-3 py-1">
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">
                       {characterCount}{" "}
                       {characterCount === 1 ? "character" : "characters"}
                     </span>

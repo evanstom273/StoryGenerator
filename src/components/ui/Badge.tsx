@@ -13,9 +13,9 @@ export function Badge({
   ...props
 }: BadgeProps) {
   const variants: Record<BadgeVariant, string> = {
-    neutral: "border-divider bg-panel text-ink-muted",
+    neutral: "border-divider bg-panel-muted text-ink-soft",
     accent:
-      "border-accent/[0.24] bg-accent/[0.12] text-accent-soft",
+      "border-accent/40 bg-accent/18 text-accent shadow-[0_10px_30px_rgb(var(--accent-rgb)/0.18)]",
     success: "border-emerald-400/20 bg-emerald-400/10 text-emerald-200",
     warning: "border-amber-400/20 bg-amber-400/10 text-amber-200",
     danger: "border-rose-400/20 bg-rose-400/10 text-rose-200",
@@ -24,7 +24,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-3 py-0.5 text-[11px] font-semibold tracking-wide",
+        "inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium tracking-wide",
         variants[variant],
         className,
       )}
