@@ -18,7 +18,7 @@ export function UniverseCard({
   actions,
 }: UniverseCardProps) {
   return (
-    <Panel className="h-full">
+    <Panel className="h-full bg-panel-muted">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-wrap gap-2">
           <Badge variant="accent">Universe</Badge>
@@ -26,13 +26,13 @@ export function UniverseCard({
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      <h3 className="mt-5 text-xl font-semibold tracking-tight text-ink">
+      <h3 className="mt-4 text-[15px] font-bold tracking-tight text-ink">
         {universe.name}
       </h3>
-      <p className="mt-4 text-sm leading-6 text-ink-muted">
+      <p className="mt-3 text-[13px] leading-6 text-ink-muted">
         {universe.description || "No description written yet."}
       </p>
-      <dl className="mt-6 grid gap-4 sm:grid-cols-2">
+      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>
           <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
             Player Characters
@@ -46,7 +46,7 @@ export function UniverseCard({
           <dd className="mt-1 text-sm text-ink-soft">{linkedStoryCount}</dd>
         </div>
       </dl>
-      <div className="mt-6 text-sm text-ink-muted">
+      <div className="mt-4 text-[11px] text-ink-muted">
         Added {formatDate(universe.createdAt)}
       </div>
     </Panel>

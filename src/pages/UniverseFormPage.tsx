@@ -410,7 +410,7 @@ export function UniverseFormPage() {
                     : [{ url: formState.wikiUrl, label: "", order: 0 }]).map((source, index, all) => (
                     <div
                       key={`${index}-${source.order}`}
-                      className="rounded-2xl border border-divider bg-panel-muted/70 p-3"
+                      className="rounded-xl border border-divider/[0.7] bg-panel-muted p-3"
                     >
                       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
                         <TextInput
