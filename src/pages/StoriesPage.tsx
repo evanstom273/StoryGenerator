@@ -52,15 +52,15 @@ export function StoriesPage() {
     <div className="space-y-8">
       {filteredStories.length ? (
         <section className="space-y-5">
-          <div className="flex flex-col gap-4 border-b border-divider/[0.5] pb-6 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-4 border-b border-divider/[0.3] pb-5 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 Stories
               </div>
-              <h1 className="mt-3 text-[32px] font-extrabold leading-tight tracking-[-0.03em] text-ink md:text-[40px]">
+              <h1 className="mt-2 text-[28px] font-extrabold leading-tight tracking-[-0.03em] text-ink md:text-[34px]">
                 Continue a story
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-ink-muted md:text-base">
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-muted">
                 Stories are your active channels. Pick one and keep writing.
               </p>
             </div>

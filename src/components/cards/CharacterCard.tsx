@@ -26,16 +26,16 @@ export function CharacterCard({
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      <h3 className="mt-5 text-xl font-semibold tracking-tight text-ink">
+      <h3 className="mt-4 text-[15px] font-bold tracking-tight text-ink">
         {character.name}
       </h3>
-      <p className="mt-2 text-sm text-accent-soft">
+      <p className="mt-1 text-xs text-accent-soft">
         {character.age ? `Age ${character.age}` : "Age not specified"}
       </p>
-      <p className="mt-4 text-sm leading-6 text-ink-muted">
+      <p className="mt-3 text-[13px] leading-6 text-ink-muted">
         {character.background || "No background written yet."}
       </p>
-      <dl className="mt-6 grid gap-4 sm:grid-cols-2">
+      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>
           <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
             Goals
@@ -51,7 +51,7 @@ export function CharacterCard({
           <dd className="mt-1 text-sm text-ink-soft">{linkedStoryCount}</dd>
         </div>
       </dl>
-      <div className="mt-6 text-sm text-ink-muted">
+      <div className="mt-4 text-[11px] text-ink-muted">
         Created {formatDate(character.createdAt)}
       </div>
     </Panel>

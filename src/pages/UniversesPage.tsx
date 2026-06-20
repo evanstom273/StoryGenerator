@@ -26,15 +26,15 @@ export function UniversesPage() {
     <div className="space-y-8">
       {sortedUniverses.length ? (
         <section className="space-y-5">
-          <div className="flex flex-col gap-4 border-b border-divider/[0.5] pb-6 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-4 border-b border-divider/[0.3] pb-5 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 Universes
               </div>
-              <h1 className="mt-3 text-[32px] font-extrabold leading-tight tracking-[-0.03em] text-ink md:text-[40px]">
+              <h1 className="mt-2 text-[28px] font-extrabold leading-tight tracking-[-0.03em] text-ink md:text-[34px]">
                 Fictional worlds
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-ink-muted md:text-base">
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-muted">
                 Each universe holds the context your stories live inside.
               </p>
             </div>
@@ -73,13 +73,13 @@ export function UniversesPage() {
                 <Link
                   key={universe.id}
                   to={`/universes/${universe.id}`}
-                  className="group rounded-xl border border-divider/[0.6] bg-panel-muted p-4 transition hover:border-divider hover:bg-panel"
+                  className="group rounded-[9px] border border-divider/[0.5] bg-panel-muted p-3.5 transition hover:border-divider/[0.75] hover:bg-panel"
                 >
-                  <div className="text-lg font-semibold text-ink">{universe.name}</div>
-                  <div className="mt-3 text-sm leading-7 text-ink-muted">
+                  <div className="text-[14px] font-bold text-ink">{universe.name}</div>
+                  <div className="mt-2 text-[13px] leading-6 text-ink-muted">
                     {universe.description || "No description written yet."}
                   </div>
-                  <div className="mt-5 flex flex-wrap gap-2 text-xs text-ink-muted">
+                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-ink-muted">
                     <span className="rounded-full border border-divider/[0.5] bg-app/50 px-3 py-1">
                       {storyCount} {storyCount === 1 ? "story" : "stories"}
                     </span>
