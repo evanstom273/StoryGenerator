@@ -176,15 +176,16 @@ export function V2Shell() {
               >
                 <MenuIcon />
               </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="rounded-full"
-                onClick={() => setStorySettingsOpen(true)}
-                aria-label="Open story settings"
+              <button
+                type="button"
+                aria-label="Global settings"
+                onClick={() => navigate("/settings")}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
               >
-                Settings
-              </Button>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2.75v3" /><path d="m18.54 5.46-2.12 2.12" /><path d="M21.25 12h-3" /><path d="m18.54 18.54-2.12-2.12" /><path d="M12 18.25v3" /><path d="m7.58 16.42-2.12 2.12" /><path d="M5.75 12h-3" /><path d="m7.58 7.58-2.12-2.12" /><circle cx="12" cy="12" r="3.5" />
+                </svg>
+              </button>
             </div>
           </header>
 
