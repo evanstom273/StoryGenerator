@@ -253,15 +253,30 @@ export function StoryTranscriptView({
       {messages.map((message, messageIndex) => {
         const highlight = highlightedMessageId === message.id;
         const chapterEndLabel = chapterEndByMessageId.get(message.id);
+        const explicitChapterBoundary = message.chapterBoundary;
+        const chapterBoundary =
+          explicitChapterBoundary ??
+          (chapterEndLabel ? { kind: "end" as const, label: chapterEndLabel } : null);
         const chapterStartLabel = chapterStartBeforeMessage.get(messageIndex + 1);
 
-        if (chapterEndLabel) {
+        if (chapterBoundary?.kind === "end") {
           return (
             <div
               key={message.id}
               className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted"
             >
-              Chapter End · {chapterEndLabel}
+              Chapter End · {chapterBoundary.label}
+            </div>
+          );
+        }
+
+        if (chapterBoundary?.kind === "start") {
+          return (
+            <div
+              key={message.id}
+              className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
+            >
+              {chapterBoundary.label}
             </div>
           );
         }

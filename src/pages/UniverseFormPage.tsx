@@ -10,11 +10,16 @@ import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import type { UniverseDraft } from "../types/models";
 import { importUniverseLore } from "../lib/ingestion/importUniverseLore";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
+import {
+  getPrimaryUniverseWikiUrl,
+  normalizeUniverseWikiSources,
+} from "../lib/universeSources";
 
 const initialFormState: UniverseDraft = {
   name: "",
   description: "",
   wikiUrl: "",
+  wikiUrls: [],
   mode: "referenced",
   concept: "",
   genreTheme: "",
@@ -64,6 +69,7 @@ export function UniverseFormPage() {
       name: existingUniverse.name,
       description,
       wikiUrl: existingUniverse.wikiUrl ?? "",
+      wikiUrls: normalizeUniverseWikiSources(existingUniverse),
       mode,
       concept,
       genreTheme: existingUniverse.genreTheme ?? "",
@@ -93,6 +99,7 @@ export function UniverseFormPage() {
       formState.name,
       formState.description,
       formState.wikiUrl,
+      JSON.stringify(formState.wikiUrls ?? []),
       formState.concept,
       formState.genreTheme,
       formState.tone,
@@ -137,6 +144,11 @@ export function UniverseFormPage() {
     event.preventDefault();
 
     const effectiveMode = isImportMode ? "referenced" : normalizeMode(formState.mode);
+    const normalizedSources = normalizeUniverseWikiSources(formState);
+    const primaryWikiUrl = getPrimaryUniverseWikiUrl({
+      wikiUrl: formState.wikiUrl,
+      wikiUrls: normalizedSources,
+    });
 
     if (!formState.name.trim()) {
       setErrorMessage("Universe name is required.");
@@ -148,7 +160,7 @@ export function UniverseFormPage() {
       return;
     }
 
-    if (isImportMode && !formState.wikiUrl.trim()) {
+    if (isImportMode && !primaryWikiUrl) {
       setErrorMessage("Wiki URL is required to import lore.");
       return;
     }
@@ -161,6 +173,8 @@ export function UniverseFormPage() {
       const concept = (formState.concept ?? "").trim();
       const draft: UniverseDraft = {
         ...formState,
+        wikiUrl: primaryWikiUrl,
+        wikiUrls: normalizedSources,
         mode: effectiveMode,
         concept: concept || undefined,
         description,
@@ -182,15 +196,20 @@ export function UniverseFormPage() {
 
         setPendingUniverseId(savedUniverse.id);
 
-        const imported = await importUniverseLore(formState.wikiUrl);
+        for (const source of normalizedSources.length
+          ? normalizedSources
+          : [{ url: primaryWikiUrl, label: undefined, order: 0 }]) {
+          const imported = await importUniverseLore(source.url);
 
-        await saveUniverseImport({
-          universeId: savedUniverse.id,
-          sourceUrl: formState.wikiUrl.trim(),
-          title: imported.title,
-          importedText: imported.importedText,
-          importedAt: new Date().toISOString(),
-        });
+          await saveUniverseImport({
+            universeId: savedUniverse.id,
+            sourceUrl: source.url,
+            sourceLabel: source.label,
+            title: imported.title,
+            importedText: imported.importedText,
+            importedAt: new Date().toISOString(),
+          });
+        }
 
         navigate(`/universes/${savedUniverse.id}`);
       }
@@ -210,15 +229,23 @@ export function UniverseFormPage() {
     setErrorMessage(null);
 
     try {
-      const imported = await importUniverseLore(formState.wikiUrl);
+      const normalizedSources = normalizeUniverseWikiSources(formState);
+      const sources = normalizedSources.length
+        ? normalizedSources
+        : [{ url: getPrimaryUniverseWikiUrl(formState), label: undefined, order: 0 }];
 
-      await saveUniverseImport({
-        universeId: pendingUniverseId,
-        sourceUrl: formState.wikiUrl.trim(),
-        title: imported.title,
-        importedText: imported.importedText,
-        importedAt: new Date().toISOString(),
-      });
+      for (const source of sources) {
+        const imported = await importUniverseLore(source.url);
+
+        await saveUniverseImport({
+          universeId: pendingUniverseId,
+          sourceUrl: source.url,
+          sourceLabel: source.label,
+          title: imported.title,
+          importedText: imported.importedText,
+          importedAt: new Date().toISOString(),
+        });
+      }
 
       navigate(`/universes/${pendingUniverseId}`);
     } catch (error) {
@@ -376,17 +403,181 @@ export function UniverseFormPage() {
 
           {effectiveMode === "referenced" ? (
             <>
-              <Field label="Wiki / Reference URL" hint={isImportMode ? "Required" : undefined}>
-                <TextInput
-                  value={formState.wikiUrl}
-                  onChange={(event) =>
-                    setFormState((currentState) => ({
-                      ...currentState,
-                      wikiUrl: event.target.value,
-                    }))
-                  }
-                  placeholder="https://example-wiki-page"
-                />
+              <Field label="Reference Sources" hint={isImportMode ? "At least one source is required" : "Ordered highest to lowest precedence"}>
+                <div className="space-y-3">
+                  {(formState.wikiUrls?.length
+                    ? formState.wikiUrls
+                    : [{ url: formState.wikiUrl, label: "", order: 0 }]).map((source, index, all) => (
+                    <div
+                      key={`${index}-${source.order}`}
+                      className="rounded-2xl border border-divider bg-panel-muted/70 p-3"
+                    >
+                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                        <TextInput
+                          value={source.label ?? ""}
+                          onChange={(event) =>
+                            setFormState((currentState) => {
+                              const nextSources = normalizeUniverseWikiSources(currentState);
+                              const seeded = nextSources.length
+                                ? nextSources
+                                : [{ url: currentState.wikiUrl, label: "", order: 0 }];
+                              seeded[index] = {
+                                ...seeded[index],
+                                label: event.target.value,
+                              };
+                              return {
+                                ...currentState,
+                                wikiUrls: seeded.map((entry, entryIndex) => ({
+                                  ...entry,
+                                  order: entryIndex,
+                                })),
+                                wikiUrl: index === 0 ? seeded[0]?.url ?? "" : currentState.wikiUrl,
+                              };
+                            })
+                          }
+                          placeholder="Optional label"
+                        />
+                        <TextInput
+                          value={source.url}
+                          onChange={(event) =>
+                            setFormState((currentState) => {
+                              const nextSources = normalizeUniverseWikiSources(currentState);
+                              const seeded = nextSources.length
+                                ? nextSources
+                                : [{ url: currentState.wikiUrl, label: "", order: 0 }];
+                              seeded[index] = {
+                                ...seeded[index],
+                                url: event.target.value,
+                              };
+                              return {
+                                ...currentState,
+                                wikiUrls: seeded.map((entry, entryIndex) => ({
+                                  ...entry,
+                                  order: entryIndex,
+                                })),
+                                wikiUrl:
+                                  index === 0
+                                    ? event.target.value
+                                    : getPrimaryUniverseWikiUrl({
+                                        wikiUrl: currentState.wikiUrl,
+                                        wikiUrls: seeded,
+                                      }),
+                              };
+                            })
+                          }
+                          placeholder="https://example-wiki-page"
+                        />
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={index === 0}
+                          onClick={() =>
+                            setFormState((currentState) => {
+                              const nextSources = normalizeUniverseWikiSources(currentState);
+                              if (index <= 0 || index >= nextSources.length) {
+                                return currentState;
+                              }
+                              [nextSources[index - 1], nextSources[index]] = [
+                                nextSources[index],
+                                nextSources[index - 1],
+                              ];
+                              const normalized = nextSources.map((entry, entryIndex) => ({
+                                ...entry,
+                                order: entryIndex,
+                              }));
+                              return {
+                                ...currentState,
+                                wikiUrls: normalized,
+                                wikiUrl: normalized[0]?.url ?? "",
+                              };
+                            })
+                          }
+                        >
+                          Up
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={index === all.length - 1}
+                          onClick={() =>
+                            setFormState((currentState) => {
+                              const nextSources = normalizeUniverseWikiSources(currentState);
+                              if (index < 0 || index >= nextSources.length - 1) {
+                                return currentState;
+                              }
+                              [nextSources[index], nextSources[index + 1]] = [
+                                nextSources[index + 1],
+                                nextSources[index],
+                              ];
+                              const normalized = nextSources.map((entry, entryIndex) => ({
+                                ...entry,
+                                order: entryIndex,
+                              }));
+                              return {
+                                ...currentState,
+                                wikiUrls: normalized,
+                                wikiUrl: normalized[0]?.url ?? "",
+                              };
+                            })
+                          }
+                        >
+                          Down
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={all.length === 1}
+                          onClick={() =>
+                            setFormState((currentState) => {
+                              const nextSources = normalizeUniverseWikiSources(currentState);
+                              const normalized = nextSources
+                                .filter((_, sourceIndex) => sourceIndex !== index)
+                                .map((entry, entryIndex) => ({
+                                  ...entry,
+                                  order: entryIndex,
+                                }));
+                              return {
+                                ...currentState,
+                                wikiUrls: normalized,
+                                wikiUrl: normalized[0]?.url ?? "",
+                              };
+                            })
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      setFormState((currentState) => {
+                        const nextSources = normalizeUniverseWikiSources(currentState);
+                        return {
+                          ...currentState,
+                          wikiUrls: [
+                            ...nextSources,
+                            {
+                              url: "",
+                              label: "",
+                              order: nextSources.length,
+                            },
+                          ],
+                        };
+                      })
+                    }
+                  >
+                    Add Source
+                  </Button>
+                </div>
               </Field>
 
               <Field label="Notes (optional)">

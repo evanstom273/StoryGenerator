@@ -13,6 +13,17 @@ export type DeveloperBugStatus = "open" | "in-progress" | "resolved" | "closed";
 export type DeveloperFeaturePriority = "low" | "medium" | "high";
 export type AutoIndexInterval = 5 | 10 | 15 | 20 | "disabled";
 export type AutoIndexMode = "disabled" | "messages" | "chapter";
+export type BackgroundJobStatus =
+  | "queued"
+  | "running"
+  | "complete"
+  | "failed"
+  | "cancelled";
+export type BackgroundJobType =
+  | "story_index"
+  | "metachat_generate"
+  | "story_export"
+  | "story_archive_export";
 
 export type DirectorIntent = {
   timeSkip?: { unit: "hours" | "days" | "weeks" | "months"; amount: number };
@@ -20,11 +31,18 @@ export type DirectorIntent = {
   target?: string;
 };
 
+export interface UniverseWikiSource {
+  url: string;
+  label?: string;
+  order: number;
+}
+
 export interface Universe {
   id: EntityId;
   name: string;
   description: string;
   wikiUrl: string;
+  wikiUrls?: UniverseWikiSource[];
   mode?: "referenced" | "custom";
   concept?: string;
   genreTheme?: string;
@@ -65,6 +83,7 @@ export interface Story {
   openingPrompt?: string;
   universePackSnapshot?: UniversePackSnapshotV1;
   isArchived?: boolean;
+  matureFictionMode?: boolean;
   autoIndexMode?: AutoIndexMode;
   autoIndexInterval?: AutoIndexInterval;
   currentSummary: string;
@@ -81,6 +100,10 @@ export interface StoryMessage {
   speakerName?: string;
   speakerType?: StoryMessageSpeakerType;
   directorIntent?: DirectorIntent;
+  chapterBoundary?: {
+    kind: "start" | "end";
+    label: string;
+  };
   editedAt?: Timestamp;
   regeneratedAt?: Timestamp;
   revision?: number;
@@ -92,6 +115,7 @@ export interface StoryMetaMessage {
   role: StoryMessageRole;
   content: string;
   timestamp: Timestamp;
+  jobId?: EntityId;
 }
 
 export interface StoryChapter {
@@ -126,9 +150,47 @@ export interface UniverseImport {
   id: EntityId;
   universeId: EntityId;
   sourceUrl: string;
+  sourceLabel?: string;
   title: string;
   importedText: string;
   importedAt: Timestamp;
+}
+
+export interface StoryUiState {
+  id: EntityId;
+  storyId: EntityId;
+  metaChatDraft?: string;
+  updatedAt: Timestamp;
+}
+
+export interface BackgroundJob {
+  id: EntityId;
+  type: BackgroundJobType;
+  storyId?: EntityId;
+  createdAt: Timestamp;
+  startedAt?: Timestamp;
+  finishedAt?: Timestamp;
+  status: BackgroundJobStatus;
+  progress?: {
+    current: number;
+    total: number;
+    label?: string;
+  };
+  error?: string;
+  dedupeKey?: string;
+  payload?: {
+    trigger?: "manual" | "auto";
+    content?: string;
+    metaChatUserMessageId?: EntityId;
+    metaChatOpenOnComplete?: boolean;
+    exportFormat?: ExportFormat;
+  };
+  result?: {
+    messageId?: EntityId;
+    notificationTitle?: string;
+    notificationBody?: string;
+    openMetaChat?: boolean;
+  };
 }
 
 export interface StorySummary {
@@ -179,9 +241,24 @@ export type StoryIndexesV2 = {
   items?: Record<string, IndexedEntity>;
   factions?: Record<string, IndexedEntity>;
   relationships?: RelationshipIndexEntry[];
-  worldFacts?: Array<{ fact: string; evidence?: EvidenceRef }>;
-  significantMemories?: Array<{ moment: string; evidence?: EvidenceRef }>;
-  openThreads?: Array<{ thread: string; evidence?: EvidenceRef }>;
+  worldFacts?: Array<{
+    fact: string;
+    evidence?: EvidenceRef;
+    sourceLabel?: string;
+    sourceUrl?: string;
+  }>;
+  significantMemories?: Array<{
+    moment: string;
+    evidence?: EvidenceRef;
+    sourceLabel?: string;
+    sourceUrl?: string;
+  }>;
+  openThreads?: Array<{
+    thread: string;
+    evidence?: EvidenceRef;
+    sourceLabel?: string;
+    sourceUrl?: string;
+  }>;
 };
 
 export type StorySceneSnapshotV2 = {
@@ -329,6 +406,7 @@ export interface UniverseDraft {
   name: string;
   description: string;
   wikiUrl: string;
+  wikiUrls?: UniverseWikiSource[];
   mode?: "referenced" | "custom";
   concept?: string;
   genreTheme?: string;
@@ -359,6 +437,7 @@ export interface StoryDraft {
   universeId: EntityId;
   playerCharacterId: EntityId;
   isArchived?: boolean;
+  matureFictionMode?: boolean;
   autoIndexMode?: AutoIndexMode;
   autoIndexInterval?: AutoIndexInterval;
   currentSummary: string;
@@ -463,6 +542,7 @@ export type StoryEngineBackupV1 = {
     storySummaries: StorySummary[];
     storyStates: StoryState[];
     storyAiConfigs: StoryAIConfig[];
+    storyUiStates?: StoryUiState[];
     aiSettings: (Omit<AISettings, "apiKeys"> & { apiKeys?: Partial<Record<AIProviderType, string>> }) | null;
   };
   uiPrefs: {

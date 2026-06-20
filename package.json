@@ -1,11 +1,11 @@
 {
   "name": "story-engine",
   "private": true,
-  "version": "1.18.1",
+  "version": "1.18.3",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && npx vite build",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

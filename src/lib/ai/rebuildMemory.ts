@@ -98,6 +98,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       model,
       messages: extractionContext,
       timeoutMs: REBUILD_REQUEST_TIMEOUT_MS,
+      signal,
     });
 
     if (signal?.aborted) {

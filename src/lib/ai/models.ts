@@ -21,6 +21,22 @@ const PROVIDER_MODELS: Record<AIProviderType, ProviderModelOption[]> = {
     { id: "qwen/qwen3-32b:free", label: "qwen/qwen3-32b:free" },
     { id: "deepseek/deepseek-r1-0528:free", label: "deepseek/deepseek-r1-0528:free" },
     { id: "google/gemma-3-27b-it:free", label: "google/gemma-3-27b-it:free" },
+    {
+      id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+      label: "Venice / Dolphin-Mistral 24B (Free)",
+    },
+    {
+      id: "nothingiisreal/mn-celeste-12b",
+      label: "Mistral Nemo 12B Celeste",
+    },
+    {
+      id: "thedrummer/cydonia-24b-v4.1",
+      label: "Cydonia 24B v4.1",
+    },
+    {
+      id: "sao10k/l3.1-euryale-70b",
+      label: "Euryale 70B",
+    },
   ],
 };
 

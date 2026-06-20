@@ -29,9 +29,17 @@ function toOpenAIMessages(messages: AIChatMessage[]) {
 async function callChatCompletions(
   apiKey: string,
   payload: OpenAIChatCompletionRequest,
-  opts?: { timeoutMs?: number },
+  opts?: { timeoutMs?: number; signal?: AbortSignal },
 ) {
   const controller = new AbortController();
+  const abortListener = () => controller.abort();
+  if (opts?.signal) {
+    if (opts.signal.aborted) {
+      controller.abort();
+    } else {
+      opts.signal.addEventListener("abort", abortListener, { once: true });
+    }
+  }
   const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
@@ -58,6 +66,7 @@ async function callChatCompletions(
     throw normalizeAIError(error);
   } finally {
     window.clearTimeout(timeoutId);
+    opts?.signal?.removeEventListener("abort", abortListener);
   }
 }
 
@@ -79,17 +88,17 @@ export function createOpenAIProvider(): AIProvider {
         throw new Error("OpenAI validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages, timeoutMs }) {
+    async generateResponse({ apiKey, model, messages, timeoutMs, signal }) {
       const content = await callChatCompletions(apiKey, {
         model,
         messages: toOpenAIMessages(messages),
         temperature: 0.8,
         max_tokens: 700,
-      }, { timeoutMs });
+      }, { timeoutMs, signal });
 
       return { content };
     },
-    async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs }) {
+    async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs, signal }) {
       const prompt = [
         `You are a story summarizer. Summarize the story "${storyTitle}" for continuity.`,
         "Write in present tense.",
@@ -117,7 +126,7 @@ export function createOpenAIProvider(): AIProvider {
         ],
         temperature: 0.2,
         max_tokens: 350,
-      }, { timeoutMs });
+      }, { timeoutMs, signal });
 
       return content;
     },

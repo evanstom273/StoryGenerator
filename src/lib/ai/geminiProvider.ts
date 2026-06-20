@@ -3,6 +3,8 @@ import { normalizeAIError, AIError, looksLikeSafetyRefusal } from "./errors";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 
 const REQUEST_TIMEOUT_MS = 45_000;
+const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
+const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
 
 interface GeminiGenerateContentRequest {
   contents: Array<{
@@ -16,10 +18,44 @@ interface GeminiGenerateContentRequest {
 
 interface GeminiGenerateContentResponse {
   candidates?: Array<{
+    finishReason?: string;
+    safetyRatings?: unknown;
     content?: {
       parts?: Array<{ text?: string }>;
     };
   }>;
+  promptFeedback?: unknown;
+}
+
+function clipGeminiAuditText(value: string | null | undefined, max = 400) {
+  const normalized = value?.replace(/\s+/g, " ").trim() ?? "";
+  if (!normalized) {
+    return "";
+  }
+  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
+}
+
+function reportGeminiAudit(args: {
+  hypothesisId: string;
+  location: string;
+  msg: string;
+  data?: Record<string, unknown>;
+}) {
+  // #region debug-point A:gemini-report
+  void fetch(GENERATION_AUDIT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: GENERATION_AUDIT_SESSION,
+      runId: "pre-fix",
+      hypothesisId: args.hypothesisId,
+      location: args.location,
+      msg: `[DEBUG] ${args.msg}`,
+      data: args.data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 }
 
 function buildGeminiRequest(messages: AIChatMessage[]): GeminiGenerateContentRequest {
@@ -66,11 +102,35 @@ async function callGenerateContent(
   apiKey: string,
   model: string,
   messages: AIChatMessage[],
-  opts?: { timeoutMs?: number },
+  opts?: { timeoutMs?: number; signal?: AbortSignal },
 ) {
   const controller = new AbortController();
+  const abortListener = () => controller.abort();
+  if (opts?.signal) {
+    if (opts.signal.aborted) {
+      controller.abort();
+    } else {
+      opts.signal.addEventListener("abort", abortListener, { once: true });
+    }
+  }
   const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  // #region debug-point A:gemini-request
+  reportGeminiAudit({
+    hypothesisId: "A",
+    location: "geminiProvider.ts:callGenerateContent:start",
+    msg: "Gemini request dispatched",
+    data: {
+      model,
+      timeoutMs,
+      messageCount: messages.length,
+      systemCount: messages.filter((message) => message.role === "system").length,
+      lastUserPreview: clipGeminiAuditText(
+        [...messages].reverse().find((message) => message.role === "user")?.content,
+      ),
+    },
+  });
+  // #endregion
 
   try {
     const response = await fetch(
@@ -102,6 +162,18 @@ async function callGenerateContent(
       }
 
       const message = await extractGeminiErrorMessage(response);
+      // #region debug-point A:gemini-http-error
+      reportGeminiAudit({
+        hypothesisId: "A",
+        location: "geminiProvider.ts:callGenerateContent:http-error",
+        msg: "Gemini request returned an HTTP error",
+        data: {
+          model,
+          status: response.status,
+          errorMessage: message,
+        },
+      });
+      // #endregion
       if (looksLikeSafetyRefusal(message)) {
         throw new AIError("safety_refusal", message, response.status, {
           retryable: false,
@@ -113,11 +185,37 @@ async function callGenerateContent(
 
     const json = (await response.json()) as GeminiGenerateContentResponse;
     const content = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    // #region debug-point A:gemini-response
+    reportGeminiAudit({
+      hypothesisId: "A",
+      location: "geminiProvider.ts:callGenerateContent:success",
+      msg: "Gemini response received",
+      data: {
+        model,
+        finishReason: json.candidates?.[0]?.finishReason ?? null,
+        promptFeedback: json.promptFeedback ?? null,
+        safetyRatings: json.candidates?.[0]?.safetyRatings ?? null,
+        rawOutput: content,
+      },
+    });
+    // #endregion
     return content.trim();
   } catch (error) {
+    // #region debug-point A:gemini-catch
+    reportGeminiAudit({
+      hypothesisId: "A",
+      location: "geminiProvider.ts:callGenerateContent:catch",
+      msg: "Gemini request threw before returning usable content",
+      data: {
+        model,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      },
+    });
+    // #endregion
     throw normalizeAIError(error);
   } finally {
     window.clearTimeout(timeoutId);
+    opts?.signal?.removeEventListener("abort", abortListener);
   }
 }
 
@@ -136,11 +234,11 @@ export function createGeminiProvider(): AIProvider {
         throw new Error("Gemini validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages, timeoutMs }) {
-      const content = await callGenerateContent(apiKey, model, messages, { timeoutMs });
+    async generateResponse({ apiKey, model, messages, timeoutMs, signal }) {
+      const content = await callGenerateContent(apiKey, model, messages, { timeoutMs, signal });
       return { content };
     },
-    async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs }) {
+    async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs, signal }) {
       const summaryInstruction = [
         `You are a story summarizer. Summarize the story "${storyTitle}" for continuity.`,
         "Write in present tense.",
@@ -163,7 +261,7 @@ export function createGeminiProvider(): AIProvider {
       const content = await callGenerateContent(apiKey, model, [
         { role: "system", content: summaryInstruction },
         ...messages,
-      ], { timeoutMs });
+      ], { timeoutMs, signal });
 
       return content;
     },

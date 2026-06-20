@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.18.1";
+export const APP_VERSION = "1.18.3";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -303,6 +303,35 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Provider-side safety refusals are now classified more clearly, with user-facing messaging that explains the hard boundary still applies to exploitative, eroticised, predatory, illegal, or instructional harm",
       "Android Studio sync now receives the latest web bundle again after rebuilding and copying the updated app into the Android project",
       "Version wiring is now aligned to 1.18.1 across the app label, changelog, npm metadata, and Android release metadata",
+    ],
+    knownIssues: [],
+  },
+  "1.18.2": {
+    title: "Fictional Injury Input Context Hotfix",
+    added: [
+      "Story input safety now analyses fictional-roleplay cues and recent canon context when a player writes about injury, pain, hospitals, trauma, or recovery",
+      "The latest player turn is now sent to the model with clearer in-story labelling so ordinary first-person aftermath prose reads more obviously as fiction",
+      "Input-safety context now includes recent transcript and story-state cues when the scene already supports injury or medical aftermath",
+    ],
+    fixed: [
+      "Normal fictional aftermath lines such as shoulder pain, hospital wake-ups, antiseptic scene-setting, slings, IVs, and recovery prose are less likely to trigger over-literal safety refusals",
+      "Narrative parity is improved when the AI has already established injuries, extraction, hospital care, trauma, or recovery and the player responds in plain language",
+      "Safety refusal errors now make it clearer when the block came from the provider and when the request looks like a likely false positive in story context",
+      "Version wiring is now aligned to 1.18.2 across the app label, changelog, npm metadata, and Android release metadata",
+    ],
+    knownIssues: [],
+  },
+  "1.18.3": {
+    title: "Background Jobs + Persistent MetaChat + Multi-Source Universes",
+    added: [
+      "Long-running story indexing now runs as a persistent background job with queued/running/complete/failed/cancelled states",
+      "MetaChat drafts now persist when you leave the overlay, and MetaChat replies can complete as background jobs",
+      "Universe references now support ordered multi-source wiki URLs with labels and precedence-aware prompt wiring",
+    ],
+    fixed: [
+      "Starting a new chapter with flexible Chapter X syntax now implicitly closes the previous active chapter without breaking older Start/End markers",
+      "Story settings now surfaces job state and duplicate deep-index requests no longer stack up for the same story",
+      "Version wiring is now aligned to 1.18.3 across the app label and npm metadata",
     ],
     knownIssues: [],
   },

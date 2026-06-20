@@ -7,6 +7,7 @@ import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { formatDate, formatDateTime } from "../lib/dates";
 import type { UniverseImport } from "../types/models";
+import { normalizeUniverseWikiSources } from "../lib/universeSources";
 
 function PlaceholderImportSection({
   title,
@@ -73,7 +74,10 @@ function ImportedLoreSection({
               <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
                 Source
               </dt>
-              <dd className="mt-1 break-all">{latestImport.sourceUrl}</dd>
+              <dd className="mt-1 break-all">
+                {latestImport.sourceLabel ? `${latestImport.sourceLabel} — ` : ""}
+                {latestImport.sourceUrl}
+              </dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
@@ -182,6 +186,7 @@ export function UniverseDetailPage() {
   const universeDescription = activeUniverse.description.trim() || activeUniverse.concept?.trim() || "";
   const universeConcept = activeUniverse.concept?.trim() || "";
   const universeBlueprint = activeUniverse.universeBlueprint ?? "";
+  const wikiSources = normalizeUniverseWikiSources(activeUniverse);
 
   const placeholderSections = useMemo(
     (): Array<{ title: string; items: string[] }> => [
@@ -262,10 +267,22 @@ export function UniverseDetailPage() {
                   </div>
                   <div className="md:col-span-2">
                     <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                      Wiki / Reference URL
+                      Wiki / Reference Sources
                     </dt>
-                    <dd className="mt-2 break-all text-sm text-ink-soft">
-                      {activeUniverse.wikiUrl || "Not provided"}
+                    <dd className="mt-2 text-sm text-ink-soft">
+                      {wikiSources.length ? (
+                        <ol className="space-y-2">
+                          {wikiSources.map((source) => (
+                            <li key={`${source.order}-${source.url}`} className="break-all">
+                              <span className="text-ink-muted">{source.order + 1}.</span>{" "}
+                              {source.label ? `${source.label} — ` : ""}
+                              {source.url}
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        activeUniverse.wikiUrl || "Not provided"
+                      )}
                     </dd>
                   </div>
                   <div className="md:col-span-2">

@@ -1,4 +1,5 @@
 import type { AIProviderType, Universe } from "../../types/models";
+import { formatUniverseWikiSources } from "../universeSources";
 
 export type PlayerCharacterField =
   | "name"
@@ -24,7 +25,9 @@ function buildUniverseInfo(universe: Universe) {
   return [
     `Universe Name: ${universe.name}`,
     universe.description.trim() ? `Universe Description: ${universe.description.trim()}` : "",
-    universe.wikiUrl.trim() ? `Universe Wiki URL: ${universe.wikiUrl.trim()}` : "",
+    formatUniverseWikiSources(universe).length
+      ? `Universe Sources:\n${formatUniverseWikiSources(universe).join("\n")}`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");

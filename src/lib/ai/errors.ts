@@ -20,6 +20,85 @@ export type AIGenerationFailureKind =
   | "quota"
   | "unknown";
 
+export type GenerationFailKind =
+  | "input_blocked_local"
+  | "provider_refusal"
+  | "provider_blocked_prompt"
+  | "provider_blocked_response"
+  | "timeout"
+  | "network"
+  | "rate_limit"
+  | "quota"
+  | "context_too_large"
+  | "parse_error"
+  | "validation_error"
+  | "unknown";
+
+export type GenerationFailStage =
+  | "precheck"
+  | "request"
+  | "response"
+  | "parse"
+  | "validation";
+
+export type GenerationFailure = {
+  kind: GenerationFailKind;
+  stage: GenerationFailStage;
+  summaryMessage: string;
+  providerName?: string;
+  model?: string;
+  attempts: number;
+  maxAttempts: number;
+  diagnostic?: string;
+  requestId?: string;
+  transmitSafe?: {
+    originalText: string;
+    transmittedText: string;
+    notes: string[];
+  };
+};
+
+const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
+const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
+
+function reportGenerationFailureAudit(args: {
+  hypothesisId: string;
+  location: string;
+  msg: string;
+  traceId?: string;
+  data?: Record<string, unknown>;
+}) {
+  // #region debug-point E:failure-report
+  void fetch(GENERATION_AUDIT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: GENERATION_AUDIT_SESSION,
+      runId: "pre-fix",
+      hypothesisId: args.hypothesisId,
+      traceId: args.traceId,
+      location: args.location,
+      msg: `[DEBUG] ${args.msg}`,
+      data: args.data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
+
+export class GenerationFailureError extends Error {
+  failure: GenerationFailure;
+
+  constructor(failure: GenerationFailure) {
+    super(failure.summaryMessage);
+    this.failure = failure;
+  }
+}
+
+export function isGenerationFailureError(error: unknown): error is GenerationFailureError {
+  return error instanceof GenerationFailureError;
+}
+
 export class AIError extends Error {
   code: AIErrorCode;
   status?: number;
@@ -362,6 +441,7 @@ export function formatAIGenerationError(
 ) {
   const classified = classifyAIGenerationError(error);
   const details = [
+    "source=provider",
     options?.provider ? `provider=${options.provider}` : "",
     typeof options?.attempts === "number" && typeof options?.maxAttempts === "number"
       ? `attempts=${options.attempts}/${options.maxAttempts}`
@@ -376,6 +456,92 @@ export function formatAIGenerationError(
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function mapGenerationKind(kind: AIGenerationFailureKind): GenerationFailKind {
+  switch (kind) {
+    case "timeout":
+      return "timeout";
+    case "provider":
+      return "network";
+    case "quota":
+      return "rate_limit";
+    case "context":
+      return "context_too_large";
+    case "safety":
+      return "provider_refusal";
+    case "parse":
+      return "parse_error";
+    case "validation":
+      return "validation_error";
+    default:
+      return "unknown";
+  }
+}
+
+function mapStage(kind: AIGenerationFailureKind): GenerationFailStage {
+  switch (kind) {
+    case "parse":
+      return "parse";
+    case "validation":
+      return "validation";
+    default:
+      return "request";
+  }
+}
+
+export function createGenerationFailure(error: unknown, opts: {
+  providerName?: string;
+  model?: string;
+  attempts: number;
+  maxAttempts: number;
+  stage?: GenerationFailStage;
+  requestId?: string;
+}): GenerationFailure {
+  const classified = classifyAIGenerationError(error);
+  const normalized = normalizeAIError(error);
+  const diagnostic = normalized.diagnostic ?? normalized.message;
+  const stage = opts.stage ?? mapStage(classified.kind);
+  const failure = {
+    kind: mapGenerationKind(classified.kind),
+    stage,
+    summaryMessage: classified.message,
+    providerName: opts.providerName,
+    model: opts.model,
+    attempts: opts.attempts,
+    maxAttempts: opts.maxAttempts,
+    diagnostic,
+    requestId: opts.requestId,
+  };
+  // #region debug-point E:failure-created
+  reportGenerationFailureAudit({
+    hypothesisId: "E",
+    location: "errors.ts:createGenerationFailure",
+    msg: "generation failure normalized",
+    traceId: opts.requestId,
+    data: {
+      providerName: opts.providerName,
+      model: opts.model,
+      attempts: opts.attempts,
+      maxAttempts: opts.maxAttempts,
+      kind: failure.kind,
+      stage: failure.stage,
+      diagnostic: failure.diagnostic,
+      summaryMessage: failure.summaryMessage,
+    },
+  });
+  // #endregion
+  return failure;
+}
+
+export function withTransmitSafeDiagnostics(
+  failure: GenerationFailure,
+  transmitSafe: GenerationFailure["transmitSafe"],
+): GenerationFailure {
+  return {
+    ...failure,
+    transmitSafe,
+  };
 }
 
 function looksLikeQuotaLimit(message: string) {

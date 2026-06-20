@@ -570,17 +570,18 @@ export function standardizeAssistantStoryText(args: {
       }
     }
 
-    const orphanedAction =
-      trimmed.startsWith("*") &&
-      trimmed.endsWith("*") &&
-      /\b(He|She|They)\b/.test(stripWrappingAsterisks(trimmed));
-    if (orphanedAction) {
-      issues.push({
-        code: "missing-speaker-label",
-        detail: "Action appears without a speaker label.",
-        line: trimmed,
-      });
-      pushNarration(stripWrappingAsterisks(trimmed));
+    const standaloneWrappedLine = trimmed.startsWith("*") && trimmed.endsWith("*");
+    if (standaloneWrappedLine) {
+      const unwrapped = stripWrappingAsterisks(trimmed);
+      const wrappedPronounAction = unwrapped.match(/^(He|She|They)\s+([a-zA-Z']{2,})\b/);
+      if (wrappedPronounAction && looksLikeVerbToken(wrappedPronounAction[2] ?? "")) {
+        issues.push({
+          code: "missing-speaker-label",
+          detail: "Action appears without a speaker label.",
+          line: trimmed,
+        });
+      }
+      pushNarration(unwrapped);
       continue;
     }
 

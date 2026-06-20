@@ -1,5 +1,6 @@
 import type {
   AISettings,
+  BackgroundJob,
   DeveloperBug,
   DeveloperFeatureRequest,
   DeveloperTestingNote,
@@ -11,6 +12,7 @@ import type {
   StoryEngineBackup,
   StoryExportBundle,
   StoryChapter,
+  StoryUiState,
   StoryMetaMessage,
   StoryState,
   StoryMessage,
@@ -35,6 +37,7 @@ import {
   sortByUpdatedAtDesc,
 } from "./dates";
 import { createEntityId } from "./ids";
+import { getPrimaryUniverseWikiUrl } from "./universeSources";
 
 export interface StoryEngineRepository {
   listUniverses(): Promise<Universe[]>;
@@ -62,6 +65,14 @@ export interface StoryEngineRepository {
   listStoryChapters(storyId: EntityId): Promise<StoryChapter[]>;
   saveStoryChapter(record: StoryChapter): Promise<StoryChapter>;
   deleteStoryChapter(id: EntityId): Promise<void>;
+  listBackgroundJobs(): Promise<BackgroundJob[]>;
+  getBackgroundJob(id: EntityId): Promise<BackgroundJob | null>;
+  saveBackgroundJob(record: BackgroundJob): Promise<BackgroundJob>;
+  deleteBackgroundJob(id: EntityId): Promise<void>;
+  getStoryUiState(storyId: EntityId): Promise<StoryUiState | null>;
+  listStoryUiStates(): Promise<StoryUiState[]>;
+  saveStoryUiState(record: StoryUiState): Promise<StoryUiState>;
+  deleteStoryUiState(id: EntityId): Promise<void>;
   getStoryExportBundle(storyId: EntityId): Promise<StoryExportBundle | null>;
   getUniverseExportBundle(universeId: EntityId): Promise<UniverseExportBundleV1 | null>;
   getPlayerCharacterExportBundle(
@@ -148,6 +159,13 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     async deleteStory(id) {
       await deleteFromStore("stories", id);
       await deleteAllByIndex("messages", "storyId", id);
+      await deleteAllByIndex("storyMetaMessages", "storyId", id);
+      await deleteAllByIndex("storyChapters", "storyId", id);
+      await deleteAllByIndex("storySummaries", "storyId", id);
+      await deleteAllByIndex("storyStates", "storyId", id);
+      await deleteAllByIndex("storyAiConfigs", "storyId", id);
+      await deleteAllByIndex("backgroundJobs", "storyId", id);
+      await deleteAllByIndex("storyUiStates", "storyId", id);
     },
     async listAllMessages() {
       const messages = await getAllFromStore<StoryMessage>("messages");
@@ -193,6 +211,35 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     },
     deleteStoryChapter(id) {
       return deleteFromStore("storyChapters", id);
+    },
+    async listBackgroundJobs() {
+      const jobs = await getAllFromStore<BackgroundJob>("backgroundJobs");
+      return [...jobs].sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+      );
+    },
+    getBackgroundJob(id) {
+      return getFromStore<BackgroundJob>("backgroundJobs", id);
+    },
+    saveBackgroundJob(record) {
+      return putInStore("backgroundJobs", record);
+    },
+    deleteBackgroundJob(id) {
+      return deleteFromStore("backgroundJobs", id);
+    },
+    async getStoryUiState(storyId) {
+      const records = await getAllByIndex<StoryUiState>("storyUiStates", "storyId", storyId);
+      return records[0] ?? null;
+    },
+    listStoryUiStates() {
+      return getAllFromStore<StoryUiState>("storyUiStates");
+    },
+    saveStoryUiState(record) {
+      return putInStore("storyUiStates", record);
+    },
+    deleteStoryUiState(id) {
+      return deleteFromStore("storyUiStates", id);
     },
     async getStoryExportBundle(storyId) {
       const story = await getFromStore<Story>("stories", storyId);
@@ -349,12 +396,12 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
       const bundledCharacterScope = (bundledPlayerCharacter as any).scope ?? "library";
 
       const existingUniverses = await getAllFromStore<Universe>("universes");
-      const bundledWiki = normalizeKey((bundledUniverse as any).wikiUrl);
+      const bundledWiki = normalizeKey(getPrimaryUniverseWikiUrl(bundledUniverse));
       const bundledUniverseName = normalizeKey((bundledUniverse as any).name);
       const matchedUniverse =
         (bundledWiki
           ? existingUniverses.find(
-              (universe) => normalizeKey((universe as any).wikiUrl) === bundledWiki,
+              (universe) => normalizeKey(getPrimaryUniverseWikiUrl(universe)) === bundledWiki,
             )
           : undefined) ??
         (bundledUniverseName
@@ -620,6 +667,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         storySummaries,
         storyStates,
         storyAiConfigs,
+        storyUiStates,
         aiSettings,
       ] = await Promise.all([
         getAllFromStore<Universe>("universes"),
@@ -630,6 +678,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         getAllFromStore<StorySummary>("storySummaries"),
         getAllFromStore<StoryState>("storyStates"),
         getAllFromStore<StoryAIConfig>("storyAiConfigs"),
+        getAllFromStore<StoryUiState>("storyUiStates"),
         getFromStore<AISettings>("aiSettings", "ai-settings"),
       ]);
 
@@ -678,6 +727,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           storySummaries,
           storyStates,
           storyAiConfigs,
+          storyUiStates,
           aiSettings: sanitizedAISettings,
         },
         uiPrefs: {
@@ -698,6 +748,8 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         clearStore("storySummaries"),
         clearStore("storyStates"),
         clearStore("storyAiConfigs"),
+        clearStore("backgroundJobs"),
+        clearStore("storyUiStates"),
         clearStore("aiSettings"),
         clearStore("developerBugs"),
         clearStore("developerFeatureRequests"),
@@ -723,6 +775,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
       const storySummaries = Array.isArray(data.storySummaries) ? data.storySummaries : [];
       const storyStates = Array.isArray(data.storyStates) ? data.storyStates : [];
       const storyAiConfigs = Array.isArray(data.storyAiConfigs) ? data.storyAiConfigs : [];
+      const storyUiStates = Array.isArray(data.storyUiStates) ? data.storyUiStates : [];
       const aiSettingsRecord = data.aiSettings ?? null;
 
       function assertHasId(store: string, record: unknown) {
@@ -740,6 +793,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
       for (const record of storySummaries) assertHasId("storySummaries", record);
       for (const record of storyStates) assertHasId("storyStates", record);
       for (const record of storyAiConfigs) assertHasId("storyAiConfigs", record);
+      for (const record of storyUiStates) assertHasId("storyUiStates", record);
       if (aiSettingsRecord) assertHasId("aiSettings", aiSettingsRecord);
 
       const normalizedAISettings = (() => {
@@ -774,6 +828,8 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         await clearStore("storySummaries");
         await clearStore("storyStates");
         await clearStore("storyAiConfigs");
+        await clearStore("backgroundJobs");
+        await clearStore("storyUiStates");
         await clearStore("aiSettings");
         await clearStore("developerBugs");
         await clearStore("developerFeatureRequests");
@@ -791,6 +847,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         await putManyInStore("storySummaries", storySummaries);
         await putManyInStore("storyStates", storyStates);
         await putManyInStore("storyAiConfigs", storyAiConfigs);
+        await putManyInStore("storyUiStates", storyUiStates);
         if (normalizedAISettings) {
           await putManyInStore("aiSettings", [normalizedAISettings]);
         }
@@ -804,6 +861,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           existingStorySummaries,
           existingStoryStates,
           existingStoryAiConfigs,
+          existingStoryUiStates,
         ] = await Promise.all([
           getAllFromStore<Universe>("universes"),
           getAllFromStore<PlayerCharacter>("playerCharacters"),
@@ -813,6 +871,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           getAllFromStore<StorySummary>("storySummaries"),
           getAllFromStore<StoryState>("storyStates"),
           getAllFromStore<StoryAIConfig>("storyAiConfigs"),
+          getAllFromStore<StoryUiState>("storyUiStates"),
         ]);
 
         const existingByStore = {
@@ -824,6 +883,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           storySummaries: new Set(existingStorySummaries.map((record) => record.id)),
           storyStates: new Set(existingStoryStates.map((record) => record.id)),
           storyAiConfigs: new Set(existingStoryAiConfigs.map((record) => record.id)),
+          storyUiStates: new Set(existingStoryUiStates.map((record) => record.id)),
         };
 
         function shouldWrite(store: keyof typeof existingByStore, id: string) {
@@ -866,6 +926,10 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         await putManyInStore(
           "storyAiConfigs",
           storyAiConfigs.filter((record) => shouldWrite("storyAiConfigs", record.id)),
+        );
+        await putManyInStore(
+          "storyUiStates",
+          storyUiStates.filter((record) => shouldWrite("storyUiStates", record.id)),
         );
         if (normalizedAISettings) {
           await putManyInStore("aiSettings", [normalizedAISettings]);

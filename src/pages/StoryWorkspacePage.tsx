@@ -7,17 +7,43 @@ import { PencilIcon } from "../components/icons";
 import { StoryArchiveView } from "../components/story/StoryArchiveView";
 import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
 import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
+import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
+import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
 import type {
   StoryMessage,
   StoryMessageRole,
   StoryMessageSpeakerType,
 } from "../types/models";
+
+const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
+const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
+
+function reportWorkspaceUiAudit(args: {
+  msg: string;
+  data?: Record<string, unknown>;
+}) {
+  // #region debug-point E:workspace-ui
+  void fetch(GENERATION_AUDIT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: GENERATION_AUDIT_SESSION,
+      runId: "pre-fix",
+      hypothesisId: "E",
+      location: "StoryWorkspacePage.tsx",
+      msg: `[DEBUG] ${args.msg}`,
+      data: args.data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
 
 interface MessageComposerState {
   role: StoryMessageRole;
@@ -73,6 +99,8 @@ export function StoryWorkspacePage() {
   const [isSavingMessage, setIsSavingMessage] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
+  const [generationFailure, setGenerationFailure] = useState<GenerationFailure | null>(null);
+  const [generationFailureOpen, setGenerationFailureOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [lastChatContent, setLastChatContent] = useState<string | null>(null);
@@ -202,9 +230,25 @@ export function StoryWorkspacePage() {
     try {
       await sendChatMessage(activeStory.id, content);
     } catch (error) {
-      setChatError(
-        error instanceof Error ? error.message : "Unable to generate a response.",
-      );
+      reportWorkspaceUiAudit({
+        msg: "Story workspace displayed generation error",
+        data: {
+          storyId: activeStory.id,
+          originalUserText: content,
+          failureKind: isGenerationFailureError(error) ? error.failure.kind : null,
+          failureStage: isGenerationFailureError(error) ? error.failure.stage : null,
+          errorMessage: error instanceof Error ? error.message : "Unable to generate a response.",
+        },
+      });
+      if (isGenerationFailureError(error)) {
+        setGenerationFailure(error.failure);
+        setGenerationFailureOpen(true);
+        setChatError(error.failure.summaryMessage);
+      } else {
+        setChatError(
+          error instanceof Error ? error.message : "Unable to generate a response.",
+        );
+      }
       setChatInput(content);
     } finally {
       setIsGenerating(false);
@@ -222,9 +266,25 @@ export function StoryWorkspacePage() {
     try {
       await sendChatMessage(activeStory.id, lastChatContent);
     } catch (error) {
-      setChatError(
-        error instanceof Error ? error.message : "Unable to generate a response.",
-      );
+      reportWorkspaceUiAudit({
+        msg: "Story workspace displayed retry generation error",
+        data: {
+          storyId: activeStory.id,
+          originalUserText: lastChatContent,
+          failureKind: isGenerationFailureError(error) ? error.failure.kind : null,
+          failureStage: isGenerationFailureError(error) ? error.failure.stage : null,
+          errorMessage: error instanceof Error ? error.message : "Unable to generate a response.",
+        },
+      });
+      if (isGenerationFailureError(error)) {
+        setGenerationFailure(error.failure);
+        setGenerationFailureOpen(true);
+        setChatError(error.failure.summaryMessage);
+      } else {
+        setChatError(
+          error instanceof Error ? error.message : "Unable to generate a response.",
+        );
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -491,6 +551,15 @@ export function StoryWorkspacePage() {
 
   return (
     <div className="flex min-h-[72vh] flex-col">
+      <GenerationFailureModal
+        open={generationFailureOpen}
+        failure={generationFailure}
+        onClose={() => setGenerationFailureOpen(false)}
+        onRetry={() => {
+          setGenerationFailureOpen(false);
+          void handleRetryChat();
+        }}
+      />
       <div
         className={[
           "fixed inset-0 z-[70]",

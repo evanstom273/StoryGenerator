@@ -1,5 +1,5 @@
 const DATABASE_NAME = "story-engine-db";
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 6;
 
 export type StoreName =
   | "universes"
@@ -13,6 +13,8 @@ export type StoreName =
   | "universeImports"
   | "storySummaries"
   | "storyStates"
+  | "backgroundJobs"
+  | "storyUiStates"
   | "developerBugs"
   | "developerFeatureRequests"
   | "developerTestingNotes";
@@ -99,6 +101,13 @@ export function openStoryEngineDatabase() {
       const storyStates = ensureStore("storyStates", { keyPath: "id" });
       ensureIndex(storyStates, "storyId", "storyId", { unique: false });
 
+      const backgroundJobs = ensureStore("backgroundJobs", { keyPath: "id" });
+      ensureIndex(backgroundJobs, "storyId", "storyId", { unique: false });
+      ensureIndex(backgroundJobs, "status", "status", { unique: false });
+
+      const storyUiStates = ensureStore("storyUiStates", { keyPath: "id" });
+      ensureIndex(storyUiStates, "storyId", "storyId", { unique: true });
+
       ensureStore("developerBugs", { keyPath: "id" });
       ensureStore("developerFeatureRequests", { keyPath: "id" });
       ensureStore("developerTestingNotes", { keyPath: "id" });
@@ -117,6 +126,10 @@ export function openStoryEngineDatabase() {
         }
 
         if (fromVersion < 5 && toVersion >= 5) {
+          return;
+        }
+
+        if (fromVersion < 6 && toVersion >= 6) {
           return;
         }
       };

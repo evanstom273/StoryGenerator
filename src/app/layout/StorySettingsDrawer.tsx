@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DownloadIcon, TrashIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
@@ -8,6 +8,7 @@ import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models"
 import { serializeStoryExport } from "../../lib/storyExport";
 import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
+import { META_CHAT_OPEN_STORAGE_KEY } from "../../lib/jobNotifications";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
 import type { AIProviderType, AutoIndexInterval, AutoIndexMode, ExportFormat } from "../../types/models";
@@ -17,6 +18,32 @@ import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useTheme } from "../theming/ThemeContext";
 import { themes } from "../theming/themes";
 import { useUiPrefs } from "../ui/UiPrefsContext";
+
+const ARCHIVE_PDF_DEBUG_URL = "http://127.0.0.1:7777/event";
+const ARCHIVE_PDF_DEBUG_SESSION = "archive-pdf-no-op";
+
+function reportArchivePdfDebug(args: {
+  hypothesisId: string;
+  location: string;
+  msg: string;
+  data?: Record<string, unknown>;
+}) {
+  // #region debug-point archive-pdf-no-op:report
+  void fetch(ARCHIVE_PDF_DEBUG_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: ARCHIVE_PDF_DEBUG_SESSION,
+      runId: "pre-fix",
+      hypothesisId: args.hypothesisId,
+      location: args.location,
+      msg: `[DEBUG] ${args.msg}`,
+      data: args.data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
 
 function createExportFilename(title: string, format: ExportFormat) {
   const sanitizedTitle = title
@@ -87,7 +114,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     deleteStory,
     getStoryAIConfig,
     saveStoryAIConfig,
-    updateIndexesDeep,
+    queueStoryIndexJob,
+    cancelBackgroundJob,
+    backgroundJobs,
+    dismissJobNotice,
+    jobNotice,
     rebuildStatus,
   } = useStoryEngine();
 
@@ -95,9 +126,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const universe = story ? getUniverseById(story.universeId) : undefined;
   const playerCharacter = story ? getPlayerCharacterById(story.playerCharacterId) : undefined;
 
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [storyFields, setStoryFields] = useState({
     title: story?.title ?? "",
     currentSummary: story?.currentSummary ?? "",
+    matureFictionMode: story?.matureFictionMode ?? false,
     autoIndexMode: (story?.autoIndexMode ??
       (story?.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode,
     autoIndexInterval: (story?.autoIndexInterval ?? 20) as AutoIndexInterval,
@@ -174,6 +207,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     setStoryFields({
       title: story.title,
       currentSummary: story.currentSummary,
+      matureFictionMode: story.matureFictionMode ?? false,
       autoIndexMode: (story.autoIndexMode ??
         (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode,
       autoIndexInterval: (story.autoIndexInterval ?? 20) as AutoIndexInterval,
@@ -216,6 +250,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       if (
         storyFields.title === story.title &&
         storyFields.currentSummary === story.currentSummary &&
+        storyFields.matureFictionMode === (story.matureFictionMode ?? false) &&
         storyFields.autoIndexMode ===
           ((story.autoIndexMode ??
             (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode) &&
@@ -235,6 +270,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       story?.id,
       storyFields.title,
       storyFields.currentSummary,
+      storyFields.matureFictionMode,
       storyFields.autoIndexMode,
       storyFields.autoIndexInterval,
     ],
@@ -288,34 +324,114 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     return story.title;
   }, [playerCharacter, story, universe]);
 
+  function revealStatus() {
+    window.setTimeout(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }, 0);
+  }
+
+  function showNotice(value: string | null) {
+    setPageNotice(value);
+    if (value) {
+      revealStatus();
+    }
+  }
+
+  function showError(value: string | null) {
+    setPageError(value);
+    if (value) {
+      revealStatus();
+    }
+  }
+
   async function handleExport(format: ExportFormat) {
     if (!story) {
       return;
     }
 
-    setPageError(null);
-    setPageNotice(null);
+    showError(null);
+    showNotice(null);
 
     try {
+      // #region debug-point archive-pdf-no-op:export-start
+      reportArchivePdfDebug({
+        hypothesisId: "A",
+        location: "StorySettingsDrawer.tsx:handleExport:start",
+        msg: "export clicked",
+        data: {
+          storyId: story.id,
+          format,
+        },
+      });
+      // #endregion
       if (format === "archive_pdf") {
-        setPageNotice("Updating archive…");
-        await updateIndexesDeep(story.id);
-        setPageNotice("Generating PDF…");
+        showNotice("Generating PDF…");
       }
 
-      const bundle = await exportStory(story.id);
+      const bundle = await exportStory(story.id, {
+        refreshArchiveIfStale: format === "archive_pdf",
+      });
+      // #region debug-point archive-pdf-no-op:bundle
+      reportArchivePdfDebug({
+        hypothesisId: "B",
+        location: "StorySettingsDrawer.tsx:handleExport:exportStory",
+        msg: "export bundle assembled",
+        data: {
+          ok: Boolean(bundle),
+          messageCount: bundle?.messages?.length ?? null,
+        },
+      });
+      // #endregion
 
       if (!bundle) {
-        setPageError("Unable to assemble export data for this story.");
+        showError("Unable to assemble export data for this story.");
         return;
       }
 
       const { content, mimeType } = serializeStoryExport(bundle, format);
+      // #region debug-point archive-pdf-no-op:serialized
+      reportArchivePdfDebug({
+        hypothesisId: "C",
+        location: "StorySettingsDrawer.tsx:handleExport:serializeStoryExport",
+        msg: "export serialized",
+        data: {
+          format,
+          mimeType,
+          contentType: typeof content,
+          byteLength:
+            content instanceof Uint8Array
+              ? content.byteLength
+              : content instanceof ArrayBuffer
+                ? content.byteLength
+                : null,
+        },
+      });
+      // #endregion
       await downloadFile(createExportFilename(story.title, format), content, mimeType);
+      // #region debug-point archive-pdf-no-op:download-ok
+      reportArchivePdfDebug({
+        hypothesisId: "D",
+        location: "StorySettingsDrawer.tsx:handleExport:downloadFile",
+        msg: "downloadFile resolved",
+        data: { format },
+      });
+      // #endregion
     } catch (error) {
-      setPageError(error instanceof Error ? error.message : "Unable to export.");
+      // #region debug-point archive-pdf-no-op:export-error
+      reportArchivePdfDebug({
+        hypothesisId: "E",
+        location: "StorySettingsDrawer.tsx:handleExport:catch",
+        msg: "export failed",
+        data: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      // #endregion
+      showError(error instanceof Error ? error.message : "Unable to export.");
     } finally {
-      setPageNotice(null);
+      showNotice(null);
     }
   }
 
@@ -329,9 +445,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     setPageNotice("Updating archive…");
 
     try {
-      await updateIndexesDeep(story.id);
       setPageNotice("Generating support bundle…");
-      const bundle = await exportStory(story.id);
+      const bundle = await exportStory(story.id, { refreshArchiveIfStale: true });
 
       if (!bundle) {
         setPageError("Unable to assemble export data for this story.");
@@ -416,6 +531,22 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       ? rebuildStatus
       : null;
   const isRebuilding = rebuildInfo ? rebuildInfo.phase === "loading" || rebuildInfo.phase === "extracting" || rebuildInfo.phase === "saving" : false;
+  const storyJobs = story
+    ? backgroundJobs.filter((job) => job.storyId === story.id)
+    : [];
+
+  useEffect(() => {
+    if (!story) {
+      return;
+    }
+    try {
+      if (localStorage.getItem(META_CHAT_OPEN_STORAGE_KEY) === story.id) {
+        localStorage.removeItem(META_CHAT_OPEN_STORAGE_KEY);
+        setStorySettingsOpen(true);
+        setMetaChatOpen(true);
+      }
+    } catch {}
+  }, [setStorySettingsOpen, story]);
 
   async function handleReindex() {
     if (!story) {
@@ -425,9 +556,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     setPageError(null);
     setPageNotice(null);
     try {
-      await updateIndexesDeep(story.id);
-      if (await isAndroidNativePlatform()) {
-        setPageNotice("Re-index complete on Android. Archive state has been refreshed.");
+      const result = await queueStoryIndexJob(story.id, { trigger: "manual" });
+      if (result.duplicate) {
+        setPageNotice("Indexing already running for this story.");
+      } else if (await isAndroidNativePlatform()) {
+        setPageNotice("Indexing queued on Android. You can leave the story while it runs.");
+      } else {
+        setPageNotice("Indexing queued in the background.");
       }
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to re-index.");
@@ -537,7 +672,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           </Button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+        <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
           {story && universe && playerCharacter ? (
             <>
               <Panel padding="sm">
@@ -744,6 +879,33 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
               <Panel padding="sm">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Content Mode
+                </div>
+                <div className="mt-4 space-y-3">
+                  <label className="block space-y-2">
+                    <div className="text-xs text-ink-muted">Mature fiction (non-graphic)</div>
+                    <select
+                      className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                      value={storyFields.matureFictionMode ? "on" : "off"}
+                      onChange={(event) =>
+                        setStoryFields((current) => ({
+                          ...current,
+                          matureFictionMode: event.target.value === "on",
+                        }))
+                      }
+                    >
+                      <option value="off">Off</option>
+                      <option value="on">On</option>
+                    </select>
+                  </label>
+                  <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+                    When enabled, prompts and transmit-safe retries are tuned for serious fiction: injury aftermath, trauma, grief, and recovery are treated as legitimate narrative context (still non-graphic, still no harmful instructions).
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel padding="sm">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   Export
                 </div>
                 <div className="mt-4 space-y-2">
@@ -854,6 +1016,42 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                         ? rebuildInfo.error || "Rebuild failed."
                         : rebuildInfo.message ||
                           `Rebuilding… ${rebuildInfo.processedMessages}/${rebuildInfo.totalMessages} messages`}
+                    </div>
+                  ) : null}
+                  {storyJobs.length ? (
+                    <div className="space-y-2">
+                      {storyJobs.slice(0, 6).map((job) => (
+                        <div
+                          key={job.id}
+                          className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-semibold text-ink-soft">
+                                {job.type === "metachat_generate" ? "MetaChat reply" : "Indexing"}
+                              </div>
+                              <div className="mt-1 text-xs uppercase tracking-[0.18em] text-ink-muted">
+                                {job.status}
+                              </div>
+                              {job.progress?.label ? (
+                                <div className="mt-2 text-sm">{job.progress.label}</div>
+                              ) : null}
+                              {job.error ? (
+                                <div className="mt-2 text-sm text-rose-200">{job.error}</div>
+                              ) : null}
+                            </div>
+                            {job.status === "queued" || job.status === "running" ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => void cancelBackgroundJob(job.id)}
+                              >
+                                Cancel
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   ) : null}
                   {(() => {
@@ -1254,6 +1452,19 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           {pageNotice ? (
             <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
               {pageNotice}
+            </div>
+          ) : null}
+          {jobNotice ? (
+            <div className="rounded-2xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-100">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold">{jobNotice.title}</div>
+                  <div className="mt-1">{jobNotice.body}</div>
+                </div>
+                <Button size="sm" variant="ghost" onClick={dismissJobNotice}>
+                  Dismiss
+                </Button>
+              </div>
             </div>
           ) : null}
         </div>

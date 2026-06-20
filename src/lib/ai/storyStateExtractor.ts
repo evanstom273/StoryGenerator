@@ -1,4 +1,9 @@
-import type { PlayerCharacter, StoryMessage, StoryStateData } from "../../types/models";
+import type {
+  PlayerCharacter,
+  StoryMessage,
+  StoryStateData,
+  StoryStateDataV2,
+} from "../../types/models";
 import type { AIChatMessage } from "./types";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
@@ -413,7 +418,7 @@ function trimStringList(value: unknown, maxItems: number) {
 }
 
 export function formatStoryLongTermMemoryForPrompt(
-  storyStateData: StoryStateData,
+  storyStateData: StoryStateData | StoryStateDataV2,
   opts?: { playerName?: string | null },
 ) {
   const lines: string[] = [];
@@ -460,7 +465,8 @@ export function formatStoryLongTermMemoryForPrompt(
   }
 
   const playerName = opts?.playerName?.trim().toLowerCase() ?? "";
-  const characterNames = Object.keys(storyStateData.characters || {})
+  const characters = storyStateData.characters ?? {};
+  const characterNames = Object.keys(characters)
     .sort((left, right) => {
       if (playerName) {
         const leftIsPlayer = left.trim().toLowerCase() === playerName;
@@ -478,7 +484,7 @@ export function formatStoryLongTermMemoryForPrompt(
     }
     lines.push("Characters:");
     for (const name of characterNames) {
-      const entry = storyStateData.characters[name];
+      const entry = characters[name];
       if (!entry) continue;
 
       const parts: string[] = [];
@@ -649,7 +655,9 @@ export function formatStoryLongTermMemoryForPrompt(
   return formatted.length > 4000 ? `${formatted.slice(0, 4000).trim()}…` : formatted;
 }
 
-export function formatStorySceneStateForPrompt(storyStateData: StoryStateData) {
+export function formatStorySceneStateForPrompt(
+  storyStateData: StoryStateData | StoryStateDataV2,
+) {
   const lines: string[] = [];
   if (storyStateData.sceneState?.length) {
     for (const item of storyStateData.sceneState.slice(0, 16)) {

@@ -18,6 +18,8 @@ import {
 } from "./storyStateExtractor";
 import { safeParseStoryStateData } from "../storyStateV2";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
+import { analyzeStoryInputSafety } from "./storyInputSafety";
+import { formatUniverseWikiSources } from "../universeSources";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
@@ -94,6 +96,12 @@ export function buildStoryChatContext({
     playerName: playerCharacter.name,
     recentMessages,
   });
+  const inputSafetyAnalysis = analyzeStoryInputSafety({
+    playerCharacterName: playerCharacter.name,
+    latestUserMessage,
+    recentMessages,
+    storyState,
+  });
 
   const universeMode = universe.mode ?? "referenced";
   const universeDescription = universe.description.trim() || universe.concept?.trim() || "";
@@ -113,8 +121,8 @@ export function buildStoryChatContext({
       universeMode === "custom" && universeBlueprint
         ? `Universe Blueprint:\n\n${universeBlueprint}`
         : "",
-      universeMode === "referenced" && universe.wikiUrl.trim()
-        ? `Reference URL: ${universe.wikiUrl.trim()}`
+      universeMode === "referenced" && formatUniverseWikiSources(universe).length
+        ? `Reference sources (highest precedence first):\n${formatUniverseWikiSources(universe).join("\n")}`
         : "",
       universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,
@@ -205,11 +213,15 @@ export function buildStoryChatContext({
   const matureFictionPolicy = buildMatureFictionPolicyBlock({
     includeParity: true,
   });
+  const matureFictionModeNote = story.matureFictionMode
+    ? "Mature Fiction (non-graphic) mode is enabled for this story. Treat injury, medical aftermath, trauma, grief, and recovery as legitimate in-story material when supported by canon. Keep it serious and non-gratuitous."
+    : "";
 
   const sceneGuidance = normalizeWhitespace(
     [
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
       matureFictionPolicy,
+      matureFictionModeNote,
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
       "The player character sheet is authoritative canon for identity facts (name, age, gender, pronouns, species, role/occupation, disabilities/limitations). Do not contradict it with genre assumptions or defaults.",
       "Stay anchored in the story's premise, protagonist, and current situation. Recent beats matter, but they should not erase what the story is fundamentally about.",
@@ -290,9 +302,15 @@ export function buildStoryChatContext({
     ...(temporalConsequencesBlock
       ? [{ role: "system" as const, content: `Temporal Consequences\n\n${temporalConsequencesBlock}` }]
       : []),
+    ...(inputSafetyAnalysis.systemMessage
+      ? [{ role: "system" as const, content: inputSafetyAnalysis.systemMessage }]
+      : []),
     { role: "system", content: `Scene Direction\n\n${sceneGuidance}` },
     ...chatHistory,
-    { role: "user", content: normalizeWhitespace(latestUserMessage) },
+    {
+      role: "user",
+      content: normalizeWhitespace(`Player (${playerCharacter.name}) turn:\n${latestUserMessage}`),
+    },
   ];
 }
 

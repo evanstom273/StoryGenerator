@@ -10,6 +10,7 @@ import type { AIChatMessage } from "./types";
 import { sortByTimestampAsc } from "../dates";
 import { buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "./playerAssist";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
+import { formatUniverseWikiSources } from "../universeSources";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
@@ -86,8 +87,8 @@ export function buildPlayerAssistContext({
       universeMode === "custom" && universeBlueprint
         ? `Universe Blueprint:\n\n${universeBlueprint}`
         : "",
-      universeMode === "referenced" && universe.wikiUrl.trim()
-        ? `Reference URL: ${universe.wikiUrl.trim()}`
+      universeMode === "referenced" && formatUniverseWikiSources(universe).length
+        ? `Reference sources (highest precedence first):\n${formatUniverseWikiSources(universe).join("\n")}`
         : "",
       universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,

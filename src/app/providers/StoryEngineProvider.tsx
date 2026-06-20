@@ -36,15 +36,24 @@ import {
 import { extractFirstJsonObject, safeParseJsonObject } from "../../lib/ai/json";
 import { buildMatureFictionPolicyBlock } from "../../lib/ai/matureFictionPolicy";
 import {
+  analyzeStoryInputSafety,
+  formatLikelyFictionalSafetyRefusalMessage,
+} from "../../lib/ai/storyInputSafety";
+import {
   classifyAIGenerationError,
   createAIGenerationError,
-  formatAIGenerationError,
+  createGenerationFailure,
+  GenerationFailureError,
+  isGenerationFailureError,
+  withTransmitSafeDiagnostics,
 } from "../../lib/ai/errors";
+import { buildTransmitSafeSystemNote, makeTransmitSafe } from "../../lib/ai/transmitSafe";
 import type {
   AIChatMessage,
   AIProvider,
   GenerateResponseResult,
 } from "../../lib/ai/types";
+import { getArchiveIndexStatus } from "../../lib/archiveIndexing";
 import {
   normalizeStoryStateToV2,
   finalizeStoryStateForSave,
@@ -59,6 +68,9 @@ import {
 } from "../../lib/ai/storyStateExtractor";
 import { runAndroidAutoBackupIfNeeded } from "../../lib/androidAutoBackup";
 import {
+  sendJobCompletionNotification,
+} from "../../lib/jobNotifications";
+import {
   getPlayerCharacterAuthorshipViolation,
 } from "../../lib/storyText/playerProtection";
 import {
@@ -67,10 +79,16 @@ import {
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent } from "../../lib/storyText/directorIntent";
-import { detectChapterEnd } from "../../lib/storyText/chapterDetection";
+import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
+import {
+  formatUniverseWikiSources,
+  getPrimaryUniverseWikiUrl,
+  normalizeUniverseWikiSources,
+} from "../../lib/universeSources";
 import type {
   AIProviderType,
   AISettings,
+  BackgroundJob,
   DeveloperBug,
   DeveloperBugDraft,
   DeveloperFeatureRequest,
@@ -88,6 +106,7 @@ import type {
   StoryDraft,
   StoryExportBundle,
   StoryChapter,
+  StoryUiState,
   StoryMetaMessage,
   StoryMessage,
   StoryMessageDraft,
@@ -110,6 +129,7 @@ interface StoryEngineContextValue {
   messages: StoryMessage[];
   metaMessages: StoryMetaMessage[];
   chapters: StoryChapter[];
+  backgroundJobs: BackgroundJob[];
   aiSettings: AISettings | null;
   developerBugs: DeveloperBug[];
   developerFeatureRequests: DeveloperFeatureRequest[];
@@ -122,6 +142,13 @@ interface StoryEngineContextValue {
     message?: string;
     error?: string;
   };
+  jobNotice?: {
+    id: string;
+    title: string;
+    body: string;
+    storyId?: string;
+    openMetaChat?: boolean;
+  } | null;
   getUniverseById: (id: string) => Universe | undefined;
   getPlayerCharacterById: (id: string) => PlayerCharacter | undefined;
   getStoryById: (id: string) => Story | undefined;
@@ -131,6 +158,8 @@ interface StoryEngineContextValue {
   getMessagesForStory: (storyId: string) => StoryMessage[];
   getMetaMessagesForStory: (storyId: string) => StoryMetaMessage[];
   getChaptersForStory: (storyId: string) => StoryChapter[];
+  getJobsForStory: (storyId: string) => BackgroundJob[];
+  getMetaChatDraft: (storyId: string) => string;
   getPlayerCharactersForUniverse: (universeId: string) => PlayerCharacter[];
   getStoriesForUniverse: (universeId: string) => Story[];
   getStoriesForPlayerCharacter: (playerCharacterId: string) => Story[];
@@ -174,6 +203,12 @@ interface StoryEngineContextValue {
     intent: StoryMessage["directorIntent"] | null,
   ) => Promise<StoryMessage | null>;
   sendMetaChatMessage: (storyId: string, content: string) => Promise<StoryMetaMessage>;
+  queueMetaChatMessage: (
+    storyId: string,
+    content: string,
+  ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
+  setMetaChatDraft: (storyId: string, draft: string) => Promise<void>;
+  clearMetaChatDraft: (storyId: string) => Promise<void>;
   createDeveloperBug: (draft: DeveloperBugDraft) => Promise<DeveloperBug>;
   updateDeveloperBug: (id: string, draft: DeveloperBugDraft) => Promise<DeveloperBug | null>;
   deleteDeveloperBug: (id: string) => Promise<void>;
@@ -193,7 +228,10 @@ interface StoryEngineContextValue {
     draft: DeveloperTestingNoteDraft,
   ) => Promise<DeveloperTestingNote | null>;
   deleteDeveloperTestingNote: (id: string) => Promise<void>;
-  exportStory: (storyId: string) => Promise<StoryExportBundle | null>;
+  exportStory: (
+    storyId: string,
+    opts?: { refreshArchiveIfStale?: boolean },
+  ) => Promise<StoryExportBundle | null>;
   exportUniverse: (universeId: string) => Promise<UniverseExportBundleV1 | null>;
   exportPlayerCharacter: (
     characterId: string,
@@ -201,6 +239,12 @@ interface StoryEngineContextValue {
   fetchStoryState: (storyId: string) => Promise<StoryState | null>;
   refreshStoryState: (storyId: string, opts?: { force?: boolean }) => Promise<void>;
   updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal }) => Promise<void>;
+  queueStoryIndexJob: (
+    storyId: string,
+    opts?: { trigger?: "manual" | "auto" },
+  ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
+  cancelBackgroundJob: (jobId: string) => Promise<BackgroundJob | null>;
+  dismissJobNotice: () => void;
   importUniverseExport: (
     bundle: UniverseExportBundleV1,
   ) => Promise<{ universeId: string }>;
@@ -240,17 +284,133 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string) => Promise<StoryMessage>;
+  sendChatMessage: (storyId: string, content: string) => Promise<StoryMessage | null>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
 }
 
 const AI_MAX_ATTEMPTS = 3;
+const TERMINAL_JOB_RETENTION_MS = 10 * 60_000;
+const TERMINAL_JOB_PRUNE_INTERVAL_MS = 60_000;
+
+const JOB_DEBUG_URL = "http://127.0.0.1:7777/event";
+const JOB_DEBUG_SESSION = "job-cancel-timeout";
+
+function reportJobDebug(args: {
+  hypothesisId: string;
+  location: string;
+  msg: string;
+  data?: Record<string, unknown>;
+}) {
+  // #region debug-point job-cancel-timeout:report
+  void fetch(JOB_DEBUG_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: JOB_DEBUG_SESSION,
+      runId: "pre-fix",
+      hypothesisId: args.hypothesisId,
+      location: args.location,
+      msg: `[DEBUG] ${args.msg}`,
+      data: args.data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
+const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
+const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
 
 function wait(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function waitWithSignal(ms: number, signal?: AbortSignal) {
+  if (!signal) {
+    return wait(ms);
+  }
+
+  if (signal.aborted) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    let timeoutId = 0;
+    const onAbort = () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+      resolve();
+    };
+
+    timeoutId = window.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function makeGenerationAuditTraceId(prefix: string) {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function clipGenerationAuditText(value: string | null | undefined, max = 400) {
+  const normalized = value?.replace(/\s+/g, " ").trim() ?? "";
+  if (!normalized) {
+    return "";
+  }
+  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
+}
+
+function summarizeGenerationAuditMessages(messages: AIChatMessage[]) {
+  const systemMessages = messages.filter((message) => message.role === "system");
+  const assistantMessages = messages.filter((message) => message.role === "assistant");
+  const userMessages = messages.filter((message) => message.role === "user");
+  return {
+    count: messages.length,
+    systemCount: systemMessages.length,
+    assistantCount: assistantMessages.length,
+    userCount: userMessages.length,
+    firstSystemPreview: clipGenerationAuditText(systemMessages[0]?.content),
+    lastUserPreview: clipGenerationAuditText(userMessages[userMessages.length - 1]?.content),
+  };
+}
+
+function reportGenerationAudit(args: {
+  hypothesisId: string;
+  traceId?: string;
+  location: string;
+  msg: string;
+  data?: Record<string, unknown>;
+  runId?: "pre-fix" | "post-fix";
+}) {
+  // #region debug-point generation-audit:report
+  void fetch(GENERATION_AUDIT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: GENERATION_AUDIT_SESSION,
+      runId: args.runId ?? "pre-fix",
+      hypothesisId: args.hypothesisId,
+      traceId: args.traceId,
+      location: args.location,
+      msg: `[DEBUG] ${args.msg}`,
+      data: args.data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
+
+function shouldRetryKind(kind: ReturnType<typeof classifyAIGenerationError>["kind"]) {
+  return kind === "timeout" || kind === "provider";
 }
 
 async function generateResponseWithRetry(params: {
@@ -259,38 +419,111 @@ async function generateResponseWithRetry(params: {
   apiKey: string;
   model: string;
   messages: AIChatMessage[];
+  signal?: AbortSignal;
   maxAttempts?: number;
+  debugTrace?: {
+    traceId: string;
+    mode: "story" | "additive" | "metachat" | "summary" | "other";
+    storyId?: string;
+    stage: string;
+    lastUserText?: string;
+  };
 }) {
   const maxAttempts = params.maxAttempts ?? AI_MAX_ATTEMPTS;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (params.signal?.aborted) {
+      throw new Error("Request aborted.");
+    }
+    // #region debug-point A:provider-request
+    reportGenerationAudit({
+      hypothesisId: "A",
+      traceId: params.debugTrace?.traceId,
+      location: "StoryEngineProvider.tsx:generateResponseWithRetry:start",
+      msg: "provider request attempt started",
+      data: {
+        mode: params.debugTrace?.mode ?? "other",
+        stage: params.debugTrace?.stage ?? "unknown",
+        storyId: params.debugTrace?.storyId,
+        providerType: params.providerType,
+        model: params.model,
+        attempt,
+        maxAttempts,
+        lastUserPreview: clipGenerationAuditText(params.debugTrace?.lastUserText),
+        messageSummary: summarizeGenerationAuditMessages(params.messages),
+      },
+    });
+    // #endregion
     try {
-      return await params.provider.generateResponse({
+      const result = await params.provider.generateResponse({
         apiKey: params.apiKey,
         model: params.model,
         messages: params.messages,
+        signal: params.signal,
       });
+      // #region debug-point A:provider-response
+      reportGenerationAudit({
+        hypothesisId: "A",
+        traceId: params.debugTrace?.traceId,
+        location: "StoryEngineProvider.tsx:generateResponseWithRetry:success",
+        msg: "provider request attempt succeeded",
+        data: {
+          mode: params.debugTrace?.mode ?? "other",
+          stage: params.debugTrace?.stage ?? "unknown",
+          providerType: params.providerType,
+          model: params.model,
+          attempt,
+          contentLength: result.content?.length ?? 0,
+          rawOutput: result.content ?? "",
+        },
+      });
+      // #endregion
+      return result;
     } catch (error) {
       lastError = error;
       const classified = classifyAIGenerationError(error);
-      if (attempt >= maxAttempts || !classified.retryable) {
-        throw new Error(
-          formatAIGenerationError(error, {
-            provider: params.providerType,
+      // #region debug-point A:provider-failure
+      reportGenerationAudit({
+        hypothesisId: "A",
+        traceId: params.debugTrace?.traceId,
+        location: "StoryEngineProvider.tsx:generateResponseWithRetry:failure",
+        msg: "provider request attempt failed",
+        data: {
+          mode: params.debugTrace?.mode ?? "other",
+          stage: params.debugTrace?.stage ?? "unknown",
+          providerType: params.providerType,
+          model: params.model,
+          attempt,
+          maxAttempts,
+          classifiedKind: classified.kind,
+          retryable: classified.retryable,
+          diagnostic: classified.diagnostic,
+        },
+      });
+      // #endregion
+      if (attempt >= maxAttempts || !shouldRetryKind(classified.kind)) {
+        throw new GenerationFailureError(
+          createGenerationFailure(error, {
+            providerName: params.providerType,
+            model: params.model,
             attempts: attempt,
             maxAttempts,
           }),
         );
       }
 
-      await wait(350 * attempt);
+      const base = 300;
+      const backoff = base * Math.pow(3, attempt - 1);
+      const jitter = Math.floor(Math.random() * 120);
+      await waitWithSignal(backoff + jitter, params.signal);
     }
   }
 
-  throw new Error(
-    formatAIGenerationError(lastError, {
-      provider: params.providerType,
+  throw new GenerationFailureError(
+    createGenerationFailure(lastError, {
+      providerName: params.providerType,
+      model: params.model,
       attempts: maxAttempts,
       maxAttempts,
     }),
@@ -305,40 +538,108 @@ async function generateSummaryWithRetry(params: {
   storyTitle: string;
   messages: AIChatMessage[];
   existingSummary?: string;
+  signal?: AbortSignal;
   maxAttempts?: number;
+  debugTrace?: {
+    traceId: string;
+    storyId?: string;
+    stage: string;
+  };
 }) {
   const maxAttempts = params.maxAttempts ?? AI_MAX_ATTEMPTS;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (params.signal?.aborted) {
+      throw new Error("Request aborted.");
+    }
+    // #region debug-point A:summary-request
+    reportGenerationAudit({
+      hypothesisId: "A",
+      traceId: params.debugTrace?.traceId,
+      location: "StoryEngineProvider.tsx:generateSummaryWithRetry:start",
+      msg: "summary request attempt started",
+      data: {
+        storyId: params.debugTrace?.storyId,
+        providerType: params.providerType,
+        model: params.model,
+        stage: params.debugTrace?.stage ?? "summary",
+        attempt,
+        maxAttempts,
+        storyTitle: params.storyTitle,
+        messageSummary: summarizeGenerationAuditMessages(params.messages),
+      },
+    });
+    // #endregion
     try {
-      return await params.provider.generateSummary({
+      const result = await params.provider.generateSummary({
         apiKey: params.apiKey,
         model: params.model,
         storyTitle: params.storyTitle,
         messages: params.messages,
         existingSummary: params.existingSummary,
+        signal: params.signal,
       });
+      // #region debug-point A:summary-response
+      reportGenerationAudit({
+        hypothesisId: "A",
+        traceId: params.debugTrace?.traceId,
+        location: "StoryEngineProvider.tsx:generateSummaryWithRetry:success",
+        msg: "summary request attempt succeeded",
+        data: {
+          storyId: params.debugTrace?.storyId,
+          providerType: params.providerType,
+          model: params.model,
+          attempt,
+          summaryLength: typeof result === "string" ? result.length : 0,
+          rawOutput: typeof result === "string" ? result : "",
+        },
+      });
+      // #endregion
+      return result;
     } catch (error) {
       lastError = error;
       const classified = classifyAIGenerationError(error);
-      if (attempt >= maxAttempts || !classified.retryable) {
-        throw new Error(
-          formatAIGenerationError(error, {
-            provider: params.providerType,
+      // #region debug-point A:summary-failure
+      reportGenerationAudit({
+        hypothesisId: "A",
+        traceId: params.debugTrace?.traceId,
+        location: "StoryEngineProvider.tsx:generateSummaryWithRetry:failure",
+        msg: "summary request attempt failed",
+        data: {
+          storyId: params.debugTrace?.storyId,
+          providerType: params.providerType,
+          model: params.model,
+          attempt,
+          maxAttempts,
+          classifiedKind: classified.kind,
+          retryable: classified.retryable,
+          diagnostic: classified.diagnostic,
+        },
+      });
+      // #endregion
+      if (attempt >= maxAttempts || !shouldRetryKind(classified.kind)) {
+        throw new GenerationFailureError(
+          createGenerationFailure(error, {
+            providerName: params.providerType,
+            model: params.model,
             attempts: attempt,
             maxAttempts,
           }),
         );
       }
 
-      await wait(350 * attempt);
+      const base = 300;
+      const backoff = base * Math.pow(3, attempt - 1);
+      const jitter = Math.floor(Math.random() * 120);
+      await waitWithSignal(backoff + jitter, params.signal);
     }
   }
 
-  throw new Error(
-    formatAIGenerationError(lastError, {
-      provider: params.providerType,
+  throw new GenerationFailureError(
+    createGenerationFailure(lastError, {
+      providerName: params.providerType,
+      model: params.model,
       attempts: maxAttempts,
       maxAttempts,
     }),
@@ -346,9 +647,9 @@ async function generateSummaryWithRetry(params: {
 }
 
 function rethrowUserFacingGenerationError(error: unknown, providerType: string): never {
-  throw new Error(
-    formatAIGenerationError(error, {
-      provider: providerType,
+  throw new GenerationFailureError(
+    createGenerationFailure(error, {
+      providerName: providerType,
       attempts: 1,
       maxAttempts: 1,
     }),
@@ -413,7 +714,9 @@ function buildMetaChatCanonContext(params: {
       ? `Universe blueprint:\n${params.universe.universeBlueprint.trim()}`
       : null,
     params.universe.notes?.trim() ? `Universe notes: ${params.universe.notes.trim()}` : null,
-    params.universe.wikiUrl?.trim() ? `Reference URL: ${params.universe.wikiUrl.trim()}` : null,
+    formatUniverseWikiSources(params.universe).length
+      ? `Reference sources:\n${formatUniverseWikiSources(params.universe).join("\n")}`
+      : null,
   ]
     .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
     .join("\n");
@@ -493,6 +796,33 @@ function isBlank(value: string | undefined) {
   return !value || !value.trim();
 }
 
+function getExistingActiveChapterLabel(
+  storyId: string,
+  storyMessages: StoryMessage[],
+  storyChapters: StoryChapter[],
+) {
+  const sortedMessages = [...storyMessages]
+    .filter((message) => message.storyId === storyId)
+    .sort(
+      (left, right) =>
+        new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime(),
+    );
+  const lastBoundary = [...sortedMessages]
+    .reverse()
+    .find((message) => message.chapterBoundary?.label?.trim());
+  if (!lastBoundary?.chapterBoundary) {
+    return null;
+  }
+  if (lastBoundary.chapterBoundary.kind === "start") {
+    return lastBoundary.chapterBoundary.label;
+  }
+  const hasExplicitClose = storyChapters.some(
+    (chapter) =>
+      chapter.storyId === storyId && chapter.label === lastBoundary.chapterBoundary?.label,
+  );
+  return hasExplicitClose ? null : lastBoundary.chapterBoundary.label;
+}
+
 function mergePlayerCharacterFillEmpty(
   winner: PlayerCharacter,
   candidate: PlayerCharacter,
@@ -550,6 +880,8 @@ export function StoryEngineProvider({
   const [messages, setMessages] = useState<StoryMessage[]>([]);
   const [metaMessages, setMetaMessages] = useState<StoryMetaMessage[]>([]);
   const [chapters, setChapters] = useState<StoryChapter[]>([]);
+  const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([]);
+  const [storyUiStates, setStoryUiStates] = useState<StoryUiState[]>([]);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const [developerBugs, setDeveloperBugs] = useState<DeveloperBug[]>([]);
   const [developerFeatureRequests, setDeveloperFeatureRequests] = useState<
@@ -559,7 +891,10 @@ export function StoryEngineProvider({
     DeveloperTestingNote[]
   >([]);
   const [rebuildStatus, setRebuildStatus] = useState<StoryEngineContextValue["rebuildStatus"]>();
+  const [jobNotice, setJobNotice] = useState<StoryEngineContextValue["jobNotice"]>(null);
   const rebuildAbortRef = useRef<AbortController | null>(null);
+  const activeBackgroundJobRef = useRef<string | null>(null);
+  const backgroundJobControllersRef = useRef<Record<string, AbortController>>({});
 
   function normalizeAISettings(value: unknown): AISettings | null {
     if (!value || typeof value !== "object") {
@@ -630,6 +965,8 @@ export function StoryEngineProvider({
           nextMessages,
           nextMetaMessages,
           nextChapters,
+          nextBackgroundJobs,
+          nextStoryUiStates,
           nextAISettings,
           nextDeveloperBugs,
           nextDeveloperFeatureRequests,
@@ -641,11 +978,63 @@ export function StoryEngineProvider({
           repository.listAllMessages(),
           repository.listAllStoryMetaMessages(),
           repository.listAllStoryChapters(),
+          repository.listBackgroundJobs(),
+          repository.listStoryUiStates(),
           getNormalizedAISettings().catch(() => null),
           repository.listDeveloperBugs(),
           repository.listDeveloperFeatureRequests(),
           repository.listDeveloperTestingNotes(),
         ]);
+
+        const terminalCandidates = nextBackgroundJobs.filter(
+          (job) => job.status === "complete" || job.status === "failed" || job.status === "cancelled",
+        );
+        const nowMs = Date.now();
+        const terminalJobIdsToDelete = new Set(
+          terminalCandidates
+            .filter((job) => {
+              const referenceTime = job.finishedAt ?? job.startedAt ?? job.createdAt;
+              const ts = referenceTime ? new Date(referenceTime).getTime() : 0;
+              return ts > 0 && nowMs - ts > TERMINAL_JOB_RETENTION_MS;
+            })
+            .map((job) => job.id),
+        );
+
+        const runningJobsToReset = nextBackgroundJobs.filter(
+          (job) =>
+            job.status === "running" &&
+            activeBackgroundJobRef.current !== job.id &&
+            !backgroundJobControllersRef.current[job.id],
+        );
+        const runningJobIdsToReset = new Set(runningJobsToReset.map((job) => job.id));
+
+        if (runningJobsToReset.length) {
+          await Promise.all(
+            runningJobsToReset.map((job) =>
+              repository.saveBackgroundJob({
+                ...job,
+                status: "queued",
+              }),
+            ),
+          );
+        }
+
+        if (terminalJobIdsToDelete.size) {
+          await Promise.all(
+            [...terminalJobIdsToDelete].map((jobId) => repository.deleteBackgroundJob(jobId)),
+          );
+        }
+
+        const cleanedBackgroundJobs = nextBackgroundJobs
+          .filter((job) => !terminalJobIdsToDelete.has(job.id))
+          .map((job) =>
+            runningJobIdsToReset.has(job.id)
+              ? {
+                  ...job,
+                  status: "queued" as const,
+                }
+              : job,
+          );
 
         setUniverses(sortByCreatedAtDesc(nextUniverses));
         setPlayerCharacters(
@@ -661,6 +1050,13 @@ export function StoryEngineProvider({
         setMessages(sortByTimestampAsc(nextMessages));
         setMetaMessages(sortByTimestampAsc(nextMetaMessages));
         setChapters([...nextChapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex));
+        setBackgroundJobs(
+          [...cleanedBackgroundJobs].sort(
+            (left, right) =>
+              new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+          ),
+        );
+        setStoryUiStates(nextStoryUiStates);
         setAiSettings(nextAISettings);
         setDeveloperBugs(
           [...nextDeveloperBugs].sort(
@@ -687,6 +1083,40 @@ export function StoryEngineProvider({
   useEffect(() => {
     void hydrate(true);
   }, [hydrate]);
+
+  useEffect(() => {
+    if (loading || errorMessage) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void (async () => {
+        try {
+          const jobs = await repository.listBackgroundJobs();
+          const nowMs = Date.now();
+          const toDelete = jobs.filter((job) => {
+            if (job.status !== "complete" && job.status !== "failed" && job.status !== "cancelled") {
+              return false;
+            }
+            const referenceTime = job.finishedAt ?? job.startedAt ?? job.createdAt;
+            const ts = referenceTime ? new Date(referenceTime).getTime() : 0;
+            return ts > 0 && nowMs - ts > TERMINAL_JOB_RETENTION_MS;
+          });
+
+          if (!toDelete.length) {
+            return;
+          }
+
+          await Promise.all(toDelete.map((job) => repository.deleteBackgroundJob(job.id)));
+          await hydrate(false);
+        } catch {}
+      })();
+    }, TERMINAL_JOB_PRUNE_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [errorMessage, hydrate, loading, repository]);
 
   useEffect(() => {
     const ready = !loading && !errorMessage;
@@ -775,6 +1205,679 @@ export function StoryEngineProvider({
     },
     [repository],
   );
+
+  const saveStoryUiStateRecord = useCallback(
+    async (storyId: string, patch: Partial<StoryUiState>) => {
+      const current = await repository.getStoryUiState(storyId);
+      const next: StoryUiState = {
+        id: current?.id ?? `story-ui-state:${storyId}`,
+        storyId,
+        metaChatDraft: current?.metaChatDraft,
+        updatedAt: new Date().toISOString(),
+        ...patch,
+      };
+
+      if (!next.metaChatDraft?.trim()) {
+        next.metaChatDraft = "";
+      }
+
+      await repository.saveStoryUiState(next);
+      setStoryUiStates((currentStates) => {
+        const otherStates = currentStates.filter((record) => record.storyId !== storyId);
+        return [...otherStates, next];
+      });
+      return next;
+    },
+    [repository],
+  );
+
+  const queueStoryIndexJob = useCallback(
+    async (storyId: string, opts?: { trigger?: "manual" | "auto" }) => {
+      const existing = (await repository.listBackgroundJobs()).find(
+        (job) =>
+          job.type === "story_index" &&
+          job.storyId === storyId &&
+          (job.status === "queued" || job.status === "running"),
+      );
+
+      if (existing) {
+        return { job: existing, duplicate: true };
+      }
+
+      const job: BackgroundJob = {
+        id: createEntityId("background-job"),
+        type: "story_index",
+        storyId,
+        createdAt: new Date().toISOString(),
+        status: "queued",
+        dedupeKey: `story_index:${storyId}`,
+        payload: {
+          trigger: opts?.trigger ?? "manual",
+        },
+      };
+
+      await repository.saveBackgroundJob(job);
+      await hydrate(false);
+      return { job, duplicate: false };
+    },
+    [hydrate, repository],
+  );
+
+  const queueMetaChatMessage = useCallback(
+    async (storyId: string, content: string) => {
+      const trimmed = content.trim();
+      if (!trimmed) {
+        throw new Error("Message content is required.");
+      }
+
+      const jobId = createEntityId("background-job");
+      const userMessage: StoryMetaMessage = {
+        id: createEntityId("story-meta-message"),
+        storyId,
+        role: "user",
+        content: trimmed,
+        timestamp: new Date().toISOString(),
+        jobId,
+      };
+
+      const job: BackgroundJob = {
+        id: jobId,
+        type: "metachat_generate",
+        storyId,
+        createdAt: new Date().toISOString(),
+        status: "queued",
+        payload: {
+          content: trimmed,
+          metaChatUserMessageId: userMessage.id,
+          metaChatOpenOnComplete: true,
+        },
+      };
+
+      await repository.saveStoryMetaMessage(userMessage);
+      await repository.saveBackgroundJob(job);
+      await saveStoryUiStateRecord(storyId, { metaChatDraft: "" });
+      await hydrate(false);
+      return { job, duplicate: false };
+    },
+    [hydrate, repository, saveStoryUiStateRecord],
+  );
+
+  const cancelBackgroundJob = useCallback(
+    async (jobId: string) => {
+      const current = await repository.getBackgroundJob(jobId);
+      if (!current) {
+        return null;
+      }
+
+      // #region debug-point job-cancel-timeout:cancel
+      reportJobDebug({
+        hypothesisId: "A",
+        location: "StoryEngineProvider.tsx:cancelBackgroundJob",
+        msg: "cancel requested",
+        data: {
+          jobId,
+          jobType: current.type,
+          jobStatus: current.status,
+          storyId: current.storyId ?? null,
+          controllerKnown: Boolean(backgroundJobControllersRef.current[jobId]),
+        },
+      });
+      // #endregion
+
+      backgroundJobControllersRef.current[jobId]?.abort();
+      const next: BackgroundJob = {
+        ...current,
+        status: "cancelled",
+        finishedAt: new Date().toISOString(),
+        error: undefined,
+      };
+      await repository.saveBackgroundJob(next);
+      await hydrate(false);
+      return next;
+    },
+    [hydrate, repository],
+  );
+
+  const deliverJobNotice = useCallback(
+    async (args: {
+      jobId: string;
+      storyId?: string;
+      title: string;
+      body: string;
+      openMetaChat?: boolean;
+    }) => {
+      const delivered = await sendJobCompletionNotification({
+        storyId: args.storyId,
+        title: args.title,
+        body: args.body,
+        openMetaChat: args.openMetaChat,
+      });
+
+      if (!delivered) {
+        setJobNotice({
+          id: args.jobId,
+          title: args.title,
+          body: args.body,
+          storyId: args.storyId,
+          openMetaChat: args.openMetaChat,
+        });
+      }
+    },
+    [],
+  );
+
+  const runDeepIndexProcess = useCallback(
+    async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto" }) => {
+      rebuildAbortRef.current?.abort();
+      const controller = new AbortController();
+      rebuildAbortRef.current = controller;
+      const signal = opts?.signal ?? controller.signal;
+
+      // #region debug-point job-cancel-timeout:deep-index-start
+      reportJobDebug({
+        hypothesisId: "B",
+        location: "StoryEngineProvider.tsx:runDeepIndexProcess:start",
+        msg: "deep index started",
+        data: {
+          storyId,
+          trigger: opts?.trigger ?? "manual",
+          signalProvided: Boolean(opts?.signal),
+          abortedAtStart: signal.aborted,
+        },
+      });
+      // #endregion
+
+      setRebuildStatus({
+        storyId,
+        phase: "loading",
+        processedMessages: 0,
+        totalMessages: 0,
+        message: "Loading story...",
+      });
+
+      try {
+        const story = await repository.getStory(storyId);
+        if (!story) {
+          throw new Error("Story not found.");
+        }
+
+        const storyConfig = await repository.getStoryAIConfig(storyId);
+        const settings = await getNormalizedAISettings();
+
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings before re-indexing.");
+        }
+
+        const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+        const provider = createAIProvider(providerType);
+
+        const [allMessages, existingStoryState] = await Promise.all([
+          repository.listStoryMessages(storyId),
+          repository.getStoryState(storyId),
+        ]);
+
+        setRebuildStatus({
+          storyId,
+          phase: "extracting",
+          processedMessages: 0,
+          totalMessages: allMessages.length,
+          message: `Re-indexing… 0/${allMessages.length} messages`,
+        });
+
+        const result = await rebuildStoryMemoryAndIndexes({
+          storyId,
+          repository,
+          provider,
+          apiKey,
+          model,
+          signal,
+          onProgress: ({ processed, total, message }) => {
+            // #region debug-point job-cancel-timeout:deep-index-progress
+            reportJobDebug({
+              hypothesisId: "B",
+              location: "StoryEngineProvider.tsx:runDeepIndexProcess:progress",
+              msg: "deep index progress",
+              data: {
+                storyId,
+                processed,
+                total,
+                message,
+                aborted: signal.aborted,
+              },
+            });
+            // #endregion
+            setRebuildStatus((current) => {
+              if (!current || current.storyId !== storyId) {
+                return current;
+              }
+
+              return {
+                ...current,
+                phase: "extracting",
+                processedMessages: processed,
+                totalMessages: total,
+                message,
+              };
+            });
+          },
+        });
+
+        if (signal.aborted) {
+          // #region debug-point job-cancel-timeout:deep-index-aborted
+          reportJobDebug({
+            hypothesisId: "B",
+            location: "StoryEngineProvider.tsx:runDeepIndexProcess:post-rebuild",
+            msg: "deep index observed aborted after rebuild returned",
+            data: { storyId },
+          });
+          // #endregion
+          throw new Error("Re-index aborted.");
+        }
+
+        setRebuildStatus((current) =>
+          current && current.storyId === storyId
+            ? {
+                ...current,
+                phase: "saving",
+                message: "Saving indexed state...",
+              }
+            : current,
+        );
+
+        const now = new Date().toISOString();
+        const nextStateJson = (() => {
+          try {
+            const parsed = safeParseStoryStateData(result.stateJson);
+            if (!parsed) {
+              return result.stateJson;
+            }
+            return finalizeStoryStateForSave({
+              parsedState: parsed,
+              previousStateJson: existingStoryState?.stateJson,
+              totalMessages: allMessages.length,
+              now,
+              mode: "deep",
+              deepIndexTrigger: opts?.trigger ?? "manual",
+            });
+          } catch {
+            return result.stateJson;
+          }
+        })();
+
+        await repository.saveStoryState({
+          id: `story-state:${storyId}`,
+          storyId,
+          stateJson: nextStateJson,
+          updatedAt: now,
+        });
+
+        if (!story.currentSummary?.trim() && result.summaryText?.trim()) {
+          await repository.saveStory({
+            ...story,
+            currentSummary: result.summaryText.trim(),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+
+        await touchStory(storyId);
+        await hydrate(false);
+
+        const summaryLine = (() => {
+          try {
+            const parsed = JSON.parse(nextStateJson) as any;
+            const indexes = parsed?.indexes;
+            if (!indexes || typeof indexes !== "object") {
+              return "Re-index complete.";
+            }
+            const characterCount =
+              indexes.characters && typeof indexes.characters === "object"
+                ? Object.keys(indexes.characters).length
+                : 0;
+            const locationCount =
+              indexes.locations && typeof indexes.locations === "object"
+                ? Object.keys(indexes.locations).length
+                : 0;
+            const threadCount = Array.isArray(indexes.openThreads)
+              ? indexes.openThreads.length
+              : 0;
+            const parts = [
+              characterCount ? `${characterCount} characters` : null,
+              locationCount ? `${locationCount} locations` : null,
+              threadCount ? `${threadCount} threads` : null,
+            ].filter(Boolean);
+            return parts.length
+              ? `Re-index complete. Indexed: ${parts.join(", ")}.`
+              : "Re-index complete.";
+          } catch {
+            return "Re-index complete.";
+          }
+        })();
+
+        setRebuildStatus({
+          storyId,
+          phase: "done",
+          processedMessages: allMessages.length,
+          totalMessages: allMessages.length,
+          message: summaryLine,
+        });
+
+        return summaryLine;
+      } finally {
+        if (rebuildAbortRef.current === controller) {
+          rebuildAbortRef.current = null;
+        }
+      }
+    },
+    [getNormalizedAISettings, hydrate, repository, resolveAIProfile, touchStory],
+  );
+
+  const generateMetaChatAssistantReply = useCallback(
+    async (storyId: string, content: string, signal?: AbortSignal) => {
+      const trimmed = content.trim();
+      if (!trimmed) {
+        throw new Error("Message content is required.");
+      }
+
+      const story = await repository.getStory(storyId);
+      if (!story) {
+        throw new Error("Story not found.");
+      }
+
+      const [universe, playerCharacter, storyConfig, storyState, storyMessages, storyChapters] =
+        await Promise.all([
+          repository.getUniverse(story.universeId),
+          repository.getPlayerCharacter(story.playerCharacterId),
+          repository.getStoryAIConfig(storyId),
+          repository.getStoryState(storyId),
+          repository.listStoryMessages(storyId),
+          repository.listStoryChapters(storyId),
+        ]);
+
+      if (!universe || !playerCharacter) {
+        throw new Error("Story references missing universe or player character.");
+      }
+
+      const settings = await getNormalizedAISettings();
+      if (!settings) {
+        throw new Error("Configure an AI provider in Settings before generating messages.");
+      }
+
+      const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+      const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+      const provider = createAIProvider(providerType);
+
+      const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
+      const contextBlock = buildMetaChatCanonContext({
+        story,
+        universe: effectiveUniverse,
+        playerCharacter,
+        storyState,
+        messages: storyMessages,
+        chapters: storyChapters,
+      });
+
+      const priorMetaHistory = sortByTimestampAsc(await repository.listStoryMetaMessages(storyId))
+        .slice(-20)
+        .map(
+          (message) =>
+            ({
+              role: message.role === "assistant" ? "assistant" : "user",
+              content: message.content,
+            }) satisfies AIChatMessage,
+        );
+
+      const systemPrompt = [
+        "You are MetaChat, an out-of-canon writer's room assistant for Story Engine.",
+        "Hard rule: MetaChat is NOT canon and must never be treated as story reality.",
+        "You have access to the full canon reference block below: use it freely for analysis, planning, questions, continuity checks, and archive discussion.",
+        buildMatureFictionPolicyBlock({
+          includeParity: true,
+          includeAnalysisFocus: true,
+        }),
+        "Do not write the next story scene or in-character narration unless the user explicitly asks you to draft an out-of-canon example.",
+        "Prefer analysis, planning, options, and questions. Be concise and practical.",
+      ].join("\n");
+
+      const assistantText = (
+        await generateResponseWithRetry({
+          providerType,
+          provider,
+          apiKey,
+          model,
+          signal,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "system", content: `Context (canon reference only):\n${contextBlock}` },
+            ...priorMetaHistory,
+          ],
+        })
+      ).content;
+
+      return assistantText.trim();
+    },
+    [getNormalizedAISettings, repository, resolveAIProfile],
+  );
+
+  const processBackgroundJob = useCallback(
+    async (job: BackgroundJob, signal: AbortSignal) => {
+      // #region debug-point job-cancel-timeout:job-start
+      reportJobDebug({
+        hypothesisId: "C",
+        location: "StoryEngineProvider.tsx:processBackgroundJob:start",
+        msg: "job started",
+        data: {
+          jobId: job.id,
+          jobType: job.type,
+          storyId: job.storyId ?? null,
+          jobStatus: job.status,
+          abortedAtStart: signal.aborted,
+        },
+      });
+      // #endregion
+
+      const runningJob: BackgroundJob = {
+        ...job,
+        status: "running",
+        startedAt: job.startedAt ?? new Date().toISOString(),
+        error: undefined,
+      };
+      await repository.saveBackgroundJob(runningJob);
+      await hydrate(false);
+
+      try {
+        if (job.type === "story_index") {
+          const summaryLine = await runDeepIndexProcess(job.storyId ?? "", {
+            signal,
+            trigger: job.payload?.trigger ?? "manual",
+          });
+          const refreshed = await repository.getBackgroundJob(job.id);
+          if (signal.aborted || refreshed?.status === "cancelled") {
+            await repository.saveBackgroundJob({
+              ...runningJob,
+              status: "cancelled",
+              finishedAt: new Date().toISOString(),
+              error: undefined,
+            });
+            await hydrate(false);
+            return;
+          }
+          const story = job.storyId ? await repository.getStory(job.storyId) : null;
+          const completedJob: BackgroundJob = {
+            ...runningJob,
+            status: "complete",
+            finishedAt: new Date().toISOString(),
+            result: {
+              notificationTitle: story ? `Indexing complete for ${story.title}` : "Indexing complete",
+              notificationBody: summaryLine,
+            },
+          };
+          await repository.saveBackgroundJob(completedJob);
+          // #region debug-point job-cancel-timeout:job-complete
+          reportJobDebug({
+            hypothesisId: "C",
+            location: "StoryEngineProvider.tsx:processBackgroundJob:complete",
+            msg: "job completed",
+            data: {
+              jobId: completedJob.id,
+              jobType: completedJob.type,
+              storyId: completedJob.storyId ?? null,
+              status: completedJob.status,
+              aborted: signal.aborted,
+            },
+          });
+          // #endregion
+          await deliverJobNotice({
+            jobId: completedJob.id,
+            storyId: job.storyId,
+            title:
+              completedJob.result?.notificationTitle ?? "Indexing complete",
+            body: completedJob.result?.notificationBody ?? summaryLine,
+          });
+        } else if (job.type === "metachat_generate") {
+          const currentJob = await repository.getBackgroundJob(job.id);
+          if (currentJob?.status === "cancelled") {
+            return;
+          }
+          const userText = job.payload?.content ?? "";
+          const assistantText = await generateMetaChatAssistantReply(
+            job.storyId ?? "",
+            userText,
+            signal,
+          );
+          const refreshed = await repository.getBackgroundJob(job.id);
+          if (signal.aborted || refreshed?.status === "cancelled") {
+            return;
+          }
+          const assistantMessage: StoryMetaMessage = {
+            id: createEntityId("story-meta-message"),
+            storyId: job.storyId ?? "",
+            role: "assistant",
+            content: assistantText,
+            timestamp: new Date().toISOString(),
+            jobId: job.id,
+          };
+          await repository.saveStoryMetaMessage(assistantMessage);
+          const story = job.storyId ? await repository.getStory(job.storyId) : null;
+          const completedJob: BackgroundJob = {
+            ...runningJob,
+            status: "complete",
+            finishedAt: new Date().toISOString(),
+            result: {
+              messageId: assistantMessage.id,
+              notificationTitle: story
+                ? `MetaChat reply ready for ${story.title}`
+                : "MetaChat reply ready",
+              notificationBody: "Your out-of-canon assistant reply is ready.",
+              openMetaChat: Boolean(job.payload?.metaChatOpenOnComplete),
+            },
+          };
+          await repository.saveBackgroundJob(completedJob);
+          await hydrate(false);
+          // #region debug-point job-cancel-timeout:job-complete
+          reportJobDebug({
+            hypothesisId: "C",
+            location: "StoryEngineProvider.tsx:processBackgroundJob:complete",
+            msg: "job completed",
+            data: {
+              jobId: completedJob.id,
+              jobType: completedJob.type,
+              storyId: completedJob.storyId ?? null,
+              status: completedJob.status,
+              aborted: signal.aborted,
+            },
+          });
+          // #endregion
+          await deliverJobNotice({
+            jobId: completedJob.id,
+            storyId: job.storyId,
+            title:
+              completedJob.result?.notificationTitle ?? "MetaChat reply ready",
+            body:
+              completedJob.result?.notificationBody ??
+              "Your out-of-canon assistant reply is ready.",
+            openMetaChat: completedJob.result?.openMetaChat,
+          });
+        }
+      } catch (error) {
+        const latest = await repository.getBackgroundJob(job.id);
+        // #region debug-point job-cancel-timeout:job-error
+        reportJobDebug({
+          hypothesisId: "C",
+          location: "StoryEngineProvider.tsx:processBackgroundJob:catch",
+          msg: "job threw",
+          data: {
+            jobId: job.id,
+            jobType: job.type,
+            storyId: job.storyId ?? null,
+            aborted: signal.aborted,
+            latestStatus: latest?.status ?? null,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+        // #endregion
+        if (signal.aborted || latest?.status === "cancelled") {
+          await repository.saveBackgroundJob({
+            ...runningJob,
+            status: "cancelled",
+            finishedAt: new Date().toISOString(),
+            error: undefined,
+          });
+          await hydrate(false);
+          return;
+        }
+        await repository.saveBackgroundJob({
+          ...runningJob,
+          status: "failed",
+          finishedAt: new Date().toISOString(),
+          error: error instanceof Error ? error.message : "Background job failed.",
+        });
+        await hydrate(false);
+        throw error;
+      }
+    },
+    [deliverJobNotice, generateMetaChatAssistantReply, hydrate, repository, runDeepIndexProcess],
+  );
+
+  useEffect(() => {
+    if (loading || errorMessage || activeBackgroundJobRef.current) {
+      return;
+    }
+
+    const nextJob = backgroundJobs.find(
+      (job) => job.status === "queued" || job.status === "running",
+    );
+
+    if (!nextJob) {
+      return;
+    }
+
+    // #region debug-point job-cancel-timeout:runner-pick
+    reportJobDebug({
+      hypothesisId: "D",
+      location: "StoryEngineProvider.tsx:jobRunner:pick",
+      msg: "job runner picked job",
+      data: {
+        jobId: nextJob.id,
+        jobType: nextJob.type,
+        storyId: nextJob.storyId ?? null,
+        status: nextJob.status,
+        queuedCount: backgroundJobs.filter((job) => job.status === "queued").length,
+        runningCount: backgroundJobs.filter((job) => job.status === "running").length,
+      },
+    });
+    // #endregion
+
+    const controller = new AbortController();
+    activeBackgroundJobRef.current = nextJob.id;
+    backgroundJobControllersRef.current[nextJob.id] = controller;
+
+    void processBackgroundJob(nextJob, controller.signal).finally(() => {
+      delete backgroundJobControllersRef.current[nextJob.id];
+      activeBackgroundJobRef.current = null;
+      void hydrate(false);
+    });
+  }, [backgroundJobs, errorMessage, hydrate, loading, processBackgroundJob]);
 
   const value = useMemo<StoryEngineContextValue>(() => {
     const storageStatus = buildStorageStatus(
@@ -877,11 +1980,13 @@ export function StoryEngineProvider({
       messages,
       metaMessages,
       chapters,
+      backgroundJobs,
       aiSettings,
       developerBugs,
       developerFeatureRequests,
       developerTestingNotes,
       rebuildStatus,
+      jobNotice,
       getUniverseById: (id) => universes.find((universe) => universe.id === id),
       getPlayerCharacterById: (id) =>
         playerCharacters.find((character) => character.id === id),
@@ -899,6 +2004,10 @@ export function StoryEngineProvider({
         [...chapters]
           .filter((chapter) => chapter.storyId === storyId)
           .sort((a, b) => a.endsAtIndex - b.endsAtIndex),
+      getJobsForStory: (storyId) =>
+        backgroundJobs.filter((job) => job.storyId === storyId),
+      getMetaChatDraft: (storyId) =>
+        storyUiStates.find((record) => record.storyId === storyId)?.metaChatDraft ?? "",
       getPlayerCharactersForUniverse: (universeId) =>
         sortByCreatedAtDesc(
           playerCharacters.filter(
@@ -917,11 +2026,13 @@ export function StoryEngineProvider({
         const mode = draft.mode ?? "referenced";
         const concept = (draft.concept ?? "").trim();
         const description = (draft.description ?? "").trim() || (mode === "custom" ? concept : "");
+        const wikiUrls = normalizeUniverseWikiSources(draft);
         const nextUniverse: Universe = {
           id: createEntityId("universe"),
           name: draft.name.trim(),
           description,
-          wikiUrl: draft.wikiUrl.trim(),
+          wikiUrl: getPrimaryUniverseWikiUrl({ wikiUrl: draft.wikiUrl, wikiUrls }),
+          wikiUrls,
           mode,
           concept: mode === "custom" && concept ? concept : undefined,
           genreTheme: draft.genreTheme?.trim() || undefined,
@@ -956,11 +2067,21 @@ export function StoryEngineProvider({
           typeof draft.description === "string" ? draft.description.trim() : "";
         const description =
           draftDescription || (mode === "custom" ? concept : currentUniverse.description.trim());
+        const wikiUrls = normalizeUniverseWikiSources({
+          wikiUrl:
+            typeof draft.wikiUrl === "string" ? draft.wikiUrl : currentUniverse.wikiUrl,
+          wikiUrls: draft.wikiUrls ?? currentUniverse.wikiUrls,
+        });
         const nextUniverse: Universe = {
           ...currentUniverse,
           name: draft.name.trim(),
           description,
-          wikiUrl: draft.wikiUrl.trim(),
+          wikiUrl: getPrimaryUniverseWikiUrl({
+            wikiUrl:
+              typeof draft.wikiUrl === "string" ? draft.wikiUrl : currentUniverse.wikiUrl,
+            wikiUrls,
+          }),
+          wikiUrls,
           mode,
           concept: mode === "custom" && concept ? concept : undefined,
           genreTheme: draft.genreTheme?.trim() || undefined,
@@ -1299,6 +2420,7 @@ export function StoryEngineProvider({
           universeId: draft.universeId,
           playerCharacterId: draft.playerCharacterId,
           universePackSnapshot,
+          matureFictionMode: draft.matureFictionMode,
           autoIndexInterval: draft.autoIndexInterval ?? 20,
           currentSummary: draft.currentSummary.trim(),
           createdAt: now,
@@ -1325,6 +2447,7 @@ export function StoryEngineProvider({
           playerCharacterId:
             patch.playerCharacterId ?? currentStory.playerCharacterId,
           isArchived: patch.isArchived ?? currentStory.isArchived,
+          matureFictionMode: patch.matureFictionMode ?? currentStory.matureFictionMode,
           autoIndexMode: patch.autoIndexMode ?? currentStory.autoIndexMode,
           autoIndexInterval: patch.autoIndexInterval ?? currentStory.autoIndexInterval,
           updatedAt: new Date().toISOString(),
@@ -1564,7 +2687,7 @@ export function StoryEngineProvider({
                       "- Actions must be wrapped as *...* (asterisks only for actions).",
                       '- Dialogue must be wrapped in double quotes like \"...\"',
                       "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-                      "- Narration must be standalone italic narration (stored as *...*), never 'Narrator:' labels.",
+                      "- Narration is plain prose with no speaker label. Do not wrap narration in *...*.",
                       "Mystery rule:",
                       "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
                     ].join("\n"),
@@ -1677,6 +2800,7 @@ export function StoryEngineProvider({
 
         let candidateAssistantText = finalAssistantText;
         let finalSanitizedText: string | null = null;
+        let lastValidationDiagnostic = "";
 
         for (let attempt = 0; attempt < 6; attempt += 1) {
           const candidateSanitized = sanitizeAssistantTranscript({
@@ -1686,6 +2810,13 @@ export function StoryEngineProvider({
           });
 
           if (!candidateSanitized.formatValid) {
+            lastValidationDiagnostic = [
+              "rewrite_stage=format",
+              `attempt=${attempt + 1}`,
+              `issues=${candidateSanitized.formatIssues.map((issue) => issue.code).join(",") || "unknown"}`,
+              `raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
+              `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+            ].join("; ");
             candidateAssistantText = (
               await generateResponseWithRetry({
                 providerType,
@@ -1707,6 +2838,14 @@ export function StoryEngineProvider({
           });
 
           if (violation) {
+            lastValidationDiagnostic = [
+              "rewrite_stage=ownership",
+              `attempt=${attempt + 1}`,
+              `rule=${violation.rule}`,
+              `match=${violation.match}`,
+              `line=${clipGenerationAuditText(violation.line ?? "", 300)}`,
+              `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+            ].join("; ");
             candidateAssistantText = (
               await generateResponseWithRetry({
                 providerType,
@@ -1723,6 +2862,11 @@ export function StoryEngineProvider({
           }
 
           if (hiddenDialogueInferencePattern.test(candidateSanitized.text)) {
+            lastValidationDiagnostic = [
+              "rewrite_stage=hidden_dialogue",
+              `attempt=${attempt + 1}`,
+              `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+            ].join("; ");
             candidateAssistantText = (
               await generateResponseWithRetry({
                 providerType,
@@ -1743,6 +2887,13 @@ export function StoryEngineProvider({
             assistantText: candidateSanitized.text,
           });
           if (sceneDup.triggered) {
+            lastValidationDiagnostic = [
+              "rewrite_stage=scene_state",
+              `attempt=${attempt + 1}`,
+              `reason=${sceneDup.reason}`,
+              `snippet=${clipGenerationAuditText(sceneDup.snippet, 300)}`,
+              `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+            ].join("; ");
             candidateAssistantText = (
               await generateResponseWithRetry({
                 providerType,
@@ -1763,7 +2914,27 @@ export function StoryEngineProvider({
         }
 
         if (!finalSanitizedText) {
-          throw new Error("Unable to generate a response. Please try again.");
+          throw new GenerationFailureError(
+            createGenerationFailure(
+              createAIGenerationError(
+                "validation",
+                "The model output could not be rewritten into a valid response format.",
+                {
+                  retryable: false,
+                  diagnostic:
+                    lastValidationDiagnostic ||
+                    `rewrite_stage=unknown; raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
+                },
+              ),
+              {
+                providerName: providerType,
+                model,
+                attempts: 1,
+                maxAttempts: 1,
+                stage: "validation",
+              },
+            ),
+          );
         }
 
         const nextAssistantMessage: StoryMessage = {
@@ -1813,34 +2984,6 @@ export function StoryEngineProvider({
         if (!trimmed) {
           throw new Error("Message content is required.");
         }
-
-        const story = await repository.getStory(storyId);
-        if (!story) {
-          throw new Error("Story not found.");
-        }
-
-        const [universe, playerCharacter, storyConfig, storyState, storyMessages, storyChapters] = await Promise.all([
-          repository.getUniverse(story.universeId),
-          repository.getPlayerCharacter(story.playerCharacterId),
-          repository.getStoryAIConfig(storyId),
-          repository.getStoryState(storyId),
-          repository.listStoryMessages(storyId),
-          repository.listStoryChapters(storyId),
-        ]);
-
-        if (!universe || !playerCharacter) {
-          throw new Error("Story references missing universe or player character.");
-        }
-
-        const settings = await getNormalizedAISettings();
-        if (!settings) {
-          throw new Error("Configure an AI provider in Settings before generating messages.");
-        }
-
-        const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
-        const provider = createAIProvider(providerType);
-
         const userMessage: StoryMetaMessage = {
           id: createEntityId("story-meta-message"),
           storyId,
@@ -1850,52 +2993,7 @@ export function StoryEngineProvider({
         };
 
         await repository.saveStoryMetaMessage(userMessage);
-
-        const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
-        const contextBlock = buildMetaChatCanonContext({
-          story,
-          universe: effectiveUniverse,
-          playerCharacter,
-          storyState,
-          messages: storyMessages,
-          chapters: storyChapters,
-        });
-
-        const priorMetaHistory = sortByTimestampAsc(await repository.listStoryMetaMessages(storyId))
-          .slice(-20)
-          .map(
-            (message) =>
-              ({
-                role: message.role === "assistant" ? "assistant" : "user",
-                content: message.content,
-              }) satisfies AIChatMessage,
-          );
-
-        const systemPrompt = [
-          "You are MetaChat, an out-of-canon writer's room assistant for Story Engine.",
-          "Hard rule: MetaChat is NOT canon and must never be treated as story reality.",
-          "You have access to the full canon reference block below: use it freely for analysis, planning, questions, continuity checks, and archive discussion.",
-          buildMatureFictionPolicyBlock({
-            includeParity: true,
-            includeAnalysisFocus: true,
-          }),
-          "Do not write the next story scene or in-character narration unless the user explicitly asks you to draft an out-of-canon example.",
-          "Prefer analysis, planning, options, and questions. Be concise and practical.",
-        ].join("\n");
-
-        const assistantText = (
-          await generateResponseWithRetry({
-            providerType,
-            provider,
-            apiKey,
-            model,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "system", content: `Context (canon reference only):\n${contextBlock}` },
-              ...priorMetaHistory,
-            ],
-          })
-        ).content;
+        const assistantText = await generateMetaChatAssistantReply(storyId, trimmed);
 
         const assistantMessage: StoryMetaMessage = {
           id: createEntityId("story-meta-message"),
@@ -1906,8 +3004,27 @@ export function StoryEngineProvider({
         };
 
         await repository.saveStoryMetaMessage(assistantMessage);
+        // #region debug-point D:metachat-save
+        reportGenerationAudit({
+          hypothesisId: "D",
+          location: "StoryEngineProvider.tsx:sendMetaChatMessage:save",
+          msg: "MetaChat response saved",
+          data: {
+            storyId,
+            savedOutput: assistantMessage.content,
+            savedLength: assistantMessage.content?.length ?? 0,
+          },
+        });
+        // #endregion
         await hydrate(false);
         return assistantMessage ?? userMessage;
+      },
+      queueMetaChatMessage,
+      async setMetaChatDraft(storyId, draft) {
+        await saveStoryUiStateRecord(storyId, { metaChatDraft: draft });
+      },
+      async clearMetaChatDraft(storyId) {
+        await saveStoryUiStateRecord(storyId, { metaChatDraft: "" });
       },
       async createDeveloperBug(draft) {
         const now = new Date().toISOString();
@@ -2064,7 +3181,18 @@ export function StoryEngineProvider({
         await repository.deleteDeveloperTestingNote(id);
         await hydrate(false);
       },
-      exportStory(storyId) {
+      async exportStory(storyId, opts) {
+        if (opts?.refreshArchiveIfStale) {
+          const storyState = await repository.getStoryState(storyId);
+          const indexStatus = getArchiveIndexStatus(storyState);
+
+          if (indexStatus.needsRefresh) {
+            await runDeepIndexProcess(storyId, {
+              trigger: "manual",
+            });
+          }
+        }
+
         return repository.getStoryExportBundle(storyId);
       },
       fetchStoryState(storyId) {
@@ -2072,187 +3200,15 @@ export function StoryEngineProvider({
       },
       refreshStoryState: refreshStoryStateInternal,
       async updateIndexesDeep(storyId, opts) {
-        rebuildAbortRef.current?.abort();
-        const controller = new AbortController();
-        rebuildAbortRef.current = controller;
-        const signal = opts?.signal ?? controller.signal;
-
-        setRebuildStatus({
-          storyId,
-          phase: "loading",
-          processedMessages: 0,
-          totalMessages: 0,
-          message: "Loading story...",
+        await runDeepIndexProcess(storyId, {
+          signal: opts?.signal,
+          trigger: "manual",
         });
-
-        try {
-          const story = await repository.getStory(storyId);
-          if (!story) {
-            throw new Error("Story not found.");
-          }
-
-          const storyConfig = await repository.getStoryAIConfig(storyId);
-          const settings = await getNormalizedAISettings();
-
-          if (!settings) {
-            throw new Error("Configure an AI provider in Settings before re-indexing.");
-          }
-
-          const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-          const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
-          const provider = createAIProvider(providerType);
-
-          const [allMessages, existingStoryState] = await Promise.all([
-            repository.listStoryMessages(storyId),
-            repository.getStoryState(storyId),
-          ]);
-
-          setRebuildStatus({
-            storyId,
-            phase: "extracting",
-            processedMessages: 0,
-            totalMessages: allMessages.length,
-            message: `Re-indexing… 0/${allMessages.length} messages`,
-          });
-
-          const result = await rebuildStoryMemoryAndIndexes({
-            storyId,
-            repository,
-            provider,
-            apiKey,
-            model,
-            signal,
-            onProgress: ({ processed, total, message }) => {
-              setRebuildStatus((current) => {
-                if (!current || current.storyId !== storyId) {
-                  return current;
-                }
-
-                return {
-                  ...current,
-                  phase: "extracting",
-                  processedMessages: processed,
-                  totalMessages: total,
-                  message,
-                };
-              });
-            },
-          });
-
-          if (signal.aborted) {
-            throw new Error("Re-index aborted.");
-          }
-
-          setRebuildStatus((current) => {
-            if (!current || current.storyId !== storyId) {
-              return current;
-            }
-
-            return {
-              ...current,
-              phase: "saving",
-              message: "Saving indexed state...",
-            };
-          });
-
-          const now = new Date().toISOString();
-          const nextStateJson = (() => {
-            try {
-              const parsed = safeParseStoryStateData(result.stateJson);
-              if (!parsed) {
-                return result.stateJson;
-              }
-              return finalizeStoryStateForSave({
-                parsedState: parsed,
-                previousStateJson: existingStoryState?.stateJson,
-                totalMessages: allMessages.length,
-                now,
-                mode: "deep",
-                deepIndexTrigger: "manual",
-              });
-            } catch {
-              return result.stateJson;
-            }
-          })();
-
-          await repository.saveStoryState({
-            id: `story-state:${storyId}`,
-            storyId,
-            stateJson: nextStateJson,
-            updatedAt: now,
-          });
-
-          if (!story.currentSummary?.trim() && result.summaryText?.trim()) {
-            await repository.saveStory({
-              ...story,
-              currentSummary: result.summaryText.trim(),
-              updatedAt: new Date().toISOString(),
-            });
-          }
-
-          await touchStory(storyId);
-          await hydrate(false);
-
-          const summaryLine = (() => {
-            try {
-              const parsed = JSON.parse(nextStateJson) as any;
-              const indexes = parsed?.indexes;
-              if (!indexes || typeof indexes !== "object") {
-                return "Re-index complete.";
-              }
-
-              const characterCount = indexes.characters && typeof indexes.characters === "object"
-                ? Object.keys(indexes.characters).length
-                : 0;
-              const locationCount = indexes.locations && typeof indexes.locations === "object"
-                ? Object.keys(indexes.locations).length
-                : 0;
-              const threadCount = Array.isArray(indexes.openThreads) ? indexes.openThreads.length : 0;
-
-              const parts = [
-                characterCount ? `${characterCount} characters` : null,
-                locationCount ? `${locationCount} locations` : null,
-                threadCount ? `${threadCount} threads` : null,
-              ].filter(Boolean);
-
-              return parts.length ? `Re-index complete. Indexed: ${parts.join(", ")}.` : "Re-index complete.";
-            } catch {
-              return "Re-index complete.";
-            }
-          })();
-
-          setRebuildStatus({
-            storyId,
-            phase: "done",
-            processedMessages: allMessages.length,
-            totalMessages: allMessages.length,
-            message: summaryLine,
-          });
-        } catch (error) {
-          setRebuildStatus((current) => {
-            const base =
-              current?.storyId === storyId
-                ? current
-                : {
-                    storyId,
-                    phase: "error" as const,
-                    processedMessages: 0,
-                    totalMessages: 0,
-                  };
-
-            return {
-              ...base,
-              phase: "error",
-              error: error instanceof Error ? error.message : "Re-index failed.",
-            };
-          });
-
-          throw error;
-        } finally {
-          if (rebuildAbortRef.current === controller) {
-            rebuildAbortRef.current = null;
-          }
-        }
+      },
+      queueStoryIndexJob,
+      cancelBackgroundJob,
+      dismissJobNotice() {
+        setJobNotice(null);
       },
       exportUniverse(universeId) {
         return repository.getUniverseExportBundle(universeId);
@@ -2544,6 +3500,19 @@ export function StoryEngineProvider({
         if (!trimmed) {
           throw new Error("Message content is required.");
         }
+        const traceId = makeGenerationAuditTraceId("story");
+        // #region debug-point A:story-start
+        reportGenerationAudit({
+          hypothesisId: "A",
+          traceId,
+          location: "StoryEngineProvider.tsx:sendChatMessage:start",
+          msg: "story generation started",
+          data: {
+            storyId,
+            originalUserText: trimmed,
+          },
+        });
+        // #endregion
 
         const story = await repository.getStory(storyId);
 
@@ -2571,7 +3540,14 @@ export function StoryEngineProvider({
         const prefix = extractSpeakerPrefix(trimmed);
         const strippedUserContent = (prefix?.strippedContent ?? trimmed).trim();
         const detectedDirectorIntent = detectDirectorIntent(strippedUserContent);
-        const detectedChapterEnd = detectChapterEnd(strippedUserContent);
+        const detectedChapterBoundary = detectChapterBoundary(strippedUserContent);
+        const chapterBoundary =
+          detectedChapterBoundary.detected && detectedChapterBoundary.kind && detectedChapterBoundary.label
+            ? {
+                kind: detectedChapterBoundary.kind,
+                label: detectedChapterBoundary.label,
+              }
+            : undefined;
         const userMessage: StoryMessage = shouldReuseLastUserMessage
           ? lastMessage
           : {
@@ -2583,17 +3559,19 @@ export function StoryEngineProvider({
               speakerName: prefix?.speakerLabel,
               speakerType: "player",
               ...(detectedDirectorIntent ? { directorIntent: detectedDirectorIntent } : {}),
+              ...(chapterBoundary ? { chapterBoundary } : {}),
             };
 
         if (!shouldReuseLastUserMessage) {
           await repository.saveStoryMessage(userMessage);
         } else if (
-          detectedDirectorIntent &&
-          JSON.stringify(lastMessage.directorIntent ?? null) !== JSON.stringify(detectedDirectorIntent)
+          JSON.stringify(lastMessage.directorIntent ?? null) !== JSON.stringify(detectedDirectorIntent ?? null) ||
+          JSON.stringify(lastMessage.chapterBoundary ?? null) !== JSON.stringify(chapterBoundary ?? null)
         ) {
           await repository.saveStoryMessage({
             ...lastMessage,
-            directorIntent: detectedDirectorIntent,
+            ...(detectedDirectorIntent ? { directorIntent: detectedDirectorIntent } : {}),
+            ...(chapterBoundary ? { chapterBoundary } : {}),
           });
         }
 
@@ -2629,19 +3607,48 @@ export function StoryEngineProvider({
         );
         const userMessageNumber = userMessageIndex + 1;
 
+        const previousActiveChapterLabel =
+          chapterBoundary?.kind === "start"
+            ? getExistingActiveChapterLabel(storyId, existingMessages, storedChapters)
+            : null;
+        const previousStoryMessage =
+          userMessageIndex > 0 ? sortedForNumbering[userMessageIndex - 1] : null;
         const createdChapter = (() => {
-          if (!detectedChapterEnd.detected) return null;
-          if (storedChapters.some((chapter) => chapter.endsAtMessageId === userMessage.id)) {
-            return null;
+          if (chapterBoundary?.kind === "end") {
+            if (storedChapters.some((chapter) => chapter.endsAtMessageId === userMessage.id)) {
+              return null;
+            }
+            return {
+              id: createEntityId("story-chapter"),
+              storyId,
+              label: chapterBoundary.label,
+              endsAtMessageId: userMessage.id,
+              endsAtIndex: userMessageNumber,
+              createdAt: new Date().toISOString(),
+            } satisfies StoryChapter;
           }
-          return {
-            id: createEntityId("story-chapter"),
-            storyId,
-            label: detectedChapterEnd.label ?? "Chapter End",
-            endsAtMessageId: userMessage.id,
-            endsAtIndex: userMessageNumber,
-            createdAt: new Date().toISOString(),
-          } satisfies StoryChapter;
+
+          if (
+            chapterBoundary?.kind === "start" &&
+            previousActiveChapterLabel &&
+            previousStoryMessage &&
+            !storedChapters.some(
+              (chapter) =>
+                chapter.label === previousActiveChapterLabel &&
+                chapter.endsAtMessageId === previousStoryMessage.id,
+            )
+          ) {
+            return {
+              id: createEntityId("story-chapter"),
+              storyId,
+              label: previousActiveChapterLabel,
+              endsAtMessageId: previousStoryMessage.id,
+              endsAtIndex: userMessageNumber - 1,
+              createdAt: new Date().toISOString(),
+            } satisfies StoryChapter;
+          }
+
+          return null;
         })();
 
         if (createdChapter) {
@@ -2715,10 +3722,36 @@ export function StoryEngineProvider({
             }).text,
           };
         });
+        const inputSafetyAnalysis = analyzeStoryInputSafety({
+          playerCharacterName: playerCharacter.name,
+          latestUserMessage: trimmed,
+          recentMessages: sanitizedHistoryMessages,
+          storyState,
+        });
+        // #region debug-point A:story-context
+        reportGenerationAudit({
+          hypothesisId: "A",
+          traceId,
+          location: "StoryEngineProvider.tsx:sendChatMessage:context",
+          msg: "story context prepared",
+          data: {
+            storyId,
+            providerType,
+            model,
+            chapterBoundary,
+            directorIntent: userMessage.directorIntent ?? null,
+            likelyFictionalContext: inputSafetyAnalysis.likelyFictionalContext,
+            likelyMedicalContext:
+              inputSafetyAnalysis.matchedTerms.length > 0 ||
+              inputSafetyAnalysis.contextSignals.length > 0,
+            recentMessageCount: sanitizedHistoryMessages.length,
+          },
+        });
+        // #endregion
 
         const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
         const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
-        const shouldSkipAssistantReply = detectedChapterEnd.detected;
+        const shouldSkipAssistantReply = Boolean(chapterBoundary);
         let assistantMessage: StoryMessage | null = null;
         let updatedMessages: StoryMessage[] = [];
 
@@ -2734,14 +3767,140 @@ export function StoryEngineProvider({
             latestUserMessage: userMessage.content,
             directorIntent: userMessage.directorIntent ?? null,
           });
-
-          const assistantContent = await generateResponseWithRetry({
-            providerType,
-            provider,
-            apiKey,
-            model,
-            messages: context,
+          // #region debug-point A:story-request-shape
+          reportGenerationAudit({
+            hypothesisId: "A",
+            traceId,
+            location: "StoryEngineProvider.tsx:sendChatMessage:request-shape",
+            msg: "story request messages built",
+            data: {
+              storyId,
+              providerType,
+              model,
+              messageSummary: summarizeGenerationAuditMessages(context),
+              promptSummary: clipGenerationAuditText(
+                context
+                  .filter((message) => message.role === "system")
+                  .map((message) => message.content)
+                  .join("\n\n"),
+                900,
+              ),
+            },
           });
+          // #endregion
+
+          let assistantContent: GenerateResponseResult;
+          try {
+            assistantContent = await generateResponseWithRetry({
+              providerType,
+              provider,
+              apiKey,
+              model,
+              messages: context,
+              debugTrace: {
+                traceId,
+                mode: "story",
+                storyId,
+                stage: "initial",
+                lastUserText: userMessage.content,
+              },
+            });
+          } catch (error) {
+            const baseFailure = isGenerationFailureError(error) ? error.failure : null;
+            const isProviderRefusal = baseFailure?.kind === "provider_refusal";
+            // #region debug-point A:story-provider-error
+            reportGenerationAudit({
+              hypothesisId: "A",
+              traceId,
+              location: "StoryEngineProvider.tsx:sendChatMessage:provider-error",
+              msg: "story provider request failed",
+              data: {
+                storyId,
+                providerType,
+                model,
+                failureKind: baseFailure?.kind ?? null,
+                failureStage: baseFailure?.stage ?? null,
+                summaryMessage: baseFailure?.summaryMessage ?? (error instanceof Error ? error.message : "unknown"),
+                diagnostic: baseFailure?.diagnostic ?? null,
+              },
+            });
+            // #endregion
+
+            if (providerType === "gemini" && isProviderRefusal) {
+              const transmitSafe = makeTransmitSafe(userMessage.content, {
+                allowPainSoftening: Boolean(story.matureFictionMode),
+              });
+
+              if (transmitSafe.wasModified) {
+                const safeContext = buildStoryChatContext({
+                  universe: effectiveUniverse,
+                  story,
+                  playerCharacter,
+                  imports: effectiveImports,
+                  summaries,
+                  storyState,
+                  recentMessages: sanitizedHistoryMessages,
+                  latestUserMessage: transmitSafe.transmitText,
+                  directorIntent: userMessage.directorIntent ?? null,
+                });
+                const note = buildTransmitSafeSystemNote(transmitSafe);
+                const lastUserIndex = (() => {
+                  for (let index = safeContext.length - 1; index >= 0; index -= 1) {
+                    if (safeContext[index]?.role === "user") return index;
+                  }
+                  return -1;
+                })();
+                if (note && lastUserIndex >= 0) {
+                  safeContext.splice(lastUserIndex, 0, { role: "system", content: note });
+                }
+
+                try {
+                  assistantContent = await generateResponseWithRetry({
+                    providerType,
+                    provider,
+                    apiKey,
+                    model,
+                    messages: safeContext,
+                    maxAttempts: 1,
+                    debugTrace: {
+                      traceId,
+                      mode: "story",
+                      storyId,
+                      stage: "transmit-safe-retry",
+                      lastUserText: transmitSafe.transmitText,
+                    },
+                  });
+                } catch (secondError) {
+                  if (isGenerationFailureError(secondError)) {
+                    const patched = withTransmitSafeDiagnostics(secondError.failure, {
+                      originalText: userMessage.content,
+                      transmittedText: transmitSafe.transmitText,
+                      notes: transmitSafe.notes,
+                    });
+                    throw new GenerationFailureError(patched);
+                  }
+                  throw secondError;
+                }
+              } else {
+                throw error;
+              }
+            } else if (isProviderRefusal && inputSafetyAnalysis.likelyFictionalContext) {
+              const message = formatLikelyFictionalSafetyRefusalMessage(
+                baseFailure?.summaryMessage ||
+                  (error instanceof Error ? error.message : "The provider refused the request."),
+                inputSafetyAnalysis,
+              );
+              if (baseFailure) {
+                throw new GenerationFailureError({
+                  ...baseFailure,
+                  summaryMessage: message,
+                });
+              }
+              throw new Error(message);
+            } else {
+              throw error;
+            }
+          }
 
           const sceneDepth = inferSceneDepth(userMessage.content);
           const target = getSceneWordTarget(sceneDepth);
@@ -2773,7 +3932,7 @@ export function StoryEngineProvider({
                         "- Actions must be wrapped as *...* (asterisks only for actions).",
                         '- Dialogue must be wrapped in double quotes like "..."',
                         "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-                        "- Narration must be standalone italic narration (stored as *...*), never 'Narrator:' labels.",
+                        "- Narration is plain prose with no speaker label. Do not wrap narration in *...*.",
                         "Mystery rule:",
                         "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
                       ].join("\n"),
@@ -2783,6 +3942,13 @@ export function StoryEngineProvider({
                       content: assistantContent.content,
                     },
                   ],
+                  debugTrace: {
+                    traceId,
+                    mode: "story",
+                    storyId,
+                    stage: "size-rewrite",
+                    lastUserText: assistantContent.content,
+                  },
                 })
               ).content
             : assistantContent.content;
@@ -2882,6 +4048,7 @@ export function StoryEngineProvider({
 
           let candidateAssistantText = finalAssistantText;
           let finalSanitizedText: string | null = null;
+          let lastValidationDiagnostic = "";
 
           for (let attempt = 0; attempt < 6; attempt += 1) {
             const candidateSanitized = sanitizeAssistantTranscript({
@@ -2891,11 +4058,28 @@ export function StoryEngineProvider({
             });
 
             if (!candidateSanitized.formatValid) {
-              console.groupCollapsed("story-format:invalid");
-              console.log("issues", candidateSanitized.formatIssues);
-              console.log("rawAssistantBeforeSanitize", candidateAssistantText);
-              console.log("assistantAfterSanitize", candidateSanitized.text);
-              console.groupEnd();
+              lastValidationDiagnostic = [
+                "rewrite_stage=format",
+                `attempt=${attempt + 1}`,
+                `issues=${candidateSanitized.formatIssues.map((issue) => issue.code).join(",") || "unknown"}`,
+                `raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
+                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+              ].join("; ");
+              // #region debug-point B:format-rewrite
+              reportGenerationAudit({
+                hypothesisId: "B",
+                traceId,
+                location: "StoryEngineProvider.tsx:sendChatMessage:format-rewrite",
+                msg: "format rewrite triggered",
+                data: {
+                  storyId,
+                  attempt,
+                  formatIssues: candidateSanitized.formatIssues,
+                  rawOutput: candidateAssistantText,
+                  rewrittenOutput: candidateSanitized.text,
+                },
+              });
+              // #endregion
 
               candidateAssistantText = (
                 await generateResponseWithRetry({
@@ -2907,6 +4091,13 @@ export function StoryEngineProvider({
                     { role: "system", content: formatRewritePrompt },
                     { role: "user", content: candidateAssistantText },
                   ],
+                  debugTrace: {
+                    traceId,
+                    mode: "story",
+                    storyId,
+                    stage: "format-rewrite",
+                    lastUserText: candidateAssistantText,
+                  },
                 })
               ).content;
               continue;
@@ -2918,13 +4109,31 @@ export function StoryEngineProvider({
             });
 
             if (violation) {
-              console.groupCollapsed("ownership-validator:blocked (loop)");
-              console.log("rule", violation.rule);
-              console.log("match", violation.match);
-              console.log("line", violation.line ?? null);
-              console.log("rawAssistantBeforeSanitize", candidateAssistantText);
-              console.log("assistantAfterSanitize", candidateSanitized.text);
-              console.groupEnd();
+              lastValidationDiagnostic = [
+                "rewrite_stage=ownership",
+                `attempt=${attempt + 1}`,
+                `rule=${violation.rule}`,
+                `match=${violation.match}`,
+                `line=${clipGenerationAuditText(violation.line ?? "", 300)}`,
+                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+              ].join("; ");
+              // #region debug-point C:ownership-rewrite
+              reportGenerationAudit({
+                hypothesisId: "C",
+                traceId,
+                location: "StoryEngineProvider.tsx:sendChatMessage:ownership-rewrite",
+                msg: "ownership rewrite triggered",
+                data: {
+                  storyId,
+                  attempt,
+                  rule: violation.rule,
+                  match: violation.match,
+                  line: violation.line ?? null,
+                  rawOutput: candidateAssistantText,
+                  rewrittenOutput: candidateSanitized.text,
+                },
+              });
+              // #endregion
 
               candidateAssistantText = (
                 await generateResponseWithRetry({
@@ -2936,12 +4145,37 @@ export function StoryEngineProvider({
                     { role: "system", content: ownershipRewritePrompt },
                     { role: "user", content: candidateSanitized.text },
                   ],
+                  debugTrace: {
+                    traceId,
+                    mode: "story",
+                    storyId,
+                    stage: "ownership-rewrite",
+                    lastUserText: candidateSanitized.text,
+                  },
                 })
               ).content;
               continue;
             }
 
             if (hiddenDialogueInferencePattern.test(candidateSanitized.text)) {
+              lastValidationDiagnostic = [
+                "rewrite_stage=hidden_dialogue",
+                `attempt=${attempt + 1}`,
+                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+              ].join("; ");
+              // #region debug-point B:hidden-dialogue
+              reportGenerationAudit({
+                hypothesisId: "B",
+                traceId,
+                location: "StoryEngineProvider.tsx:sendChatMessage:hidden-dialogue-rewrite",
+                msg: "hidden dialogue rewrite triggered",
+                data: {
+                  storyId,
+                  attempt,
+                  rewrittenOutput: candidateSanitized.text,
+                },
+              });
+              // #endregion
               candidateAssistantText = (
                 await generateResponseWithRetry({
                   providerType,
@@ -2952,6 +4186,13 @@ export function StoryEngineProvider({
                     { role: "system", content: hiddenDialogueRewritePrompt },
                     { role: "user", content: candidateSanitized.text },
                   ],
+                  debugTrace: {
+                    traceId,
+                    mode: "story",
+                    storyId,
+                    stage: "hidden-dialogue-rewrite",
+                    lastUserText: candidateSanitized.text,
+                  },
                 })
               ).content;
               continue;
@@ -2962,10 +4203,28 @@ export function StoryEngineProvider({
               assistantText: candidateSanitized.text,
             });
             if (sceneDup.triggered) {
-              console.groupCollapsed("scene-state:renarration");
-              console.log("reason", sceneDup.reason);
-              console.log("snippet", sceneDup.snippet);
-              console.groupEnd();
+              lastValidationDiagnostic = [
+                "rewrite_stage=scene_state",
+                `attempt=${attempt + 1}`,
+                `reason=${sceneDup.reason}`,
+                `snippet=${clipGenerationAuditText(sceneDup.snippet, 300)}`,
+                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+              ].join("; ");
+              // #region debug-point B:scene-renarration
+              reportGenerationAudit({
+                hypothesisId: "B",
+                traceId,
+                location: "StoryEngineProvider.tsx:sendChatMessage:scene-renarration",
+                msg: "scene-state renarration rewrite triggered",
+                data: {
+                  storyId,
+                  attempt,
+                  reason: sceneDup.reason,
+                  snippet: sceneDup.snippet,
+                  rewrittenOutput: candidateSanitized.text,
+                },
+              });
+              // #endregion
 
               candidateAssistantText = (
                 await generateResponseWithRetry({
@@ -2977,6 +4236,13 @@ export function StoryEngineProvider({
                     { role: "system", content: sceneStateRewritePrompt },
                     { role: "user", content: candidateSanitized.text },
                   ],
+                  debugTrace: {
+                    traceId,
+                    mode: "story",
+                    storyId,
+                    stage: "scene-state-rewrite",
+                    lastUserText: candidateSanitized.text,
+                  },
                 })
               ).content;
               continue;
@@ -2987,7 +4253,41 @@ export function StoryEngineProvider({
           }
 
           if (!finalSanitizedText) {
-            throw new Error("Unable to generate a response. Please try again.");
+            // #region debug-point C:validation-terminal
+            reportGenerationAudit({
+              hypothesisId: "C",
+              traceId,
+              location: "StoryEngineProvider.tsx:sendChatMessage:validation-terminal",
+              msg: "story validation exhausted rewrite budget",
+              data: {
+                storyId,
+                providerType,
+                model,
+                finalCandidate: candidateAssistantText,
+              },
+            });
+            // #endregion
+            throw new GenerationFailureError(
+              createGenerationFailure(
+                createAIGenerationError(
+                  "validation",
+                  "The model output could not be rewritten into a valid response format.",
+                  {
+                    retryable: false,
+                    diagnostic:
+                      lastValidationDiagnostic ||
+                      `rewrite_stage=unknown; raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
+                  },
+                ),
+                {
+                  providerName: providerType,
+                  model,
+                  attempts: 1,
+                  maxAttempts: 1,
+                  stage: "validation",
+                },
+              ),
+            );
           }
 
           assistantMessage = {
@@ -3000,6 +4300,32 @@ export function StoryEngineProvider({
           };
 
           await repository.saveStoryMessage(assistantMessage);
+          // #region debug-point C:story-save
+          reportGenerationAudit({
+            hypothesisId: "C",
+            traceId,
+            location: "StoryEngineProvider.tsx:sendChatMessage:save",
+            msg: "story assistant response saved",
+            data: {
+              storyId,
+              savedOutput: assistantMessage.content,
+              savedLength: assistantMessage.content?.length ?? 0,
+            },
+          });
+          // #endregion
+        } else {
+          // #region debug-point D:story-skip
+          reportGenerationAudit({
+            hypothesisId: "D",
+            traceId,
+            location: "StoryEngineProvider.tsx:sendChatMessage:skip-assistant",
+            msg: "assistant reply skipped because user message declared a chapter boundary",
+            data: {
+              storyId,
+              chapterBoundary,
+            },
+          });
+          // #endregion
         }
 
         updatedMessages = await repository.listStoryMessages(storyId);
@@ -3019,6 +4345,11 @@ export function StoryEngineProvider({
             storyTitle: story.title,
             messages: summaryContext,
             existingSummary: story.currentSummary,
+            debugTrace: {
+              traceId,
+              storyId,
+              stage: "summary-refresh",
+            },
           });
 
           await repository.saveStorySummary({
@@ -3216,60 +4547,17 @@ export function StoryEngineProvider({
               }
             } else if (autoIndexMode === "chapter") {
               const chapterBoundaries = await repository.listStoryChapters(storyId);
-              const hasNewChapter = chapterBoundaries.some(
+              const hasNewChapter =
+                Boolean(createdChapter) ||
+                chapterBoundaries.some(
                 (chapter) => chapter.endsAtIndex > lastAutoMessageCount,
-              );
+                );
               if (!hasNewChapter) {
                 return;
               }
             }
 
-            const rebuilt = await rebuildStoryMemoryAndIndexes({
-              storyId,
-              repository,
-              provider,
-              apiKey,
-              model,
-              onProgress: () => {},
-            });
-
-            const now = new Date().toISOString();
-            const patchedJson = (() => {
-              try {
-                const parsed = safeParseStoryStateData(rebuilt.stateJson);
-                if (!parsed) {
-                  return rebuilt.stateJson;
-                }
-                return finalizeStoryStateForSave({
-                  parsedState: parsed,
-                  previousStateJson: latestStoryState?.stateJson,
-                  totalMessages,
-                  now,
-                  mode: "deep",
-                  deepIndexTrigger: "auto",
-                });
-              } catch {
-                return rebuilt.stateJson;
-              }
-            })();
-
-            await repository.saveStoryState({
-              id: `story-state:${storyId}`,
-              storyId,
-              stateJson: patchedJson,
-              updatedAt: now,
-            });
-
-            if (!story.currentSummary?.trim() && rebuilt.summaryText?.trim()) {
-              await repository.saveStory({
-                ...story,
-                currentSummary: rebuilt.summaryText.trim(),
-                updatedAt: now,
-              });
-            }
-
-            await touchStory(storyId);
-            await hydrate(false);
+            await queueStoryIndexJob(storyId, { trigger: "auto" });
           } catch {}
         })();
         return assistantMessage;

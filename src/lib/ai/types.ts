@@ -10,6 +10,7 @@ export interface GenerateResponseRequest {
   model: string;
   messages: AIChatMessage[];
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface GenerateResponseResult {
@@ -23,6 +24,7 @@ export interface GenerateSummaryRequest {
   messages: AIChatMessage[];
   existingSummary?: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface AIProvider {

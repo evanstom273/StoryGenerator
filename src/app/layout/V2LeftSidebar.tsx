@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BrandMark } from "../../components/BrandMark";
 import { buttonClasses } from "../../components/ui/Button";
 import { cn } from "../../utils/cn";
@@ -30,6 +30,28 @@ export function V2LeftSidebar({
   const [collapsedUniverses, setCollapsedUniverses] = useState<Record<string, boolean>>(
     {},
   );
+
+  useEffect(() => {
+    // #region debug-point version-mismatch:sidebar-version
+    void fetch("http://127.0.0.1:7777/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "in-app-version-mismatch",
+        runId: "pre-fix",
+        hypothesisId: "A",
+        location: "V2LeftSidebar.tsx",
+        msg: "[DEBUG] sidebar version render",
+        data: {
+          appVersion: APP_VERSION,
+          href: typeof window !== "undefined" ? window.location.href : null,
+          userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+        },
+        ts: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, []);
 
   const normalizedQuery = query.trim().toLowerCase();
 

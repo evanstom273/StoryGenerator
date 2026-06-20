@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { DownloadIcon, TrashIcon } from "../../components/icons";
 import { Button, buttonClasses } from "../../components/ui/Button";
@@ -11,6 +11,32 @@ import { cn } from "../../utils/cn";
 import { StoryListRow } from "../../components/story/StoryListRow";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useUiPrefs } from "../ui/UiPrefsContext";
+
+const ARCHIVE_PDF_DEBUG_URL = "http://127.0.0.1:7777/event";
+const ARCHIVE_PDF_DEBUG_SESSION = "archive-pdf-no-op";
+
+function reportArchivePdfDebug(args: {
+  hypothesisId: string;
+  location: string;
+  msg: string;
+  data?: Record<string, unknown>;
+}) {
+  // #region debug-point archive-pdf-no-op:report
+  void fetch(ARCHIVE_PDF_DEBUG_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: ARCHIVE_PDF_DEBUG_SESSION,
+      runId: "pre-fix",
+      hypothesisId: args.hypothesisId,
+      location: args.location,
+      msg: `[DEBUG] ${args.msg}`,
+      data: args.data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
 
 interface V2RightSidebarProps {
   storyId?: string;
@@ -47,7 +73,6 @@ export function V2RightSidebar({
     getUniverseById,
     getPlayerCharacterById,
     exportStory,
-    updateIndexesDeep,
     deleteStory,
   } = useStoryEngine();
 
@@ -55,9 +80,32 @@ export function V2RightSidebar({
   const universe = story ? getUniverseById(story.universeId) : undefined;
   const playerCharacter = story ? getPlayerCharacterById(story.playerCharacterId) : undefined;
 
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [pageNotice, setPageNotice] = useState<string | null>(null);
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
+
+  function revealStatus() {
+    window.setTimeout(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }, 0);
+  }
+
+  function showNotice(value: string | null) {
+    setPageNotice(value);
+    if (value) {
+      revealStatus();
+    }
+  }
+
+  function showError(value: string | null) {
+    setPageError(value);
+    if (value) {
+      revealStatus();
+    }
+  }
 
   const recentStories = useMemo(() => stories.slice(0, 8), [stories]);
 
@@ -66,29 +114,87 @@ export function V2RightSidebar({
       return;
     }
 
-    setPageError(null);
-    setPageNotice(null);
+    showError(null);
+    showNotice(null);
 
     try {
+      // #region debug-point archive-pdf-no-op:export-start
+      reportArchivePdfDebug({
+        hypothesisId: "A",
+        location: "V2RightSidebar.tsx:handleExport:start",
+        msg: "export clicked",
+        data: {
+          storyId: story.id,
+          format,
+        },
+      });
+      // #endregion
       if (format === "archive_pdf") {
-        setPageNotice("Updating archive…");
-        await updateIndexesDeep(story.id);
-        setPageNotice("Generating PDF…");
+        showNotice("Generating PDF…");
       }
 
-      const bundle = await exportStory(story.id);
+      const bundle = await exportStory(story.id, {
+        refreshArchiveIfStale: format === "archive_pdf",
+      });
+      // #region debug-point archive-pdf-no-op:bundle
+      reportArchivePdfDebug({
+        hypothesisId: "B",
+        location: "V2RightSidebar.tsx:handleExport:exportStory",
+        msg: "export bundle assembled",
+        data: {
+          ok: Boolean(bundle),
+          messageCount: bundle?.messages?.length ?? null,
+        },
+      });
+      // #endregion
 
       if (!bundle) {
-        setPageError("Unable to assemble export data for this story.");
+        showError("Unable to assemble export data for this story.");
         return;
       }
 
       const { content, mimeType } = serializeStoryExport(bundle, format);
+      // #region debug-point archive-pdf-no-op:serialized
+      reportArchivePdfDebug({
+        hypothesisId: "C",
+        location: "V2RightSidebar.tsx:handleExport:serializeStoryExport",
+        msg: "export serialized",
+        data: {
+          format,
+          mimeType,
+          contentType: typeof content,
+          byteLength:
+            content instanceof Uint8Array
+              ? content.byteLength
+              : content instanceof ArrayBuffer
+                ? content.byteLength
+                : null,
+        },
+      });
+      // #endregion
       await downloadFile(createExportFilename(story.title, format), content, mimeType);
+      // #region debug-point archive-pdf-no-op:download-ok
+      reportArchivePdfDebug({
+        hypothesisId: "D",
+        location: "V2RightSidebar.tsx:handleExport:downloadFile",
+        msg: "downloadFile resolved",
+        data: { format },
+      });
+      // #endregion
     } catch (error) {
-      setPageError(error instanceof Error ? error.message : "Unable to export.");
+      // #region debug-point archive-pdf-no-op:export-error
+      reportArchivePdfDebug({
+        hypothesisId: "E",
+        location: "V2RightSidebar.tsx:handleExport:catch",
+        msg: "export failed",
+        data: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      // #endregion
+      showError(error instanceof Error ? error.message : "Unable to export.");
     } finally {
-      setPageNotice(null);
+      showNotice(null);
     }
   }
 
@@ -102,9 +208,8 @@ export function V2RightSidebar({
     setPageNotice("Updating archive…");
 
     try {
-      await updateIndexesDeep(story.id);
       setPageNotice("Generating support bundle…");
-      const bundle = await exportStory(story.id);
+      const bundle = await exportStory(story.id, { refreshArchiveIfStale: true });
 
       if (!bundle) {
         setPageError("Unable to assemble export data for this story.");
@@ -152,7 +257,7 @@ export function V2RightSidebar({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+        <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
           {story && universe && playerCharacter ? (
             <>
               <Panel padding="sm">
