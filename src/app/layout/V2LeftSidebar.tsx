@@ -100,10 +100,10 @@ export function V2LeftSidebar({
 
       {/* My Worlds header */}
       <div className="flex flex-shrink-0 items-center justify-between px-[18px] pb-2 pt-3.5">
-        <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+        <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/38">
           My Worlds
         </span>
-        <span className="rounded-full bg-[#1A1A1A] px-2 py-0.5 text-[9px] font-semibold text-white/20">
+        <span className="rounded-full bg-[#1A1A1A] px-2 py-0.5 text-[9px] font-semibold text-white/38">
           {universes.length}
         </span>
       </div>
@@ -143,14 +143,14 @@ export function V2LeftSidebar({
                       "mt-0.5 flex-shrink-0 rounded-full px-[7px] py-0.5 text-[9px] font-semibold",
                       isActive
                         ? "bg-[#7C3AED1E] text-[#C4B5FD]"
-                        : "bg-[#1A1A1A] text-white/20",
+                        : "bg-[#1A1A1A] text-white/38",
                     )}
                   >
                     {universeStories.length}
                   </span>
                 </div>
                 {universe.description ? (
-                  <p className="mb-2 line-clamp-2 text-[11px] leading-[1.55] text-white/25">
+                  <p className="mb-2 line-clamp-2 text-[11px] leading-[1.55] text-white/48">
                     {universe.description}
                   </p>
                 ) : null}
@@ -159,8 +159,8 @@ export function V2LeftSidebar({
                     className={cn(
                       "inline-block rounded-full border px-2 py-0.5 text-[9px] font-medium tracking-[0.04em]",
                       isActive
-                        ? "border-[#222] bg-[#1A1A1A] text-white/25"
-                        : "border-[#1A1A1A] bg-[#111] text-white/20",
+                        ? "border-[#222] bg-[#1A1A1A] text-white/48"
+                        : "border-[#1A1A1A] bg-[#111] text-white/38",
                     )}
                   >
                     {universe.genreTheme}
@@ -176,15 +176,15 @@ export function V2LeftSidebar({
             onClick={onNavigate}
             className="flex items-center gap-2 rounded-[10px] border border-dashed border-[#1C1C1C] px-[15px] py-[11px] transition hover:border-[#282828]"
           >
-            <span className="text-[15px] leading-none text-white/15">+</span>
-            <span className="text-xs text-white/15">New Universe</span>
+            <span className="text-[15px] leading-none text-white/28">+</span>
+            <span className="text-xs text-white/28">New Universe</span>
           </Link>
         </div>
       </div>
 
       {/* Characters strip */}
       <div className="flex-shrink-0 border-t border-[#161616] px-2.5 pb-0 pt-3">
-        <div className="mb-2.5 px-1.5 text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+        <div className="mb-2.5 px-1.5 text-[9px] font-bold uppercase tracking-[0.22em] text-white/38">
           Characters
         </div>
         <div className="flex gap-3 overflow-x-auto px-1.5 pb-3">
@@ -204,12 +204,12 @@ export function V2LeftSidebar({
                     "flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
                     isFirst
                       ? "border-[#7C3AED36] bg-[#7C3AED1E] text-[#A78BFA]"
-                      : "border-[#222] bg-[#1A1A1A] text-white/20",
+                      : "border-[#222] bg-[#1A1A1A] text-white/38",
                   )}
                 >
                   {initials}
                 </div>
-                <span className="max-w-[40px] truncate text-[9px] text-white/22">
+                <span className="max-w-[40px] truncate text-[9px] text-white/40">
                   {character.name.split(" ")[0]}
                 </span>
               </Link>
@@ -236,18 +236,18 @@ export function V2LeftSidebar({
                 <path d="M5 12h14" />
               </svg>
             </div>
-            <span className="text-[9px] text-white/15">New</span>
+            <span className="text-[9px] text-white/28">New</span>
           </Link>
         </div>
       </div>
 
       {/* Footer */}
       <div className="flex flex-shrink-0 items-center justify-between border-t border-[#161616] px-[18px] py-2.5">
-        <span className="font-mono text-[10px] text-white/15">v{APP_VERSION}</span>
+        <span className="font-mono text-[10px] text-white/28">v{APP_VERSION}</span>
         <Link
           to="/settings"
           onClick={onNavigate}
-          className="flex items-center gap-1.5 text-white/20 transition hover:text-white/40"
+          className="flex items-center gap-1.5 text-white/38 transition hover:text-white/40"
         >
           <svg
             width="13"

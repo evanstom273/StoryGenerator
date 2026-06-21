@@ -71,7 +71,7 @@ export function HomePage() {
 
           <div className="relative">
             {/* Now Playing label */}
-            <div className="mb-3.5 flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.26em] text-white/20">
+            <div className="mb-3.5 flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.26em] text-white/38">
               <div className="h-[5px] w-[5px] rounded-full bg-[#7C3AED]" />
               Now Playing
             </div>
@@ -142,7 +142,7 @@ export function HomePage() {
           {/* Recent Stories */}
           <div className="rounded-[10px] border border-[#181818] bg-[#0D0D0D] px-[18px] py-[15px]">
             <div className="mb-2.5 flex items-center justify-between">
-              <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+              <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/38">
                 Recent Stories
               </span>
               <Link
@@ -177,19 +177,19 @@ export function HomePage() {
                           {story.title}
                         </span>
                         {universe && (
-                          <span className="flex-shrink-0 text-[10px] text-white/22">
+                          <span className="flex-shrink-0 text-[10px] text-white/40">
                             {universe.name}
                           </span>
                         )}
                       </div>
-                      <span className="ml-3 flex-shrink-0 text-[10px] text-white/18">
+                      <span className="ml-3 flex-shrink-0 text-[10px] text-white/32">
                         {formatRelativeTime(story.updatedAt)}
                       </span>
                     </Link>
                   );
                 })
               ) : (
-                <div className="py-3 text-xs text-white/25">No stories yet.</div>
+                <div className="py-3 text-xs text-white/48">No stories yet.</div>
               )}
             </div>
           </div>
@@ -197,7 +197,7 @@ export function HomePage() {
           {/* Universes grid */}
           <div className="flex flex-1 flex-col rounded-[10px] border border-[#181818] bg-[#0D0D0D] px-[18px] py-[15px]">
             <div className="mb-2.5 flex flex-shrink-0 items-center justify-between">
-              <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+              <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/38">
                 Universes
               </span>
               <Link
@@ -231,7 +231,7 @@ export function HomePage() {
                       <div className={cn("mb-0.5 text-xs font-semibold", isActive ? "text-[#F8FAFC]" : "text-[#DBE4F0]")}>
                         {universe.name}
                       </div>
-                      <div className="mb-2 text-[10px] text-white/28">
+                      <div className="mb-2 text-[10px] text-white/48">
                         {universe.genreTheme ?? ""}
                       </div>
                     </div>
@@ -240,7 +240,7 @@ export function HomePage() {
                         "w-fit rounded-full px-2 py-0.5 text-[9px] font-semibold",
                         isActive
                           ? "bg-[#7C3AED1E] text-[#C4B5FD]"
-                          : "bg-[#1E1E1E] text-white/22",
+                          : "bg-[#1E1E1E] text-white/40",
                       )}
                     >
                       {universeStories.length} {universeStories.length === 1 ? "story" : "stories"}
@@ -254,8 +254,8 @@ export function HomePage() {
                 to="/universes/new"
                 className="flex items-center justify-center gap-1.5 rounded-[9px] border border-dashed border-[#1A1A1A] py-4 transition hover:border-[#252525]"
               >
-                <span className="text-[15px] leading-none text-white/15">+</span>
-                <span className="text-[11px] text-white/15">New World</span>
+                <span className="text-[15px] leading-none text-white/28">+</span>
+                <span className="text-[11px] text-white/28">New World</span>
               </Link>
             </div>
           </div>
@@ -267,7 +267,7 @@ export function HomePage() {
           {/* Characters */}
           <div className="rounded-[10px] border border-[#181818] bg-[#0D0D0D] px-[18px] py-[15px]">
             <div className="mb-2.5 flex items-center justify-between">
-              <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+              <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/38">
                 Characters
               </span>
               <Link
@@ -301,7 +301,7 @@ export function HomePage() {
                           "flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
                           isFirst
                             ? "border-[#7C3AED36] bg-[#7C3AED1E] text-[#A78BFA]"
-                            : "border-[#1E1E1E] bg-[#1A1A1A] text-white/22",
+                            : "border-[#1E1E1E] bg-[#1A1A1A] text-white/40",
                         )}
                       >
                         {initials}
@@ -310,7 +310,7 @@ export function HomePage() {
                         <div className={cn("text-xs font-medium", isFirst ? "text-[#DBE4F0]" : "text-[#94A3B8]")}>
                           {character.name}
                         </div>
-                        <div className="text-[10px] text-white/22">
+                        <div className="text-[10px] text-white/40">
                           {character.characterConcept
                             ? `${character.characterConcept.slice(0, 20)}${character.characterConcept.length > 20 ? "…" : ""}`
                             : activeStoryCount > 0
@@ -322,14 +322,14 @@ export function HomePage() {
                   );
                 })
               ) : (
-                <div className="py-2 text-xs text-white/25">No characters yet.</div>
+                <div className="py-2 text-xs text-white/48">No characters yet.</div>
               )}
             </div>
           </div>
 
           {/* Quick Actions */}
           <div className="rounded-[10px] border border-[#181818] bg-[#0D0D0D] px-[18px] py-[15px]">
-            <span className="mb-2.5 block text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+            <span className="mb-2.5 block text-[9px] font-bold uppercase tracking-[0.22em] text-white/38">
               Quick Actions
             </span>
             <div className="flex flex-col gap-1.5">
@@ -363,7 +363,7 @@ export function HomePage() {
 
           {/* What's New (Changelog) */}
           <div className="flex flex-1 flex-col overflow-hidden rounded-[10px] border border-[#181818] bg-[#0D0D0D] px-[18px] py-[15px]">
-            <span className="mb-2.5 flex-shrink-0 text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+            <span className="mb-2.5 flex-shrink-0 text-[9px] font-bold uppercase tracking-[0.22em] text-white/38">
               What's New
             </span>
             <div className="flex flex-col gap-2.5 overflow-hidden">
@@ -374,12 +374,12 @@ export function HomePage() {
                       "mb-1 inline-block rounded-[3px] px-[7px] py-0.5 font-mono text-[9px] font-bold",
                       isLatest
                         ? "bg-[#7C3AED1A] text-[#C4B5FD]"
-                        : "border border-[#1A1A1A] bg-[#141414] text-white/18",
+                        : "border border-[#1A1A1A] bg-[#141414] text-white/32",
                     )}
                   >
                     v{version}
                   </span>
-                  <p className={cn("text-xs leading-[1.55]", isLatest ? "text-white/28" : "text-white/18")}>
+                  <p className={cn("text-xs leading-[1.55]", isLatest ? "text-white/48" : "text-white/32")}>
                     {entry.title}
                     {entry.added?.[0] ? ` — ${entry.added[0]}` : ""}
                   </p>
