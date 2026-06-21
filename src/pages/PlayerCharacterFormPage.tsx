@@ -492,13 +492,13 @@ export function PlayerCharacterFormPage() {
           </Field>
 
           {errorMessage ? (
-            <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+            <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
               {errorMessage}
             </div>
           ) : null}
 
           {generatorError ? (
-            <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+            <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
               {generatorError}
             </div>
           ) : null}

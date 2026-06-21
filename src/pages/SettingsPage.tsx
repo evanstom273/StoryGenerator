@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { cn } from "../utils/cn";
 import { PageHeader } from "../components/PageHeader";
 import { DatabaseIcon } from "../components/icons";
 import { Badge } from "../components/ui/Badge";
@@ -16,7 +17,6 @@ import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
 import { downloadFile } from "../lib/download";
 import { serializeStoryExport } from "../lib/storyExport";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
-import { cn } from "../utils/cn";
 
 function sanitizeFileStem(value: string) {
   return value
@@ -512,82 +512,81 @@ export function SettingsPage() {
     }
   }
 
+  const [activeTab, setActiveTab] = useState<"theme" | "ai" | "data" | "storage">("theme");
+  const tabs = [
+    { id: "theme" as const, label: "Theme" },
+    { id: "ai" as const, label: "AI" },
+    { id: "data" as const, label: "Data" },
+    { id: "storage" as const, label: "Storage" },
+  ];
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Settings"
-        title="Local workspace settings and future integration points"
-        description="Configure local storage, connect an AI provider, and validate your connection before roleplaying."
+        title="Settings"
+        description="Configure your AI provider, theme, and local workspace."
       />
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <Panel className="h-full">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold tracking-tight text-ink">
-              Theme
-            </h2>
-            <Badge variant="accent">{theme.name}</Badge>
-          </div>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            The interface stays in a dark workspace theme optimized for long-form
-            writing and dense continuity review.
-          </p>
-          <div className="mt-4 space-y-4">
-            <Field label="Theme">
-              <div className="grid gap-3 sm:grid-cols-2">
-                {(Object.entries(themes) as Array<[ThemeKey, (typeof themes)[ThemeKey]]>).map(
-                  ([key, item]) => {
-                    const isSelected = key === themeKey;
-                    const previewStyle = buildThemeCssVariables({
-                      themeKey: key,
-                      customAccent,
-                    });
+      {/* Tab bar */}
+      <div className="-mx-4 flex overflow-x-auto border-b border-divider/[0.3] px-4 md:mx-0 md:px-0">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              "flex-shrink-0 px-5 py-3 text-[12px] font-semibold transition",
+              activeTab === tab.id
+                ? "border-b-2 border-accent text-ink"
+                : "border-b-2 border-transparent text-white/30 hover:text-white/50",
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        style={previewStyle as unknown as CSSProperties}
-                        onClick={() => setThemeKey(key)}
-                        aria-pressed={isSelected}
-                        className={cn(
-                          "rounded-card border p-4 text-left transition duration-200",
-                          isSelected
-                            ? "border-accent/40 bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.55),0_0_42px_rgb(var(--accent-rgb)/0.06)]"
-                            : "border-divider bg-panel-muted hover:border-accent/25 hover:bg-panel",
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2">
-                            <span className="h-3 w-3 rounded-full bg-accent" />
-                            <span className="font-semibold text-ink">{item.name}</span>
-                          </div>
-                          {isSelected ? (
-                            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-accent-soft">
-                              Active
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="mt-3 space-y-2">
-                          <div className="rounded-2xl border border-divider bg-panel-muted px-3 py-2">
-                            <div className="text-xs font-semibold text-accent">Jamie:</div>
-                            <div className="mt-1 text-xs leading-5 text-ink-soft">
-                              Quick player message sample.
-                            </div>
-                          </div>
-                          <div className="text-xs leading-5 text-ink-muted">
-                            <span className="font-semibold text-accent">Narrator:</span>{" "}
-                            A sample narration line for contrast.
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  },
-                )}
-              </div>
-            </Field>
+      {/* Theme tab */}
+      {activeTab === "theme" && (
+        <div className="space-y-5">
+          <Panel>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Theme</div>
+              <Badge variant="accent">{theme.name}</Badge>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+              {(Object.entries(themes) as Array<[ThemeKey, (typeof themes)[ThemeKey]]>).map(
+                ([key, item]) => {
+                  const isSelected = key === themeKey;
+                  const previewStyle = buildThemeCssVariables({ themeKey: key, customAccent });
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      style={previewStyle as unknown as CSSProperties}
+                      onClick={() => setThemeKey(key)}
+                      aria-pressed={isSelected}
+                      className={cn(
+                        "flex flex-col items-center gap-2 rounded-[9px] border p-3 transition",
+                        isSelected
+                          ? "border-accent/40 bg-panel"
+                          : "border-divider/[0.4] bg-panel-muted hover:border-accent/20 hover:bg-panel",
+                      )}
+                    >
+                      <span className="h-7 w-7 rounded-full bg-accent" />
+                      <span className="text-[10px] font-semibold leading-tight text-ink">{item.name}</span>
+                      {isSelected ? (
+                        <span className="text-[8px] font-bold uppercase tracking-[0.12em] text-accent-soft">Active</span>
+                      ) : null}
+                    </button>
+                  );
+                },
+              )}
+            </div>
             {themeKey === "custom" ? (
-              <Field label="Custom Accent">
+              <div className="mt-4 space-y-3 border-t border-divider/[0.3] pt-4">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Custom Accent</div>
                 <div className="flex flex-wrap items-center gap-3">
                   <TextInput
                     value={customAccentInput}
@@ -605,7 +604,7 @@ export function SettingsPage() {
                       setCustomAccentInput(event.target.value);
                       setCustomAccent(event.target.value);
                     }}
-                    className="h-10 w-10 cursor-pointer rounded-xl border border-divider bg-panel-muted p-1"
+                    className="h-9 w-9 cursor-pointer rounded-[8px] border border-divider bg-panel-muted p-1"
                     aria-label="Pick custom accent"
                   />
                   <Button
@@ -618,515 +617,310 @@ export function SettingsPage() {
                     Reset
                   </Button>
                 </div>
-                <div className="mt-2 text-xs leading-5 text-ink-muted">
-                  Enter a hex colour (#RRGGBB). Invalid values won’t apply.
-                </div>
-              </Field>
+                <div className="text-[11px] text-ink-muted">Enter a hex colour (#RRGGBB). Invalid values won’t apply.</div>
+              </div>
             ) : null}
-            <Field label="Text Size">
-              <SelectInput
-                value={textSize}
-                onChange={(event) =>
-                  setTextSize(event.target.value as "sm" | "md" | "lg" | "xl")
-                }
-              >
-                <option value="sm">Small</option>
-                <option value="md">Default</option>
-                <option value="lg">Large</option>
-                <option value="xl">Extra Large</option>
-              </SelectInput>
-            </Field>
-          </div>
-        </Panel>
+          </Panel>
 
-        <Panel className="h-full">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold tracking-tight text-ink">
-              Version Information
-            </h2>
-            <Badge variant="accent">v{APP_VERSION}</Badge>
-          </div>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            Version tracking and release notes for the current build.
-          </p>
-          <div className="mt-4 space-y-4">
-            <Panel className="border-white/8 bg-black/15">
-              <div className="text-sm text-ink-soft">{APP_NAME} v{APP_VERSION}</div>
-            </Panel>
-            <div className="flex flex-wrap gap-3">
-              <Button variant="secondary" onClick={openChangelog}>
-                View Changelog
-              </Button>
-              <Button variant="secondary" onClick={openChangelogHistory}>
-                View Full Changelog
-              </Button>
-              <Button variant="secondary" onClick={handleCopyVersionInformation}>
-                Copy Version Information
-              </Button>
-              <Button variant="secondary" disabled>
-                Export Diagnostics
-              </Button>
+          <Panel>
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Text Size</div>
+            <div className="mt-3">
+              <Field label="">
+                <SelectInput
+                  value={textSize}
+                  onChange={(event) => setTextSize(event.target.value as "sm" | "md" | "lg" | "xl")}
+                >
+                  <option value="sm">Small</option>
+                  <option value="md">Default</option>
+                  <option value="lg">Large</option>
+                  <option value="xl">Extra Large</option>
+                </SelectInput>
+              </Field>
+            </div>
+          </Panel>
+
+          <Panel>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Version</div>
+              <Badge variant="accent">v{APP_VERSION}</Badge>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" onClick={openChangelog}>Changelog</Button>
+              <Button variant="secondary" size="sm" onClick={openChangelogHistory}>Full History</Button>
+              <Button variant="secondary" size="sm" onClick={handleCopyVersionInformation}>Copy Version Info</Button>
             </div>
             {versionCopyStatus ? (
-              <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
+              <div className="mt-3 rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-[13px] text-ink-muted">
                 {versionCopyStatus}
               </div>
             ) : null}
-          </div>
-        </Panel>
+          </Panel>
+        </div>
+      )}
 
-        <Panel className="h-full">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold tracking-tight text-ink">
-              AI Provider
-            </h2>
-            {providerBadge}
-          </div>
-          <div className="mt-4 space-y-4">
-            <Field label="Active Provider">
+      {/* AI tab */}
+      {activeTab === "ai" && (
+        <div className="space-y-4">
+          <Panel>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Active Provider</div>
+              {providerBadge}
+            </div>
+            <div className="mt-3">
               <SelectInput
                 value={activeProviderType}
-                onChange={(event) =>
-                  setActiveProviderType(event.target.value as AIProviderType)
-                }
+                onChange={(event) => setActiveProviderType(event.target.value as AIProviderType)}
               >
                 <option value="openai">OpenAI</option>
                 <option value="gemini">Gemini</option>
                 <option value="openrouter">OpenRouter</option>
               </SelectInput>
-            </Field>
-
-            <Panel className="border-white/8 bg-black/15">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                OpenAI
-              </div>
-              <div className="mt-4 space-y-4">
-                <Field label="Default Model">
-                  <SelectInput
-                    value={openaiModel}
-                    onChange={(event) => setOpenaiModel(event.target.value)}
-                  >
-                    {getProviderModels("openai").map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.label}
-                      </option>
-                    ))}
-                  </SelectInput>
-                </Field>
-                <Field label="API Key" hint={openaiConfigured ? "Saved locally" : "Required"}>
-                  <TextInput
-                    type="password"
-                    value={openaiKeyInput}
-                    onChange={(event) => setOpenaiKeyInput(event.target.value)}
-                    placeholder={openaiConfigured ? "Enter a new key to replace" : "sk-..."}
-                    autoComplete="off"
-                  />
-                </Field>
-              </div>
-            </Panel>
-
-            <Panel className="border-white/8 bg-black/15">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                  Gemini
-                </div>
-                <Badge variant={geminiConfigured ? "accent" : "warning"}>
-                  {geminiConfigured ? "Key saved" : "No key"}
-                </Badge>
-              </div>
-              <div className="mt-4 space-y-4">
-                <Field label="Default Model">
-                  <SelectInput
-                    value={geminiModel}
-                    onChange={(event) => setGeminiModel(event.target.value)}
-                  >
-                    {getProviderModels("gemini").map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.label}
-                      </option>
-                    ))}
-                  </SelectInput>
-                </Field>
-                <Field label="API Key" hint={geminiConfigured ? "Saved locally" : "Required"}>
-                  <TextInput
-                    type="password"
-                    value={geminiKeyInput}
-                    onChange={(event) => setGeminiKeyInput(event.target.value)}
-                    placeholder={geminiConfigured ? "Enter a new key to replace" : "AIza..."}
-                    autoComplete="off"
-                  />
-                </Field>
-              </div>
-            </Panel>
-
-            <Panel className="border-white/8 bg-black/15">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                  OpenRouter
-                </div>
-                <Badge variant={openrouterConfigured ? "accent" : "warning"}>
-                  {openrouterConfigured ? "Key saved" : "No key"}
-                </Badge>
-              </div>
-              <div className="mt-4 space-y-4">
-                <Field label="Default Model">
-                  <SelectInput
-                    value={openrouterModel}
-                    onChange={(event) => setOpenrouterModel(event.target.value)}
-                  >
-                    {getProviderModels("openrouter").map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.label}
-                      </option>
-                    ))}
-                  </SelectInput>
-                </Field>
-                <Field
-                  label="OpenRouter API Key"
-                  hint={openrouterConfigured ? "Saved locally" : "Required"}
-                >
-                  <TextInput
-                    type="password"
-                    value={openrouterKeyInput}
-                    onChange={(event) => setOpenrouterKeyInput(event.target.value)}
-                    placeholder={openrouterConfigured ? "Enter a new key to replace" : "sk-or-..."}
-                    autoComplete="off"
-                  />
-                </Field>
-              </div>
-            </Panel>
-
-            {statusMessage ? (
-              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
-                {statusMessage}
-              </div>
-            ) : null}
-
-            {errorMessage ? (
-              <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
-                {errorMessage}
-              </div>
-            ) : null}
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button onClick={handleSave} disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save"}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={handleValidate}
-                disabled={isValidating}
-              >
-                {isValidating ? "Validating..." : "Validate Connection"}
-              </Button>
             </div>
-          </div>
-        </Panel>
+          </Panel>
 
-        <Panel className="h-full">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold tracking-tight text-ink">
-              Backup & Restore
-            </h2>
-          </div>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            Export a portable JSON backup of your entire local workspace. Importing a
-            backup merges in missing items by default.
-          </p>
+          {(
+            [
+              {
+                id: "openai" as const,
+                label: "OpenAI",
+                configured: openaiConfigured,
+                model: openaiModel,
+                setModel: setOpenaiModel,
+                keyInput: openaiKeyInput,
+                setKeyInput: setOpenaiKeyInput,
+                placeholder: "sk-...",
+              },
+              {
+                id: "gemini" as const,
+                label: "Gemini",
+                configured: geminiConfigured,
+                model: geminiModel,
+                setModel: setGeminiModel,
+                keyInput: geminiKeyInput,
+                setKeyInput: setGeminiKeyInput,
+                placeholder: "AIza...",
+              },
+              {
+                id: "openrouter" as const,
+                label: "OpenRouter",
+                configured: openrouterConfigured,
+                model: openrouterModel,
+                setModel: setOpenrouterModel,
+                keyInput: openrouterKeyInput,
+                setKeyInput: setOpenrouterKeyInput,
+                placeholder: "sk-or-...",
+              },
+            ] as const
+          ).map((provider) => (
+            <Panel key={provider.id}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">{provider.label}</div>
+                <Badge variant={provider.configured ? "accent" : "warning"}>
+                  {provider.configured ? "Key saved" : "No key"}
+                </Badge>
+              </div>
+              <div className="mt-3 space-y-3">
+                <Field label="Default Model">
+                  <SelectInput
+                    value={provider.model}
+                    onChange={(event) => provider.setModel(event.target.value)}
+                  >
+                    {getProviderModels(provider.id).map((model) => (
+                      <option key={model.id} value={model.id}>{model.label}</option>
+                    ))}
+                  </SelectInput>
+                </Field>
+                <Field label="API Key" hint={provider.configured ? "Saved locally" : "Required"}>
+                  <TextInput
+                    type="password"
+                    value={provider.keyInput}
+                    onChange={(event) => provider.setKeyInput(event.target.value)}
+                    placeholder={provider.configured ? "Enter a new key to replace" : provider.placeholder}
+                    autoComplete="off"
+                  />
+                </Field>
+              </div>
+            </Panel>
+          ))}
 
-          <div className="mt-4 space-y-4">
-            <Button variant="secondary" onClick={handleExportBackup}>
-              Export Backup
+          {statusMessage ? (
+            <div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">
+              {statusMessage}
+            </div>
+          ) : null}
+          {errorMessage ? (
+            <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
+              {errorMessage}
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save"}
             </Button>
+            <Button variant="secondary" onClick={handleValidate} disabled={isValidating}>
+              {isValidating ? "Validating..." : "Validate Connection"}
+            </Button>
+          </div>
+        </div>
+      )}
 
-            <div className="space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                Import Backup
+      {/* Data tab */}
+      {activeTab === "data" && (
+        <div className="space-y-5">
+          <Panel>
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Backup & Restore</div>
+            <p className="mt-2 text-[13px] leading-6 text-ink-muted">
+              Export a portable JSON backup of your entire local workspace.
+            </p>
+            <div className="mt-3 space-y-3">
+              <Button variant="secondary" onClick={handleExportBackup}>Export Backup</Button>
+              <div className="space-y-2 border-t border-divider/[0.3] pt-3">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Import Backup</div>
+                <input
+                  type="file"
+                  className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-[8px] file:border-0 file:bg-white/[0.06] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
+                  onChange={(event) => setBackupFile(event.target.files?.[0] ?? null)}
+                />
+                <div className="text-[11px] text-ink-muted">
+                  Android file pickers can mislabel JSON files — file filtering is disabled. The app validates contents during import.
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="ghost" onClick={handleImportBackup} disabled={!backupFile}>
+                    Import (Merge)
+                  </Button>
+                  <Button variant="secondary" onClick={handleReplaceBackup} disabled={!backupFile}>
+                    Import (Replace All)
+                  </Button>
+                </div>
               </div>
-              <input
-                type="file"
-                className="block w-full text-sm text-ink-muted file:mr-4 file:rounded-2xl file:border-0 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
-                onChange={(event) => setBackupFile(event.target.files?.[0] ?? null)}
-              />
-              <div className="text-xs text-ink-muted">
-                Android file pickers can mislabel JSON files, so file filtering is disabled
-                here. The app still validates the file contents during import.
-              </div>
-              <Button
-                variant="ghost"
-                onClick={handleImportBackup}
-                disabled={!backupFile}
-              >
-                Import Backup (Merge)
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={handleReplaceBackup}
-                disabled={!backupFile}
-              >
-                Import Backup (Replace All)
-              </Button>
+              {backupStatus ? (
+                <div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">{backupStatus}</div>
+              ) : null}
+              {backupError ? (
+                <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">{backupError}</div>
+              ) : null}
             </div>
+          </Panel>
 
-            {backupStatus ? (
-              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
-                {backupStatus}
-              </div>
-            ) : null}
-
-            {backupError ? (
-              <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
-                {backupError}
-              </div>
-            ) : null}
-          </div>
-        </Panel>
-
-        <Panel className="h-full">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold tracking-tight text-ink">
-              Import & Export
-            </h2>
-          </div>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            Export individual universes, player characters, or stories. Imports always
-            duplicate with new IDs and never overwrite existing data.
-          </p>
-
-          <div className="mt-4 space-y-6">
-            <div className="space-y-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                Export Item
-              </div>
+          <Panel>
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Export Item</div>
+            <div className="mt-3 space-y-3">
               <Field label="Type">
                 <SelectInput
                   value={itemExportType}
-                  onChange={(event) =>
-                    setItemExportType(
-                      event.target.value as "universe" | "playerCharacter" | "story",
-                    )
-                  }
+                  onChange={(event) => setItemExportType(event.target.value as "universe" | "playerCharacter" | "story")}
                 >
                   <option value="story">Story</option>
                   <option value="universe">Universe</option>
                   <option value="playerCharacter">Player Character</option>
                 </SelectInput>
               </Field>
-
               {itemExportType === "universe" ? (
                 <Field label="Universe">
-                  <SelectInput
-                    value={itemExportUniverseId}
-                    onChange={(event) => setItemExportUniverseId(event.target.value)}
-                  >
-                    {universes.length ? (
-                      universes.map((universe) => (
-                        <option key={universe.id} value={universe.id}>
-                          {universe.name}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">No universes available</option>
-                    )}
+                  <SelectInput value={itemExportUniverseId} onChange={(event) => setItemExportUniverseId(event.target.value)}>
+                    {universes.length ? universes.map((u) => <option key={u.id} value={u.id}>{u.name}</option>) : <option value="">No universes</option>}
                   </SelectInput>
                 </Field>
               ) : itemExportType === "playerCharacter" ? (
                 <Field label="Player Character">
-                  <SelectInput
-                    value={itemExportCharacterId}
-                    onChange={(event) => setItemExportCharacterId(event.target.value)}
-                  >
-                    {playerCharacters.length ? (
-                      playerCharacters.map((character) => (
-                        <option key={character.id} value={character.id}>
-                          {character.name}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">No characters available</option>
-                    )}
+                  <SelectInput value={itemExportCharacterId} onChange={(event) => setItemExportCharacterId(event.target.value)}>
+                    {playerCharacters.length ? playerCharacters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>) : <option value="">No characters</option>}
                   </SelectInput>
                 </Field>
               ) : (
                 <>
                   <Field label="Story">
-                    <SelectInput
-                      value={itemExportStoryId}
-                      onChange={(event) => setItemExportStoryId(event.target.value)}
-                    >
-                      {stories.length ? (
-                        stories.map((story) => (
-                          <option key={story.id} value={story.id}>
-                            {story.title}
-                          </option>
-                        ))
-                      ) : (
-                        <option value="">No stories available</option>
-                      )}
+                    <SelectInput value={itemExportStoryId} onChange={(event) => setItemExportStoryId(event.target.value)}>
+                      {stories.length ? stories.map((s) => <option key={s.id} value={s.id}>{s.title}</option>) : <option value="">No stories</option>}
                     </SelectInput>
                   </Field>
-                  <Field label="Story Format">
-                    <SelectInput
-                      value={itemExportStoryFormat}
-                      onChange={(event) =>
-                        setItemExportStoryFormat(
-                          event.target.value as "json" | "markdown" | "txt" | "pdf",
-                        )
-                      }
-                    >
-                      <option value="json">json</option>
-                      <option value="markdown">markdown</option>
-                      <option value="txt">txt</option>
-                      <option value="pdf">pdf</option>
+                  <Field label="Format">
+                    <SelectInput value={itemExportStoryFormat} onChange={(event) => setItemExportStoryFormat(event.target.value as "json" | "markdown" | "txt" | "pdf")}>
+                      <option value="json">JSON</option>
+                      <option value="markdown">Markdown</option>
+                      <option value="txt">TXT</option>
+                      <option value="pdf">PDF</option>
                     </SelectInput>
                   </Field>
                 </>
               )}
-
-              <Button
-                variant="secondary"
-                onClick={handleExportItem}
-                disabled={
-                  itemExportType === "universe"
-                    ? !universes.length
-                    : itemExportType === "playerCharacter"
-                      ? !playerCharacters.length
-                      : !stories.length
-                }
-              >
+              <Button variant="secondary" onClick={handleExportItem} disabled={itemExportType === "universe" ? !universes.length : itemExportType === "playerCharacter" ? !playerCharacters.length : !stories.length}>
                 Export
               </Button>
-
-              {itemExportStatus ? (
-                <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
-                  {itemExportStatus}
-                </div>
-              ) : null}
-
-              {itemExportError ? (
-                <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
-                  {itemExportError}
-                </div>
-              ) : null}
+              {itemExportStatus ? <div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">{itemExportStatus}</div> : null}
+              {itemExportError ? <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">{itemExportError}</div> : null}
             </div>
+          </Panel>
 
-            <div className="space-y-3 border-t border-white/8 pt-5">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                Import Item
-              </div>
-
+          <Panel>
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Import Item</div>
+            <div className="mt-3 space-y-3">
               <Field label="Type">
-                <SelectInput
-                  value={itemImportType}
-                  onChange={(event) =>
-                    setItemImportType(
-                      event.target.value as "universe" | "playerCharacter" | "story",
-                    )
-                  }
-                >
+                <SelectInput value={itemImportType} onChange={(event) => setItemImportType(event.target.value as "universe" | "playerCharacter" | "story")}>
                   <option value="story">Story JSON</option>
                   <option value="universe">Universe JSON</option>
                   <option value="playerCharacter">Player Character JSON</option>
                 </SelectInput>
               </Field>
-
               <input
                 type="file"
-                className="block w-full text-sm text-ink-muted file:mr-4 file:rounded-2xl file:border-0 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
+                className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-[8px] file:border-0 file:bg-white/[0.06] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
                 onChange={(event) => setItemImportFile(event.target.files?.[0] ?? null)}
               />
-              <div className="text-xs text-ink-muted">
-                Android file pickers can mislabel JSON files, so file filtering is disabled
-                here. The app still validates the file contents during import.
-              </div>
-
+              <div className="text-[11px] text-ink-muted">Imports always create new IDs and never overwrite existing data.</div>
               {itemImportType === "playerCharacter" ? (
                 <Field label="Target Universe">
-                  <SelectInput
-                    value={itemImportUniverseId}
-                    onChange={(event) => setItemImportUniverseId(event.target.value)}
-                  >
-                    {universes.length ? (
-                      universes.map((universe) => (
-                        <option key={universe.id} value={universe.id}>
-                          {universe.name}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">No universes available</option>
-                    )}
+                  <SelectInput value={itemImportUniverseId} onChange={(event) => setItemImportUniverseId(event.target.value)}>
+                    {universes.length ? universes.map((u) => <option key={u.id} value={u.id}>{u.name}</option>) : <option value="">No universes</option>}
                   </SelectInput>
                 </Field>
               ) : null}
-
-              <Button
-                variant="secondary"
-                onClick={handleImportItem}
-                disabled={
-                  !itemImportFile ||
-                  (itemImportType === "playerCharacter" && !universes.length)
-                }
-              >
+              <Button variant="secondary" onClick={handleImportItem} disabled={!itemImportFile || (itemImportType === "playerCharacter" && !universes.length)}>
                 Import
               </Button>
+              {itemImportStatus ? <div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">{itemImportStatus}</div> : null}
+              {itemImportError ? <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">{itemImportError}</div> : null}
+            </div>
+          </Panel>
+        </div>
+      )}
 
-              {itemImportStatus ? (
-                <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
-                  {itemImportStatus}
+      {/* Storage tab */}
+      {activeTab === "storage" && (
+        <div className="space-y-4">
+          <Panel>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Storage Status</div>
+              <Badge variant={storageStatus.ready ? "success" : "warning"}>
+                {storageStatus.ready ? "Ready" : "Attention needed"}
+              </Badge>
+            </div>
+            <div className="mt-3 flex items-center gap-2.5 text-accent-soft">
+              <DatabaseIcon className="h-4 w-4" />
+              <span className="text-[13px]">{storageStatus.driver}</span>
+            </div>
+            <dl className="mt-3 divide-y divide-divider/[0.3]">
+              {[
+                { label: "Universes", value: storageStatus.universesCount },
+                { label: "Player Characters", value: storageStatus.playerCharactersCount },
+                { label: "Stories", value: storageStatus.storiesCount },
+                { label: "Messages", value: storageStatus.messagesCount },
+                { label: "Total Records", value: storageStatus.totalRecords },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center justify-between gap-4 py-2.5">
+                  <dt className="text-[11px] text-ink-muted">{label}</dt>
+                  <dd className="text-[13px] text-ink-soft">{value}</dd>
                 </div>
-              ) : null}
-
-              {itemImportError ? (
-                <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
-                  {itemImportError}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </Panel>
-
-        <Panel className="h-full">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold tracking-tight text-ink">
-              Storage Status
-            </h2>
-            <Badge variant={storageStatus.ready ? "success" : "warning"}>
-              {storageStatus.ready ? "Ready" : "Attention needed"}
-            </Badge>
-          </div>
-          <div className="mt-4 flex items-center gap-3 text-accent-soft">
-            <DatabaseIcon className="h-5 w-5" />
-            <span className="text-sm">{storageStatus.driver}</span>
-          </div>
-          <dl className="mt-5 space-y-3 text-sm text-ink-soft">
-            <div className="flex items-center justify-between gap-4">
-              <dt>Universes</dt>
-              <dd>{storageStatus.universesCount}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <dt>Player Characters</dt>
-              <dd>{storageStatus.playerCharactersCount}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <dt>Stories</dt>
-              <dd>{storageStatus.storiesCount}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <dt>Messages</dt>
-              <dd>{storageStatus.messagesCount}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4 border-t border-white/8 pt-3">
-              <dt>Total Records</dt>
-              <dd>{storageStatus.totalRecords}</dd>
-            </div>
-          </dl>
-          {storageStatus.errorMessage ? (
-            <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
-              {storageStatus.errorMessage}
-            </div>
-          ) : null}
-        </Panel>
-      </section>
+              ))}
+            </dl>
+            {storageStatus.errorMessage ? (
+              <div className="mt-3 rounded-[8px] border border-amber-300/20 bg-amber-300/10 px-3.5 py-3 text-sm text-amber-100">
+                {storageStatus.errorMessage}
+              </div>
+            ) : null}
+          </Panel>
+        </div>
+      )}
     </div>
   );
 }

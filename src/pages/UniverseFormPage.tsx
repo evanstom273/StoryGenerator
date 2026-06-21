@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { cn } from "../utils/cn";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
@@ -325,35 +326,23 @@ export function UniverseFormPage() {
       <Panel padding="lg">
         <form className="space-y-6" onSubmit={handleSubmit}>
           {isImportMode ? null : (
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={effectiveMode === "referenced" ? "secondary" : "ghost"}
-                onClick={() =>
-                  setFormState((current) => ({
-                    ...current,
-                    mode: "referenced",
-                  }))
-                }
-                disabled={isSubmitting || isGenerating}
-              >
-                Referenced
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={effectiveMode === "custom" ? "secondary" : "ghost"}
-                onClick={() =>
-                  setFormState((current) => ({
-                    ...current,
-                    mode: "custom",
-                  }))
-                }
-                disabled={isSubmitting || isGenerating}
-              >
-                Custom
-              </Button>
+            <div className="-mx-1 flex border-b border-divider/[0.3]">
+              {(["referenced", "custom"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  disabled={isSubmitting || isGenerating}
+                  onClick={() => setFormState((current) => ({ ...current, mode }))}
+                  className={cn(
+                    "px-4 py-2.5 text-[12px] font-semibold capitalize transition disabled:opacity-40",
+                    effectiveMode === mode
+                      ? "border-b-2 border-accent text-ink"
+                      : "border-b-2 border-transparent text-white/30 hover:text-white/50",
+                  )}
+                >
+                  {mode}
+                </button>
+              ))}
             </div>
           )}
 
@@ -410,7 +399,7 @@ export function UniverseFormPage() {
                     : [{ url: formState.wikiUrl, label: "", order: 0 }]).map((source, index, all) => (
                     <div
                       key={`${index}-${source.order}`}
-                      className="rounded-2xl border border-divider bg-panel-muted/70 p-3"
+                      className="rounded-[8px] border border-divider/[0.45] bg-panel-muted/50 p-3"
                     >
                       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
                         <TextInput
@@ -656,13 +645,13 @@ export function UniverseFormPage() {
           )}
 
           {errorMessage ? (
-            <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+            <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
               {errorMessage}
             </div>
           ) : null}
 
           {generatorError ? (
-            <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+            <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
               {generatorError}
             </div>
           ) : null}

@@ -18,17 +18,17 @@ function PlaceholderImportSection({
 }) {
   return (
     <Panel className="h-full">
-      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+      <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
         {title}
       </div>
       {items.length ? (
-        <ul className="mt-4 space-y-3 text-sm text-ink-soft">
+        <ul className="mt-3 space-y-2.5 text-[13px] text-ink-soft">
           {items.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
       ) : (
-        <p className="mt-4 text-sm leading-7 text-ink-muted">
+        <p className="mt-3 text-[13px] leading-6 text-ink-muted">
           Empty until AI import is implemented.
         </p>
       )}
@@ -50,7 +50,7 @@ function ImportedLoreSection({
   return (
     <Panel className="h-full md:col-span-2 xl:col-span-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+        <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
           Imported Lore
         </div>
         <Link
@@ -62,42 +62,42 @@ function ImportedLoreSection({
       </div>
 
       {loading ? (
-        <p className="mt-4 text-sm leading-7 text-ink-muted">Loading imports...</p>
+        <p className="mt-3 text-[13px] leading-6 text-ink-muted">Loading imports...</p>
       ) : errorMessage ? (
-        <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+        <div className="mt-3 rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
           {errorMessage}
         </div>
       ) : latestImport ? (
         <div className="mt-4 space-y-4">
           <dl className="grid gap-3 text-sm text-ink-soft md:grid-cols-2">
             <div>
-              <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+              <dt className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">
                 Source
               </dt>
-              <dd className="mt-1 break-all">
+              <dd className="mt-1 break-all text-[13px]">
                 {latestImport.sourceLabel ? `${latestImport.sourceLabel} — ` : ""}
                 {latestImport.sourceUrl}
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+              <dt className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">
                 Imported
               </dt>
               <dd className="mt-1">{formatDateTime(latestImport.importedAt)}</dd>
             </div>
             <div className="md:col-span-2">
-              <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+              <dt className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">
                 Title
               </dt>
               <dd className="mt-1">{latestImport.title || "Untitled wiki page"}</dd>
             </div>
           </dl>
-          <div className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-2xl border border-white/8 bg-black/15 p-4 text-sm leading-7 text-ink-soft">
+          <div className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 p-3.5 text-sm leading-6 text-ink-soft">
             {latestImport.importedText}
           </div>
         </div>
       ) : (
-        <p className="mt-4 text-sm leading-7 text-ink-muted">
+        <p className="mt-3 text-[13px] leading-6 text-ink-muted">
           No imports yet. Use the universe import page to store lore text for AI
           context.
         </p>
@@ -247,31 +247,31 @@ export function UniverseDetailPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
           <Panel>
-            <dl className="grid gap-5 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">Mode</dt>
-                <dd className="mt-2 text-sm text-ink-soft">
+            <dl className="space-y-4">
+              <div className="flex items-center justify-between gap-4 border-b border-divider/[0.3] pb-3">
+                <dt className="text-[11px] text-ink-muted">Mode</dt>
+                <dd className="text-[13px] text-ink-soft">
                   {universeMode === "custom" ? "Custom" : "Referenced"}
                 </dd>
               </div>
 
               {universeMode === "referenced" ? (
                 <>
-                  <div className="md:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                      Description
-                    </dt>
-                    <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                      {universeDescription || "Not set"}
-                    </dd>
-                  </div>
-                  <div className="md:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
+                  {universeDescription ? (
+                    <div>
+                      <dt className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">Description</dt>
+                      <dd className="mt-1.5 whitespace-pre-wrap text-[13px] leading-6 text-ink-soft">
+                        {universeDescription}
+                      </dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">
                       Wiki / Reference Sources
                     </dt>
-                    <dd className="mt-2 text-sm text-ink-soft">
+                    <dd className="mt-1.5 text-[13px] text-ink-soft">
                       {wikiSources.length ? (
-                        <ol className="space-y-2">
+                        <ol className="space-y-1.5">
                           {wikiSources.map((source) => (
                             <li key={`${source.order}-${source.url}`} className="break-all">
                               <span className="text-ink-muted">{source.order + 1}.</span>{" "}
@@ -285,51 +285,49 @@ export function UniverseDetailPage() {
                       )}
                     </dd>
                   </div>
-                  <div className="md:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">Notes</dt>
-                    <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                      {activeUniverse.notes || "Not set"}
-                    </dd>
-                  </div>
+                  {activeUniverse.notes ? (
+                    <div>
+                      <dt className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">Notes</dt>
+                      <dd className="mt-1.5 whitespace-pre-wrap text-[13px] leading-6 text-ink-soft">
+                        {activeUniverse.notes}
+                      </dd>
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <>
-                  <div className="md:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">Concept</dt>
-                    <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                      {universeConcept || "Not set"}
-                    </dd>
+                  {universeConcept ? (
+                    <div>
+                      <dt className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">Concept</dt>
+                      <dd className="mt-1.5 whitespace-pre-wrap text-[13px] leading-6 text-ink-soft">
+                        {universeConcept}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {universeDescription ? (
+                    <div>
+                      <dt className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">Description</dt>
+                      <dd className="mt-1.5 whitespace-pre-wrap text-[13px] leading-6 text-ink-soft">
+                        {universeDescription}
+                      </dd>
+                    </div>
+                  ) : null}
+                  <div className="flex items-center justify-between gap-4 border-t border-divider/[0.3] pt-3">
+                    <dt className="text-[11px] text-ink-muted">Genre / Theme</dt>
+                    <dd className="text-[13px] text-ink-soft">{activeUniverse.genreTheme || "Not set"}</dd>
                   </div>
-                  <div className="md:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                      Description
-                    </dt>
-                    <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                      {universeDescription || "Not set"}
-                    </dd>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-[11px] text-ink-muted">Tone</dt>
+                    <dd className="text-[13px] text-ink-soft">{activeUniverse.tone || "Not set"}</dd>
                   </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                      Genre / Theme
-                    </dt>
-                    <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                      {activeUniverse.genreTheme || "Not set"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">Tone</dt>
-                    <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                      {activeUniverse.tone || "Not set"}
-                    </dd>
-                  </div>
-                  <div className="md:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                      Universe Blueprint
-                    </dt>
-                    <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                      {universeBlueprint || "Not generated yet."}
-                    </dd>
-                  </div>
+                  {universeBlueprint ? (
+                    <div className="border-t border-divider/[0.3] pt-3">
+                      <dt className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">Universe Blueprint</dt>
+                      <dd className="mt-1.5 whitespace-pre-wrap text-[13px] leading-6 text-ink-soft">
+                        {universeBlueprint}
+                      </dd>
+                    </div>
+                  ) : null}
                 </>
               )}
             </dl>
@@ -353,46 +351,36 @@ export function UniverseDetailPage() {
 
         <div className="space-y-4">
           <Panel>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
               Workspace Links
             </div>
-            <dl className="mt-4 space-y-4">
-              <div>
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Player Characters
-                </dt>
-                <dd className="mt-2 text-sm text-ink-soft">
-                  {linkedCharacters.length}
-                </dd>
+            <dl className="mt-3 divide-y divide-divider/[0.3]">
+              <div className="flex items-center justify-between gap-3 py-2.5">
+                <dt className="text-[11px] text-ink-muted">Characters</dt>
+                <dd className="text-[13px] text-ink-soft">{linkedCharacters.length}</dd>
               </div>
-              <div>
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Stories
-                </dt>
-                <dd className="mt-2 text-sm text-ink-soft">{linkedStories.length}</dd>
+              <div className="flex items-center justify-between gap-3 py-2.5">
+                <dt className="text-[11px] text-ink-muted">Stories</dt>
+                <dd className="text-[13px] text-ink-soft">{linkedStories.length}</dd>
               </div>
-              <div>
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Added
-                </dt>
-                <dd className="mt-2 text-sm text-ink-soft">
-                  {formatDate(activeUniverse.createdAt)}
-                </dd>
+              <div className="flex items-center justify-between gap-3 py-2.5">
+                <dt className="text-[11px] text-ink-muted">Added</dt>
+                <dd className="text-[13px] text-ink-soft">{formatDate(activeUniverse.createdAt)}</dd>
               </div>
             </dl>
           </Panel>
 
           {linkedCharacters.length ? (
             <Panel>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                Linked Player Characters
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+                Linked Characters
               </div>
-              <div className="mt-4 space-y-3">
+              <div className="mt-3 space-y-2">
                 {linkedCharacters.map((character) => (
                   <Link
                     key={character.id}
                     to={`/player-characters/${character.id}`}
-                    className="block rounded-2xl border border-white/8 bg-black/15 px-4 py-4 text-sm text-ink-soft transition hover:border-white/16 hover:bg-white/[0.04]"
+                    className="block rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3.5 py-2.5 text-[13px] text-ink-soft transition hover:border-accent/[0.15] hover:bg-panel-muted"
                   >
                     {character.name}
                   </Link>
@@ -403,15 +391,15 @@ export function UniverseDetailPage() {
 
           {linkedStories.length ? (
             <Panel>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                 Linked Stories
               </div>
-              <div className="mt-4 space-y-3">
+              <div className="mt-3 space-y-2">
                 {linkedStories.map((story) => (
                   <Link
                     key={story.id}
                     to={`/stories/${story.id}`}
-                    className="block rounded-2xl border border-white/8 bg-black/15 px-4 py-4 text-sm text-ink-soft transition hover:border-white/16 hover:bg-white/[0.04]"
+                    className="block rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3.5 py-2.5 text-[13px] text-ink-soft transition hover:border-accent/[0.15] hover:bg-panel-muted"
                   >
                     {story.title}
                   </Link>
@@ -421,7 +409,7 @@ export function UniverseDetailPage() {
           ) : null}
 
           {errorMessage ? (
-            <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+            <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
               {errorMessage}
             </div>
           ) : null}
