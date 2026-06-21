@@ -7,6 +7,8 @@ import { StoryArchiveView } from "../components/story/StoryArchiveView";
 import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
 import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
+import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
+import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
@@ -139,6 +141,7 @@ export function StoryWorkspacePage() {
   const [assistError, setAssistError] = useState<string | null>(null);
   const [manualMode, setManualMode] = useState(false);
   const [archiveMode, setArchiveMode] = useState(false);
+  const [metaChatOpen, setMetaChatOpen] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [assistantEditMessage, setAssistantEditMessage] = useState<StoryMessage | null>(null);
   const [assistantEditContent, setAssistantEditContent] = useState("");
@@ -157,6 +160,7 @@ export function StoryWorkspacePage() {
     setAssistError(null);
     setManualMode(false);
     setArchiveMode(false);
+    setMetaChatOpen(false);
     setAssistantEditMessage(null);
     setAssistantEditContent("");
     setAssistantEditError(null);
@@ -191,6 +195,16 @@ export function StoryWorkspacePage() {
     window.addEventListener(STORY_NAVIGATION_EVENT, handleJump);
     return () => window.removeEventListener(STORY_NAVIGATION_EVENT, handleJump);
   }, [messages, storyId]);
+
+  useEffect(() => {
+    if (!storyId) return;
+    try {
+      if (localStorage.getItem(META_CHAT_OPEN_STORAGE_KEY) === storyId) {
+        localStorage.removeItem(META_CHAT_OPEN_STORAGE_KEY);
+        setMetaChatOpen(true);
+      }
+    } catch {}
+  }, [storyId]);
 
   useEffect(() => {
     if (!readerMode) {
@@ -685,6 +699,12 @@ export function StoryWorkspacePage() {
             onClick={() => setReaderMode(!readerMode)}
             icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>}
           />
+          <WorkspaceIconBtn
+            label="MetaChat"
+            active={metaChatOpen}
+            onClick={() => setMetaChatOpen((c) => !c)}
+            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18.5h6"/><path d="M12 2v6"/><path d="M8.5 8V5"/><path d="M15.5 8V5"/></svg>}
+          />
           {readerMode || archiveMode ? null : (
             <WorkspaceIconBtn
               label="Manual entry"
@@ -998,6 +1018,14 @@ export function StoryWorkspacePage() {
           </div>
         </form>
       </Panel>
+      ) : null}
+
+      {storyId && metaChatOpen ? (
+        <MetaChatOverlay
+          open={metaChatOpen}
+          storyId={storyId}
+          onClose={() => setMetaChatOpen(false)}
+        />
       ) : null}
     </div>
   );

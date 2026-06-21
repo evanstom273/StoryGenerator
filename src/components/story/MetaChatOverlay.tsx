@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/Button";
-import { Panel } from "../ui/Panel";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { downloadFile } from "../../lib/download";
 import {
@@ -142,34 +141,38 @@ export function MetaChatOverlay(props: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <Panel variant="flat" className="flex h-[min(720px,90vh)] w-full max-w-2xl flex-col" padding="lg">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-              MetaChat
-            </div>
-            <div className="mt-2 truncate text-lg font-semibold text-ink">
-              {story?.title ?? "Story"}
-            </div>
-            <div className="mt-1 text-sm text-ink-muted">
-              Out of canon. Does not affect story.
-            </div>
+    <div className="fixed inset-0 z-[55] flex flex-col bg-app">
+      {/* Header */}
+      <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-divider/[0.3] px-5 py-3.5">
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+            MetaChat
           </div>
+          <div className="mt-0.5 truncate text-[15px] font-bold leading-tight text-ink">
+            {story?.title ?? "Story"}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="hidden text-[11px] text-ink-muted sm:block">
+            Out of canon · does not affect story
+          </span>
           <Button variant="ghost" size="sm" onClick={props.onClose}>
             Close
           </Button>
         </div>
+      </div>
 
-        <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-auto rounded-[10px] border border-divider/[0.35] bg-app p-3">
+      {/* Message list */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-2xl space-y-3 px-4 py-4">
           {messages.length ? (
             messages.map((message) => (
               <div
                 key={message.id}
                 className={
                   message.role === "user"
-                    ? "ml-auto w-[92%] rounded-2xl border border-accent/20 bg-accent/10 px-3 py-3"
-                    : "mr-auto w-[92%] rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3"
+                    ? "ml-auto w-[92%] rounded-[10px] border border-accent/20 bg-accent/10 px-3 py-3"
+                    : "mr-auto w-[92%] rounded-[10px] border border-divider/[0.35] bg-app-elevated px-3 py-3"
                 }
               >
                 <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
@@ -182,34 +185,36 @@ export function MetaChatOverlay(props: {
               </div>
             ))
           ) : (
-            <div className="px-2 py-8 text-center text-sm text-ink-muted">
-              No MetaChat messages yet.
+            <div className="px-2 py-16 text-center text-sm text-ink-muted">
+              No MetaChat messages yet. Ask anything about your story — brainstorm, plan arcs, or ask questions.
             </div>
           )}
         </div>
+      </div>
 
-        {error ? (
-          <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
-            {error}
-          </div>
-        ) : null}
-        {pendingJobs.length ? (
-          <div className="mt-4 rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
-            {pendingJobs.length === 1
-              ? "MetaChat is generating in the background."
-              : `${pendingJobs.length} MetaChat replies are generating in the background.`}
-          </div>
-        ) : null}
-
-        <div className="mt-4 space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+      {/* Footer: notices + composer */}
+      <div className="flex-shrink-0 border-t border-divider/[0.3] px-4 pb-4 pt-3">
+        <div className="mx-auto max-w-2xl space-y-3">
+          {error ? (
+            <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+              {error}
+            </div>
+          ) : null}
+          {pendingJobs.length ? (
+            <div className="rounded-[8px] border border-divider/[0.35] bg-app-elevated px-4 py-3 text-sm text-ink-muted">
+              {pendingJobs.length === 1
+                ? "MetaChat is generating in the background."
+                : `${pendingJobs.length} MetaChat replies are generating in the background.`}
+            </div>
+          ) : null}
+          <div className="grid grid-cols-4 gap-1.5">
             <Button
               variant="secondary"
               size="sm"
               onClick={() => void handleExport("txt")}
               disabled={isSending || Boolean(isExporting)}
             >
-              {isExporting === "txt" ? "Exporting..." : "Export TXT"}
+              {isExporting === "txt" ? "…" : "TXT"}
             </Button>
             <Button
               variant="secondary"
@@ -217,7 +222,7 @@ export function MetaChatOverlay(props: {
               onClick={() => void handleExport("markdown")}
               disabled={isSending || Boolean(isExporting)}
             >
-              {isExporting === "markdown" ? "Exporting..." : "Export MD"}
+              {isExporting === "markdown" ? "…" : "MD"}
             </Button>
             <Button
               variant="secondary"
@@ -225,7 +230,7 @@ export function MetaChatOverlay(props: {
               onClick={() => void handleExport("pdf")}
               disabled={isSending || Boolean(isExporting)}
             >
-              {isExporting === "pdf" ? "Exporting..." : "Export PDF"}
+              {isExporting === "pdf" ? "…" : "PDF"}
             </Button>
             <Button
               variant="secondary"
@@ -233,11 +238,11 @@ export function MetaChatOverlay(props: {
               onClick={() => void handleExport("json")}
               disabled={isSending || Boolean(isExporting)}
             >
-              {isExporting === "json" ? "Exporting..." : "Export JSON"}
+              {isExporting === "json" ? "…" : "JSON"}
             </Button>
           </div>
           <textarea
-            className="min-h-[84px] w-full resize-y rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+            className="min-h-[84px] w-full resize-y rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
             value={draft}
             onChange={(event) => {
               const nextDraft = event.target.value;
@@ -250,7 +255,7 @@ export function MetaChatOverlay(props: {
             {isSending ? "Queueing..." : "Send"}
           </Button>
         </div>
-      </Panel>
+      </div>
     </div>
   );
 }

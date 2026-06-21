@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DownloadIcon, TrashIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
@@ -8,12 +8,10 @@ import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models"
 import { serializeStoryExport } from "../../lib/storyExport";
 import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
-import { META_CHAT_OPEN_STORAGE_KEY } from "../../lib/jobNotifications";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
 import type { AIProviderType, AutoIndexInterval, AutoIndexMode, ExportFormat } from "../../types/models";
 import { cn } from "../../utils/cn";
-import { MetaChatOverlay } from "../../components/story/MetaChatOverlay";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useTheme } from "../theming/ThemeContext";
 import { themes } from "../theming/themes";
@@ -96,6 +94,50 @@ async function isAndroidNativePlatform() {
   }
 }
 
+function CollapsibleSection({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3.5"
+      >
+        <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+          {title}
+        </span>
+        <svg
+          className={cn(
+            "shrink-0 text-white/30 transition-transform duration-150",
+            open ? "rotate-0" : "-rotate-90",
+          )}
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="border-t border-divider/[0.25] px-4 pb-4 pt-3.5">{children}</div>
+      ) : null}
+    </div>
+  );
+}
+
 export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const navigate = useNavigate();
   const { storySettingsOpen, setStorySettingsOpen } = useUiPrefs();
@@ -136,7 +178,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     autoIndexInterval: (story?.autoIndexInterval ?? 20) as AutoIndexInterval,
   });
   const { themeKey, setThemeKey } = useTheme();
-  const [metaChatOpen, setMetaChatOpen] = useState(false);
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
   const [isSavingStory, setIsSavingStory] = useState(false);
   const [aiProviderType, setAiProviderType] = useState<AIProviderType>(
@@ -535,19 +576,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     ? backgroundJobs.filter((job) => job.storyId === story.id)
     : [];
 
-  useEffect(() => {
-    if (!story) {
-      return;
-    }
-    try {
-      if (localStorage.getItem(META_CHAT_OPEN_STORAGE_KEY) === story.id) {
-        localStorage.removeItem(META_CHAT_OPEN_STORAGE_KEY);
-        setStorySettingsOpen(true);
-        setMetaChatOpen(true);
-      }
-    } catch {}
-  }, [setStorySettingsOpen, story]);
-
   async function handleReindex() {
     if (!story) {
       return;
@@ -675,11 +703,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-auto p-3.5">
           {story && universe && playerCharacter ? (
             <>
-              <Panel variant="flat" padding="sm">
-                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-                  Story Information
-                </div>
-                <dl className="mt-3 space-y-2.5 text-sm text-ink-soft">
+              <CollapsibleSection title="Story Information" defaultOpen>
+                <dl className="space-y-2.5 text-sm text-ink-soft">
                   <div className="flex items-center justify-between gap-3">
                     <dt className="text-ink-muted">Universe</dt>
                     <dd className="truncate">{universe.name}</dd>
@@ -689,14 +714,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <dd className="truncate">{playerCharacter.name}</dd>
                   </div>
                 </dl>
-              </Panel>
+              </CollapsibleSection>
 
               {(playerCharacter.scope ?? "library") === "story" ? (
-                <Panel variant="flat" padding="sm" className="border-dashed border-divider/[0.4]">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-                    Quick Character
-                  </div>
-                  <p className="mt-2.5 text-[13px] leading-6 text-ink-muted">
+                <CollapsibleSection title="Quick Character" defaultOpen>
+                  <p className="text-[13px] leading-6 text-ink-muted">
                     This story is using a story-local protagonist. You can save them into your Player Characters library.
                   </p>
                   <Button
@@ -707,18 +729,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   >
                     {isPromotingCharacter ? "Saving..." : "Promote to Library"}
                   </Button>
-                </Panel>
+                </CollapsibleSection>
               ) : null}
 
-              <Panel variant="flat" padding="sm">
+              <CollapsibleSection title="Story AI" defaultOpen>
                 <form className="space-y-3" onSubmit={handleSaveStoryAI}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-                      Story AI
-                    </div>
-                    <div className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                      {aiProviderType} · {aiModel}
-                    </div>
+                  <div className="mb-1 text-xs uppercase tracking-[0.18em] text-ink-muted">
+                    {aiProviderType} · {aiModel}
                   </div>
 
                   <label className="block space-y-2">
@@ -760,13 +777,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     {isSavingAI ? "Saving..." : "Save AI Settings"}
                   </Button>
                 </form>
-              </Panel>
+              </CollapsibleSection>
 
-              <Panel variant="flat" padding="sm">
+              <CollapsibleSection title="Edit Story">
                 <form className="space-y-3" onSubmit={handleSaveStoryDetails}>
-                  <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-                    Edit Story
-                  </div>
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Title</div>
                     <input
@@ -795,35 +809,27 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     {isSavingStory ? "Saving..." : "Save Story"}
                   </Button>
                 </form>
-              </Panel>
+              </CollapsibleSection>
 
-              <Panel variant="flat" padding="sm">
-                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-                  Theme
-                </div>
-                <div className="mt-3 space-y-3">
-                  <label className="block space-y-2">
-                    <div className="text-xs text-ink-muted">Theme</div>
-                    <select
-                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
-                      value={themeKey}
-                      onChange={(event) => setThemeKey(event.target.value as any)}
-                    >
-                      {Object.keys(themes).map((key) => (
-                        <option key={key} value={key}>
-                          {key}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              </Panel>
+              <CollapsibleSection title="Theme">
+                <label className="block space-y-2">
+                  <div className="text-xs text-ink-muted">Theme</div>
+                  <select
+                    className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                    value={themeKey}
+                    onChange={(event) => setThemeKey(event.target.value as any)}
+                  >
+                    {Object.keys(themes).map((key) => (
+                      <option key={key} value={key}>
+                        {key}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </CollapsibleSection>
 
-              <Panel variant="flat" padding="sm">
-                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-                  Automatic Indexing
-                </div>
-                <div className="mt-3 space-y-3">
+              <CollapsibleSection title="Automatic Indexing">
+                <div className="space-y-3">
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Indexing mode</div>
                     <select
@@ -875,13 +881,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                         : `Automatic indexing runs every ${storyFields.autoIndexInterval === "disabled" ? 20 : storyFields.autoIndexInterval} messages (manual re-index does not affect this schedule).`}
                   </div>
                 </div>
-              </Panel>
+              </CollapsibleSection>
 
-              <Panel variant="flat" padding="sm">
-                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-                  Content Mode
-                </div>
-                <div className="mt-3 space-y-3">
+              <CollapsibleSection title="Content Mode">
+                <div className="space-y-3">
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Mature fiction (non-graphic)</div>
                     <select
@@ -902,13 +905,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     When enabled, prompts and transmit-safe retries are tuned for serious fiction: injury aftermath, trauma, grief, and recovery are treated as legitimate narrative context (still non-graphic, still no harmful instructions).
                   </div>
                 </div>
-              </Panel>
+              </CollapsibleSection>
 
-              <Panel variant="flat" padding="sm">
-                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-                  Export
-                </div>
-                <div className="mt-3 space-y-2">
+              <CollapsibleSection title="Export">
+                <div className="space-y-2">
                   <Button
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
@@ -959,13 +959,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     Export Archive PDF
                   </Button>
                 </div>
-              </Panel>
+              </CollapsibleSection>
 
-              <Panel variant="flat" padding="sm">
-                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-                  Index / Archive
-                </div>
-                <div className="mt-3 space-y-3">
+              <CollapsibleSection title="Index / Archive" defaultOpen>
+                <div className="space-y-3">
                   <Button
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
@@ -981,13 +978,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     onClick={() => setIsCleanupConfirmOpen(true)}
                   >
                     {isCleaningDuplicates ? "Cleaning..." : "Cleanup Duplicates"}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    className="w-full justify-start rounded-[8px]"
-                    onClick={() => setMetaChatOpen(true)}
-                  >
-                    MetaChat
                   </Button>
                   <Button
                     variant="secondary"
@@ -1424,24 +1414,21 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     );
                   })()}
                 </div>
-              </Panel>
+              </CollapsibleSection>
 
-              <Panel variant="flat" padding="sm">
-                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-                  Controls
-                </div>
-                <div className="mt-3 grid gap-2">
+              <CollapsibleSection title="Controls">
+                <div className="grid gap-2">
                   <Button variant="ghost" className="w-full" onClick={handleDeleteStory}>
                     <TrashIcon className="h-4 w-4" />
                     Delete Story
                   </Button>
                 </div>
-              </Panel>
+              </CollapsibleSection>
             </>
           ) : (
-            <Panel variant="flat" padding="sm">
-              <div className="text-sm text-ink-muted">Select a story to view settings.</div>
-            </Panel>
+            <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated px-4 py-3 text-sm text-ink-muted">
+              Select a story to view settings.
+            </div>
           )}
 
           {pageError ? (
@@ -1469,14 +1456,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           ) : null}
         </div>
       </div>
-
-      {story ? (
-        <MetaChatOverlay
-          open={metaChatOpen}
-          storyId={story.id}
-          onClose={() => setMetaChatOpen(false)}
-        />
-      ) : null}
 
       <div
         className={cn(
