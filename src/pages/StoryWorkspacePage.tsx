@@ -595,7 +595,7 @@ export function StoryWorkspacePage() {
   }
 
   return (
-    <div className="flex min-h-[72vh] flex-col">
+    <div className="flex min-h-[72vh] flex-col pb-14">
       <GenerationFailureModal
         open={generationFailureOpen}
         failure={generationFailure}
@@ -669,7 +669,12 @@ export function StoryWorkspacePage() {
         ) : null}
       </div>
 
-      <div className="mt-3 flex items-center justify-between">
+      <div
+        className={[
+          "fixed bottom-0 right-0 z-30 flex items-center justify-between border-t border-divider/[0.3] bg-app/90 px-4 py-2 backdrop-blur-md",
+          readerMode ? "left-0" : "left-0 lg:left-[266px]",
+        ].join(" ")}
+      >
         <span className="text-[11px] text-white/30">
           {messages.length} {messages.length === 1 ? "entry" : "entries"}
         </span>

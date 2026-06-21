@@ -1067,10 +1067,52 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     </div>
                   ) : null}
                   {(() => {
-                    if (!story || !storyStateData) {
+                    if (!story) {
                       return (
                         <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
                           No indexed state available yet.
+                        </div>
+                      );
+                    }
+
+                    const chapters = getChaptersForStory(story.id);
+
+                    if (!storyStateData) {
+                      return (
+                        <div className="space-y-3">
+                          {chapters.length
+                            ? renderArchiveDropdown({
+                                title: "Chapters",
+                                countLabel: String(chapters.length),
+                                children: (
+                                  <div className="space-y-3">
+                                    {chapters.map((chapter) => (
+                                      <div
+                                        key={chapter.id}
+                                        className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3"
+                                      >
+                                        <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+                                          <span className="truncate">{chapter.label}</span>
+                                          <span className="shrink-0">Ends at #{chapter.endsAtIndex}</span>
+                                        </div>
+                                        {chapter.summary?.trim() ? (
+                                          <div className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">
+                                            {chapter.summary.trim()}
+                                          </div>
+                                        ) : (
+                                          <div className="mt-2 text-sm text-ink-muted">
+                                            No summary yet.
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ),
+                              })
+                            : null}
+                          <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
+                            No indexed state available yet.
+                          </div>
                         </div>
                       );
                     }
@@ -1092,7 +1134,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       : [];
                     const relationships = storyStateData.indexes?.relationships ?? [];
                     const significantMemories = (storyStateData.indexes as any)?.significantMemories ?? [];
-                    const chapters = getChaptersForStory(story.id);
                     const premise = storyStateData.summaries?.premise?.trim() ?? "";
                     const protagonistSummary = storyStateData.summaries?.protagonistSummary?.trim() ?? "";
                     const currentSituation = storyStateData.summaries?.currentSituation?.trim() ?? "";
