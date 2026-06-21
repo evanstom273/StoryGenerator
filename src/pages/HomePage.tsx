@@ -282,6 +282,40 @@ export function HomePage() {
             </div>
           </div>
 
+          {/* Quick Actions */}
+          <div className="rounded-[10px] border border-divider/[0.45] bg-app px-[18px] py-[15px]">
+            <span className="mb-2.5 block text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
+              Quick Actions
+            </span>
+            <div className="flex flex-col gap-1.5">
+              {[
+                { label: "New Story", to: "/stories/new" },
+                { label: "New Universe", to: "/universes/new" },
+                { label: "New Character", to: "/player-characters/new" },
+              ].map(({ label, to }) => (
+                <Link
+                  key={label}
+                  to={to}
+                  className="flex items-center gap-2.5 rounded-[8px] border border-divider/[0.4] bg-panel-muted px-3 py-2.5 text-xs font-medium text-ink-soft transition hover:border-divider/[0.55] hover:bg-panel"
+                >
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="rgb(var(--accent-rgb))"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  >
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
           {/* Universes grid */}
           <div className="flex flex-1 flex-col rounded-[10px] border border-divider/[0.45] bg-app px-[18px] py-[15px]">
             <div className="mb-2.5 flex flex-shrink-0 items-center justify-between">
@@ -411,40 +445,6 @@ export function HomePage() {
               ) : (
                 <div className="py-2 text-xs text-white/25">No characters yet.</div>
               )}
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="rounded-[10px] border border-divider/[0.45] bg-app px-[18px] py-[15px]">
-            <span className="mb-2.5 block text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
-              Quick Actions
-            </span>
-            <div className="flex flex-col gap-1.5">
-              {[
-                { label: "New Story", to: "/stories/new" },
-                { label: "New Universe", to: "/universes/new" },
-                { label: "New Character", to: "/player-characters/new" },
-              ].map(({ label, to }) => (
-                <Link
-                  key={label}
-                  to={to}
-                  className="flex items-center gap-2.5 rounded-[8px] border border-divider/[0.4] bg-panel-muted px-3 py-2.5 text-xs font-medium text-ink-soft transition hover:border-divider/[0.55] hover:bg-panel"
-                >
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="rgb(var(--accent-rgb))"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  >
-                    <path d="M12 5v14" />
-                    <path d="M5 12h14" />
-                  </svg>
-                  {label}
-                </Link>
-              ))}
             </div>
           </div>
 

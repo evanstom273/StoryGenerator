@@ -62,10 +62,11 @@ export function V2LeftSidebar({
             height="22"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="#7C3AED"
+            stroke="currentColor"
             strokeWidth="1.8"
             strokeLinecap="round"
             strokeLinejoin="round"
+            className="text-accent"
           >
             <circle cx="12" cy="12" r="2.2" />
             <path d="M4 14c2.1 3.5 5.3 5.5 8 5.5s5.9-2 8-5.5c-2.1-3.5-5.3-5.5-8-5.5S6.1 10.5 4 14Z" />
@@ -91,7 +92,7 @@ export function V2LeftSidebar({
           <Link
             to="/universes/new"
             onClick={onNavigate}
-            className="flex-1 rounded-[7px] bg-[#7C3AED] py-2 text-center text-xs font-semibold text-white transition hover:bg-[#6d28d9]"
+            className="flex-1 rounded-[7px] bg-accent py-2 text-center text-xs font-semibold text-accent-foreground transition hover:bg-accent-hover"
           >
             New Universe
           </Link>
@@ -125,7 +126,7 @@ export function V2LeftSidebar({
                 className={cn(
                   "block rounded-[10px] border px-[15px] py-3.5 transition",
                   isActive
-                    ? "border-[#7C3AED26] bg-[#7C3AED09]"
+                    ? "border-accent/15 bg-accent/[0.035]"
                     : "border-[#191919] bg-[#111] hover:border-[#222] hover:bg-[#161616]",
                 )}
               >
@@ -142,7 +143,7 @@ export function V2LeftSidebar({
                     className={cn(
                       "mt-0.5 flex-shrink-0 rounded-full px-[7px] py-0.5 text-[9px] font-semibold",
                       isActive
-                        ? "bg-[#7C3AED1E] text-[#C4B5FD]"
+                        ? "bg-accent/[0.12] text-accent-soft"
                         : "bg-[#1A1A1A] text-white/38",
                     )}
                   >
@@ -203,7 +204,7 @@ export function V2LeftSidebar({
                   className={cn(
                     "flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
                     isFirst
-                      ? "border-[#7C3AED36] bg-[#7C3AED1E] text-[#A78BFA]"
+                      ? "border-accent/[0.21] bg-accent/[0.12] text-accent-secondary"
                       : "border-[#222] bg-[#1A1A1A] text-white/38",
                   )}
                 >
