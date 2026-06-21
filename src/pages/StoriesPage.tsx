@@ -52,15 +52,15 @@ export function StoriesPage() {
     <div className="space-y-8">
       {filteredStories.length ? (
         <section className="space-y-5">
-          <div className="flex flex-col gap-4 border-b border-white/8 pb-6 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-4 border-b border-divider/[0.3] pb-5 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 Stories
               </div>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink md:text-4xl">
+              <h1 className="mt-2 text-[28px] font-extrabold leading-tight tracking-[-0.03em] text-ink md:text-[34px]">
                 Continue a story
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-ink-muted md:text-base">
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-muted">
                 Stories are your active channels. Pick one and keep writing.
               </p>
             </div>
@@ -69,13 +69,13 @@ export function StoriesPage() {
             </Link>
           </div>
 
-          <div className="grid gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-4 md:grid-cols-3">
+          <div className="grid gap-3 rounded-xl border border-divider/[0.6] bg-app px-[18px] py-[15px] md:grid-cols-3">
             <label className="space-y-2">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted">
                 Status
               </div>
               <select
-                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value as any)}
               >
@@ -90,7 +90,7 @@ export function StoriesPage() {
                 Universe
               </div>
               <select
-                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                 value={universeFilter}
                 onChange={(event) => setUniverseFilter(event.target.value)}
               >
@@ -108,7 +108,7 @@ export function StoriesPage() {
                 Sort
               </div>
               <select
-                className="w-full rounded-2xl border border-divider bg-panel-muted px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25"
+                className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                 value={sortMode}
                 onChange={(event) => setSortMode(event.target.value as any)}
               >

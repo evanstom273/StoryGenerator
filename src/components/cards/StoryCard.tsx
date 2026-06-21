@@ -28,13 +28,13 @@ export function StoryCard({
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
-      <h3 className="mt-5 text-xl font-semibold tracking-tight text-ink">
+      <h3 className="mt-4 text-[15px] font-bold tracking-tight text-ink">
         {story.title}
       </h3>
-      <p className="mt-3 text-sm leading-6 text-ink-muted">
+      <p className="mt-3 text-[13px] leading-6 text-ink-muted">
         {story.currentSummary || "No summary yet."}
       </p>
-      <dl className="mt-6 grid gap-4 sm:grid-cols-2">
+      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>
           <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
             Conversation Entries

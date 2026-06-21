@@ -17,9 +17,9 @@ export function Panel({
 }: PanelProps) {
   const paddings: Record<PanelPadding, string> = {
     none: "",
-    sm: "p-4",
-    md: "p-6",
-    lg: "p-8",
+    sm: "p-3.5",
+    md: "px-[18px] py-[15px]",
+    lg: "p-6",
   };
 
   return (
