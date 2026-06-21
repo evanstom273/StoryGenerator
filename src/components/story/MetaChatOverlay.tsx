@@ -80,6 +80,15 @@ export function MetaChatOverlay(props: {
     }
   }, [props.open]);
 
+  useEffect(() => {
+    if (props.open) {
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = "";
+      };
+    }
+  }, [props.open]);
+
   if (!props.open) {
     return null;
   }

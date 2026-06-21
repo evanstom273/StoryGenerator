@@ -104,8 +104,21 @@ function CollapsibleSection({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const ref = useRef<HTMLDivElement>(null);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (open && ref.current) {
+      ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [open]);
+
   return (
-    <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated">
+    <div ref={ref} className="rounded-[10px] border border-divider/[0.35] bg-app-elevated">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -281,6 +294,15 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       cancelled = true;
     };
   }, [fetchStoryState, story, storySettingsOpen, rebuildStatus]);
+
+  useEffect(() => {
+    if (storySettingsOpen) {
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = "";
+      };
+    }
+  }, [storySettingsOpen]);
 
   useDebouncedEffect(
     () => {
