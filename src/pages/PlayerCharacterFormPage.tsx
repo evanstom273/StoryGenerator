@@ -280,7 +280,7 @@ export function PlayerCharacterFormPage() {
         description="The user controls this original character. Canon characters will enter stories dynamically later instead of being selected here."
       />
 
-      <Panel padding="lg">
+      <Panel variant="flat" padding="lg">
         <form className="space-y-6" onSubmit={handleSubmit}>
           <div className="grid gap-6 md:grid-cols-2">
             <Field

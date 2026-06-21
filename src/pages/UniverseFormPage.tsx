@@ -323,7 +323,7 @@ export function UniverseFormPage() {
         }
       />
 
-      <Panel padding="lg">
+      <Panel variant="flat" padding="lg">
         <form className="space-y-6" onSubmit={handleSubmit}>
           {isImportMode ? null : (
             <div className="-mx-1 flex border-b border-divider/[0.3]">
@@ -657,7 +657,7 @@ export function UniverseFormPage() {
           ) : null}
 
           {isImportMode && pendingUniverseId ? (
-            <Panel className="border-amber-300/20 bg-amber-300/10">
+            <Panel variant="flat" className="border-amber-300/20 bg-amber-300/10">
               <div className="text-sm text-amber-100">
                 The universe was created, but the lore import did not finish. Retry the
                 import or open the universe now.

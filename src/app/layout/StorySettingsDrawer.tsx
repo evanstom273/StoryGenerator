@@ -675,7 +675,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-auto p-3.5">
           {story && universe && playerCharacter ? (
             <>
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Story Information
                 </div>
@@ -692,7 +692,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               </Panel>
 
               {(playerCharacter.scope ?? "library") === "story" ? (
-                <Panel padding="sm" className="border-dashed border-divider/[0.4]">
+                <Panel variant="flat" padding="sm" className="border-dashed border-divider/[0.4]">
                   <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                     Quick Character
                   </div>
@@ -710,7 +710,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 </Panel>
               ) : null}
 
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <form className="space-y-3" onSubmit={handleSaveStoryAI}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
@@ -724,7 +724,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Provider</div>
                     <select
-                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={aiProviderType}
                       onChange={(event) => {
                         const nextProvider = event.target.value as AIProviderType;
@@ -744,7 +744,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Model</div>
                     <select
-                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={aiModel}
                       onChange={(event) => setAiModel(event.target.value)}
                     >
@@ -762,7 +762,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 </form>
               </Panel>
 
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <form className="space-y-3" onSubmit={handleSaveStoryDetails}>
                   <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                     Edit Story
@@ -770,7 +770,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Title</div>
                     <input
-                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.title}
                       onChange={(event) =>
                         setStoryFields((current) => ({ ...current, title: event.target.value }))
@@ -780,7 +780,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Current Summary</div>
                     <textarea
-                      className="min-h-[100px] w-full resize-y rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="min-h-[100px] w-full resize-y rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.currentSummary}
                       onChange={(event) =>
                         setStoryFields((current) => ({
@@ -797,7 +797,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 </form>
               </Panel>
 
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Theme
                 </div>
@@ -805,7 +805,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Theme</div>
                     <select
-                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={themeKey}
                       onChange={(event) => setThemeKey(event.target.value as any)}
                     >
@@ -819,7 +819,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 </div>
               </Panel>
 
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Automatic Indexing
                 </div>
@@ -827,7 +827,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Indexing mode</div>
                     <select
-                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.autoIndexMode}
                       onChange={(event) =>
                         setStoryFields((current) => ({
@@ -851,7 +851,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <label className="block space-y-2">
                       <div className="text-xs text-ink-muted">Interval</div>
                       <select
-                        className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                        className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                         value={storyFields.autoIndexInterval === "disabled" ? 20 : storyFields.autoIndexInterval}
                         onChange={(event) =>
                           setStoryFields((current) => ({
@@ -877,7 +877,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 </div>
               </Panel>
 
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Content Mode
                 </div>
@@ -885,7 +885,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Mature fiction (non-graphic)</div>
                     <select
-                      className="w-full rounded-[8px] border border-divider bg-panel-muted px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.matureFictionMode ? "on" : "off"}
                       onChange={(event) =>
                         setStoryFields((current) => ({
@@ -904,7 +904,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 </div>
               </Panel>
 
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Export
                 </div>
@@ -961,7 +961,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 </div>
               </Panel>
 
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Index / Archive
                 </div>
@@ -1426,7 +1426,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 </div>
               </Panel>
 
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                   Controls
                 </div>
@@ -1439,7 +1439,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               </Panel>
             </>
           ) : (
-            <Panel padding="sm">
+            <Panel variant="flat" padding="sm">
               <div className="text-sm text-ink-muted">Select a story to view settings.</div>
             </Panel>
           )}
@@ -1501,7 +1501,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           )}
         >
           <div className="w-full max-w-lg">
-            <Panel padding="lg" role="dialog" aria-modal="true">
+            <Panel variant="flat" padding="lg" role="dialog" aria-modal="true">
               <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                 Cleanup
               </div>

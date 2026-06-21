@@ -550,7 +550,7 @@ export function SettingsPage() {
       {/* Theme tab */}
       {activeTab === "theme" && (
         <div className="space-y-5">
-          <Panel>
+          <Panel variant="flat">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Theme</div>
               <Badge variant="accent">{theme.name}</Badge>
@@ -622,7 +622,7 @@ export function SettingsPage() {
             ) : null}
           </Panel>
 
-          <Panel>
+          <Panel variant="flat">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Text Size</div>
             <div className="mt-3">
               <Field label="">
@@ -639,7 +639,7 @@ export function SettingsPage() {
             </div>
           </Panel>
 
-          <Panel>
+          <Panel variant="flat">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Version</div>
               <Badge variant="accent">v{APP_VERSION}</Badge>
@@ -661,7 +661,7 @@ export function SettingsPage() {
       {/* AI tab */}
       {activeTab === "ai" && (
         <div className="space-y-4">
-          <Panel>
+          <Panel variant="flat">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Active Provider</div>
               {providerBadge}
@@ -712,7 +712,7 @@ export function SettingsPage() {
               },
             ] as const
           ).map((provider) => (
-            <Panel key={provider.id}>
+            <Panel variant="flat" key={provider.id}>
               <div className="flex items-center justify-between gap-3">
                 <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">{provider.label}</div>
                 <Badge variant={provider.configured ? "accent" : "warning"}>
@@ -767,7 +767,7 @@ export function SettingsPage() {
       {/* Data tab */}
       {activeTab === "data" && (
         <div className="space-y-5">
-          <Panel>
+          <Panel variant="flat">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Backup & Restore</div>
             <p className="mt-2 text-[13px] leading-6 text-ink-muted">
               Export a portable JSON backup of your entire local workspace.
@@ -802,7 +802,7 @@ export function SettingsPage() {
             </div>
           </Panel>
 
-          <Panel>
+          <Panel variant="flat">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Export Item</div>
             <div className="mt-3 space-y-3">
               <Field label="Type">
@@ -852,7 +852,7 @@ export function SettingsPage() {
             </div>
           </Panel>
 
-          <Panel>
+          <Panel variant="flat">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Import Item</div>
             <div className="mt-3 space-y-3">
               <Field label="Type">
@@ -888,7 +888,7 @@ export function SettingsPage() {
       {/* Storage tab */}
       {activeTab === "storage" && (
         <div className="space-y-4">
-          <Panel>
+          <Panel variant="flat">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Storage Status</div>
               <Badge variant={storageStatus.ready ? "success" : "warning"}>

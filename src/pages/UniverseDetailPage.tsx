@@ -17,7 +17,7 @@ function PlaceholderImportSection({
   items: string[];
 }) {
   return (
-    <Panel className="h-full">
+    <Panel variant="flat" className="h-full">
       <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
         {title}
       </div>
@@ -48,7 +48,7 @@ function ImportedLoreSection({
   const latestImport = imports[0];
 
   return (
-    <Panel className="h-full md:col-span-2 xl:col-span-4">
+    <Panel variant="flat" className="h-full md:col-span-2 xl:col-span-4">
       <div className="flex items-center justify-between gap-3">
         <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
           Imported Lore
@@ -246,7 +246,7 @@ export function UniverseDetailPage() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
-          <Panel>
+          <Panel variant="flat">
             <dl className="space-y-4">
               <div className="flex items-center justify-between gap-4 border-b border-divider/[0.3] pb-3">
                 <dt className="text-[11px] text-ink-muted">Mode</dt>
@@ -350,7 +350,7 @@ export function UniverseDetailPage() {
         </div>
 
         <div className="space-y-4">
-          <Panel>
+          <Panel variant="flat">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
               Workspace Links
             </div>
@@ -371,7 +371,7 @@ export function UniverseDetailPage() {
           </Panel>
 
           {linkedCharacters.length ? (
-            <Panel>
+            <Panel variant="flat">
               <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                 Linked Characters
               </div>
@@ -390,7 +390,7 @@ export function UniverseDetailPage() {
           ) : null}
 
           {linkedStories.length ? (
-            <Panel>
+            <Panel variant="flat">
               <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                 Linked Stories
               </div>

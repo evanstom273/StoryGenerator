@@ -87,7 +87,7 @@ export function PlayerCharacterDetailPage() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="space-y-5">
-          <Panel>
+          <Panel variant="flat">
             <dl className="divide-y divide-divider/[0.3]">
               <div className="flex items-center justify-between gap-4 py-2.5">
                 <dt className="text-[11px] text-ink-muted">Universe</dt>
@@ -120,7 +120,7 @@ export function PlayerCharacterDetailPage() {
             </div>
           </Panel>
 
-          <Panel>
+          <Panel variant="flat">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
               Linked Stories
             </div>
@@ -148,7 +148,7 @@ export function PlayerCharacterDetailPage() {
         </div>
 
         <div className="space-y-4">
-          <Panel className="h-fit">
+          <Panel variant="flat" className="h-fit">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
               Metadata
             </div>

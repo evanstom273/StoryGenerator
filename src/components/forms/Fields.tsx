@@ -20,9 +20,9 @@ export function Field({
   return (
     <label className="block space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-ink-soft">{label}</span>
+        <span className="text-[13px] font-medium text-ink-soft">{label}</span>
         <div className="flex items-center gap-2">
-          {hint ? <span className="text-xs text-ink-muted">{hint}</span> : null}
+          {hint ? <span className="text-[11px] text-ink-muted">{hint}</span> : null}
           {action}
         </div>
       </div>
@@ -32,7 +32,7 @@ export function Field({
 }
 
 export const inputClasses =
-  "w-full rounded-2xl border border-divider bg-panel-muted px-4 py-3 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/60 focus:bg-panel-strong focus:ring-2 focus:ring-accent/25";
+  "w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]";
 
 export function TextInput({
   className,
