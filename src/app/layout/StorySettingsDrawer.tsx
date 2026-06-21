@@ -724,7 +724,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Provider</div>
                     <select
-                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={aiProviderType}
                       onChange={(event) => {
                         const nextProvider = event.target.value as AIProviderType;
@@ -744,7 +744,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Model</div>
                     <select
-                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={aiModel}
                       onChange={(event) => setAiModel(event.target.value)}
                     >
@@ -770,7 +770,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Title</div>
                     <input
-                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.title}
                       onChange={(event) =>
                         setStoryFields((current) => ({ ...current, title: event.target.value }))
@@ -780,7 +780,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Current Summary</div>
                     <textarea
-                      className="min-h-[100px] w-full resize-y rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="min-h-[100px] w-full resize-y rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.currentSummary}
                       onChange={(event) =>
                         setStoryFields((current) => ({
@@ -805,7 +805,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Theme</div>
                     <select
-                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={themeKey}
                       onChange={(event) => setThemeKey(event.target.value as any)}
                     >
@@ -827,7 +827,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Indexing mode</div>
                     <select
-                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.autoIndexMode}
                       onChange={(event) =>
                         setStoryFields((current) => ({
@@ -851,7 +851,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <label className="block space-y-2">
                       <div className="text-xs text-ink-muted">Interval</div>
                       <select
-                        className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                        className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                         value={storyFields.autoIndexInterval === "disabled" ? 20 : storyFields.autoIndexInterval}
                         onChange={(event) =>
                           setStoryFields((current) => ({
@@ -885,7 +885,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <label className="block space-y-2">
                     <div className="text-xs text-ink-muted">Mature fiction (non-graphic)</div>
                     <select
-                      className="w-full rounded-[8px] border border-divider bg-transparent px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.matureFictionMode ? "on" : "off"}
                       onChange={(event) =>
                         setStoryFields((current) => ({

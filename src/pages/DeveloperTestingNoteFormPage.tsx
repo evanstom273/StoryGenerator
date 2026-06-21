@@ -146,7 +146,7 @@ export function DeveloperTestingNoteFormPage() {
         }
       />
 
-      <Panel padding="lg">
+      <Panel variant="flat" padding="lg">
         <form
           id="developer-testing-note-form"
           className="space-y-6"

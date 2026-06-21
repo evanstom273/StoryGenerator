@@ -37,7 +37,7 @@ export function DeveloperFeatureRequestsPage() {
       {developerFeatureRequests.length ? (
         <div className="space-y-3">
           {developerFeatureRequests.map((feature) => (
-            <Panel
+            <Panel variant="flat"
               key={feature.id}
               padding="lg"
               className="border border-white/8 bg-white/[0.03]"

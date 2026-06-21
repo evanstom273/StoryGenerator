@@ -614,7 +614,7 @@ export function StoryWorkspacePage() {
           ].join(" ")}
         >
           <div className="w-full max-w-2xl">
-            <Panel padding="lg" role="dialog" aria-modal="true">
+            <Panel variant="flat" padding="lg" role="dialog" aria-modal="true">
               <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
                 Edit Last AI Message
               </div>
@@ -761,7 +761,7 @@ export function StoryWorkspacePage() {
 
       {readerMode || archiveMode ? null : (
         latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
-          <Panel className="mt-4" padding="sm">
+          <Panel variant="flat" className="mt-4" padding="sm">
             {latestDirectorIntentMessage?.directorIntent ? (
               <div className="mb-3 flex flex-col gap-3 rounded-[9px] border border-divider/[0.4] bg-panel-muted/50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-ink-muted">
@@ -804,7 +804,7 @@ export function StoryWorkspacePage() {
       )}
 
       {readerMode ? null : (
-        <Panel className="mt-4" padding="sm">
+        <Panel variant="flat" className="mt-4" padding="sm">
           <div className="space-y-5">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -871,7 +871,7 @@ export function StoryWorkspacePage() {
       )}
 
       {readerMode ? null : manualMode || editingMessage ? (
-      <Panel className="mt-4" padding="sm">
+      <Panel variant="flat" className="mt-4" padding="sm">
         <form className="space-y-5" onSubmit={handleSubmitMessage}>
           <div className="flex items-center justify-between gap-4">
             <div>

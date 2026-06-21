@@ -143,7 +143,7 @@ export function MetaChatOverlay(props: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <Panel className="flex h-[min(720px,90vh)] w-full max-w-2xl flex-col" padding="lg">
+      <Panel variant="flat" className="flex h-[min(720px,90vh)] w-full max-w-2xl flex-col" padding="lg">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
@@ -161,7 +161,7 @@ export function MetaChatOverlay(props: {
           </Button>
         </div>
 
-        <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-auto rounded-2xl border border-white/8 bg-black/10 p-3">
+        <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-auto rounded-[10px] border border-divider/[0.35] bg-app p-3">
           {messages.length ? (
             messages.map((message) => (
               <div

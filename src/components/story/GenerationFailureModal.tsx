@@ -82,7 +82,7 @@ export function GenerationFailureModal(props: {
         )}
       >
         <div className="w-full max-w-2xl">
-          <Panel
+          <Panel variant="flat"
             padding="lg"
             role="dialog"
             aria-modal="true"

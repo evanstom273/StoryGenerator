@@ -37,7 +37,7 @@ export function DeveloperBugsPage() {
       {developerBugs.length ? (
         <div className="space-y-3">
           {developerBugs.map((bug) => (
-            <Panel key={bug.id} padding="lg" className="border border-white/8 bg-white/[0.03]">
+            <Panel variant="flat" key={bug.id} padding="lg" className="border border-white/8 bg-white/[0.03]">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">

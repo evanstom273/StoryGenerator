@@ -260,7 +260,7 @@ export function V2RightSidebar({
         <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
           {story && universe && playerCharacter ? (
             <>
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                     Story Information
@@ -286,7 +286,7 @@ export function V2RightSidebar({
                 </dl>
               </Panel>
 
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   Export
                 </div>
@@ -343,7 +343,7 @@ export function V2RightSidebar({
                 </div>
               </Panel>
 
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   Controls
                 </div>
@@ -363,7 +363,7 @@ export function V2RightSidebar({
             </>
           ) : (
             <>
-              <Panel padding="sm">
+              <Panel variant="flat" padding="sm">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                   Continue Story
                 </div>
@@ -390,7 +390,7 @@ export function V2RightSidebar({
                   ))}
                 </div>
               ) : (
-                <Panel padding="sm">
+                <Panel variant="flat" padding="sm">
                   <div className="text-sm text-ink-muted">No stories yet.</div>
                   <Link to="/stories/new" className={buttonClasses({ className: "mt-4 w-full" })}>
                     Create Story
