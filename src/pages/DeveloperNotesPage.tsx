@@ -23,7 +23,7 @@ export function DeveloperNotesPage() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Link to="/developer-notes/bugs" className="group">
-          <Panel
+          <Panel variant="flat"
             padding="lg"
             className="h-full border border-white/8 bg-white/[0.03] transition group-hover:border-white/16 group-hover:bg-white/[0.05]"
           >
@@ -35,7 +35,7 @@ export function DeveloperNotesPage() {
         </Link>
 
         <Link to="/developer-notes/features" className="group">
-          <Panel
+          <Panel variant="flat"
             padding="lg"
             className="h-full border border-white/8 bg-white/[0.03] transition group-hover:border-white/16 group-hover:bg-white/[0.05]"
           >
@@ -48,7 +48,7 @@ export function DeveloperNotesPage() {
         </Link>
 
         <Link to="/developer-notes/testing" className="group">
-          <Panel
+          <Panel variant="flat"
             padding="lg"
             className="h-full border border-white/8 bg-white/[0.03] transition group-hover:border-white/16 group-hover:bg-white/[0.05]"
           >
@@ -61,7 +61,7 @@ export function DeveloperNotesPage() {
         </Link>
 
         <Link to="/developer-notes/export" className="group">
-          <Panel
+          <Panel variant="flat"
             padding="lg"
             className="h-full border border-white/8 bg-white/[0.03] transition group-hover:border-white/16 group-hover:bg-white/[0.05]"
           >

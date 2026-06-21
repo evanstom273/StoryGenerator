@@ -280,7 +280,7 @@ export function PlayerCharacterFormPage() {
         description="The user controls this original character. Canon characters will enter stories dynamically later instead of being selected here."
       />
 
-      <Panel padding="lg">
+      <Panel variant="flat" padding="lg">
         <form className="space-y-6" onSubmit={handleSubmit}>
           <div className="grid gap-6 md:grid-cols-2">
             <Field
@@ -492,13 +492,13 @@ export function PlayerCharacterFormPage() {
           </Field>
 
           {errorMessage ? (
-            <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+            <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
               {errorMessage}
             </div>
           ) : null}
 
           {generatorError ? (
-            <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+            <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
               {generatorError}
             </div>
           ) : null}

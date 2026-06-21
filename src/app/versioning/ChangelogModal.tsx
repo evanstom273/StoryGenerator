@@ -35,7 +35,7 @@ export function ChangelogModal({
         )}
       >
         <div className="w-full max-w-2xl">
-          <Panel padding="lg" role="dialog" aria-modal="true">
+          <Panel variant="flat" padding="lg" role="dialog" aria-modal="true">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Changelog
             </div>

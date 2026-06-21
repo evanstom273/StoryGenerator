@@ -11,7 +11,7 @@ export function NotFoundPage() {
         title="That page doesn’t exist in this shell"
         description="Use the navigation to jump back into the Story Engine workspace."
       />
-      <Panel className="max-w-xl">
+      <Panel variant="flat" className="max-w-xl">
         <p className="text-sm leading-7 text-ink-muted">
           The requested route is outside the current Version 1 scope.
         </p>

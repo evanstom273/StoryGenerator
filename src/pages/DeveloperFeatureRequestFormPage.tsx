@@ -156,7 +156,7 @@ export function DeveloperFeatureRequestFormPage() {
         }
       />
 
-      <Panel padding="lg">
+      <Panel variant="flat" padding="lg">
         <form id="developer-feature-form" className="space-y-6" onSubmit={handleSubmit}>
           {existingFeature ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-ink-muted">

@@ -158,7 +158,7 @@ export function ChangelogHistoryModal({
         )}
       >
         <div className="w-full max-w-4xl">
-          <Panel
+          <Panel variant="flat"
             padding="lg"
             role="dialog"
             aria-modal="true"

@@ -155,7 +155,7 @@ export function DeveloperBugFormPage() {
         }
       />
 
-      <Panel padding="lg">
+      <Panel variant="flat" padding="lg">
         <form id="developer-bug-form" className="space-y-6" onSubmit={handleSubmit}>
           {existingBug ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-ink-muted">

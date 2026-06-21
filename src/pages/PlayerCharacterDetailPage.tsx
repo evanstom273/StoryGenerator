@@ -85,135 +85,97 @@ export function PlayerCharacterDetailPage() {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-6">
-          <Panel>
-            <dl className="grid gap-5 md:grid-cols-2">
-              <div>
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Universe
-                </dt>
-                <dd className="mt-2 text-sm text-ink-soft">{activeUniverse.name}</dd>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="space-y-5">
+          <Panel variant="flat">
+            <dl className="divide-y divide-divider/[0.3]">
+              <div className="flex items-center justify-between gap-4 py-2.5">
+                <dt className="text-[11px] text-ink-muted">Universe</dt>
+                <dd className="text-[13px] text-ink-soft">{activeUniverse.name}</dd>
               </div>
-              <div>
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Age
-                </dt>
-                <dd className="mt-2 text-sm text-ink-soft">
-                  {activeCharacter.age || "Not specified"}
-                </dd>
+              <div className="flex items-center justify-between gap-4 py-2.5">
+                <dt className="text-[11px] text-ink-muted">Age</dt>
+                <dd className="text-[13px] text-ink-soft">{activeCharacter.age || "Not specified"}</dd>
               </div>
-              <div>
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Species
-                </dt>
-                <dd className="mt-2 text-sm text-ink-soft">
-                  {activeCharacter.species || "Not specified"}
-                </dd>
-              </div>
-              <div className="md:col-span-2">
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Appearance
-                </dt>
-                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                  {activeCharacter.appearance || "Not specified"}
-                </dd>
-              </div>
-              <div className="md:col-span-2">
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Personality
-                </dt>
-                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                  {activeCharacter.personality || "Not specified"}
-                </dd>
-              </div>
-              <div className="md:col-span-2">
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Background
-                </dt>
-                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                  {activeCharacter.background || "Not specified"}
-                </dd>
-              </div>
-              <div className="md:col-span-2">
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Goals
-                </dt>
-                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                  {activeCharacter.goals || "Not specified"}
-                </dd>
-              </div>
-              <div className="md:col-span-2">
-                <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                  Notes
-                </dt>
-                <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                  {activeCharacter.notes || "Not specified"}
-                </dd>
+              <div className="flex items-center justify-between gap-4 py-2.5">
+                <dt className="text-[11px] text-ink-muted">Species</dt>
+                <dd className="text-[13px] text-ink-soft">{activeCharacter.species || "Not specified"}</dd>
               </div>
             </dl>
+            <div className="mt-4 space-y-4">
+              {[
+                { label: "Appearance", value: activeCharacter.appearance },
+                { label: "Personality", value: activeCharacter.personality },
+                { label: "Background", value: activeCharacter.background },
+                { label: "Goals", value: activeCharacter.goals },
+                { label: "Notes", value: activeCharacter.notes },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">{label}</div>
+                  <div className="mt-1.5 whitespace-pre-wrap text-[13px] leading-6 text-ink-soft">
+                    {value || "Not specified"}
+                  </div>
+                </div>
+              ))}
+            </div>
           </Panel>
 
-          <Panel>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
               Linked Stories
             </div>
             {linkedStories.length ? (
-              <div className="mt-4 space-y-3">
+              <div className="mt-3 space-y-2">
                 {linkedStories.map((story) => (
                   <Link
                     key={story.id}
                     to={`/stories/${story.id}`}
-                    className="block rounded-xl border border-divider/[0.5] bg-panel-muted/50 px-4 py-3 text-sm text-ink-soft transition hover:border-divider/[0.7] hover:bg-panel-muted"
+                    className="block rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3.5 py-3 text-sm text-ink-soft transition hover:border-accent/[0.15] hover:bg-panel-muted"
                   >
-                    <div className="font-medium text-ink">{story.title}</div>
-                    <div className="mt-2 text-ink-muted">
+                    <div className="text-[13px] font-medium text-ink">{story.title}</div>
+                    <div className="mt-1 text-[11px] text-ink-muted">
                       {story.currentSummary || "No summary yet."}
                     </div>
                   </Link>
                 ))}
               </div>
             ) : (
-              <p className="mt-4 text-sm leading-7 text-ink-muted">
+              <p className="mt-3 text-[13px] leading-6 text-ink-muted">
                 No stories are linked to this player character yet.
               </p>
             )}
           </Panel>
         </div>
 
-        <Panel className="h-fit">
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-            Metadata
-          </div>
-          <dl className="mt-4 space-y-4">
-            <div>
-              <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                Created
-              </dt>
-              <dd className="mt-2 text-sm text-ink-soft">
-                {formatDate(activeCharacter.createdAt)}
-              </dd>
+        <div className="space-y-4">
+          <Panel variant="flat" className="h-fit">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+              Metadata
             </div>
-            <div>
-              <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-                Universe Link
-              </dt>
-              <dd className="mt-2">
-                <Link
-                  to={`/universes/${activeUniverse.id}`}
-                  className={buttonClasses({ variant: "ghost", size: "sm" })}
-                >
-                  Open Universe
-                </Link>
-              </dd>
-            </div>
-          </dl>
-          {errorMessage ? (
-            <div className="mt-5 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
-              {errorMessage}
-            </div>
-          ) : null}
-        </Panel>
+            <dl className="mt-3 divide-y divide-divider/[0.3]">
+              <div className="flex items-center justify-between gap-3 py-2.5">
+                <dt className="text-[11px] text-ink-muted">Created</dt>
+                <dd className="text-[13px] text-ink-soft">{formatDate(activeCharacter.createdAt)}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 py-2.5">
+                <dt className="text-[11px] text-ink-muted">Universe</dt>
+                <dd>
+                  <Link
+                    to={`/universes/${activeUniverse.id}`}
+                    className={buttonClasses({ variant: "ghost", size: "sm" })}
+                  >
+                    Open
+                  </Link>
+                </dd>
+              </div>
+            </dl>
+            {errorMessage ? (
+              <div className="mt-4 rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
+                {errorMessage}
+              </div>
+            ) : null}
+          </Panel>
+        </div>
       </div>
     </div>
   );

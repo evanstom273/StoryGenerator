@@ -44,7 +44,7 @@ export function DeveloperNotesExportPage() {
         }
       />
 
-      <Panel padding="lg">
+      <Panel variant="flat" padding="lg">
         <div className="grid gap-3 text-sm text-ink-muted md:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-accent-soft">

@@ -184,7 +184,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
 
   if (loading) {
     return (
-      <Panel padding="lg">
+      <Panel variant="flat" padding="lg">
         <div className="text-sm text-ink-muted">Loading archive...</div>
       </Panel>
     );
@@ -192,7 +192,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
 
   if (errorMessage) {
     return (
-      <Panel padding="lg">
+      <Panel variant="flat" padding="lg">
         <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
           {errorMessage}
         </div>
@@ -202,7 +202,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
 
   if (!storyStateData) {
     return (
-      <Panel padding="lg" className="space-y-4">
+      <Panel variant="flat" padding="lg" className="space-y-4">
         <div className="text-sm text-ink-muted">No indexed state available yet.</div>
         <Button variant="secondary" onClick={() => void handleReindex()} disabled={isRebuilding}>
           {isRebuilding ? "Re-indexing..." : "Re-index"}
@@ -237,7 +237,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
 
   return (
     <div className="space-y-4">
-      <Panel padding="sm" className="space-y-3">
+      <Panel variant="flat" padding="sm" className="space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
             Archive
@@ -298,7 +298,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
 
       <div className="grid gap-4 md:grid-cols-2">
         {premise || protagonistSummary || currentSituation || recentDevelopments.length ? (
-          <Panel padding="sm" className="md:col-span-2">
+          <Panel variant="flat" padding="sm" className="md:col-span-2">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Story State
             </div>
@@ -346,7 +346,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
         ) : null}
 
         {openThreads.length ? (
-          <Panel padding="sm">
+          <Panel variant="flat" padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Open Threads
             </div>
@@ -365,7 +365,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
         ) : null}
 
         {worldFacts.length ? (
-          <Panel padding="sm">
+          <Panel variant="flat" padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               World Facts
             </div>
@@ -384,7 +384,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
         ) : null}
 
         {characterStates.length ? (
-          <Panel padding="sm">
+          <Panel variant="flat" padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Character Status
             </div>
@@ -431,7 +431,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
         ) : null}
 
         {characters.length ? (
-          <Panel padding="sm">
+          <Panel variant="flat" padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Characters
             </div>
@@ -456,7 +456,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
         ) : null}
 
         {locations.length ? (
-          <Panel padding="sm">
+          <Panel variant="flat" padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Locations
             </div>
@@ -481,7 +481,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
         ) : null}
 
         {relationships.length ? (
-          <Panel padding="sm">
+          <Panel variant="flat" padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Relationships
             </div>
@@ -521,7 +521,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
         ) : null}
 
         {Array.isArray(significantMemories) && significantMemories.length ? (
-          <Panel padding="sm">
+          <Panel variant="flat" padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Significant Memories
             </div>

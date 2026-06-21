@@ -18,7 +18,7 @@ export function UniverseCard({
   actions,
 }: UniverseCardProps) {
   return (
-    <Panel className="h-full bg-panel-muted">
+    <Panel variant="flat" className="h-full">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-wrap gap-2">
           <Badge variant="accent">Universe</Badge>

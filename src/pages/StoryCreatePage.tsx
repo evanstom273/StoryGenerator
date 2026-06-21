@@ -233,7 +233,7 @@ export function StoryCreatePage() {
           ["Step 2", "Select Player Character"],
           ["Step 3", "Story Details"],
         ].map(([step, title]) => (
-          <Panel key={step}>
+          <Panel variant="flat" key={step}>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               {step}
             </div>
@@ -242,7 +242,7 @@ export function StoryCreatePage() {
         ))}
       </div>
 
-      <Panel padding="lg">
+      <Panel variant="flat" padding="lg">
         <form className="space-y-8" onSubmit={handleSubmit}>
           <div className="grid gap-6 lg:grid-cols-2">
             <Field label="Universe" hint="Required">
@@ -327,7 +327,7 @@ export function StoryCreatePage() {
           ) : null}
 
           {protagonistMode === "newPermanent" ? (
-            <Panel className="border-dashed border-divider/[0.5] bg-panel-muted/30">
+            <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]">
               <h2 className="text-lg font-semibold text-ink">Create a permanent player character</h2>
               <p className="mt-2 text-sm leading-7 text-ink-muted">
                 This adds the character to your Player Characters library so you can reuse them across stories.
@@ -342,7 +342,7 @@ export function StoryCreatePage() {
           ) : null}
 
           {protagonistMode === "quick" ? (
-            <Panel className="border-dashed border-divider/[0.5] bg-panel-muted/30" padding="lg">
+            <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]" padding="lg">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 Quick Story Character
               </div>
@@ -518,7 +518,7 @@ export function StoryCreatePage() {
             </Panel>
           ) : null}
 
-          <Panel className="border-dashed border-divider/[0.5] bg-panel-muted/30">
+          <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               AI (per story)
             </div>
@@ -560,7 +560,7 @@ export function StoryCreatePage() {
           </Panel>
 
           {formState.universeId && !availableCharacters.length && protagonistMode === "existing" ? (
-            <Panel className="border-dashed border-divider/[0.5] bg-panel-muted/30">
+            <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]">
               <h2 className="text-lg font-semibold text-ink">
                 This universe needs a player character
               </h2>

@@ -9,7 +9,7 @@ interface EmptyStateProps {
 
 export function EmptyState({ title, description, action }: EmptyStateProps) {
   return (
-    <Panel className="border-dashed border-divider/[0.5] text-center">
+    <Panel variant="flat" className="border-dashed border-white/12 text-center">
       <div className="mx-auto max-w-xl">
         <h2 className="text-xl font-semibold tracking-tight text-ink">{title}</h2>
         <p className="mt-3 text-sm leading-7 text-ink-muted">{description}</p>
