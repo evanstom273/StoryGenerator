@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.18.3";
+export const APP_VERSION = "1.19.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -318,6 +318,24 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Narrative parity is improved when the AI has already established injuries, extraction, hospital care, trauma, or recovery and the player responds in plain language",
       "Safety refusal errors now make it clearer when the block came from the provider and when the request looks like a likely false positive in story context",
       "Version wiring is now aligned to 1.18.2 across the app label, changelog, npm metadata, and Android release metadata",
+    ],
+    knownIssues: [],
+  },
+  "1.19.0": {
+    title: "Editorial UI Redesign + MetaChat Full-Screen",
+    added: [
+      "Full editorial dark-theme redesign: all panels, cards, forms, and drawers now match the homepage's near-black aesthetic with subtle border treatment",
+      "MetaChat moved from a squashed sidebar popup to a full-screen overlay accessible via a new robot icon in the story toolbar",
+      "Story settings sidebar sections are now collapsible accordions — Story Info, Story AI, and Index/Archive open by default",
+      "Collapsible sections smooth-scroll themselves into view when opened",
+      "Story workspace toolbar now uses compact icon buttons (Settings, Bubble View, Archive, Reader Mode, MetaChat, Manual Entry)",
+      "Screenplay/transcript view is now the default display mode",
+      "MetaChat responses now render markdown (bold, italic, lists, headings, code) instead of showing raw asterisks",
+    ],
+    fixed: [
+      "Scrolling inside MetaChat or the story settings drawer no longer scrolls the story page behind it",
+      "Secondary text brightness lifted across the sidebar and homepage for better legibility on dark backgrounds",
+      "Version wiring aligned to 1.19.0 across app label, changelog, npm metadata, and Android build.gradle (versionCode 11900)",
     ],
     knownIssues: [],
   },

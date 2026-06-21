@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { Button } from "../ui/Button";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { downloadFile } from "../../lib/download";
@@ -188,9 +190,12 @@ export function MetaChatOverlay(props: {
                   <div>{message.role === "user" ? "You" : "MetaChat"}</div>
                   <div>{new Date(message.timestamp).toLocaleString()}</div>
                 </div>
-                <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-                  {message.content}
-                </div>
+                <div
+                  className="prose-metachat mt-2 text-sm leading-7 text-ink-soft"
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(marked.parse(message.content) as string),
+                  }}
+                />
               </div>
             ))
           ) : (
