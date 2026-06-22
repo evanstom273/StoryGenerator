@@ -113,7 +113,7 @@ export function buildStoryStateExtractionPrompt({
       '    "locations"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
       '    "items"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
       '    "factions"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
-      '    "relationships"?: Array<{ "a": string, "b": string, "tier": "stranger"|"acquaintance"|"friend"|"ally"|"rival"|"enemy"|"nemesis"|"lover", "summary"?: string, "history"?: Array<{ "summary": string, "messageNumber"?: number }>, "evidence"?: { "messageNumbers": number[] } }>,',
+      '    "relationships"?: Array<{ "a": string, "b": string, "tier": "stranger"|"acquaintance"|"friend"|"family"|"ally"|"rival"|"enemy"|"nemesis"|"lover", "summary"?: string, "history"?: Array<{ "summary": string, "messageNumber"?: number }>, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "worldFacts"?: Array<{ "fact": string, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "significantMemories"?: Array<{ "moment": string, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "openThreads"?: Array<{ "thread": string, "evidence"?: { "messageNumbers": number[] } }>',
@@ -154,7 +154,7 @@ export function buildStoryStateExtractionPrompt({
       "- Evidence should use messageNumbers from the transcript brackets. If uncertain, omit the entry instead of guessing.",
       "- For indexes.relationships: create an entry for EVERY named character who appears in the story, paired with the player character. Also create entries between NPCs who have direct notable interaction. Never omit a named character. Tier is REQUIRED on every entry — default to 'stranger' if there has been no meaningful interaction.",
       "- For indexes.relationships: represent the CURRENT dynamic state (not a timeline). Keep only one entry per pair. Update/overwrite the pair instead of adding duplicates.",
-      "- For indexes.relationships.tier: assign the single best-fit tier. Use: stranger (named but minimal/no direct contact), acquaintance (met, some interaction, neutral), friend (genuine positive bond), ally (actively cooperating toward shared goals), rival (competitive or opposed but not hateful), enemy (active antagonism or opposing goals), nemesis (personal, intense, defining enmity), lover (romantic or intimate bond). Re-evaluate on every index pass.",
+      "- For indexes.relationships.tier: assign the single best-fit tier. Use: stranger (named but minimal/no direct contact), acquaintance (met, some interaction, neutral), friend (genuine positive bond), family (parent, child, sibling, spouse, or other blood/legal kinship), ally (actively cooperating toward shared goals), rival (competitive or opposed but not hateful), enemy (active antagonism or opposing goals), nemesis (personal, intense, defining enmity), lover (romantic or intimate bond). Re-evaluate on every index pass.",
       "- For indexes.relationships.summary: write 1-2 sentences describing the current state of this relationship. Required for non-strangers; optional but encouraged even for strangers.",
       "- For indexes.relationships.history: record up to 3 key turning-point moments (first meeting counts). Each entry: concise 1-sentence summary + messageNumber if available. Preserve previous history entries unless superseded.",
       "- Preserve Open Threads quality. Track the questions/tensions a reader would still care about.",
@@ -267,7 +267,7 @@ function sanitizeIndexes(value: any) {
   const maxMessageNumber = messageCount && messageCount > 0 ? messageCount : undefined;
 
   const relationshipsList = (value as any).relationships;
-  const validTiers = ["stranger", "acquaintance", "friend", "ally", "rival", "enemy", "nemesis", "lover"] as const;
+  const validTiers = ["stranger", "acquaintance", "friend", "family", "ally", "rival", "enemy", "nemesis", "lover"] as const;
   const relationships = Array.isArray(relationshipsList)
     ? relationshipsList
         .filter((entry: unknown) => entry && typeof entry === "object" && !Array.isArray(entry))

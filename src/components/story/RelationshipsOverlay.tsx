@@ -6,11 +6,12 @@ import type { RelationshipHistoryEntry, RelationshipIndexEntry, RelationshipTier
 import { cn } from "../../utils/cn";
 
 const ALL_TIERS: RelationshipTier[] = [
-  "stranger", "acquaintance", "friend", "ally", "rival", "enemy", "nemesis", "lover",
+  "stranger", "acquaintance", "friend", "family", "ally", "rival", "enemy", "nemesis", "lover",
 ];
 
 const TIER_COLOR: Record<RelationshipTier, string> = {
   friend: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+  family: "bg-violet-500/15 text-violet-400 border-violet-500/20",
   ally: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
   lover: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
   stranger: "bg-white/5 text-white/38 border-white/10",
@@ -21,7 +22,7 @@ const TIER_COLOR: Record<RelationshipTier, string> = {
 };
 
 const TIER_ORDER: RelationshipTier[] = [
-  "lover", "ally", "friend", "acquaintance", "stranger", "rival", "enemy", "nemesis",
+  "lover", "family", "ally", "friend", "acquaintance", "stranger", "rival", "enemy", "nemesis",
 ];
 
 function sortByTier(rels: RelationshipIndexEntry[]): RelationshipIndexEntry[] {

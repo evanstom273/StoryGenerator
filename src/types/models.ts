@@ -261,6 +261,7 @@ export type RelationshipTier =
   | "stranger"
   | "acquaintance"
   | "friend"
+  | "family"
   | "ally"
   | "rival"
   | "enemy"
