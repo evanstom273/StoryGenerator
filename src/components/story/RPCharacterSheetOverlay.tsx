@@ -10,6 +10,14 @@ import {
   formatGold,
   undoLastChange,
 } from "../../lib/rpStats";
+import {
+  buildRpExportJson,
+  buildRpExportMarkdown,
+  buildRpExportText,
+  buildRpExportPdf,
+  type RpExportData,
+} from "../../lib/rpExport";
+import { downloadFile } from "../../lib/download";
 import type { RpConfig, RpStats, Story } from "../../types/models";
 import { cn } from "../../utils/cn";
 
@@ -127,17 +135,18 @@ function NumberField({
   );
 }
 
-type Tab = "stats" | "hp" | "currency" | "changelog" | "config";
+type Tab = "stats" | "hp" | "currency" | "changelog" | "config" | "export";
 
 export function RPCharacterSheetOverlay(props: {
   open: boolean;
   story: Story;
   onClose: () => void;
 }) {
-  const { fetchStoryState, updateRpStats, updateStory } = useStoryEngine();
+  const { fetchStoryState, updateRpStats, updateStory, messages: allMessages } = useStoryEngine();
   const [rpStats, setRpStats] = useState<RpStats | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("stats");
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState<"json" | "md" | "txt" | "pdf" | null>(null);
   const [rpEnabled, setRpEnabled] = useState(props.story.rpMode ?? false);
   const [togglingRp, setTogglingRp] = useState(false);
   const [configDraft, setConfigDraft] = useState<RpConfig>(props.story.rpConfig ?? DEFAULT_RP_CONFIG);
@@ -205,6 +214,36 @@ export function RPCharacterSheetOverlay(props: {
     void save(applyStatChange(rpStats, { field: key, from: current, to: newVal, reason: "Manual edit" }));
   }
 
+  async function handleExport(format: "json" | "md" | "txt" | "pdf") {
+    if (!rpStats) return;
+    setExporting(format);
+    try {
+      const storyMessages = allMessages.filter(
+        (m) => m.storyId === props.story.id && m.role !== "system",
+      );
+      const exportData: RpExportData = {
+        storyTitle: props.story.title,
+        exportedAt: new Date().toISOString(),
+        rpStats,
+        rpConfig: config,
+        messages: storyMessages,
+      };
+      const safe = props.story.title.replace(/[^a-zA-Z0-9_-]/g, "_");
+      if (format === "json") {
+        await downloadFile(`${safe}-rp-export.json`, buildRpExportJson(exportData), "application/json");
+      } else if (format === "md") {
+        await downloadFile(`${safe}-rp-export.md`, buildRpExportMarkdown(exportData), "text/markdown");
+      } else if (format === "txt") {
+        await downloadFile(`${safe}-rp-export.txt`, buildRpExportText(exportData), "text/plain");
+      } else {
+        const blob = await buildRpExportPdf(exportData);
+        await downloadFile(`${safe}-rp-export.pdf`, blob, "application/pdf");
+      }
+    } finally {
+      setExporting(null);
+    }
+  }
+
   const tabs: { id: Tab; label: string }[] = rpEnabled
     ? [
         { id: "stats", label: "Stats" },
@@ -212,6 +251,7 @@ export function RPCharacterSheetOverlay(props: {
         { id: "currency", label: config.currencyName || "Currency" },
         { id: "changelog", label: "Log" },
         { id: "config", label: "Config" },
+        { id: "export", label: "Export" },
       ]
     : [{ id: "config", label: "Config" }];
 
@@ -385,6 +425,42 @@ export function RPCharacterSheetOverlay(props: {
                     ))}
                   </>
                 )}
+              </div>
+            )}
+
+            {activeTab === "export" && rpStats && (
+              <div className="space-y-4">
+                <p className="text-xs text-ink-muted">
+                  Download a snapshot of your character sheet, stat changelog, NPC HP, and the full story transcript.
+                </p>
+                <div className="space-y-2">
+                  {(
+                    [
+                      { fmt: "json", label: "JSON", desc: "Structured data — import or process elsewhere" },
+                      { fmt: "md", label: "Markdown", desc: "Human-readable with tables and headers" },
+                      { fmt: "txt", label: "Plain Text", desc: "Simple text file, no markup" },
+                      { fmt: "pdf", label: "PDF", desc: "Formatted document for printing or sharing" },
+                    ] as const
+                  ).map(({ fmt, label, desc }) => (
+                    <div
+                      key={fmt}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-divider/40 bg-panel-muted/40 px-3 py-2"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-ink">{label}</p>
+                        <p className="text-xs text-ink-muted">{desc}</p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={exporting !== null}
+                        onClick={() => void handleExport(fmt)}
+                      >
+                        {exporting === fmt ? "…" : "Download"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "1.19.0";
+export const APP_VERSION = "2.0.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -350,6 +350,24 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Starting a new chapter with flexible Chapter X syntax now implicitly closes the previous active chapter without breaking older Start/End markers",
       "Story settings now surfaces job state and duplicate deep-index requests no longer stack up for the same story",
       "Version wiring is now aligned to 1.18.3 across the app label and npm metadata",
+    ],
+    knownIssues: [],
+  },
+  "2.0.0": {
+    title: "RP Mode — Relationships, AI Stat Integration & Export",
+    added: [
+      "Relationship system overhaul: AI-extracted relationship tiers (stranger, acquaintance, friend, family, ally, rival, enemy, nemesis, lover) with dynamic metrics and richer summaries",
+      "RP Mode foundation: HP, currency, and core stat tracking (STR/DEX/CON/INT/WIS/CHA) with manual editing and changelog",
+      "AI stat integration: narrator is now aware of current RP stats and suggests HP, gold, and ability score changes after each turn",
+      "Auto-apply stat changes: implied changes detected in AI responses are applied automatically with an Undo banner",
+      "RP Mode export: download a full snapshot (character sheet, NPC HP, stat changelog, story transcript) as JSON, Markdown, Plain Text, or PDF",
+      "Family relationship tier added for parent/child/sibling/spouse dynamics",
+      "Notification reliability fix: browser notification errors handled gracefully when a service worker is present",
+      "API key sanitisation: non-ISO-8859-1 characters in stored API keys are stripped before HTTP requests to prevent fetch errors",
+    ],
+    fixed: [
+      "RP Mode toggle pill now renders correctly in the Character Sheet overlay",
+      "Parent/child relationships are no longer misclassified as 'friend' — family tier now recognised by both the AI extractor and the UI",
     ],
     knownIssues: [],
   },
