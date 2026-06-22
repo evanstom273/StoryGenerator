@@ -1,5 +1,6 @@
 import type {
   MemoryArchitectureVersion,
+  RelationshipHistoryEntry,
   RelationshipIndexEntry,
   StoryIndexesV2,
   StoryStateData,
@@ -129,6 +130,22 @@ function mergeEvidence(left: any, right: any) {
   return merged.length ? { messageNumbers: merged } : undefined;
 }
 
+function mergeHistory(
+  left: RelationshipHistoryEntry[] | undefined,
+  right: RelationshipHistoryEntry[] | undefined,
+): RelationshipHistoryEntry[] | undefined {
+  const combined = [...(left ?? []), ...(right ?? [])];
+  if (!combined.length) return undefined;
+  const seen = new Set<string>();
+  const deduped = combined.filter((h) => {
+    const key = h.summary.toLowerCase().trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return deduped.slice(0, 5);
+}
+
 function mergeRelationship(left: RelationshipIndexEntry, right: RelationshipIndexEntry): RelationshipIndexEntry {
   const pick = <T>(next: T | undefined, prev: T | undefined) => (next !== undefined ? next : prev);
   const summary = typeof right.summary === "string" && right.summary.trim()
@@ -137,6 +154,8 @@ function mergeRelationship(left: RelationshipIndexEntry, right: RelationshipInde
       ? left.summary.trim()
       : undefined;
   const evidence = mergeEvidence(left.evidence, right.evidence);
+  const tier = right.tier ?? left.tier;
+  const history = mergeHistory(left.history, right.history);
 
   return {
     a: left.a,
@@ -157,6 +176,8 @@ function mergeRelationship(left: RelationshipIndexEntry, right: RelationshipInde
       : {}),
     ...(pick(right.tension, left.tension) !== undefined ? { tension: pick(right.tension, left.tension) } : {}),
     ...(pick(right.hostility, left.hostility) !== undefined ? { hostility: pick(right.hostility, left.hostility) } : {}),
+    ...(tier ? { tier } : {}),
+    ...(history?.length ? { history } : {}),
     ...(summary ? { summary } : {}),
     ...(evidence ? { evidence } : {}),
   };
@@ -200,6 +221,8 @@ function reconcileRelationships(
       ...(typeof entry.affection === "number" ? { affection: entry.affection } : {}),
       ...(typeof entry.tension === "number" ? { tension: entry.tension } : {}),
       ...(typeof entry.hostility === "number" ? { hostility: entry.hostility } : {}),
+      ...(entry.tier ? { tier: entry.tier } : {}),
+      ...(Array.isArray(entry.history) && entry.history.length ? { history: entry.history } : {}),
       ...(typeof entry.summary === "string" && entry.summary.trim() ? { summary: entry.summary.trim() } : {}),
       ...(mergeEvidence(entry.evidence, undefined) ? { evidence: mergeEvidence(entry.evidence, undefined) } : {}),
     };

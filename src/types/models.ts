@@ -216,6 +216,21 @@ export type IndexedEntity = {
   evidence?: EvidenceRef;
 };
 
+export type RelationshipTier =
+  | "stranger"
+  | "acquaintance"
+  | "friend"
+  | "ally"
+  | "rival"
+  | "enemy"
+  | "nemesis"
+  | "lover";
+
+export type RelationshipHistoryEntry = {
+  summary: string;
+  messageNumber?: number;
+};
+
 export type RelationshipIndexEntry = {
   a: string;
   b: string;
@@ -229,6 +244,8 @@ export type RelationshipIndexEntry = {
   affection?: number;
   tension?: number;
   hostility?: number;
+  tier?: RelationshipTier;
+  history?: RelationshipHistoryEntry[];
   summary?: string;
   evidence?: EvidenceRef;
 };

@@ -113,7 +113,7 @@ export function buildStoryStateExtractionPrompt({
       '    "locations"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
       '    "items"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
       '    "factions"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
-      '    "relationships"?: Array<{ "a": string, "b": string, "friendship"?: number, "trust"?: number, "respect"?: number, "loyalty"?: number, "comfort"?: number, "suspicion"?: number, "fear"?: number, "affection"?: number, "tension"?: number, "hostility"?: number, "summary"?: string, "evidence"?: { "messageNumbers": number[] } }>,',
+      '    "relationships"?: Array<{ "a": string, "b": string, "friendship"?: number, "trust"?: number, "respect"?: number, "loyalty"?: number, "comfort"?: number, "suspicion"?: number, "fear"?: number, "affection"?: number, "tension"?: number, "hostility"?: number, "tier"?: "stranger"|"acquaintance"|"friend"|"ally"|"rival"|"enemy"|"nemesis"|"lover", "history"?: Array<{ "summary": string, "messageNumber"?: number }>, "summary"?: string, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "worldFacts"?: Array<{ "fact": string, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "significantMemories"?: Array<{ "moment": string, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "openThreads"?: Array<{ "thread": string, "evidence"?: { "messageNumbers": number[] } }>',
@@ -153,6 +153,8 @@ export function buildStoryStateExtractionPrompt({
       "- Keep indexes bounded: max 50 entities per category, max 30 worldFacts, max 50 significantMemories, max 20 openThreads, max 30 relationships.",
       "- Evidence should use messageNumbers from the transcript brackets. If uncertain, omit the entry instead of guessing.",
       "- For indexes.relationships: represent the CURRENT dynamic state (not a timeline). Keep only one entry per pair. Update/overwrite the pair instead of adding duplicates. Prefer stable ordering for pairs.",
+      "- For indexes.relationships.tier: assign the single best-fit tier. Use: stranger (met once or minimal contact), acquaintance (regular contact, neutral), friend (genuine positive bond), ally (actively cooperating toward shared goals), rival (competitive or opposed but not hateful), enemy (active antagonism or opposing goals), nemesis (personal, intense, defining enmity), lover (romantic or intimate bond). Re-evaluate the tier on every deep index pass.",
+      "- For indexes.relationships.history: record up to 3 key turning-point moments that meaningfully shifted this relationship (e.g. first meeting, a betrayal, a rescue, a confession). Each entry must have a concise 1-sentence summary and the messageNumber if available. Preserve previous history entries unless they are clearly superseded.",
       "- Preserve Open Threads quality. Track the questions/tensions a reader would still care about.",
       "- If nothing changed, return the previous state with a refreshed updatedAt.",
       "- Never generate dialogue or actions for the player character; this is metadata only.",
@@ -276,6 +278,17 @@ function sanitizeIndexes(value: any) {
 
           const evidence = sanitizeEvidence(entry.evidence, maxMessageNumber);
 
+          const validTiers = ["stranger", "acquaintance", "friend", "ally", "rival", "enemy", "nemesis", "lover"] as const;
+          const sanitizedHistory = Array.isArray(entry.history)
+            ? entry.history
+                .filter((h: unknown) => h && typeof h === "object" && !Array.isArray(h) && typeof (h as any).summary === "string" && (h as any).summary.trim())
+                .slice(0, 5)
+                .map((h: any) => ({
+                  summary: h.summary.trim(),
+                  ...(typeof h.messageNumber === "number" && Number.isFinite(h.messageNumber) ? { messageNumber: Math.trunc(h.messageNumber) } : {}),
+                }))
+            : undefined;
+
           return {
             a: entry.a.trim(),
             b: entry.b.trim(),
@@ -289,6 +302,8 @@ function sanitizeIndexes(value: any) {
             ...(clampScore(entry.affection) !== undefined ? { affection: clampScore(entry.affection) } : {}),
             ...(clampScore(entry.tension) !== undefined ? { tension: clampScore(entry.tension) } : {}),
             ...(clampScore(entry.hostility) !== undefined ? { hostility: clampScore(entry.hostility) } : {}),
+            ...(typeof entry.tier === "string" && validTiers.includes(entry.tier as any) ? { tier: entry.tier as (typeof validTiers)[number] } : {}),
+            ...(sanitizedHistory?.length ? { history: sanitizedHistory } : {}),
             ...(typeof entry.summary === "string" && entry.summary.trim() ? { summary: entry.summary.trim() } : {}),
             ...(evidence ? { evidence } : {}),
           };
@@ -587,6 +602,22 @@ export function formatStoryLongTermMemoryForPrompt(
       lines.push("");
       lines.push("Relationships:");
       lines.push(...relationshipLines.slice(0, 16));
+    }
+  }
+
+  const indexedRelationships = storyStateData.indexes?.relationships;
+  if (Array.isArray(indexedRelationships) && indexedRelationships.length) {
+    const relLines: string[] = [];
+    for (const rel of indexedRelationships.slice(0, 20)) {
+      if (!rel.a || !rel.b) continue;
+      const tierLabel = rel.tier ? ` [${rel.tier}]` : "";
+      const summaryPart = rel.summary ? ` — ${rel.summary}` : "";
+      relLines.push(`- ${rel.a} ↔ ${rel.b}${tierLabel}${summaryPart}`);
+    }
+    if (relLines.length) {
+      lines.push("");
+      lines.push("Indexed Relationships:");
+      lines.push(...relLines);
     }
   }
 
