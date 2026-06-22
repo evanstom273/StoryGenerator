@@ -158,6 +158,7 @@ export function StoryWorkspacePage() {
   const [relationshipsOpen, setRelationshipsOpen] = useState(false);
   const [lastRpChanges, setLastRpChanges] = useState<RpChangelogEntry[] | null>(null);
   const [pendingCoreStatChanges, setPendingCoreStatChanges] = useState<RpStatDelta[] | null>(null);
+  const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
   const [showZeroHpModal, setShowZeroHpModal] = useState(false);
   const [zeroHpConsequenceChoice, setZeroHpConsequenceChoice] = useState<string>("");
   const [zeroHpCustom, setZeroHpCustom] = useState("");
@@ -184,6 +185,7 @@ export function StoryWorkspacePage() {
     setRelationshipsOpen(false);
     setLastRpChanges(null);
     setPendingCoreStatChanges(null);
+    setRpToasts([]);
     setShowZeroHpModal(false);
     setZeroHpConsequenceChoice("");
     setZeroHpCustom("");
@@ -310,6 +312,11 @@ export function StoryWorkspacePage() {
         }
       }
       if (result.pendingCoreStatChanges?.length) setPendingCoreStatChanges(result.pendingCoreStatChanges);
+      if (result.rpEventSummary) {
+        const id = `${Date.now()}-${Math.random()}`;
+        setRpToasts((prev) => [{ id, summary: result.rpEventSummary! }, ...prev]);
+        setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+      }
     } catch (error) {
       reportWorkspaceUiAudit({
         msg: "Story workspace displayed generation error",
@@ -1239,6 +1246,27 @@ export function StoryWorkspacePage() {
           onClose={() => setRelationshipsOpen(false)}
         />
       ) : null}
+
+      {/* RP event toasts */}
+      {rpToasts.length > 0 && (
+        <div className="fixed bottom-20 right-4 z-50 flex flex-col-reverse gap-2 pointer-events-none">
+          {rpToasts.map((toast) => (
+            <div
+              key={toast.id}
+              className="pointer-events-auto flex items-start gap-2 rounded-[10px] border border-divider bg-panel px-3 py-2.5 shadow-lg max-w-xs"
+            >
+              <span className="mt-0.5 shrink-0 text-sm">🎲</span>
+              <span className="text-xs text-ink-soft leading-relaxed flex-1">{toast.summary}</span>
+              <button
+                className="shrink-0 ml-1 text-ink-muted hover:text-ink transition"
+                onClick={() => setRpToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

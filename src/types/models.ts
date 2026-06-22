@@ -108,12 +108,18 @@ export type RpChangelogEntry = {
   reason: string;
 };
 
+export type RpEventLogEntry = {
+  ts: number;
+  summary: string;
+};
+
 export type RpStats = {
   hp: number;
   gold: number;
   npcHp: Record<string, RpNpcHpEntry>;
   statOverrides?: Partial<RpCoreStats>;
   changelog: RpChangelogEntry[];
+  eventLog?: RpEventLogEntry[];
 };
 
 export interface Story {

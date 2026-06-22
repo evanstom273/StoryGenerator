@@ -91,6 +91,40 @@ export function getStatValue(stats: RpStats, config: RpConfig, field: string): n
   return (coreStats as Record<string, number>)[field] ?? 10;
 }
 
+function hpStateName(hp: number, maxHp: number): string {
+  if (hp <= 0) return "Incapacitated";
+  const pct = maxHp > 0 ? hp / maxHp : 0;
+  if (pct <= 0.05) return "Incapacitated";
+  if (pct <= 0.25) return "Critical condition";
+  if (pct <= 0.50) return "Seriously wounded";
+  if (pct <= 0.75) return "Injured";
+  return "Healthy";
+}
+
+export function buildRpEventSummary(
+  changes: Array<{ field: string; from: number; to: number; reason: string }>,
+  config: RpConfig,
+): string {
+  const parts = changes.map(({ field, from, to, reason }) => {
+    if (field === "hp") {
+      const state = hpStateName(to, config.maxHp);
+      const diff = to - from;
+      const sign = diff >= 0 ? "+" : "−";
+      return `HP ${sign}${Math.abs(diff)} (${from} → ${to}) — ${state}${reason ? ` · ${reason}` : ""}`;
+    }
+    if (field === "gold") {
+      const diff = to - from;
+      const sign = diff >= 0 ? "+" : "−";
+      const abs = config.currencyDecimals ? Math.abs(diff).toFixed(2) : String(Math.abs(Math.floor(diff)));
+      return `${config.currencyName} ${sign}${abs}${reason ? ` · ${reason}` : ""}`;
+    }
+    const diff = to - from;
+    const sign = diff >= 0 ? "+" : "−";
+    return `${field.toUpperCase()} ${sign}${Math.abs(diff)} (${from} → ${to})${reason ? ` · ${reason}` : ""}`;
+  });
+  return parts.join("  ·  ");
+}
+
 export function clampStat(field: string, value: number, config: RpConfig): number {
   if (field === "hp") return Math.min(config.maxHp, Math.max(0, value));
   if (field === "gold") {
