@@ -224,24 +224,14 @@ export function serializeStoryArchivePdf(
     .map((e) => ({
       a: typeof e?.a === "string" ? e.a.trim() : "",
       b: typeof e?.b === "string" ? e.b.trim() : "",
+      tier: typeof e?.tier === "string" ? e.tier.trim() : "stranger",
       summary: typeof e?.summary === "string" ? e.summary.trim() : "",
+      history: Array.isArray(e?.history)
+        ? (e.history as unknown[])
+            .map((h) => (typeof (h as any)?.summary === "string" ? (h as any).summary.trim() : ""))
+            .filter(Boolean)
+        : [],
       evidence: formatEvidence(coerceEvidenceNumbers(e)),
-      metrics: (
-        [
-          ["Friendship", e?.friendship],
-          ["Trust", e?.trust],
-          ["Respect", e?.respect],
-          ["Loyalty", e?.loyalty],
-          ["Comfort", e?.comfort],
-          ["Suspicion", e?.suspicion],
-          ["Fear", e?.fear],
-          ["Affection", e?.affection],
-          ["Tension", e?.tension],
-          ["Hostility", e?.hostility],
-        ] as [string, unknown][]
-      )
-        .filter(([, v]) => typeof v === "number" && (v as number) !== 0)
-        .map(([label, v]) => `${label}: ${Math.round(v as number)}`),
     }))
     .filter((e) => e.a && e.b);
 
@@ -249,9 +239,16 @@ export function serializeStoryArchivePdf(
     y = rule(doc, y, pageW);
     y = heading(doc, y, "Relationships", 14, pageH);
     for (const entry of relationshipRegistry) {
-      y = subheading(doc, y, `${entry.a} ↔ ${entry.b}`, pageH);
+      y = subheading(doc, y, `${entry.a} <-> ${entry.b}`, pageH);
+      if (entry.tier && entry.tier !== "stranger") {
+        y = metaLine(doc, y, "Tier", entry.tier.charAt(0).toUpperCase() + entry.tier.slice(1), pageH);
+      }
       if (entry.summary) y = body(doc, y, entry.summary, 0, undefined, pageH);
-      if (entry.metrics.length) y = body(doc, y, entry.metrics.join("  ·  "), 0, undefined, pageH);
+      if (entry.history.length) {
+        for (let hi = 0; hi < entry.history.length; hi++) {
+          y = body(doc, y, `#${hi + 1}  ${entry.history[hi]}`, 0, undefined, pageH);
+        }
+      }
       if (entry.evidence) y = metaLine(doc, y, "Evidence", entry.evidence, pageH);
       y += 4;
       y = rule(doc, y, pageW);

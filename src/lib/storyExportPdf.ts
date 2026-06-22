@@ -43,21 +43,25 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
   y = metaLine(doc, y, "Universe", bundle.universe.name, pageH);
   y = metaLine(doc, y, "Protagonist", bundle.playerCharacter.name, pageH);
   y = metaLine(doc, y, "Exported", formatDateTime(bundle.exportedAt), pageH);
-  y += 6;
+  y += 16;
 
   // ── Summary ──────────────────────────────────────────────────────────────
   const summaryText =
     bundle.story.currentSummary?.trim() || storyStateData?.summaries?.worldSummary?.trim() || "";
   if (summaryText) {
     y = rule(doc, y, pageW);
+    y += 12;
     y = heading(doc, y, "Summary", 14, pageH);
     y = body(doc, y, summaryText, 0, undefined, pageH);
+    y += 8;
   }
 
   // ── Transcript ───────────────────────────────────────────────────────────
   y = rule(doc, y, pageW);
+  y += 12;
   y = heading(doc, y, "Transcript", 14, pageH);
   y = rule(doc, y, pageW);
+  y += 8;
 
   let latestUserMessage: string | null = null;
 
@@ -82,8 +86,10 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
       }
     }
 
+    y += 8;
     y = checkPage(doc, y, pageH, 10);
     y = rule(doc, y, pageW);
+    y += 10;
   }
 
   return doc.output("arraybuffer") as ArrayBuffer;
