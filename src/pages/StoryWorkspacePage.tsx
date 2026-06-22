@@ -19,9 +19,7 @@ import { cn } from "../utils/cn";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
-import { normalizeStoryStateToV2, safeParseStoryStateData } from "../lib/storyStateV2";
 import type {
-  RelationshipIndexEntry,
   StoryMessage,
   StoryMessageRole,
   StoryMessageSpeakerType,
@@ -115,7 +113,6 @@ export function StoryWorkspacePage() {
     getStoryById,
     getUniverseById,
     editAssistantMessage,
-    fetchStoryState,
     generatePlayerAssistMessage,
     regenerateLastAssistantMessage,
     sendChatMessage,
@@ -152,21 +149,8 @@ export function StoryWorkspacePage() {
   const [assistantEditContent, setAssistantEditContent] = useState("");
   const [assistantEditError, setAssistantEditError] = useState<string | null>(null);
   const [isAssistantEditSaving, setIsAssistantEditSaving] = useState(false);
-  const [toolbarRelationships, setToolbarRelationships] = useState<RelationshipIndexEntry[]>([]);
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
   const [relationshipsOpen, setRelationshipsOpen] = useState(false);
-
-  useEffect(() => {
-    if (!storyId) return;
-    let cancelled = false;
-    fetchStoryState(storyId).then((state) => {
-      if (cancelled || !state) return;
-      const parsed = normalizeStoryStateToV2(safeParseStoryStateData(state.stateJson));
-      const rels = parsed?.indexes?.relationships;
-      if (Array.isArray(rels)) setToolbarRelationships(rels);
-    });
-    return () => { cancelled = true; };
-  }, [storyId, fetchStoryState, messages.length]);
 
   useEffect(() => {
     setEditingMessage(null);
@@ -188,6 +172,7 @@ export function StoryWorkspacePage() {
     setRpSheetOpen(false);
     setRelationshipsOpen(false);
   }, [storyId]);
+
 
   useEffect(() => {
     function handleJump(event: Event) {
@@ -701,42 +686,6 @@ export function StoryWorkspacePage() {
           <span className="shrink-0 text-[11px] text-white/30">
             {messages.length} {messages.length === 1 ? "entry" : "entries"}
           </span>
-          {(() => {
-            const pcName = activePlayerCharacter?.name?.trim().toLowerCase() ?? "";
-            const topRels = toolbarRelationships
-              .filter((r) => {
-                const aLow = r.a.trim().toLowerCase();
-                const bLow = r.b.trim().toLowerCase();
-                return aLow !== bLow && !(aLow === pcName || bLow === pcName ? false : true)
-                  && (aLow === pcName || bLow === pcName);
-              })
-              .slice(0, 3);
-            if (!topRels.length) return null;
-            const tierColor: Record<string, string> = {
-              friend: "border-emerald-500/25 bg-emerald-500/10 text-emerald-400",
-              ally: "border-emerald-500/25 bg-emerald-500/10 text-emerald-400",
-              lover: "border-emerald-500/25 bg-emerald-500/10 text-emerald-400",
-              stranger: "border-white/10 bg-white/5 text-white/38",
-              acquaintance: "border-white/10 bg-white/5 text-white/38",
-              rival: "border-orange-500/25 bg-orange-500/10 text-orange-400",
-              enemy: "border-red-500/25 bg-red-500/10 text-red-400",
-              nemesis: "border-red-500/25 bg-red-500/10 text-red-400",
-            };
-            return (
-              <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                {topRels.map((rel, i) => {
-                  const npcName = rel.a.trim().toLowerCase() === pcName ? rel.b : rel.a;
-                  const colorClass = rel.tier ? (tierColor[rel.tier] ?? "border-white/10 bg-white/5 text-white/38") : "border-white/10 bg-white/5 text-white/38";
-                  return (
-                    <span key={i} className={cn("flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium", colorClass)}>
-                      <span className="max-w-[80px] truncate">{npcName}</span>
-                      {rel.tier ? <span className="opacity-60">· {rel.tier}</span> : null}
-                    </span>
-                  );
-                })}
-              </div>
-            );
-          })()}
         </div>
         <div className="flex items-center gap-0.5">
           <WorkspaceIconBtn

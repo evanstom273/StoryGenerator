@@ -147,36 +147,19 @@ function mergeHistory(
 }
 
 function mergeRelationship(left: RelationshipIndexEntry, right: RelationshipIndexEntry): RelationshipIndexEntry {
-  const pick = <T>(next: T | undefined, prev: T | undefined) => (next !== undefined ? next : prev);
   const summary = typeof right.summary === "string" && right.summary.trim()
     ? right.summary.trim()
     : typeof left.summary === "string" && left.summary.trim()
       ? left.summary.trim()
       : undefined;
   const evidence = mergeEvidence(left.evidence, right.evidence);
-  const tier = right.tier ?? left.tier;
+  const tier = right.tier ?? left.tier ?? "stranger";
   const history = mergeHistory(left.history, right.history);
 
   return {
     a: left.a,
     b: left.b,
-    ...(pick(right.friendship, left.friendship) !== undefined
-      ? { friendship: pick(right.friendship, left.friendship) }
-      : {}),
-    ...(pick(right.trust, left.trust) !== undefined ? { trust: pick(right.trust, left.trust) } : {}),
-    ...(pick(right.respect, left.respect) !== undefined ? { respect: pick(right.respect, left.respect) } : {}),
-    ...(pick(right.loyalty, left.loyalty) !== undefined ? { loyalty: pick(right.loyalty, left.loyalty) } : {}),
-    ...(pick(right.comfort, left.comfort) !== undefined ? { comfort: pick(right.comfort, left.comfort) } : {}),
-    ...(pick(right.suspicion, left.suspicion) !== undefined
-      ? { suspicion: pick(right.suspicion, left.suspicion) }
-      : {}),
-    ...(pick(right.fear, left.fear) !== undefined ? { fear: pick(right.fear, left.fear) } : {}),
-    ...(pick(right.affection, left.affection) !== undefined
-      ? { affection: pick(right.affection, left.affection) }
-      : {}),
-    ...(pick(right.tension, left.tension) !== undefined ? { tension: pick(right.tension, left.tension) } : {}),
-    ...(pick(right.hostility, left.hostility) !== undefined ? { hostility: pick(right.hostility, left.hostility) } : {}),
-    ...(tier ? { tier } : {}),
+    tier,
     ...(history?.length ? { history } : {}),
     ...(summary ? { summary } : {}),
     ...(evidence ? { evidence } : {}),
@@ -211,17 +194,7 @@ function reconcileRelationships(
     const normalizedEntry: RelationshipIndexEntry = {
       a: ordered.a,
       b: ordered.b,
-      ...(typeof entry.friendship === "number" ? { friendship: entry.friendship } : {}),
-      ...(typeof entry.trust === "number" ? { trust: entry.trust } : {}),
-      ...(typeof entry.respect === "number" ? { respect: entry.respect } : {}),
-      ...(typeof entry.loyalty === "number" ? { loyalty: entry.loyalty } : {}),
-      ...(typeof entry.comfort === "number" ? { comfort: entry.comfort } : {}),
-      ...(typeof entry.suspicion === "number" ? { suspicion: entry.suspicion } : {}),
-      ...(typeof entry.fear === "number" ? { fear: entry.fear } : {}),
-      ...(typeof entry.affection === "number" ? { affection: entry.affection } : {}),
-      ...(typeof entry.tension === "number" ? { tension: entry.tension } : {}),
-      ...(typeof entry.hostility === "number" ? { hostility: entry.hostility } : {}),
-      ...(entry.tier ? { tier: entry.tier } : {}),
+      tier: entry.tier ?? "stranger",
       ...(Array.isArray(entry.history) && entry.history.length ? { history: entry.history } : {}),
       ...(typeof entry.summary === "string" && entry.summary.trim() ? { summary: entry.summary.trim() } : {}),
       ...(mergeEvidence(entry.evidence, undefined) ? { evidence: mergeEvidence(entry.evidence, undefined) } : {}),

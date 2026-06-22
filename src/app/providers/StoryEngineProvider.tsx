@@ -99,6 +99,7 @@ import type {
   PlayerCharacterExportBundleV1,
   PlayerCharacter,
   PlayerCharacterDraft,
+  RelationshipIndexEntry,
   RpStats,
   StorageStatus,
   Story,
@@ -239,6 +240,7 @@ interface StoryEngineContextValue {
   ) => Promise<PlayerCharacterExportBundleV1 | null>;
   fetchStoryState: (storyId: string) => Promise<StoryState | null>;
   updateRpStats: (storyId: string, rpStats: RpStats | null) => Promise<void>;
+  updateRelationshipsIndex: (storyId: string, relationships: RelationshipIndexEntry[]) => Promise<void>;
   refreshStoryState: (storyId: string, opts?: { force?: boolean }) => Promise<void>;
   updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal }) => Promise<void>;
   queueStoryIndexJob: (
@@ -3201,6 +3203,22 @@ export function StoryEngineProvider({
       },
       fetchStoryState(storyId) {
         return repository.getStoryState(storyId);
+      },
+      async updateRelationshipsIndex(storyId, relationships) {
+        const existing = await repository.getStoryState(storyId);
+        const parsed = existing?.stateJson
+          ? (() => { try { return JSON.parse(existing.stateJson); } catch { return {}; } })()
+          : {};
+        const next = {
+          ...parsed,
+          indexes: { ...(parsed.indexes ?? {}), relationships },
+        };
+        await repository.saveStoryState({
+          id: `story-state:${storyId}`,
+          storyId,
+          stateJson: JSON.stringify(next),
+          updatedAt: new Date().toISOString(),
+        });
       },
       async updateRpStats(storyId, rpStats) {
         const existing = await repository.getStoryState(storyId);
