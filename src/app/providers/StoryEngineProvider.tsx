@@ -4377,7 +4377,7 @@ export function StoryEngineProvider({
                 model,
               );
               if (extracted) {
-                const { deltas, narrative } = extracted;
+                const { deltas, narrative, npcHpChanges } = extracted;
                 const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
                 const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
                 const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
@@ -4392,9 +4392,31 @@ export function StoryEngineProvider({
                   applied.push({ ts: Date.now(), field: d.field, from, to, reason: d.reason });
                 }
 
-                const summary = applied.length
-                  ? buildRpEventSummary(applied, story.rpConfig)
-                  : (narrative ?? null);
+                // Apply NPC HP changes
+                const npcSummaryParts: string[] = [];
+                if (npcHpChanges?.length) {
+                  let updatedNpcHp = { ...nextStats.npcHp };
+                  for (const change of npcHpChanges) {
+                    const existing = updatedNpcHp[change.npcKey];
+                    const maxHp = existing?.max ?? change.maxHp ?? 100;
+                    const currentHp = existing?.current ?? maxHp;
+                    const newHp = Math.max(0, Math.min(maxHp, currentHp + change.delta));
+                    if (newHp === currentHp) continue;
+                    updatedNpcHp = {
+                      ...updatedNpcHp,
+                      [change.npcKey]: { name: change.name, current: newHp, max: maxHp },
+                    };
+                    const sign = newHp - currentHp > 0 ? "+" : "";
+                    npcSummaryParts.push(`${change.name} HP ${sign}${newHp - currentHp} (${change.reason})`);
+                  }
+                  nextStats = { ...nextStats, npcHp: updatedNpcHp };
+                }
+
+                const playerSummary = applied.length ? buildRpEventSummary(applied, story.rpConfig) : null;
+                const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" · ") : null;
+                const summary = playerSummary
+                  ? (npcSummary ? `${playerSummary} · ${npcSummary}` : playerSummary)
+                  : (npcSummary ?? narrative ?? null);
 
                 if (summary) {
                   const eventEntry: RpEventLogEntry = { ts: Date.now(), summary };
@@ -4413,6 +4435,18 @@ export function StoryEngineProvider({
                   });
                   appliedRpChanges = applied;
                   rpEventSummary = summary;
+                } else if (npcSummaryParts.length) {
+                  // NPC-only changes still need to be saved even without a player summary
+                  const latestState = await repository.getStoryState(storyId);
+                  const latestParsed = latestState?.stateJson
+                    ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()
+                    : {};
+                  await repository.saveStoryState({
+                    id: `story-state:${storyId}`,
+                    storyId,
+                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
+                    updatedAt: new Date().toISOString(),
+                  });
                 }
                 if (coreDeltas.length) {
                   pendingCoreStatChanges = coreDeltas;
