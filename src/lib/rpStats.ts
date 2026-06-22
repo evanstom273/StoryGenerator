@@ -75,3 +75,22 @@ export function effectiveCoreStats(stats: RpStats, config: RpConfig): RpCoreStat
     ...stats.statOverrides,
   };
 }
+
+const STAT_FIELDS = new Set(["hp", "gold", "str", "dex", "con", "int", "wis", "cha"]);
+
+export function isValidStatField(field: string): boolean {
+  return STAT_FIELDS.has(field);
+}
+
+export function getStatValue(stats: RpStats, config: RpConfig, field: string): number {
+  if (field === "hp") return stats.hp;
+  if (field === "gold") return stats.gold;
+  const coreStats = effectiveCoreStats(stats, config);
+  return (coreStats as Record<string, number>)[field] ?? 10;
+}
+
+export function clampStat(field: string, value: number, config: RpConfig): number {
+  if (field === "hp") return Math.min(config.maxHp, Math.max(0, value));
+  if (field === "gold") return Math.max(0, value);
+  return Math.min(30, Math.max(1, value));
+}

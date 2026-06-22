@@ -17,9 +17,11 @@ import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { cn } from "../utils/cn";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
+import { applyStatChange as applyRpStatChange } from "../lib/rpStats";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
 import type {
+  RpChangelogEntry,
   StoryMessage,
   StoryMessageRole,
   StoryMessageSpeakerType,
@@ -107,6 +109,7 @@ export function StoryWorkspacePage() {
   const {
     createMessage,
     deleteMessage,
+    fetchStoryState,
     getMessagesForStory,
     getChaptersForStory,
     getPlayerCharacterById,
@@ -118,6 +121,7 @@ export function StoryWorkspacePage() {
     sendChatMessage,
     setMessageDirectorIntent,
     updateMessage,
+    updateRpStats,
   } = useStoryEngine();
   const story = storyId ? getStoryById(storyId) : undefined;
   const universe = story ? getUniverseById(story.universeId) : undefined;
@@ -151,6 +155,7 @@ export function StoryWorkspacePage() {
   const [isAssistantEditSaving, setIsAssistantEditSaving] = useState(false);
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
   const [relationshipsOpen, setRelationshipsOpen] = useState(false);
+  const [lastRpChanges, setLastRpChanges] = useState<RpChangelogEntry[] | null>(null);
 
   useEffect(() => {
     setEditingMessage(null);
@@ -171,6 +176,7 @@ export function StoryWorkspacePage() {
     setIsAssistantEditSaving(false);
     setRpSheetOpen(false);
     setRelationshipsOpen(false);
+    setLastRpChanges(null);
   }, [storyId]);
 
 
@@ -280,7 +286,8 @@ export function StoryWorkspacePage() {
     setChatInput("");
 
     try {
-      await sendChatMessage(activeStory.id, content);
+      const result = await sendChatMessage(activeStory.id, content);
+      if (result.appliedRpChanges?.length) setLastRpChanges(result.appliedRpChanges);
     } catch (error) {
       reportWorkspaceUiAudit({
         msg: "Story workspace displayed generation error",
@@ -469,6 +476,34 @@ export function StoryWorkspacePage() {
     } finally {
       setIsGeneratingAssist(false);
     }
+  }
+
+  function formatRpChanges(changes: RpChangelogEntry[]): string {
+    return changes
+      .map((c) => {
+        const diff = c.to - c.from;
+        const sign = diff > 0 ? "+" : "−";
+        const abs = Math.abs(diff);
+        const label = c.field === "hp" ? "HP" : c.field === "gold" ? (activeStory.rpConfig?.currencyName ?? "Gold") : c.field.toUpperCase();
+        return `${label} ${sign}${abs}`;
+      })
+      .join(" · ");
+  }
+
+  async function handleUndoRpChanges() {
+    if (!lastRpChanges?.length || !storyId) return;
+    const state = await fetchStoryState(storyId);
+    if (!state) return;
+    try {
+      const base = JSON.parse(state.stateJson) as Record<string, unknown>;
+      if (!base.rpStats) return;
+      let next = base.rpStats as any;
+      for (const change of lastRpChanges) {
+        next = applyRpStatChange(next, { field: change.field, from: change.to, to: change.from, reason: `Undo: ${change.reason}` });
+      }
+      await updateRpStats(storyId, next);
+      setLastRpChanges(null);
+    } catch {}
   }
 
   function applyComposerPreset(role: StoryMessageRole, speakerType?: StoryMessageSpeakerType) {
@@ -808,6 +843,17 @@ export function StoryWorkspacePage() {
       {readerMode || archiveMode ? null : (
         latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
           <Panel variant="flat" className="mt-4" padding="sm">
+            {activeStory.rpMode && lastRpChanges?.length ? (
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-[9px] border border-accent/20 bg-accent/10 px-3 py-2.5">
+                <span className="text-sm text-accent-soft">{formatRpChanges(lastRpChanges)}</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-xs text-ink-muted">Applied</span>
+                  <Button variant="secondary" size="sm" onClick={() => void handleUndoRpChanges()} disabled={isGenerating || isRegenerating}>
+                    Undo
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             {latestDirectorIntentMessage?.directorIntent ? (
               <div className="mb-3 flex flex-col gap-3 rounded-[9px] border border-divider/[0.4] bg-panel-muted/50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-ink-muted">

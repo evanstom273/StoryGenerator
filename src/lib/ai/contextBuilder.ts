@@ -1,6 +1,8 @@
 import type {
   DirectorIntent,
   PlayerCharacter,
+  RpConfig,
+  RpStats,
   Story,
   StoryMessage,
   StoryState,
@@ -75,6 +77,8 @@ export interface BuildStoryChatContextInput {
   recentMessages: StoryMessage[];
   latestUserMessage: string;
   directorIntent?: DirectorIntent | null;
+  rpStats?: RpStats | null;
+  rpConfig?: RpConfig | null;
 }
 
 export function buildStoryChatContext({
@@ -87,6 +91,8 @@ export function buildStoryChatContext({
   recentMessages,
   latestUserMessage,
   directorIntent,
+  rpStats,
+  rpConfig,
 }: BuildStoryChatContextInput): AIChatMessage[] {
   const sceneDepth = inferSceneDepth(latestUserMessage);
   const wordTarget = getSceneWordTarget(sceneDepth);
@@ -210,6 +216,23 @@ export function buildStoryChatContext({
     );
   })();
 
+  const rpStatsBlock = (() => {
+    if (!story.rpMode || !rpStats || !rpConfig) return "";
+    const { str, dex, con, int: INT, wis, cha } = {
+      ...rpConfig.coreStats,
+      ...rpStats.statOverrides,
+    };
+    return normalizeWhitespace(
+      [
+        `HP: ${rpStats.hp} / ${rpConfig.maxHp}`,
+        `${rpConfig.currencyName}: ${rpConfig.currencyDecimals ? rpStats.gold.toFixed(2) : Math.floor(rpStats.gold)}`,
+        `STR ${str}  DEX ${dex}  CON ${con}  INT ${INT}  WIS ${wis}  CHA ${cha}`,
+        "",
+        "Honour these values when writing consequences. Do not alter or report them in your narrative text — stat tracking happens separately.",
+      ].join("\n"),
+    );
+  })();
+
   const matureFictionPolicy = buildMatureFictionPolicyBlock({
     includeParity: true,
   });
@@ -304,6 +327,9 @@ export function buildStoryChatContext({
       : []),
     ...(inputSafetyAnalysis.systemMessage
       ? [{ role: "system" as const, content: inputSafetyAnalysis.systemMessage }]
+      : []),
+    ...(rpStatsBlock
+      ? [{ role: "system" as const, content: `RP Character Sheet\n\n${rpStatsBlock}` }]
       : []),
     { role: "system", content: `Scene Direction\n\n${sceneGuidance}` },
     ...chatHistory,

@@ -80,6 +80,8 @@ import {
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent } from "../../lib/storyText/directorIntent";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
+import { extractRpStatChanges } from "../../lib/ai/rpStatsExtractor";
+import { applyStatChange, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import {
   formatUniverseWikiSources,
   getPrimaryUniverseWikiUrl,
@@ -100,6 +102,7 @@ import type {
   PlayerCharacter,
   PlayerCharacterDraft,
   RelationshipIndexEntry,
+  RpChangelogEntry,
   RpStats,
   StorageStatus,
   Story,
@@ -288,7 +291,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string) => Promise<StoryMessage | null>;
+  sendChatMessage: (storyId: string, content: string) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
 }
@@ -3790,9 +3793,15 @@ export function StoryEngineProvider({
         const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
         const shouldSkipAssistantReply = Boolean(chapterBoundary);
         let assistantMessage: StoryMessage | null = null;
+        let appliedRpChanges: RpChangelogEntry[] | null = null;
         let updatedMessages: StoryMessage[] = [];
 
         if (!shouldSkipAssistantReply) {
+          const parsedStoryState = storyState?.stateJson
+            ? safeParseStoryStateData(storyState.stateJson)
+            : null;
+          const currentRpStats = parsedStoryState?.rpStats ?? (story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null);
+
           const context = buildStoryChatContext({
             universe: effectiveUniverse,
             story,
@@ -3803,6 +3812,8 @@ export function StoryEngineProvider({
             recentMessages: sanitizedHistoryMessages,
             latestUserMessage: userMessage.content,
             directorIntent: userMessage.directorIntent ?? null,
+            rpStats: currentRpStats,
+            rpConfig: story.rpConfig ?? null,
           });
           // #region debug-point A:story-request-shape
           reportGenerationAudit({
@@ -4350,6 +4361,43 @@ export function StoryEngineProvider({
             },
           });
           // #endregion
+
+          if (story.rpMode && story.rpConfig && currentRpStats) {
+            try {
+              const deltas = await extractRpStatChanges(
+                finalSanitizedText,
+                currentRpStats,
+                story.rpConfig,
+                provider,
+                apiKey,
+                model,
+              );
+              if (deltas?.length) {
+                let nextStats = currentRpStats;
+                const applied: RpChangelogEntry[] = [];
+                for (const d of deltas) {
+                  const from = getStatValue(nextStats, story.rpConfig, d.field);
+                  const to = clampStat(d.field, from + d.delta, story.rpConfig);
+                  if (to === from) continue;
+                  nextStats = applyStatChange(nextStats, { field: d.field, from, to, reason: d.reason });
+                  applied.push({ ts: Date.now(), field: d.field, from, to, reason: d.reason });
+                }
+                if (applied.length) {
+                  const latestState = await repository.getStoryState(storyId);
+                  const latestParsed = latestState?.stateJson
+                    ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()
+                    : {};
+                  await repository.saveStoryState({
+                    id: `story-state:${storyId}`,
+                    storyId,
+                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
+                    updatedAt: new Date().toISOString(),
+                  });
+                  appliedRpChanges = applied;
+                }
+              }
+            } catch {}
+          }
         } else {
           // #region debug-point D:story-skip
           reportGenerationAudit({
@@ -4597,7 +4645,7 @@ export function StoryEngineProvider({
             await queueStoryIndexJob(storyId, { trigger: "auto" });
           } catch {}
         })();
-        return assistantMessage;
+        return { message: assistantMessage, appliedRpChanges };
       },
     };
   }, [
