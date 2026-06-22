@@ -4381,10 +4381,11 @@ export function StoryEngineProvider({
                   characterBackground: playerCharacter.background ?? undefined,
                   universeLore: effectiveUniverse.description ?? undefined,
                   playerMessage: trimmed,
+                  pendingTransaction: currentRpStats.pendingTransaction,
                 },
               );
               if (extracted) {
-                const { deltas, narrative, npcHpChanges, timeAdvanceMinutes } = extracted;
+                const { deltas, narrative, npcHpChanges, timeAdvanceMinutes, pendingTransaction: extractedPendingTx } = extracted;
                 const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
                 const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
                 const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
@@ -4444,6 +4445,11 @@ export function StoryEngineProvider({
                   timeSummaryPart = (timeSummaryPart ? `${timeSummaryPart} · ` : "") + `Time → ${timeLabel}`;
                 }
 
+                // Apply pending transaction state change
+                if (extractedPendingTx !== undefined) {
+                  nextStats = { ...nextStats, pendingTransaction: extractedPendingTx ?? undefined };
+                }
+
                 const playerSummary = applied.length ? buildRpEventSummary(applied, story.rpConfig) : null;
                 const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" · ") : null;
                 const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" · ") || narrative || null;
@@ -4465,8 +4471,8 @@ export function StoryEngineProvider({
                   });
                   appliedRpChanges = applied;
                   rpEventSummary = summary;
-                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState) {
-                  // NPC-only or time-only changes still need to be saved
+                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState || extractedPendingTx !== undefined) {
+                  // NPC-only, time-only, or pending-transaction-only changes still need to be saved
                   const latestState = await repository.getStoryState(storyId);
                   const latestParsed = latestState?.stateJson
                     ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()

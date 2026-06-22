@@ -138,6 +138,11 @@ export type RpEventLogEntry = {
   summary: string;
 };
 
+export type PendingTransaction = {
+  description: string;
+  amount: number;
+};
+
 export type RpStats = {
   hp: number;
   gold: number;
@@ -146,6 +151,7 @@ export type RpStats = {
   changelog: RpChangelogEntry[];
   eventLog?: RpEventLogEntry[];
   timeState?: RpTimeState;
+  pendingTransaction?: PendingTransaction;
 };
 
 export interface Story {

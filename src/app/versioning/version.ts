@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.0.0";
+export const APP_VERSION = "2.1.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -350,6 +350,26 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Starting a new chapter with flexible Chapter X syntax now implicitly closes the previous active chapter without breaking older Start/End markers",
       "Story settings now surfaces job state and duplicate deep-index requests no longer stack up for the same story",
       "Version wiring is now aligned to 1.18.3 across the app label and npm metadata",
+    ],
+    knownIssues: [],
+  },
+  "2.1.0": {
+    title: "RP Mode — Time, Money & Transaction Intelligence",
+    added: [
+      "In-story time tracking: set a starting date/time and the clock advances automatically after each scene",
+      "Per-message time chips in the transcript show when the in-story time changed",
+      "Toolbar time display shows the current in-story time at a glance",
+      "Calendar customisation: custom month names, weekday names, and year suffix for fantasy/sci-fi settings",
+      "Recurring events: configure rent, wages, or any periodic income/expense to trigger automatically as story time passes",
+      "Realistic currency inference: the AI infers prices from era/genre benchmarks when no explicit price is stated",
+      "Transaction state tracking: multi-turn purchases (price announced → payment confirmed) are now treated as a single transaction — no more duplicate charges",
+      "Player message context: the extractor now sees both the player's input and the narrator's response, so explicit prices stated by the player are correctly deducted",
+    ],
+    fixed: [
+      "Time not persisting: rpStats was loaded through the Story State V2 parser which requires full index data — new stories without an index pass lost their saved time on every overlay re-open",
+      "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
+      "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
+      "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
     ],
     knownIssues: [],
   },
