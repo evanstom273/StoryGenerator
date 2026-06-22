@@ -20,7 +20,8 @@ import {
 import { downloadFile } from "../../lib/download";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../../lib/ai/models";
-import type { RpConfig, RpStats, Story } from "../../types/models";
+import type { RpCalendarConfig, RpConfig, RpRecurringEvent, RpStats, RpTimeState, Story } from "../../types/models";
+import { advanceTime, formatTime } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 
 const STAT_LABELS: Record<string, string> = {
@@ -137,7 +138,7 @@ function NumberField({
   );
 }
 
-type Tab = "profile" | "stats" | "hp" | "currency" | "eventlog" | "changelog" | "config";
+type Tab = "profile" | "stats" | "hp" | "currency" | "eventlog" | "time" | "changelog" | "config";
 
 export function RPCharacterSheetOverlay(props: {
   open: boolean;
@@ -145,6 +146,7 @@ export function RPCharacterSheetOverlay(props: {
   onClose: () => void;
   refreshKey?: number;
   onGoldChange?: (gold: number) => void;
+  universeLore?: string;
 }) {
   const { fetchStoryState, updateRpStats, updateStory, messages: allMessages, getPlayerCharacterById, aiSettings } = useStoryEngine();
   const playerCharacter = getPlayerCharacterById(props.story.playerCharacterId);
@@ -158,10 +160,32 @@ export function RPCharacterSheetOverlay(props: {
   const [suggestingGold, setSuggestingGold] = useState(false);
   const [suggestGoldError, setSuggestGoldError] = useState<string | null>(null);
 
+  // Time tab state
+  const [timeDraft, setTimeDraft] = useState({ year: "", month: "", day: "", hour: "", minute: "" });
+  const [savingTime, setSavingTime] = useState(false);
+  const [calDraft, setCalDraft] = useState({ yearSuffix: "", monthNames: "", weekdayNames: "" });
+  const [newEventDraft, setNewEventDraft] = useState<{ label: string; amount: string; intervalDays: string } | null>(null);
+
   useEffect(() => {
     setRpEnabled(props.story.rpMode ?? false);
     setConfigDraft(props.story.rpConfig ?? DEFAULT_RP_CONFIG);
   }, [props.story.rpMode, props.story.rpConfig]);
+
+  useEffect(() => {
+    if (activeTab !== "time") return;
+    const t = rpStats?.timeState;
+    if (t) {
+      setTimeDraft({ year: String(t.year), month: String(t.month), day: String(t.day), hour: String(t.hour), minute: String(t.minute) });
+    } else {
+      const now = new Date();
+      setTimeDraft({ year: String(now.getFullYear()), month: String(now.getMonth() + 1), day: String(now.getDate()), hour: String(now.getHours()), minute: String(now.getMinutes()) });
+    }
+    setCalDraft({
+      yearSuffix: configDraft.calendarConfig?.yearSuffix ?? "",
+      monthNames: configDraft.calendarConfig?.monthNames?.join(", ") ?? "",
+      weekdayNames: configDraft.calendarConfig?.weekdayNames?.join(", ") ?? "",
+    });
+  }, [activeTab, rpStats?.timeState, configDraft.calendarConfig]);
 
   const config: RpConfig = props.story.rpConfig ?? DEFAULT_RP_CONFIG;
 
@@ -201,6 +225,9 @@ export function RPCharacterSheetOverlay(props: {
       await updateStory(props.story.id, { rpMode: enabled, rpConfig: enabled ? configDraft : props.story.rpConfig });
       if (enabled && !rpStats) {
         setRpStats(defaultRpStats(configDraft));
+      }
+      if (enabled && !rpStats?.timeState) {
+        setActiveTab("time");
       }
     } finally {
       setTogglingRp(false);
@@ -274,16 +301,18 @@ export function RPCharacterSheetOverlay(props: {
         playerCharacter.goals ? `Goals: ${playerCharacter.goals}` : "",
         playerCharacter.notes ? `Notes: ${playerCharacter.notes}` : "",
       ].filter(Boolean).join("\n");
+      const settingContext = props.universeLore
+        ? `Setting/universe: ${props.universeLore.slice(0, 300)}`
+        : "";
       const prompt = `You are a narrative roleplay assistant. Estimate a realistic starting financial balance for this character in ${config.currencyName || "gold"}.
 
-This is their CURRENT LIQUID BALANCE — cash on hand or in a bank account — not net worth or total assets. Scale it appropriately to their life stage:
-- A young child (under 12): pocket money, maybe $5–$20
-- A teenager (12–17): allowance savings or part-time earnings, typically $20–$150
-- A college student: maybe $50–$500 depending on situation
-- A working adult: typically $500–$5,000 depending on job and lifestyle
-- A wealthy adult: $5,000+
+${settingContext ? `${settingContext}\n\n` : ""}This is their CURRENT LIQUID BALANCE — cash on hand or in a bank account — not net worth or total assets. Scale appropriately for the setting era:
+- Modern (${config.currencyName}): young child $5–20, teenager $20–150, college student $50–500, adult $500–5,000, wealthy $5,000+
+- Fantasy gold: peasant 1–10 gp, artisan 20–100 gp, merchant 100–500 gp, noble 500+ gp
+- Historical coin: laborer 1–5, tradesperson 10–50, merchant 50–200
+- Sci-fi credits: worker 50–200, professional 200–1,000, wealthy 1,000+
 
-Use their age, background, and circumstances to pick a specific, believable number within the right range. Reply with a SINGLE INTEGER ONLY — no explanation, no currency symbol, no text, no decimal point.
+Use the setting, the character's age, background, and circumstances to pick a specific, believable number. Reply with a SINGLE INTEGER ONLY — no explanation, no currency symbol, no text, no decimal point.
 
 Character:
 ${profileText}`;
@@ -305,6 +334,78 @@ ${profileText}`;
     }
   }
 
+  async function handleSaveTime() {
+    if (!rpStats) return;
+    const year = parseInt(timeDraft.year) || 2024;
+    const month = Math.max(1, Math.min(12, parseInt(timeDraft.month) || 1));
+    const day = Math.max(1, Math.min(31, parseInt(timeDraft.day) || 1));
+    const hour = Math.max(0, Math.min(23, parseInt(timeDraft.hour) || 0));
+    const minute = Math.max(0, Math.min(59, parseInt(timeDraft.minute) || 0));
+    const storyDay = rpStats.timeState?.storyDay ?? 1;
+    const newTimeState: RpTimeState = { year, month, day, hour, minute, storyDay };
+    setSavingTime(true);
+    try {
+      await save({ ...rpStats, timeState: newTimeState });
+    } finally {
+      setSavingTime(false);
+    }
+  }
+
+  async function handleSaveCalendar() {
+    const yearSuffix = calDraft.yearSuffix.trim() || undefined;
+    const monthNames = calDraft.monthNames.trim()
+      ? calDraft.monthNames.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 12)
+      : undefined;
+    const weekdayNames = calDraft.weekdayNames.trim()
+      ? calDraft.weekdayNames.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 7)
+      : undefined;
+    const calendarConfig: RpCalendarConfig | undefined = (yearSuffix || monthNames || weekdayNames)
+      ? { yearSuffix, monthNames, weekdayNames }
+      : undefined;
+    const newConfig: RpConfig = { ...configDraft, calendarConfig };
+    setConfigDraft(newConfig);
+    setSaving(true);
+    try {
+      await updateStory(props.story.id, { rpConfig: newConfig });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleAddRecurringEvent() {
+    if (!newEventDraft) return;
+    const label = newEventDraft.label.trim();
+    const amount = parseFloat(newEventDraft.amount) || 0;
+    const intervalDays = Math.max(1, parseInt(newEventDraft.intervalDays) || 7);
+    if (!label) return;
+    const nextDue: RpTimeState = rpStats?.timeState
+      ? advanceTime(rpStats.timeState, intervalDays * 1440)
+      : { year: 2024, month: 1, day: 1, hour: 0, minute: 0, storyDay: 1 };
+    const event: RpRecurringEvent = {
+      id: `evt_${Date.now()}`,
+      label,
+      amount,
+      intervalDays,
+      nextDue,
+    };
+    const newConfig: RpConfig = {
+      ...configDraft,
+      recurringEvents: [...(configDraft.recurringEvents ?? []), event],
+    };
+    setConfigDraft(newConfig);
+    setNewEventDraft(null);
+    void updateStory(props.story.id, { rpConfig: newConfig });
+  }
+
+  function handleRemoveRecurringEvent(id: string) {
+    const newConfig: RpConfig = {
+      ...configDraft,
+      recurringEvents: (configDraft.recurringEvents ?? []).filter((e) => e.id !== id),
+    };
+    setConfigDraft(newConfig);
+    void updateStory(props.story.id, { rpConfig: newConfig });
+  }
+
   const tabs: { id: Tab; label: string }[] = rpEnabled
     ? [
         { id: "profile", label: "Profile" },
@@ -312,6 +413,7 @@ ${profileText}`;
         { id: "hp", label: "HP" },
         { id: "currency", label: config.currencyName || "Currency" },
         { id: "eventlog", label: "Events" },
+        { id: "time", label: "Time" },
         { id: "changelog", label: "Log" },
         { id: "config", label: "Settings" },
       ]
@@ -528,6 +630,142 @@ ${profileText}`;
                     })}
                   </>
                 )}
+              </div>
+            )}
+
+            {activeTab === "time" && (
+              <div className="space-y-4">
+                {/* Current time display */}
+                <div className="rounded-lg border border-divider/40 bg-panel-muted/40 px-4 py-3 text-center">
+                  {rpStats?.timeState ? (
+                    <>
+                      <p className="text-base font-semibold text-ink">{formatTime(rpStats.timeState, config)}</p>
+                      <p className="mt-0.5 text-xs text-ink-muted">In-story time</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-ink-muted">Story clock not set — set a starting date and time below.</p>
+                  )}
+                </div>
+
+                {/* Set date/time form */}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                    {rpStats?.timeState ? "Override Date & Time" : "Set Starting Date & Time"}
+                  </p>
+                  <div className="grid grid-cols-5 gap-2">
+                    {(["year", "month", "day", "hour", "minute"] as const).map((field) => (
+                      <label key={field} className="space-y-0.5">
+                        <span className="block text-[10px] uppercase tracking-wider text-ink-muted">{field}</span>
+                        <input
+                          type="number"
+                          className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-1.5 py-1.5 text-center text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                          value={timeDraft[field]}
+                          onChange={(e) => setTimeDraft((d) => ({ ...d, [field]: e.target.value }))}
+                          min={field === "year" ? 1 : field === "hour" ? 0 : field === "minute" ? 0 : 1}
+                          max={field === "month" ? 12 : field === "day" ? 31 : field === "hour" ? 23 : field === "minute" ? 59 : undefined}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      const now = new Date();
+                      setTimeDraft({ year: String(now.getFullYear()), month: String(now.getMonth() + 1), day: String(now.getDate()), hour: String(now.getHours()), minute: String(now.getMinutes()) });
+                    }}>
+                      Now
+                    </Button>
+                    <Button variant="primary" size="sm" disabled={savingTime || !rpStats} onClick={() => void handleSaveTime()}>
+                      {savingTime ? "Saving…" : "Set Time"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Calendar config */}
+                <div className="space-y-2 border-t border-divider/40 pt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Calendar</p>
+                  <label className="block space-y-1">
+                    <span className="text-xs text-ink-muted">Year suffix (e.g. CE, 3E, BBY)</span>
+                    <input
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                      placeholder="Leave blank for none"
+                      value={calDraft.yearSuffix}
+                      onChange={(e) => setCalDraft((d) => ({ ...d, yearSuffix: e.target.value }))}
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-xs text-ink-muted">Month names (comma-separated, 12 names)</span>
+                    <input
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                      placeholder="January, February, … (leave blank for default)"
+                      value={calDraft.monthNames}
+                      onChange={(e) => setCalDraft((d) => ({ ...d, monthNames: e.target.value }))}
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-xs text-ink-muted">Weekday names (comma-separated, 7 starting Sunday)</span>
+                    <input
+                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                      placeholder="Sunday, Monday, … (leave blank for default)"
+                      value={calDraft.weekdayNames}
+                      onChange={(e) => setCalDraft((d) => ({ ...d, weekdayNames: e.target.value }))}
+                    />
+                  </label>
+                  <Button variant="primary" size="sm" disabled={saving} onClick={() => void handleSaveCalendar()}>
+                    {saving ? "Saving…" : "Save Calendar"}
+                  </Button>
+                </div>
+
+                {/* Recurring events */}
+                <div className="space-y-2 border-t border-divider/40 pt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Recurring Events</p>
+                  <p className="text-xs text-ink-muted">Rent, paycheck, or any recurring income/expense. Triggers automatically as story time passes.</p>
+                  {(configDraft.recurringEvents ?? []).length === 0 ? (
+                    <p className="text-xs text-ink-muted/60">No recurring events configured.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {(configDraft.recurringEvents ?? []).map((event) => (
+                        <div key={event.id} className="flex items-center justify-between gap-2 rounded-lg border border-divider/40 bg-panel-muted/40 px-3 py-2 text-xs">
+                          <div className="min-w-0">
+                            <span className="font-semibold text-ink">{event.label}</span>
+                            <span className={cn("ml-2", event.amount >= 0 ? "text-emerald-400" : "text-red-400")}>
+                              {event.amount >= 0 ? "+" : ""}{event.amount} {configDraft.currencyName}
+                            </span>
+                            <span className="ml-2 text-ink-muted">every {event.intervalDays}d</span>
+                          </div>
+                          <button type="button" className="shrink-0 text-ink-muted transition hover:text-red-400" onClick={() => handleRemoveRecurringEvent(event.id)}>
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {newEventDraft ? (
+                    <div className="space-y-2 rounded-lg border border-accent/20 bg-accent/5 px-3 py-3">
+                      <div className="grid grid-cols-3 gap-2">
+                        <label className="col-span-3 space-y-0.5">
+                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Label</span>
+                          <input className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="Rent, Paycheck…" value={newEventDraft.label} onChange={(e) => setNewEventDraft((d) => d ? { ...d, label: e.target.value } : d)} />
+                        </label>
+                        <label className="space-y-0.5">
+                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Amount</span>
+                          <input type="number" className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="-500" value={newEventDraft.amount} onChange={(e) => setNewEventDraft((d) => d ? { ...d, amount: e.target.value } : d)} />
+                        </label>
+                        <label className="col-span-2 space-y-0.5">
+                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Every N days</span>
+                          <input type="number" min={1} className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="30" value={newEventDraft.intervalDays} onChange={(e) => setNewEventDraft((d) => d ? { ...d, intervalDays: e.target.value } : d)} />
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="primary" size="sm" onClick={handleAddRecurringEvent}>Add</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setNewEventDraft(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button variant="ghost" size="sm" onClick={() => setNewEventDraft({ label: "", amount: "", intervalDays: "7" })}>
+                      + Add Recurring Event
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
 

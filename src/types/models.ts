@@ -84,6 +84,29 @@ export type RpCoreStats = {
   cha: number;
 };
 
+export type RpCalendarConfig = {
+  monthNames?: string[];    // 12 names; default Gregorian
+  weekdayNames?: string[];  // 7 names starting Sunday; default English
+  yearSuffix?: string;      // e.g. "CE", "3E", "BBY"
+};
+
+export type RpTimeState = {
+  year: number;
+  month: number;   // 1–12
+  day: number;     // 1–31
+  hour: number;    // 0–23
+  minute: number;  // 0–59
+  storyDay: number; // days elapsed since story began (1-indexed)
+};
+
+export type RpRecurringEvent = {
+  id: string;
+  label: string;         // e.g. "Rent", "Paycheck"
+  amount: number;        // positive = income, negative = expense
+  intervalDays: number;  // 7 = weekly, 30 = monthly
+  nextDue: RpTimeState;
+};
+
 export type RpConfig = {
   currencyName: string;
   currencyDecimals: boolean;
@@ -92,6 +115,8 @@ export type RpConfig = {
   coreStats: RpCoreStats;
   allowDebt?: boolean;
   creditLimit?: number | null;
+  calendarConfig?: RpCalendarConfig;
+  recurringEvents?: RpRecurringEvent[];
 };
 
 export type RpNpcHpEntry = {
@@ -120,6 +145,7 @@ export type RpStats = {
   statOverrides?: Partial<RpCoreStats>;
   changelog: RpChangelogEntry[];
   eventLog?: RpEventLogEntry[];
+  timeState?: RpTimeState;
 };
 
 export interface Story {
@@ -156,6 +182,7 @@ export interface StoryMessage {
   editedAt?: Timestamp;
   regeneratedAt?: Timestamp;
   revision?: number;
+  storyTime?: RpTimeState;
 }
 
 export interface StoryMetaMessage {

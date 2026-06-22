@@ -21,6 +21,7 @@ import {
 import { safeParseStoryStateData } from "../storyStateV2";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
+import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
@@ -255,6 +256,14 @@ export function buildStoryChatContext({
         "Core stats are narrative guidance. They shape plausibility and colour consequences — they never gate an attempt. Higher scores suggest ease and competence; lower scores suggest difficulty, awkwardness, or risk of failure.",
         "",
         "Do not narrate or reference stat values directly. Stat tracking happens separately.",
+        ...(rpStats.timeState ? [
+          "",
+          `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,
+          "Time-of-day awareness: apply realistic schedules — shops and businesses typically open 9am–6pm, restaurants until 10pm, bars/clubs evenings and nights. NPCs follow their own routines and may not be available at all hours.",
+          ...(rpConfig.recurringEvents?.length ? [
+            `Upcoming obligations: ${rpConfig.recurringEvents.map(e => `${e.label} due in ~${Math.round(minutesBetween(rpStats.timeState!, e.nextDue) / 1440)} days`).join(", ")}.`,
+          ] : []),
+        ] : []),
       ].join("\n"),
     );
   })();

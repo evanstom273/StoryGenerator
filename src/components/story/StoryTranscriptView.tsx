@@ -1,5 +1,6 @@
 import { Fragment } from "react";
-import type { StoryChapter, StoryMessage } from "../../types/models";
+import type { RpConfig, RpTimeState, StoryChapter, StoryMessage } from "../../types/models";
+import { formatTimeShort, timesDiffer } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
@@ -11,6 +12,7 @@ type StoryTranscriptViewProps = {
   chapters?: StoryChapter[];
   className?: string;
   highlightedMessageId?: string | null;
+  rpConfig?: RpConfig;
 };
 
 type SpeakerKind = "player" | "narrator" | "npc" | "system";
@@ -233,8 +235,10 @@ export function StoryTranscriptView({
   chapters,
   className,
   highlightedMessageId,
+  rpConfig,
 }: StoryTranscriptViewProps) {
   let latestUserMessage: string | null = null;
+  let prevStoryTime: RpTimeState | undefined = undefined;
   const chapterEndByMessageId = new Map<string, string>();
   const chapterStartBeforeMessage = new Map<number, string>();
   for (const chapter of chapters ?? []) {
@@ -346,11 +350,19 @@ export function StoryTranscriptView({
           playerName: playerCharacterName,
         });
         const blocks = parseSceneBlocks(sanitized);
+        const showTimeChip = rpConfig && message.storyTime &&
+          (!prevStoryTime || timesDiffer(prevStoryTime, message.storyTime));
+        if (message.storyTime) prevStoryTime = message.storyTime;
         return (
           <Fragment key={message.id}>
             {chapterStartLabel ? (
               <div className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 {chapterStartLabel}
+              </div>
+            ) : null}
+            {showTimeChip && rpConfig && message.storyTime ? (
+              <div className="select-none py-1 text-center text-[10px] text-white/25">
+                {formatTimeShort(message.storyTime, rpConfig)}
               </div>
             ) : null}
             <div

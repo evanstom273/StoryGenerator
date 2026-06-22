@@ -82,6 +82,7 @@ import { detectDirectorIntent } from "../../lib/storyText/directorIntent";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
+import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
   formatUniverseWikiSources,
   getPrimaryUniverseWikiUrl,
@@ -4349,6 +4350,7 @@ export function StoryEngineProvider({
             content: finalSanitizedText,
             timestamp: new Date().toISOString(),
             speakerType: "narrator",
+            ...(currentRpStats?.timeState ? { storyTime: currentRpStats.timeState } : {}),
           };
 
           await repository.saveStoryMessage(assistantMessage);
@@ -4375,9 +4377,13 @@ export function StoryEngineProvider({
                 provider,
                 apiKey,
                 model,
+                {
+                  characterBackground: playerCharacter.background ?? undefined,
+                  universeLore: effectiveUniverse.description ?? undefined,
+                },
               );
               if (extracted) {
-                const { deltas, narrative, npcHpChanges } = extracted;
+                const { deltas, narrative, npcHpChanges, timeAdvanceMinutes } = extracted;
                 const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
                 const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
                 const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
@@ -4412,11 +4418,34 @@ export function StoryEngineProvider({
                   nextStats = { ...nextStats, npcHp: updatedNpcHp };
                 }
 
+                // Apply time advance
+                let timeSummaryPart: string | null = null;
+                if (timeAdvanceMinutes && timeAdvanceMinutes > 0 && nextStats.timeState) {
+                  const prevTime = nextStats.timeState;
+                  const newTime = advanceTime(prevTime, timeAdvanceMinutes);
+                  // Check and apply recurring events
+                  const { triggered, updated } = checkRecurringEvents(prevTime, newTime, story.rpConfig.recurringEvents ?? []);
+                  for (const event of triggered) {
+                    const from = getStatValue(nextStats, story.rpConfig, "gold");
+                    const to = clampStat("gold", from + event.amount, story.rpConfig);
+                    if (to !== from) {
+                      nextStats = applyStatChange(nextStats, { field: "gold", from, to, reason: event.label });
+                      applied.push({ ts: Date.now(), field: "gold", from, to, reason: event.label });
+                    }
+                    timeSummaryPart = (timeSummaryPart ? timeSummaryPart + " · " : "") + `${event.label} triggered (${event.amount >= 0 ? "+" : ""}${event.amount})`;
+                  }
+                  if (triggered.length) {
+                    // Save updated recurringEvents nextDue values to config
+                    await repository.saveStory({ ...story, rpConfig: { ...story.rpConfig, recurringEvents: updated } });
+                  }
+                  nextStats = { ...nextStats, timeState: newTime };
+                  const timeLabel = formatTimeShort(newTime, story.rpConfig);
+                  timeSummaryPart = (timeSummaryPart ? `${timeSummaryPart} · ` : "") + `Time → ${timeLabel}`;
+                }
+
                 const playerSummary = applied.length ? buildRpEventSummary(applied, story.rpConfig) : null;
                 const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" · ") : null;
-                const summary = playerSummary
-                  ? (npcSummary ? `${playerSummary} · ${npcSummary}` : playerSummary)
-                  : (npcSummary ?? narrative ?? null);
+                const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" · ") || narrative || null;
 
                 if (summary) {
                   const eventEntry: RpEventLogEntry = { ts: Date.now(), summary };
@@ -4435,8 +4464,8 @@ export function StoryEngineProvider({
                   });
                   appliedRpChanges = applied;
                   rpEventSummary = summary;
-                } else if (npcSummaryParts.length) {
-                  // NPC-only changes still need to be saved even without a player summary
+                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState) {
+                  // NPC-only or time-only changes still need to be saved
                   const latestState = await repository.getStoryState(storyId);
                   const latestParsed = latestState?.stateJson
                     ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()

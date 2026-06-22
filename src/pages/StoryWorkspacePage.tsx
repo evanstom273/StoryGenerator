@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
@@ -18,11 +18,13 @@ import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { cn } from "../utils/cn";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
 import { applyStatChange as applyRpStatChange } from "../lib/rpStats";
+import { formatTimeShort } from "../lib/rpTime";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
 import type {
   RpChangelogEntry,
+  RpTimeState,
   StoryMessage,
   StoryMessageRole,
   StoryMessageSpeakerType,
@@ -162,6 +164,9 @@ export function StoryWorkspacePage() {
   const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
   const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
   const [taskbarGold, setTaskbarGold] = useState<number | null>(null);
+  const [taskbarTime, setTaskbarTime] = useState<RpTimeState | null>(null);
+  const [showLargeSkipModal, setShowLargeSkipModal] = useState(false);
+  const skipTimeCheckRef = useRef(false);
   const [showZeroHpModal, setShowZeroHpModal] = useState(false);
   const [zeroHpConsequenceChoice, setZeroHpConsequenceChoice] = useState<string>("");
   const [zeroHpCustom, setZeroHpCustom] = useState("");
@@ -177,6 +182,16 @@ export function StoryWorkspacePage() {
       if (typeof g === "number") setTaskbarGold(g);
     });
   }, [storyId, story?.rpMode]);
+
+  // Load/refresh in-story time from state — updates whenever rpStatsRefreshKey changes
+  useEffect(() => {
+    if (!storyId || !story?.rpMode) { setTaskbarTime(null); return; }
+    fetchStoryState(storyId).then((state) => {
+      if (!state) return;
+      const parsed = safeParseStoryStateData(state.stateJson);
+      setTaskbarTime(parsed?.rpStats?.timeState ?? null);
+    });
+  }, [storyId, story?.rpMode, rpStatsRefreshKey]);
 
   useEffect(() => {
     setEditingMessage(null);
@@ -300,11 +315,20 @@ export function StoryWorkspacePage() {
   const activeUniverse = universe;
   const activePlayerCharacter = playerCharacter;
 
+  const LARGE_TIME_SKIP_RE = /\b(sleep|slept|nap|napped|rest overnight|overnight|wake up|woke up|next morning|next day|tomorrow|next week|next month|days? later|weeks? later|months? later|skip to|fast forward|travel(?:l?ed)? to|long journey|hospital|recover(?:y|ing)?|unconscious)\b/i;
+
   async function handleSendChat() {
     if (!chatInput.trim()) {
       setChatError("Message content is required.");
       return;
     }
+
+    // Warn before potentially large time skips (8+ hours)
+    if (!skipTimeCheckRef.current && activeStory?.rpMode && taskbarTime && LARGE_TIME_SKIP_RE.test(chatInput)) {
+      setShowLargeSkipModal(true);
+      return;
+    }
+    skipTimeCheckRef.current = false;
 
     const content = chatInput;
     setIsGenerating(true);
@@ -854,6 +878,11 @@ export function StoryWorkspacePage() {
               💰 {activeStory.rpConfig.currencyDecimals ? taskbarGold.toFixed(2) : Math.floor(taskbarGold)}
             </span>
           )}
+          {activeStory?.rpMode && activeStory.rpConfig && taskbarTime && (
+            <span className="truncate text-[11px] text-white/30">
+              {formatTimeShort(taskbarTime, activeStory.rpConfig)}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-0.5">
           <WorkspaceIconBtn
@@ -951,6 +980,7 @@ export function StoryWorkspacePage() {
               playerCharacterName={activePlayerCharacter.name}
               chapters={getChaptersForStory(activeStory.id)}
               highlightedMessageId={highlightedMessageId}
+              rpConfig={activeStory.rpMode && activeStory.rpConfig ? activeStory.rpConfig : undefined}
               className={[
                 readerMode ? "pb-8" : "",
                 textSize === "sm"
@@ -1262,8 +1292,37 @@ export function StoryWorkspacePage() {
           onClose={() => setRpSheetOpen(false)}
           refreshKey={rpStatsRefreshKey}
           onGoldChange={(g) => setTaskbarGold(g)}
+          universeLore={activeUniverse?.description ?? undefined}
         />
       ) : null}
+
+      {/* Large time-skip confirmation modal */}
+      {showLargeSkipModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-divider bg-panel px-6 py-5 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-ink">Large time skip detected</h3>
+            <p className="text-sm text-ink-muted">Your message may advance story time by several hours or more (e.g. sleep, travel, recovery). The story clock will advance accordingly.</p>
+            <div className="flex gap-3">
+              <button
+                className="flex-1 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent/80"
+                onClick={() => {
+                  setShowLargeSkipModal(false);
+                  skipTimeCheckRef.current = true;
+                  void handleSendChat();
+                }}
+              >
+                Continue
+              </button>
+              <button
+                className="flex-1 rounded-xl border border-divider px-4 py-2 text-sm font-semibold text-ink-muted transition hover:text-ink"
+                onClick={() => setShowLargeSkipModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {storyId && relationshipsOpen ? (
         <RelationshipsOverlay
           open={relationshipsOpen}
