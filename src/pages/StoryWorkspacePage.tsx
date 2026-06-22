@@ -17,7 +17,7 @@ import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { cn } from "../utils/cn";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
-import { applyStatChange as applyRpStatChange, formatGold } from "../lib/rpStats";
+import { applyStatChange as applyRpStatChange } from "../lib/rpStats";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
@@ -330,7 +330,11 @@ export function StoryWorkspacePage() {
         setRpToasts((prev) => [{ id, summary: result.rpEventSummary! }, ...prev]);
         setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
       }
-      if (activeStory.rpMode) setRpStatsRefreshKey((k) => k + 1);
+      if (activeStory.rpMode) {
+        const goldChange = result.appliedRpChanges?.find((c) => c.field === "gold");
+        if (goldChange !== undefined) setTaskbarGold(goldChange.to);
+        setRpStatsRefreshKey((k) => k + 1);
+      }
     } catch (error) {
       reportWorkspaceUiAudit({
         msg: "Story workspace displayed generation error",
@@ -845,8 +849,8 @@ export function StoryWorkspacePage() {
             {messages.length} {messages.length === 1 ? "entry" : "entries"}
           </span>
           {activeStory?.rpMode && activeStory.rpConfig && taskbarGold !== null && (
-            <span className="shrink-0 text-[11px] text-white/40">
-              💰 {formatGold(taskbarGold, activeStory.rpConfig)}
+            <span className="max-w-[90px] truncate text-[11px] text-white/40">
+              💰 {activeStory.rpConfig.currencyDecimals ? taskbarGold.toFixed(2) : Math.floor(taskbarGold)}
             </span>
           )}
         </div>
