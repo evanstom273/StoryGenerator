@@ -29,10 +29,18 @@ export async function extractRpStatChanges(
 ): Promise<RpStatDelta[] | null> {
   const core = effectiveCoreStats(rpStats, config);
 
+  const goldFloor = config.allowDebt
+    ? (config.creditLimit != null && config.creditLimit > 0 ? -config.creditLimit : null)
+    : 0;
+  const goldFloorNote = goldFloor === null
+    ? `Gold floor: unlimited debt allowed.`
+    : `Gold floor: ${goldFloor} (${config.allowDebt ? "debt enabled" : "no debt"}).`;
+
   const prompt = [
     "Analyze the story scene below and identify any stat changes implied for the PLAYER CHARACTER only.",
     "",
     `Current stats: HP ${rpStats.hp}/${config.maxHp}, ${config.currencyName} ${rpStats.gold}, STR ${core.str} DEX ${core.dex} CON ${core.con} INT ${core.int} WIS ${core.wis} CHA ${core.cha}`,
+    goldFloorNote,
     "",
     "Valid fields: hp, gold, str, dex, con, int, wis, cha",
     "",
@@ -40,6 +48,7 @@ export async function extractRpStatChanges(
     "Return [] if nothing changed. Use negative delta for decreases, positive for increases.",
     "Only include changes CLEARLY implied by the narrative. Do not invent changes.",
     "Do not change gold unless currency is explicitly awarded or spent in the scene.",
+    "Core stats (str, dex, con, int, wis, cha) should ONLY change for significant, persistent events — long-term training, major illness, lasting injury, profound personal growth. A single scene or ordinary activity almost never warrants a core stat change.",
     "",
     "Story scene:",
     assistantText.slice(0, 2000),

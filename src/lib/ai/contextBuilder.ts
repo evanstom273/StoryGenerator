@@ -79,6 +79,7 @@ export interface BuildStoryChatContextInput {
   directorIntent?: DirectorIntent | null;
   rpStats?: RpStats | null;
   rpConfig?: RpConfig | null;
+  playerStateHintOverride?: string | null;
 }
 
 export function buildStoryChatContext({
@@ -93,12 +94,13 @@ export function buildStoryChatContext({
   directorIntent,
   rpStats,
   rpConfig,
+  playerStateHintOverride,
 }: BuildStoryChatContextInput): AIChatMessage[] {
   const sceneDepth = inferSceneDepth(latestUserMessage);
   const wordTarget = getSceneWordTarget(sceneDepth);
   const mostRecentImport = imports[0];
   const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
-  const playerStateHint = extractExplicitPlayerStateHint({
+  const playerStateHint = playerStateHintOverride?.trim() || extractExplicitPlayerStateHint({
     playerName: playerCharacter.name,
     recentMessages,
   });
@@ -222,13 +224,36 @@ export function buildStoryChatContext({
       ...rpConfig.coreStats,
       ...rpStats.statOverrides,
     };
+    const hpPct = rpConfig.maxHp > 0 ? rpStats.hp / rpConfig.maxHp : 0;
+    const hpState =
+      rpStats.hp <= 0 ? "Incapacitated"
+      : hpPct <= 0.05 ? "Incapacitated"
+      : hpPct <= 0.25 ? "Critical condition"
+      : hpPct <= 0.50 ? "Seriously wounded"
+      : hpPct <= 0.75 ? "Injured"
+      : "Healthy";
+    const goldFormatted = rpConfig.currencyDecimals ? rpStats.gold.toFixed(2) : Math.floor(rpStats.gold).toString();
+    const debtLine = rpConfig.allowDebt
+      ? "Debt is enabled. Negative balances are a meaningful narrative state — overdraft fees, denied services, creditor pressure, or need to take on work are all appropriate consequences."
+      : "";
     return normalizeWhitespace(
       [
-        `HP: ${rpStats.hp} / ${rpConfig.maxHp}`,
-        `${rpConfig.currencyName}: ${rpConfig.currencyDecimals ? rpStats.gold.toFixed(2) : Math.floor(rpStats.gold)}`,
+        `HP: ${rpStats.hp} / ${rpConfig.maxHp} — ${hpState}`,
+        `${rpConfig.currencyName}: ${goldFormatted}`,
         `STR ${str}  DEX ${dex}  CON ${con}  INT ${INT}  WIS ${wis}  CHA ${cha}`,
         "",
-        "Honour these values when writing consequences. Do not alter or report them in your narrative text — stat tracking happens separately.",
+        "HP represents physical condition. Writing tone should reflect the current state:",
+        "Healthy: acts freely and without obvious impairment.",
+        "Injured: may show strain, wince, or move with care.",
+        "Seriously wounded: struggles with effort; pain is present.",
+        "Critical condition: severely impaired — each action carries cost; may slur, stumble, or fail.",
+        "Incapacitated: cannot meaningfully resist events. Reaching 0 HP does not mean automatic death — the consequence (unconsciousness, capture, rescue, treatment, arrest) should fit the scene and context.",
+        "",
+        `Currency rule: if the player attempts a purchase they cannot afford, reflect this naturally in the scene (declined card, putting items back, asking for credit, etc.). Do not let a purchase silently succeed if the character lacks funds.${debtLine ? `\n${debtLine}` : ""}`,
+        "",
+        "Core stats are narrative guidance. They shape plausibility and colour consequences — they never gate an attempt. Higher scores suggest ease and competence; lower scores suggest difficulty, awkwardness, or risk of failure.",
+        "",
+        "Do not narrate or reference stat values directly. Stat tracking happens separately.",
       ].join("\n"),
     );
   })();

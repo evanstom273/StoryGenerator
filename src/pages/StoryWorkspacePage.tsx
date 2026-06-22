@@ -26,6 +26,7 @@ import type {
   StoryMessageRole,
   StoryMessageSpeakerType,
 } from "../types/models";
+import type { RpStatDelta } from "../lib/ai/rpStatsExtractor";
 
 const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
 const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
@@ -156,6 +157,11 @@ export function StoryWorkspacePage() {
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
   const [relationshipsOpen, setRelationshipsOpen] = useState(false);
   const [lastRpChanges, setLastRpChanges] = useState<RpChangelogEntry[] | null>(null);
+  const [pendingCoreStatChanges, setPendingCoreStatChanges] = useState<RpStatDelta[] | null>(null);
+  const [showZeroHpModal, setShowZeroHpModal] = useState(false);
+  const [zeroHpConsequenceChoice, setZeroHpConsequenceChoice] = useState<string>("");
+  const [zeroHpCustom, setZeroHpCustom] = useState("");
+  const [pendingZeroHpConsequence, setPendingZeroHpConsequence] = useState<string | null>(null);
 
   useEffect(() => {
     setEditingMessage(null);
@@ -177,6 +183,11 @@ export function StoryWorkspacePage() {
     setRpSheetOpen(false);
     setRelationshipsOpen(false);
     setLastRpChanges(null);
+    setPendingCoreStatChanges(null);
+    setShowZeroHpModal(false);
+    setZeroHpConsequenceChoice("");
+    setZeroHpCustom("");
+    setPendingZeroHpConsequence(null);
   }, [storyId]);
 
 
@@ -286,8 +297,19 @@ export function StoryWorkspacePage() {
     setChatInput("");
 
     try {
-      const result = await sendChatMessage(activeStory.id, content);
-      if (result.appliedRpChanges?.length) setLastRpChanges(result.appliedRpChanges);
+      const consequence = pendingZeroHpConsequence;
+      if (consequence) setPendingZeroHpConsequence(null);
+      const result = await sendChatMessage(activeStory.id, content, consequence ? { zeroHpConsequence: consequence } : undefined);
+      if (result.appliedRpChanges?.length) {
+        setLastRpChanges(result.appliedRpChanges);
+        const hpZero = result.appliedRpChanges.some((c) => c.field === "hp" && c.to === 0);
+        if (hpZero) {
+          setZeroHpConsequenceChoice("Unconscious / collapsed");
+          setZeroHpCustom("");
+          setShowZeroHpModal(true);
+        }
+      }
+      if (result.pendingCoreStatChanges?.length) setPendingCoreStatChanges(result.pendingCoreStatChanges);
     } catch (error) {
       reportWorkspaceUiAudit({
         msg: "Story workspace displayed generation error",
@@ -490,6 +512,23 @@ export function StoryWorkspacePage() {
       .join(" · ");
   }
 
+  async function handleAcceptCoreStatChanges() {
+    if (!pendingCoreStatChanges?.length || !storyId || !activeStory.rpConfig) return;
+    const state = await fetchStoryState(storyId);
+    if (!state) return;
+    try {
+      const base = JSON.parse(state.stateJson) as Record<string, unknown>;
+      let next = (base.rpStats as any) ?? {};
+      for (const d of pendingCoreStatChanges) {
+        const from = (next.statOverrides?.[d.field] ?? activeStory.rpConfig.coreStats[d.field as keyof typeof activeStory.rpConfig.coreStats]) ?? 10;
+        const to = Math.min(30, Math.max(1, from + d.delta));
+        next = applyRpStatChange(next, { field: d.field, from, to, reason: d.reason });
+      }
+      await updateRpStats(storyId, next);
+      setPendingCoreStatChanges(null);
+    } catch {}
+  }
+
   async function handleUndoRpChanges() {
     if (!lastRpChanges?.length || !storyId) return;
     const state = await fetchStoryState(storyId);
@@ -647,6 +686,69 @@ export function StoryWorkspacePage() {
           void handleRetryChat();
         }}
       />
+
+      {showZeroHpModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-[14px] border border-divider bg-panel p-5 shadow-xl">
+            <h2 className="mb-1 text-base font-semibold text-ink">Character Incapacitated</h2>
+            <p className="mb-4 text-sm text-ink-muted">HP has reached 0. Choose what happens next — this will guide the story's next beat.</p>
+            <div className="mb-4 space-y-2">
+              {["Unconscious / collapsed", "Captured", "Rescued or helped by someone nearby", "Receiving medical treatment", "Arrested"].map((opt) => (
+                <label key={opt} className="flex cursor-pointer items-center gap-3 rounded-[8px] border border-divider px-3 py-2 hover:bg-panel-muted/50">
+                  <input
+                    type="radio"
+                    name="zeroHpConsequence"
+                    value={opt}
+                    checked={zeroHpConsequenceChoice === opt}
+                    onChange={() => { setZeroHpConsequenceChoice(opt); setZeroHpCustom(""); }}
+                    className="accent-accent"
+                  />
+                  <span className="text-sm text-ink">{opt}</span>
+                </label>
+              ))}
+              <label className="flex cursor-pointer items-center gap-3 rounded-[8px] border border-divider px-3 py-2 hover:bg-panel-muted/50">
+                <input
+                  type="radio"
+                  name="zeroHpConsequence"
+                  value="custom"
+                  checked={zeroHpConsequenceChoice === "custom"}
+                  onChange={() => setZeroHpConsequenceChoice("custom")}
+                  className="accent-accent"
+                />
+                <span className="text-sm text-ink">Custom…</span>
+              </label>
+              {zeroHpConsequenceChoice === "custom" && (
+                <input
+                  autoFocus
+                  className="mt-1 w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                  placeholder="Describe what happens…"
+                  value={zeroHpCustom}
+                  onChange={(e) => setZeroHpCustom(e.target.value)}
+                />
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  const consequence = zeroHpConsequenceChoice === "custom" ? zeroHpCustom.trim() : zeroHpConsequenceChoice;
+                  if (!consequence) return;
+                  setPendingZeroHpConsequence(`The player character is incapacitated (HP reached 0). Consequence: ${consequence}`);
+                  setShowZeroHpModal(false);
+                }}
+                disabled={!zeroHpConsequenceChoice || (zeroHpConsequenceChoice === "custom" && !zeroHpCustom.trim())}
+              >
+                Set consequence
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setShowZeroHpModal(false)}>
+                Skip
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       <div
         className={[
           "fixed inset-0 z-[70]",
@@ -850,6 +952,29 @@ export function StoryWorkspacePage() {
                   <span className="text-xs text-ink-muted">Applied</span>
                   <Button variant="secondary" size="sm" onClick={() => void handleUndoRpChanges()} disabled={isGenerating || isRegenerating}>
                     Undo
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            {activeStory.rpMode && pendingCoreStatChanges?.length ? (
+              <div className="mb-3 rounded-[9px] border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-amber-300">Stat change implied by narrative</p>
+                    <p className="mt-0.5 text-xs text-ink-muted">
+                      {pendingCoreStatChanges.map((d) => {
+                        const sign = d.delta > 0 ? "+" : "";
+                        return `${d.field.toUpperCase()} ${sign}${d.delta} — ${d.reason}`;
+                      }).join(" · ")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="primary" size="sm" onClick={() => void handleAcceptCoreStatChanges()} disabled={isGenerating || isRegenerating}>
+                    Accept
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => setPendingCoreStatChanges(null)} disabled={isGenerating || isRegenerating}>
+                    Dismiss
                   </Button>
                 </div>
               </div>

@@ -90,6 +90,8 @@ export type RpConfig = {
   maxHp: number;
   startingGold: number;
   coreStats: RpCoreStats;
+  allowDebt?: boolean;
+  creditLimit?: number | null;
 };
 
 export type RpNpcHpEntry = {

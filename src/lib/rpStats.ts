@@ -15,6 +15,8 @@ export const DEFAULT_RP_CONFIG: RpConfig = {
   maxHp: 100,
   startingGold: 0,
   coreStats: { ...DEFAULT_CORE_STATS },
+  allowDebt: false,
+  creditLimit: null,
 };
 
 export function defaultRpStats(config: RpConfig): RpStats {
@@ -91,6 +93,12 @@ export function getStatValue(stats: RpStats, config: RpConfig, field: string): n
 
 export function clampStat(field: string, value: number, config: RpConfig): number {
   if (field === "hp") return Math.min(config.maxHp, Math.max(0, value));
-  if (field === "gold") return Math.max(0, value);
+  if (field === "gold") {
+    if (config.allowDebt) {
+      const floor = config.creditLimit != null && config.creditLimit > 0 ? -config.creditLimit : -Infinity;
+      return Math.max(floor, value);
+    }
+    return Math.max(0, value);
+  }
   return Math.min(30, Math.max(1, value));
 }

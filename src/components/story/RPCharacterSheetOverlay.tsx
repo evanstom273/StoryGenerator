@@ -530,6 +530,38 @@ export function RPCharacterSheetOverlay(props: {
                   </div>
                 </div>
 
+                <div className="border-t border-divider/40 pt-3 space-y-3">
+                  <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider">Currency &amp; Debt</p>
+                  <label className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-ink-muted">Allow debt (negative balance)</span>
+                    <select
+                      className="rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none"
+                      value={configDraft.allowDebt ? "yes" : "no"}
+                      onChange={(e) => setConfigDraft((c) => ({ ...c, allowDebt: e.target.value === "yes" }))}
+                    >
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </label>
+
+                  {configDraft.allowDebt && (
+                    <label className="block space-y-1">
+                      <span className="text-xs text-ink-muted">Credit limit (0 = unlimited debt)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={configDraft.currencyDecimals ? 0.01 : 1}
+                        className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                        value={configDraft.creditLimit ?? 0}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value) || 0;
+                          setConfigDraft((c) => ({ ...c, creditLimit: v === 0 ? null : v }));
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
                 <Button variant="primary" size="sm" className="w-full" disabled={saving} onClick={() => void handleSaveConfig()}>
                   {saving ? "Saving…" : "Save Config"}
                 </Button>

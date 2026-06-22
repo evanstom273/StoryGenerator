@@ -80,7 +80,7 @@ import {
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent } from "../../lib/storyText/directorIntent";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
-import { extractRpStatChanges } from "../../lib/ai/rpStatsExtractor";
+import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import { applyStatChange, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import {
   formatUniverseWikiSources,
@@ -291,7 +291,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
 }
@@ -3534,7 +3534,7 @@ export function StoryEngineProvider({
 
         return draft;
       },
-      async sendChatMessage(storyId, content) {
+      async sendChatMessage(storyId, content, opts) {
         const trimmed = content.trim();
 
         if (!trimmed) {
@@ -3794,6 +3794,7 @@ export function StoryEngineProvider({
         const shouldSkipAssistantReply = Boolean(chapterBoundary);
         let assistantMessage: StoryMessage | null = null;
         let appliedRpChanges: RpChangelogEntry[] | null = null;
+        let pendingCoreStatChanges: RpStatDelta[] | null = null;
         let updatedMessages: StoryMessage[] = [];
 
         if (!shouldSkipAssistantReply) {
@@ -3814,6 +3815,7 @@ export function StoryEngineProvider({
             directorIntent: userMessage.directorIntent ?? null,
             rpStats: currentRpStats,
             rpConfig: story.rpConfig ?? null,
+            playerStateHintOverride: opts?.zeroHpConsequence ?? null,
           });
           // #region debug-point A:story-request-shape
           reportGenerationAudit({
@@ -4373,9 +4375,13 @@ export function StoryEngineProvider({
                 model,
               );
               if (deltas?.length) {
+                const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
+                const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
+                const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
+
                 let nextStats = currentRpStats;
                 const applied: RpChangelogEntry[] = [];
-                for (const d of deltas) {
+                for (const d of autoDeltas) {
                   const from = getStatValue(nextStats, story.rpConfig, d.field);
                   const to = clampStat(d.field, from + d.delta, story.rpConfig);
                   if (to === from) continue;
@@ -4394,6 +4400,9 @@ export function StoryEngineProvider({
                     updatedAt: new Date().toISOString(),
                   });
                   appliedRpChanges = applied;
+                }
+                if (coreDeltas.length) {
+                  pendingCoreStatChanges = coreDeltas;
                 }
               }
             } catch {}
@@ -4645,7 +4654,7 @@ export function StoryEngineProvider({
             await queueStoryIndexJob(storyId, { trigger: "auto" });
           } catch {}
         })();
-        return { message: assistantMessage, appliedRpChanges };
+        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges };
       },
     };
   }, [
