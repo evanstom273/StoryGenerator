@@ -159,6 +159,7 @@ export function StoryWorkspacePage() {
   const [lastRpChanges, setLastRpChanges] = useState<RpChangelogEntry[] | null>(null);
   const [pendingCoreStatChanges, setPendingCoreStatChanges] = useState<RpStatDelta[] | null>(null);
   const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
+  const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
   const [showZeroHpModal, setShowZeroHpModal] = useState(false);
   const [zeroHpConsequenceChoice, setZeroHpConsequenceChoice] = useState<string>("");
   const [zeroHpCustom, setZeroHpCustom] = useState("");
@@ -317,6 +318,7 @@ export function StoryWorkspacePage() {
         setRpToasts((prev) => [{ id, summary: result.rpEventSummary! }, ...prev]);
         setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
       }
+      if (activeStory.rpMode) setRpStatsRefreshKey((k) => k + 1);
     } catch (error) {
       reportWorkspaceUiAudit({
         msg: "Story workspace displayed generation error",
@@ -1236,6 +1238,7 @@ export function StoryWorkspacePage() {
           open={rpSheetOpen}
           story={activeStory}
           onClose={() => setRpSheetOpen(false)}
+          refreshKey={rpStatsRefreshKey}
         />
       ) : null}
       {storyId && relationshipsOpen ? (

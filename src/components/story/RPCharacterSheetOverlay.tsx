@@ -141,6 +141,7 @@ export function RPCharacterSheetOverlay(props: {
   open: boolean;
   story: Story;
   onClose: () => void;
+  refreshKey?: number;
 }) {
   const { fetchStoryState, updateRpStats, updateStory, messages: allMessages } = useStoryEngine();
   const [rpStats, setRpStats] = useState<RpStats | null>(null);
@@ -170,7 +171,7 @@ export function RPCharacterSheetOverlay(props: {
     });
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
-  }, [props.open, props.story.id]);
+  }, [props.open, props.story.id, props.refreshKey]);
 
   if (!props.open) return null;
 

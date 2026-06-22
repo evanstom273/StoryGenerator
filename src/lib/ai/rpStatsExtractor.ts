@@ -30,7 +30,7 @@ function safeParseExtractorResponse(text: string): { deltas: unknown[]; narrativ
     }
   }
 
-  // Fallback: bare array
+  // Fallback: bare array (old format — no narrative available)
   const start = trimmed.indexOf("[");
   const end = trimmed.lastIndexOf("]");
   if (start !== -1 && end > start) {
@@ -68,22 +68,27 @@ export async function extractRpStatChanges(
     "",
     "Valid fields: hp, gold, str, dex, con, int, wis, cha",
     "",
-    'Return a JSON object in this exact format:',
-    '{"deltas":[{"field":"hp","delta":-15,"reason":"Arrow wound"}],"narrative":"Short one-line summary of the RP event"}',
+    "IMPORTANT: Return ONLY a JSON object — never a bare array. Always use this exact format:",
+    '{"deltas":[{"field":"hp","delta":-15,"reason":"Arrow wound"}],"narrative":"Short one-line summary"}',
+    "",
+    "Format examples:",
+    '- Nothing RP-relevant: {"deltas":[],"narrative":null}',
+    `- Blocked purchase:    {"deltas":[],"narrative":"Purchase blocked — ${config.currencyName} ${rpStats.gold} available, cost exceeded balance"}`,
+    '- Gold spent:          {"deltas":[{"field":"gold","delta":-6,"reason":"snacks"}],"narrative":"Spent $6 on snacks"}',
+    '- HP damage:           {"deltas":[{"field":"hp","delta":-10,"reason":"Fell off ledge"}],"narrative":"HP -10 from falling"}',
     "",
     "Rules for deltas:",
-    "- Use [] if nothing changed. Use negative delta for decreases, positive for increases.",
+    "- Use negative delta for decreases, positive for increases.",
     "- Only include changes CLEARLY implied by the narrative. Do not invent changes.",
     "- Do not change gold unless currency is explicitly awarded or spent in the scene.",
-    "- If a purchase was attempted but blocked due to insufficient funds, do NOT deduct gold.",
+    "- If a purchase was attempted but blocked due to insufficient funds, do NOT deduct gold — just set narrative.",
     "- Core stats (str, dex, con, int, wis, cha) should ONLY change for significant, persistent events — long-term training, major illness, lasting injury, profound personal growth. A single scene or ordinary activity almost never warrants a core stat change.",
     "",
     "Rules for narrative:",
-    `- Write a short one-line summary whenever something RP-relevant happened, even if deltas is [].`,
-    `- RP-relevant means: any currency transaction (successful or blocked), HP damage or healing, a stat check or consequence, or a resource interaction.`,
-    `- For blocked purchases write e.g. "Purchase blocked — ${config.currencyName} ${rpStats.gold} available, cost exceeded balance"`,
-    `- For stat changes summarise them briefly e.g. "HP -10 from falling · Gold -5 for room and board"`,
-    `- Set narrative to null if the scene had no RP-relevant content at all.`,
+    "- Write a short one-line summary whenever something RP-relevant happened, even if deltas is [].",
+    `- RP-relevant means: any currency transaction (successful or blocked), HP damage or healing, a stat consequence, or a resource interaction.`,
+    `- For blocked purchases always write a narrative even though deltas is [].`,
+    "- Set narrative to null only if the scene had absolutely no RP-relevant content.",
     "",
     "Story scene:",
     assistantText.slice(0, 2000),
@@ -101,6 +106,8 @@ export async function extractRpStatChanges(
     if (!parsed) return null;
 
     const deltas: RpStatDelta[] = [];
+    const blockedAttempts: Array<{ field: string; reason: string }> = [];
+
     for (const item of parsed.deltas) {
       if (!item || typeof item !== "object") continue;
       const field = (item as any).field;
@@ -110,13 +117,24 @@ export async function extractRpStatChanges(
       if (typeof delta !== "number" || !Number.isFinite(delta) || delta === 0) continue;
       const from = getStatValue(rpStats, config, field);
       const to = clampStat(field, from + delta, config);
-      if (to === from) continue;
+      if (to === from) {
+        // Change was blocked by clamping (e.g. can't go below 0 gold)
+        blockedAttempts.push({ field, reason: typeof reason === "string" ? reason.trim() : field });
+        continue;
+      }
       deltas.push({ field, delta: to - from, reason: typeof reason === "string" ? reason.trim() : field });
     }
 
-    const narrative = parsed.narrative;
-    if (!deltas.length && !narrative) return null;
+    // Use AI narrative, or fall back to a code-generated one from blocked attempts
+    const blockedNarrative = blockedAttempts.length
+      ? blockedAttempts
+          .map((b) => `${b.field === "gold" ? config.currencyName : b.field.toUpperCase()} change blocked — ${b.reason}`)
+          .join(" · ")
+      : undefined;
 
+    const narrative = parsed.narrative ?? blockedNarrative;
+
+    if (!deltas.length && !narrative) return null;
     return { deltas, narrative };
   } catch {
     return null;
