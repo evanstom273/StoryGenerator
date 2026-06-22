@@ -25,24 +25,33 @@ export async function sendJobCompletionNotification(args: JobNotificationArgs) {
     return false;
   }
 
-  const notification = new Notification(args.title, {
-    body: args.body,
-    tag: args.storyId
-      ? `story-engine-job:${args.storyId}:${args.openMetaChat ? "metachat" : "story"}`
-      : undefined,
-  });
+  const tag = args.storyId
+    ? `story-engine-job:${args.storyId}:${args.openMetaChat ? "metachat" : "story"}`
+    : undefined;
 
-  notification.onclick = () => {
-    try {
-      if (args.storyId && args.openMetaChat) {
-        localStorage.setItem(META_CHAT_OPEN_STORAGE_KEY, args.storyId);
-      }
-      if (args.storyId) {
-        window.focus();
-        window.location.assign(`/stories/${args.storyId}`);
-      }
-    } catch {}
-  };
+  const swReg = navigator.serviceWorker?.ready ?? null;
+
+  try {
+    if (swReg) {
+      const reg = await swReg;
+      await reg.showNotification(args.title, { body: args.body, tag });
+    } else {
+      const notification = new Notification(args.title, { body: args.body, tag });
+      notification.onclick = () => {
+        try {
+          if (args.storyId && args.openMetaChat) {
+            localStorage.setItem(META_CHAT_OPEN_STORAGE_KEY, args.storyId);
+          }
+          if (args.storyId) {
+            window.focus();
+            window.location.assign(`/stories/${args.storyId}`);
+          }
+        } catch {}
+      };
+    }
+  } catch {
+    return false;
+  }
 
   return true;
 }
