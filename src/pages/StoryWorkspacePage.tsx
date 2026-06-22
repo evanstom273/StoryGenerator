@@ -1261,6 +1261,7 @@ export function StoryWorkspacePage() {
           story={activeStory}
           onClose={() => setRpSheetOpen(false)}
           refreshKey={rpStatsRefreshKey}
+          onGoldChange={(g) => setTaskbarGold(g)}
         />
       ) : null}
       {storyId && relationshipsOpen ? (

@@ -144,6 +144,7 @@ export function RPCharacterSheetOverlay(props: {
   story: Story;
   onClose: () => void;
   refreshKey?: number;
+  onGoldChange?: (gold: number) => void;
 }) {
   const { fetchStoryState, updateRpStats, updateStory, messages: allMessages, getPlayerCharacterById, aiSettings } = useStoryEngine();
   const playerCharacter = getPlayerCharacterById(props.story.playerCharacterId);
@@ -187,6 +188,7 @@ export function RPCharacterSheetOverlay(props: {
     setSaving(true);
     try {
       await updateRpStats(props.story.id, next);
+      props.onGoldChange?.(next.gold);
     } finally {
       setSaving(false);
     }
