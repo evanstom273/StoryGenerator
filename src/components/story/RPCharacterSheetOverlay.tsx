@@ -180,12 +180,16 @@ export function RPCharacterSheetOverlay(props: {
       const now = new Date();
       setTimeDraft({ year: String(now.getFullYear()), month: String(now.getMonth() + 1), day: String(now.getDate()), hour: String(now.getHours()), minute: String(now.getMinutes()) });
     }
+  }, [activeTab, rpStats?.timeState]);
+
+  useEffect(() => {
+    if (activeTab !== "time") return;
     setCalDraft({
       yearSuffix: configDraft.calendarConfig?.yearSuffix ?? "",
       monthNames: configDraft.calendarConfig?.monthNames?.join(", ") ?? "",
       weekdayNames: configDraft.calendarConfig?.weekdayNames?.join(", ") ?? "",
     });
-  }, [activeTab, rpStats?.timeState, configDraft.calendarConfig]);
+  }, [activeTab, configDraft.calendarConfig]);
 
   const config: RpConfig = props.story.rpConfig ?? DEFAULT_RP_CONFIG;
 

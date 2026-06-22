@@ -4380,6 +4380,7 @@ export function StoryEngineProvider({
                 {
                   characterBackground: playerCharacter.background ?? undefined,
                   universeLore: effectiveUniverse.description ?? undefined,
+                  playerMessage: trimmed,
                 },
               );
               if (extracted) {

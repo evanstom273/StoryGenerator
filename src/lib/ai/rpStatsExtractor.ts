@@ -23,6 +23,7 @@ export type RpExtractorResult = {
 export type RpExtractorContext = {
   characterBackground?: string;
   universeLore?: string;
+  playerMessage?: string;
 };
 
 function safeParseExtractorResponse(text: string): { deltas: unknown[]; narrative?: string; npcHpChanges?: unknown[]; timeAdvanceMinutes?: number } | null {
@@ -163,7 +164,8 @@ export async function extractRpStatChanges(
     `SCI-FI/FUTURISTIC: Food/drink 5–25 cr · Transit 1–5 cr · Basic tool 50–200 cr · Service 50–500 cr · Shift wages 100–400 cr`,
     "",
     "Story scene:",
-    assistantText.slice(0, 2000),
+    ...(context?.playerMessage ? [`Player: ${context.playerMessage.slice(0, 500)}`] : []),
+    `Narrator: ${assistantText.slice(0, 2000)}`,
   ].filter(line => line !== undefined).join("\n");
 
   try {
