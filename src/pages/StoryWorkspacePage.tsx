@@ -167,6 +167,7 @@ export function StoryWorkspacePage() {
   const [zeroHpCustom, setZeroHpCustom] = useState("");
   const [pendingZeroHpConsequence, setPendingZeroHpConsequence] = useState<string | null>(null);
 
+  // Initial gold load only — live updates come from appliedRpChanges in sendChatMessage
   useEffect(() => {
     if (!storyId || !story?.rpMode) { setTaskbarGold(null); return; }
     fetchStoryState(storyId).then((state) => {
@@ -175,7 +176,7 @@ export function StoryWorkspacePage() {
       const g = parsed?.rpStats?.gold;
       if (typeof g === "number") setTaskbarGold(g);
     });
-  }, [storyId, rpStatsRefreshKey, story?.rpMode]);
+  }, [storyId, story?.rpMode]);
 
   useEffect(() => {
     setEditingMessage(null);
