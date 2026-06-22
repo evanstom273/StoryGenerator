@@ -9,6 +9,7 @@ import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
 import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
 import { RPCharacterSheetOverlay } from "../components/story/RPCharacterSheetOverlay";
+import { RelationshipsOverlay } from "../components/story/RelationshipsOverlay";
 import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
@@ -153,6 +154,7 @@ export function StoryWorkspacePage() {
   const [isAssistantEditSaving, setIsAssistantEditSaving] = useState(false);
   const [toolbarRelationships, setToolbarRelationships] = useState<RelationshipIndexEntry[]>([]);
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
+  const [relationshipsOpen, setRelationshipsOpen] = useState(false);
 
   useEffect(() => {
     if (!storyId) return;
@@ -184,6 +186,7 @@ export function StoryWorkspacePage() {
     setAssistantEditError(null);
     setIsAssistantEditSaving(false);
     setRpSheetOpen(false);
+    setRelationshipsOpen(false);
   }, [storyId]);
 
   useEffect(() => {
@@ -767,14 +770,18 @@ export function StoryWorkspacePage() {
             onClick={() => setMetaChatOpen((c) => !c)}
             icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18.5h6"/><path d="M12 2v6"/><path d="M8.5 8V5"/><path d="M15.5 8V5"/></svg>}
           />
-          {activeStory?.rpMode ? (
-            <WorkspaceIconBtn
-              label="Character Sheet"
-              active={rpSheetOpen}
-              onClick={() => setRpSheetOpen((c) => !c)}
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M12 11v2"/><path d="M10 13h4"/></svg>}
-            />
-          ) : null}
+          <WorkspaceIconBtn
+            label="Character Sheet"
+            active={rpSheetOpen}
+            onClick={() => setRpSheetOpen((c) => !c)}
+            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M12 11v2"/><path d="M10 13h4"/></svg>}
+          />
+          <WorkspaceIconBtn
+            label="Relationships"
+            active={relationshipsOpen}
+            onClick={() => setRelationshipsOpen((c) => !c)}
+            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="8" r="2.5"/><path d="M3 21v-2a5 5 0 0 1 5-5h2"/><path d="M13 21v-1.5a3.5 3.5 0 0 1 7 0V21"/></svg>}
+          />
           {readerMode || archiveMode ? null : (
             <WorkspaceIconBtn
               label="Manual entry"
@@ -1102,6 +1109,14 @@ export function StoryWorkspacePage() {
           open={rpSheetOpen}
           story={activeStory}
           onClose={() => setRpSheetOpen(false)}
+        />
+      ) : null}
+      {storyId && relationshipsOpen ? (
+        <RelationshipsOverlay
+          open={relationshipsOpen}
+          storyId={storyId}
+          playerName={activePlayerCharacter?.name}
+          onClose={() => setRelationshipsOpen(false)}
         />
       ) : null}
     </div>

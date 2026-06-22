@@ -10,8 +10,7 @@ import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
-import type { AIProviderType, AutoIndexInterval, AutoIndexMode, ExportFormat, RpConfig } from "../../types/models";
-import { DEFAULT_RP_CONFIG } from "../../lib/rpStats";
+import type { AIProviderType, AutoIndexInterval, AutoIndexMode, ExportFormat } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useTheme } from "../theming/ThemeContext";
@@ -194,9 +193,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const { themeKey, setThemeKey } = useTheme();
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
   const [isSavingStory, setIsSavingStory] = useState(false);
-  const [rpMode, setRpMode] = useState(story?.rpMode ?? false);
-  const [rpConfig, setRpConfig] = useState<RpConfig>(story?.rpConfig ?? DEFAULT_RP_CONFIG);
-  const [isSavingRp, setIsSavingRp] = useState(false);
   const [aiProviderType, setAiProviderType] = useState<AIProviderType>(
     aiSettings?.activeProviderType ?? "openai",
   );
@@ -270,8 +266,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode,
       autoIndexInterval: (story.autoIndexInterval ?? 20) as AutoIndexInterval,
     });
-    setRpMode(story.rpMode ?? false);
-    setRpConfig(story.rpConfig ?? DEFAULT_RP_CONFIG);
   }, [story]);
 
   useEffect(() => {
@@ -935,114 +929,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 </div>
               </CollapsibleSection>
 
-              <CollapsibleSection title="RP Mode">
-                <div className="space-y-4">
-                  <label className="block space-y-2">
-                    <div className="text-xs text-ink-muted">Enable RP Mode for this story</div>
-                    <select
-                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
-                      value={rpMode ? "on" : "off"}
-                      onChange={(e) => setRpMode(e.target.value === "on")}
-                    >
-                      <option value="off">Off</option>
-                      <option value="on">On</option>
-                    </select>
-                  </label>
 
-                  {rpMode ? (
-                    <div className="space-y-3 rounded-[8px] border border-divider/40 bg-panel-muted/30 p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-widest text-ink-muted">Configuration</p>
-
-                      <label className="block space-y-1">
-                        <span className="text-xs text-ink-muted">Currency name</span>
-                        <input
-                          className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
-                          value={rpConfig.currencyName}
-                          onChange={(e) => setRpConfig((c) => ({ ...c, currencyName: e.target.value }))}
-                          placeholder="Gold"
-                        />
-                      </label>
-
-                      <label className="flex items-center justify-between gap-3">
-                        <span className="text-xs text-ink-muted">Allow decimal amounts (e.g. $1.50)</span>
-                        <select
-                          className="rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none"
-                          value={rpConfig.currencyDecimals ? "yes" : "no"}
-                          onChange={(e) => setRpConfig((c) => ({ ...c, currencyDecimals: e.target.value === "yes" }))}
-                        >
-                          <option value="no">No</option>
-                          <option value="yes">Yes</option>
-                        </select>
-                      </label>
-
-                      <label className="block space-y-1">
-                        <span className="text-xs text-ink-muted">Max HP</span>
-                        <input
-                          type="number"
-                          min={1}
-                          className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
-                          value={rpConfig.maxHp}
-                          onChange={(e) => setRpConfig((c) => ({ ...c, maxHp: Math.max(1, parseInt(e.target.value) || 1) }))}
-                        />
-                      </label>
-
-                      <label className="block space-y-1">
-                        <span className="text-xs text-ink-muted">Starting {rpConfig.currencyName || "Gold"}</span>
-                        <input
-                          type="number"
-                          min={0}
-                          step={rpConfig.currencyDecimals ? 0.01 : 1}
-                          className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
-                          value={rpConfig.startingGold}
-                          onChange={(e) => setRpConfig((c) => ({ ...c, startingGold: Math.max(0, parseFloat(e.target.value) || 0) }))}
-                        />
-                      </label>
-
-                      <div className="space-y-2">
-                        <p className="text-xs text-ink-muted">Starting core stats</p>
-                        <div className="grid grid-cols-3 gap-2">
-                          {(["str", "dex", "con", "int", "wis", "cha"] as const).map((stat) => (
-                            <label key={stat} className="block space-y-0.5">
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{stat}</span>
-                              <input
-                                type="number"
-                                min={1}
-                                max={30}
-                                className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-center text-sm text-ink outline-none transition focus:border-accent/[0.4]"
-                                value={rpConfig.coreStats[stat]}
-                                onChange={(e) => setRpConfig((c) => ({ ...c, coreStats: { ...c.coreStats, [stat]: Math.max(1, parseInt(e.target.value) || 1) } }))}
-                              />
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {story ? (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      className="w-full"
-                      disabled={isSavingRp}
-                      onClick={async () => {
-                        setIsSavingRp(true);
-                        try {
-                          await updateStory(story.id, { rpMode, rpConfig: rpMode ? rpConfig : undefined });
-                        } finally {
-                          setIsSavingRp(false);
-                        }
-                      }}
-                    >
-                      {isSavingRp ? "Saving…" : "Save RP Settings"}
-                    </Button>
-                  ) : null}
-
-                  <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
-                    When enabled, a Character Sheet overlay appears in the toolbar with HP, currency, and core stats. Configure starting values here; the AI will suggest changes during play.
-                  </div>
-                </div>
-              </CollapsibleSection>
 
               <CollapsibleSection title="Export">
                 <div className="space-y-2">

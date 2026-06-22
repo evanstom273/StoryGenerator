@@ -4,6 +4,7 @@ import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { safeParseStoryStateData } from "../../lib/storyStateV2";
 import {
   applyStatChange,
+  DEFAULT_RP_CONFIG,
   defaultRpStats,
   effectiveCoreStats,
   formatGold,
@@ -126,25 +127,27 @@ function NumberField({
   );
 }
 
-type Tab = "stats" | "hp" | "currency" | "changelog";
+type Tab = "stats" | "hp" | "currency" | "changelog" | "config";
 
 export function RPCharacterSheetOverlay(props: {
   open: boolean;
   story: Story;
   onClose: () => void;
 }) {
-  const { fetchStoryState, updateRpStats } = useStoryEngine();
+  const { fetchStoryState, updateRpStats, updateStory } = useStoryEngine();
   const [rpStats, setRpStats] = useState<RpStats | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("stats");
   const [saving, setSaving] = useState(false);
+  const [rpEnabled, setRpEnabled] = useState(props.story.rpMode ?? false);
+  const [togglingRp, setTogglingRp] = useState(false);
+  const [configDraft, setConfigDraft] = useState<RpConfig>(props.story.rpConfig ?? DEFAULT_RP_CONFIG);
 
-  const config: RpConfig = props.story.rpConfig ?? {
-    currencyName: "Gold",
-    currencyDecimals: false,
-    maxHp: 100,
-    startingGold: 0,
-    coreStats: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
-  };
+  useEffect(() => {
+    setRpEnabled(props.story.rpMode ?? false);
+    setConfigDraft(props.story.rpConfig ?? DEFAULT_RP_CONFIG);
+  }, [props.story.rpMode, props.story.rpConfig]);
+
+  const config: RpConfig = props.story.rpConfig ?? DEFAULT_RP_CONFIG;
 
   useEffect(() => {
     if (!props.open) return;
@@ -160,9 +163,9 @@ export function RPCharacterSheetOverlay(props: {
     return () => { document.body.style.overflow = ""; };
   }, [props.open, props.story.id]);
 
-  if (!props.open || !rpStats) return null;
+  if (!props.open) return null;
 
-  const stats = effectiveCoreStats(rpStats, config);
+  const stats = rpStats ? effectiveCoreStats(rpStats, config) : config.coreStats;
 
   async function save(next: RpStats) {
     setRpStats(next);
@@ -174,10 +177,43 @@ export function RPCharacterSheetOverlay(props: {
     }
   }
 
-  function handleStatChange(key: string, newVal: number) {
-    const current = (stats as any)[key] ?? 10;
-    void save(applyStatChange(rpStats!, { field: key, from: current, to: newVal, reason: "Manual edit" }));
+  async function handleToggleRp(enabled: boolean) {
+    setRpEnabled(enabled);
+    setTogglingRp(true);
+    try {
+      await updateStory(props.story.id, { rpMode: enabled, rpConfig: enabled ? configDraft : props.story.rpConfig });
+      if (enabled && !rpStats) {
+        setRpStats(defaultRpStats(configDraft));
+      }
+    } finally {
+      setTogglingRp(false);
+    }
   }
+
+  async function handleSaveConfig() {
+    setSaving(true);
+    try {
+      await updateStory(props.story.id, { rpConfig: configDraft });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleStatChange(key: string, newVal: number) {
+    if (!rpStats) return;
+    const current = (stats as any)[key] ?? 10;
+    void save(applyStatChange(rpStats, { field: key, from: current, to: newVal, reason: "Manual edit" }));
+  }
+
+  const tabs: { id: Tab; label: string }[] = rpEnabled
+    ? [
+        { id: "stats", label: "Stats" },
+        { id: "hp", label: "HP" },
+        { id: "currency", label: config.currencyName || "Currency" },
+        { id: "changelog", label: "Log" },
+        { id: "config", label: "Config" },
+      ]
+    : [{ id: "config", label: "Config" }];
 
   return (
     <div className="fixed inset-0 z-[55] flex flex-col bg-app">
@@ -187,151 +223,243 @@ export function RPCharacterSheetOverlay(props: {
           <h2 className="text-base font-bold text-ink">Character Sheet</h2>
           <p className="text-xs text-ink-muted">{props.story.title}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {saving ? <span className="text-xs text-ink-muted">Saving…</span> : null}
+        <div className="flex items-center gap-3">
+          {saving || togglingRp ? <span className="text-xs text-ink-muted">Saving…</span> : null}
+          {/* RP Mode toggle */}
+          <label className="flex cursor-pointer items-center gap-2">
+            <span className="text-xs text-ink-muted">RP Mode</span>
+            <button
+              type="button"
+              disabled={togglingRp}
+              onClick={() => void handleToggleRp(!rpEnabled)}
+              className={cn(
+                "relative h-5 w-9 rounded-full transition-colors",
+                rpEnabled ? "bg-accent" : "bg-divider/60",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
+                  rpEnabled ? "translate-x-4" : "translate-x-0.5",
+                )}
+              />
+            </button>
+          </label>
           <Button variant="ghost" size="sm" onClick={props.onClose}>
             Close
           </Button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex shrink-0 gap-1 border-b border-divider/[0.3] px-4 pt-2">
-        {(["stats", "hp", "currency", "changelog"] as Tab[]).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "rounded-t-md px-4 py-2 text-xs font-semibold capitalize transition",
-              activeTab === tab
-                ? "border-b-2 border-accent text-ink"
-                : "text-ink-muted hover:text-ink",
-            )}
-          >
-            {tab === "changelog" ? "Log" : tab === "hp" ? "HP" : tab}
-          </button>
-        ))}
-      </div>
-
-      {/* Body */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {activeTab === "stats" && (
-          <div className="space-y-4">
-            <p className="text-xs text-ink-muted">Click any value to edit it.</p>
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-              {Object.entries(STAT_LABELS).map(([key, label]) => (
-                <StatBox
-                  key={key}
-                  label={label}
-                  value={(stats as any)[key] ?? 10}
-                  onChange={(v) => handleStatChange(key, v)}
-                />
-              ))}
-            </div>
+      {!rpEnabled ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+          <p className="text-sm text-ink-muted">RP Mode is off for this story.</p>
+          <p className="text-xs text-ink-muted/60">Enable it above to track HP, currency, and core stats. The AI will suggest changes during play.</p>
+        </div>
+      ) : (
+        <>
+          {/* Tabs */}
+          <div className="flex shrink-0 gap-1 border-b border-divider/[0.3] px-4 pt-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "rounded-t-md px-4 py-2 text-xs font-semibold transition",
+                  activeTab === tab.id
+                    ? "border-b-2 border-accent text-ink"
+                    : "text-ink-muted hover:text-ink",
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        )}
 
-        {activeTab === "hp" && (
-          <div className="space-y-3">
-            <NumberField
-              label="Current HP"
-              value={rpStats.hp}
-              min={0}
-              onChange={(v) =>
-                void save(applyStatChange(rpStats, { field: "hp", from: rpStats.hp, to: v, reason: "Manual edit" }))
-              }
-              suffix={`/ ${config.maxHp}`}
-            />
-            <div className="h-2 overflow-hidden rounded-full bg-divider/30">
-              <div
-                className="h-full rounded-full bg-emerald-500 transition-all"
-                style={{ width: `${Math.min(100, Math.max(0, (rpStats.hp / config.maxHp) * 100))}%` }}
-              />
-            </div>
-
-            {Object.keys(rpStats.npcHp).length > 0 ? (
-              <>
-                <p className="mt-4 text-xs font-semibold uppercase tracking-widest text-ink-muted">NPCs</p>
-                {Object.entries(rpStats.npcHp).map(([key, entry]) => (
-                  <div key={key} className="space-y-1">
-                    <p className="text-sm font-medium text-ink-soft">{entry.name}</p>
-                    <NumberField
-                      label="HP"
-                      value={entry.current}
-                      min={0}
-                      onChange={(v) => {
-                        const next: RpStats = {
-                          ...rpStats,
-                          npcHp: { ...rpStats.npcHp, [key]: { ...entry, current: v } },
-                        };
-                        void save(next);
-                      }}
-                      suffix={`/ ${entry.max}`}
+          {/* Body */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            {activeTab === "stats" && rpStats && (
+              <div className="space-y-4">
+                <p className="text-xs text-ink-muted">Click any value to edit.</p>
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+                  {Object.entries(STAT_LABELS).map(([key, label]) => (
+                    <StatBox
+                      key={key}
+                      label={label}
+                      value={(stats as any)[key] ?? 10}
+                      onChange={(v) => handleStatChange(key, v)}
                     />
-                    <div className="h-1.5 overflow-hidden rounded-full bg-divider/30">
-                      <div
-                        className="h-full rounded-full bg-orange-500 transition-all"
-                        style={{ width: `${Math.min(100, Math.max(0, (entry.current / entry.max) * 100))}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </>
-            ) : (
-              <p className="text-xs text-ink-muted">No NPC HP tracked yet. NPCs will appear here when the AI assigns them HP.</p>
+                  ))}
+                </div>
+              </div>
             )}
-          </div>
-        )}
 
-        {activeTab === "currency" && (
-          <div className="space-y-3">
-            <NumberField
-              label={config.currencyName}
-              value={rpStats.gold}
-              decimals={config.currencyDecimals}
-              min={0}
-              onChange={(v) =>
-                void save(applyStatChange(rpStats, { field: "gold", from: rpStats.gold, to: v, reason: "Manual edit" }))
-              }
-            />
-            <p className="text-xs text-ink-muted">
-              Current balance: {formatGold(rpStats.gold, config)}
-            </p>
-          </div>
-        )}
+            {activeTab === "hp" && rpStats && (
+              <div className="space-y-3">
+                <NumberField
+                  label="Current HP"
+                  value={rpStats.hp}
+                  min={0}
+                  onChange={(v) =>
+                    void save(applyStatChange(rpStats, { field: "hp", from: rpStats.hp, to: v, reason: "Manual edit" }))
+                  }
+                  suffix={`/ ${config.maxHp}`}
+                />
+                <div className="h-2 overflow-hidden rounded-full bg-divider/30">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all"
+                    style={{ width: `${Math.min(100, Math.max(0, (rpStats.hp / config.maxHp) * 100))}%` }}
+                  />
+                </div>
 
-        {activeTab === "changelog" && (
-          <div className="space-y-2">
-            {rpStats.changelog.length === 0 ? (
-              <p className="text-xs text-ink-muted">No changes recorded yet.</p>
-            ) : (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void save(undoLastChange(rpStats))}
-                  className="mb-2"
-                >
-                  Undo last change
+                {Object.keys(rpStats.npcHp).length > 0 ? (
+                  <>
+                    <p className="mt-4 text-xs font-semibold uppercase tracking-widest text-ink-muted">NPCs</p>
+                    {Object.entries(rpStats.npcHp).map(([key, entry]) => (
+                      <div key={key} className="space-y-1">
+                        <p className="text-sm font-medium text-ink-soft">{entry.name}</p>
+                        <NumberField
+                          label="HP"
+                          value={entry.current}
+                          min={0}
+                          onChange={(v) => {
+                            const next: RpStats = {
+                              ...rpStats,
+                              npcHp: { ...rpStats.npcHp, [key]: { ...entry, current: v } },
+                            };
+                            void save(next);
+                          }}
+                          suffix={`/ ${entry.max}`}
+                        />
+                        <div className="h-1.5 overflow-hidden rounded-full bg-divider/30">
+                          <div
+                            className="h-full rounded-full bg-orange-500 transition-all"
+                            style={{ width: `${Math.min(100, Math.max(0, (entry.current / entry.max) * 100))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <p className="text-xs text-ink-muted">No NPC HP tracked yet. NPCs appear here when the AI assigns them HP.</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === "currency" && rpStats && (
+              <div className="space-y-3">
+                <NumberField
+                  label={config.currencyName}
+                  value={rpStats.gold}
+                  decimals={config.currencyDecimals}
+                  min={0}
+                  onChange={(v) =>
+                    void save(applyStatChange(rpStats, { field: "gold", from: rpStats.gold, to: v, reason: "Manual edit" }))
+                  }
+                />
+                <p className="text-xs text-ink-muted">Balance: {formatGold(rpStats.gold, config)}</p>
+              </div>
+            )}
+
+            {activeTab === "changelog" && rpStats && (
+              <div className="space-y-2">
+                {rpStats.changelog.length === 0 ? (
+                  <p className="text-xs text-ink-muted">No changes recorded yet.</p>
+                ) : (
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => void save(undoLastChange(rpStats))} className="mb-2">
+                      Undo last change
+                    </Button>
+                    {rpStats.changelog.map((entry, i) => (
+                      <div key={i} className="rounded-lg border border-divider/40 bg-panel-muted/40 px-3 py-2 text-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-semibold capitalize text-ink-soft">{entry.field}</span>
+                          <span className="text-ink-muted">{entry.from} → {entry.to}</span>
+                        </div>
+                        <p className="mt-0.5 text-ink-muted">{entry.reason}</p>
+                        <p className="mt-0.5 text-white/25">{new Date(entry.ts).toLocaleTimeString()}</p>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+
+            {activeTab === "config" && (
+              <div className="space-y-3">
+                <label className="block space-y-1">
+                  <span className="text-xs text-ink-muted">Currency name</span>
+                  <input
+                    className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                    value={configDraft.currencyName}
+                    onChange={(e) => setConfigDraft((c) => ({ ...c, currencyName: e.target.value }))}
+                    placeholder="Gold"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-ink-muted">Allow decimal amounts (e.g. $1.50)</span>
+                  <select
+                    className="rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none"
+                    value={configDraft.currencyDecimals ? "yes" : "no"}
+                    onChange={(e) => setConfigDraft((c) => ({ ...c, currencyDecimals: e.target.value === "yes" }))}
+                  >
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                  </select>
+                </label>
+
+                <label className="block space-y-1">
+                  <span className="text-xs text-ink-muted">Max HP</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                    value={configDraft.maxHp}
+                    onChange={(e) => setConfigDraft((c) => ({ ...c, maxHp: Math.max(1, parseInt(e.target.value) || 1) }))}
+                  />
+                </label>
+
+                <label className="block space-y-1">
+                  <span className="text-xs text-ink-muted">Starting {configDraft.currencyName || "Gold"}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={configDraft.currencyDecimals ? 0.01 : 1}
+                    className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                    value={configDraft.startingGold}
+                    onChange={(e) => setConfigDraft((c) => ({ ...c, startingGold: Math.max(0, parseFloat(e.target.value) || 0) }))}
+                  />
+                </label>
+
+                <div className="space-y-2">
+                  <p className="text-xs text-ink-muted">Starting core stats</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["str", "dex", "con", "int", "wis", "cha"] as const).map((stat) => (
+                      <label key={stat} className="block space-y-0.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{stat}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={30}
+                          className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-center text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                          value={configDraft.coreStats[stat]}
+                          onChange={(e) => setConfigDraft((c) => ({ ...c, coreStats: { ...c.coreStats, [stat]: Math.max(1, parseInt(e.target.value) || 1) } }))}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <Button variant="primary" size="sm" className="w-full" disabled={saving} onClick={() => void handleSaveConfig()}>
+                  {saving ? "Saving…" : "Save Config"}
                 </Button>
-                {rpStats.changelog.map((entry, i) => (
-                  <div key={i} className="rounded-lg border border-divider/40 bg-panel-muted/40 px-3 py-2 text-xs">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="font-semibold text-ink-soft capitalize">{entry.field}</span>
-                      <span className="text-ink-muted">
-                        {entry.from} → {entry.to}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-ink-muted">{entry.reason}</p>
-                    <p className="mt-0.5 text-white/25">{new Date(entry.ts).toLocaleTimeString()}</p>
-                  </div>
-                ))}
-              </>
+              </div>
             )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
