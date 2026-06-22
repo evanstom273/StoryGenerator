@@ -75,6 +75,45 @@ export interface PlayerCharacter {
   createdAt: Timestamp;
 }
 
+export type RpCoreStats = {
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+};
+
+export type RpConfig = {
+  currencyName: string;
+  currencyDecimals: boolean;
+  maxHp: number;
+  startingGold: number;
+  coreStats: RpCoreStats;
+};
+
+export type RpNpcHpEntry = {
+  name: string;
+  current: number;
+  max: number;
+};
+
+export type RpChangelogEntry = {
+  ts: number;
+  field: string;
+  from: number;
+  to: number;
+  reason: string;
+};
+
+export type RpStats = {
+  hp: number;
+  gold: number;
+  npcHp: Record<string, RpNpcHpEntry>;
+  statOverrides?: Partial<RpCoreStats>;
+  changelog: RpChangelogEntry[];
+};
+
 export interface Story {
   id: EntityId;
   title: string;
@@ -84,6 +123,8 @@ export interface Story {
   universePackSnapshot?: UniversePackSnapshotV1;
   isArchived?: boolean;
   matureFictionMode?: boolean;
+  rpMode?: boolean;
+  rpConfig?: RpConfig;
   autoIndexMode?: AutoIndexMode;
   autoIndexInterval?: AutoIndexInterval;
   currentSummary: string;
@@ -371,6 +412,7 @@ export type StoryStateData = {
   indexes?: StoryIndexesV2;
   scene?: StorySceneSnapshotV2;
   threads?: StoryThreadsV2;
+  rpStats?: RpStats;
 };
 
 export type StoryStateDataV2 = Partial<StoryStateData> & {
@@ -455,6 +497,8 @@ export interface StoryDraft {
   playerCharacterId: EntityId;
   isArchived?: boolean;
   matureFictionMode?: boolean;
+  rpMode?: boolean;
+  rpConfig?: RpConfig;
   autoIndexMode?: AutoIndexMode;
   autoIndexInterval?: AutoIndexInterval;
   currentSummary: string;

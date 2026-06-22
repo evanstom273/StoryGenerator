@@ -99,6 +99,7 @@ import type {
   PlayerCharacterExportBundleV1,
   PlayerCharacter,
   PlayerCharacterDraft,
+  RpStats,
   StorageStatus,
   Story,
   StoryAIConfig,
@@ -237,6 +238,7 @@ interface StoryEngineContextValue {
     characterId: string,
   ) => Promise<PlayerCharacterExportBundleV1 | null>;
   fetchStoryState: (storyId: string) => Promise<StoryState | null>;
+  updateRpStats: (storyId: string, rpStats: RpStats | null) => Promise<void>;
   refreshStoryState: (storyId: string, opts?: { force?: boolean }) => Promise<void>;
   updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal }) => Promise<void>;
   queueStoryIndexJob: (
@@ -2448,6 +2450,8 @@ export function StoryEngineProvider({
             patch.playerCharacterId ?? currentStory.playerCharacterId,
           isArchived: patch.isArchived ?? currentStory.isArchived,
           matureFictionMode: patch.matureFictionMode ?? currentStory.matureFictionMode,
+          rpMode: patch.rpMode ?? currentStory.rpMode,
+          rpConfig: patch.rpConfig ?? currentStory.rpConfig,
           autoIndexMode: patch.autoIndexMode ?? currentStory.autoIndexMode,
           autoIndexInterval: patch.autoIndexInterval ?? currentStory.autoIndexInterval,
           updatedAt: new Date().toISOString(),
@@ -3197,6 +3201,21 @@ export function StoryEngineProvider({
       },
       fetchStoryState(storyId) {
         return repository.getStoryState(storyId);
+      },
+      async updateRpStats(storyId, rpStats) {
+        const existing = await repository.getStoryState(storyId);
+        const parsed = existing?.stateJson
+          ? (() => { try { return JSON.parse(existing.stateJson); } catch { return {}; } })()
+          : {};
+        const next = rpStats === null
+          ? { ...parsed, rpStats: undefined }
+          : { ...parsed, rpStats };
+        await repository.saveStoryState({
+          id: `story-state:${storyId}`,
+          storyId,
+          stateJson: JSON.stringify(next),
+          updatedAt: new Date().toISOString(),
+        });
       },
       refreshStoryState: refreshStoryStateInternal,
       async updateIndexesDeep(storyId, opts) {
