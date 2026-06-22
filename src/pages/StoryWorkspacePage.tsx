@@ -18,6 +18,7 @@ import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { cn } from "../utils/cn";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
 import { applyStatChange as applyRpStatChange, formatGold } from "../lib/rpStats";
+import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
 import type {
@@ -170,11 +171,9 @@ export function StoryWorkspacePage() {
     if (!storyId || !story?.rpMode) { setTaskbarGold(null); return; }
     fetchStoryState(storyId).then((state) => {
       if (!state) return;
-      try {
-        const parsed = JSON.parse(state.stateJson) as { rpStats?: { gold?: number } };
-        const g = parsed?.rpStats?.gold;
-        if (typeof g === "number") setTaskbarGold(g);
-      } catch {}
+      const parsed = safeParseStoryStateData(state.stateJson);
+      const g = parsed?.rpStats?.gold;
+      if (typeof g === "number") setTaskbarGold(g);
     });
   }, [storyId, rpStatsRefreshKey, story?.rpMode]);
 

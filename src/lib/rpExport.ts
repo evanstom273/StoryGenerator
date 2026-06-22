@@ -12,6 +12,16 @@ import {
   PDF_MARGIN,
 } from "./pdfLayout";
 
+// jsPDF uses Latin-1 (ISO 8859-1) — replace non-Latin-1 chars with ASCII equivalents
+function sanitizePdf(s: string): string {
+  return s
+    .replace(/→/g, "->")   // →
+    .replace(/−/g, "-")    // − (minus sign)
+    .replace(/—/g, "--")   // — (em dash)
+    .replace(/–/g, "-")    // – (en dash)
+    .replace(/[^\x00-\xFF]/g, "?");
+}
+
 export interface RpExportData {
   storyTitle: string;
   exportedAt: string;
@@ -378,7 +388,7 @@ export async function buildRpExportPdf(data: RpExportData): Promise<Blob> {
     y = body(doc, y, "No events recorded.", 0, undefined, pageH);
   } else {
     events.forEach((e, i) => {
-      y = body(doc, y, `${i + 1}. [${relTime(e.ts)}]  ${e.summary}`, 0, undefined, pageH);
+      y = body(doc, y, sanitizePdf(`${i + 1}. [${relTime(e.ts)}]  ${e.summary}`), 0, undefined, pageH);
     });
   }
   y += 4;
@@ -390,7 +400,7 @@ export async function buildRpExportPdf(data: RpExportData): Promise<Blob> {
     y = body(doc, y, "No changes recorded.", 0, undefined, pageH);
   } else {
     rpStats.changelog.forEach((e, i) => {
-      y = body(doc, y, `${i + 1}. [${formatDate(e.ts)}] ${e.field}: ${e.from} -> ${e.to} — ${e.reason}`, 0, undefined, pageH);
+      y = body(doc, y, sanitizePdf(`${i + 1}. [${formatDate(e.ts)}] ${e.field}: ${e.from} -> ${e.to} -- ${e.reason}`), 0, undefined, pageH);
     });
   }
   y += 4;
@@ -401,7 +411,7 @@ export async function buildRpExportPdf(data: RpExportData): Promise<Blob> {
   y = rule(doc, y, pageW);
   for (const msg of messages) {
     const speaker = msg.speakerName ?? (msg.role === "user" ? "Player" : "Narrator");
-    y = speakerLine(doc, y, speaker, msg.content, pageH);
+    y = speakerLine(doc, y, sanitizePdf(speaker), sanitizePdf(msg.content), pageH);
     y = rule(doc, y, pageW);
   }
 

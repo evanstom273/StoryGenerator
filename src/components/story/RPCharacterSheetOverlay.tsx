@@ -272,7 +272,19 @@ export function RPCharacterSheetOverlay(props: {
         playerCharacter.goals ? `Goals: ${playerCharacter.goals}` : "",
         playerCharacter.notes ? `Notes: ${playerCharacter.notes}` : "",
       ].filter(Boolean).join("\n");
-      const prompt = `You are a narrative roleplay assistant. Given this character profile, estimate a realistic starting financial balance in ${config.currencyName || "gold"}. Consider their age, background, occupation, living situation, and socioeconomic circumstances. Reply with a single number only — no explanation, no currency symbol, no text.\n\nCharacter:\n${profileText}`;
+      const prompt = `You are a narrative roleplay assistant. Estimate a realistic starting financial balance for this character in ${config.currencyName || "gold"}.
+
+This is their CURRENT LIQUID BALANCE — cash on hand or in a bank account — not net worth or total assets. Scale it appropriately to their life stage:
+- A young child (under 12): pocket money, maybe $5–$20
+- A teenager (12–17): allowance savings or part-time earnings, typically $20–$150
+- A college student: maybe $50–$500 depending on situation
+- A working adult: typically $500–$5,000 depending on job and lifestyle
+- A wealthy adult: $5,000+
+
+Use their age, background, and circumstances to pick a specific, believable number within the right range. Reply with a SINGLE INTEGER ONLY — no explanation, no currency symbol, no text, no decimal point.
+
+Character:
+${profileText}`;
       const result = await provider.generateResponse({
         apiKey,
         model,
