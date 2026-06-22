@@ -318,6 +318,7 @@ export function buildStoryChatContext({
       "Interpret any *...* text in the conversation as an action and react to it naturally.",
       "When an unknown person is required, generate a new NPC instead of pulling a canon character by default.",
       "Canon characters should appear only if already present, introduced by the player, or logically located in the scene.",
+      "Do not introduce major characters into a scene unless their presence has been established, their arrival is logically explained by the narrative, or the player has explicitly invited, contacted, or sought them out. Do not introduce characters solely to solve problems or remove consequences.",
       "Output format guidance:",
       "- Use speaker headers like 'Jake:' and 'Amy:' on their own line when switching speakers.",
       "- Use 'Narrator:' only for pure scene-setting/environment narration. Do not use Narrator lines to describe character actions when a character is the actor.",

@@ -81,7 +81,7 @@ import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent } from "../../lib/storyText/directorIntent";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
-import { applyStatChange, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
+import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import {
   formatUniverseWikiSources,
   getPrimaryUniverseWikiUrl,
@@ -103,6 +103,7 @@ import type {
   PlayerCharacterDraft,
   RelationshipIndexEntry,
   RpChangelogEntry,
+  RpEventLogEntry,
   RpStats,
   StorageStatus,
   Story,
@@ -291,7 +292,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
 }
@@ -3795,6 +3796,7 @@ export function StoryEngineProvider({
         let assistantMessage: StoryMessage | null = null;
         let appliedRpChanges: RpChangelogEntry[] | null = null;
         let pendingCoreStatChanges: RpStatDelta[] | null = null;
+        let rpEventSummary: string | null = null;
         let updatedMessages: StoryMessage[] = [];
 
         if (!shouldSkipAssistantReply) {
@@ -4389,6 +4391,11 @@ export function StoryEngineProvider({
                   applied.push({ ts: Date.now(), field: d.field, from, to, reason: d.reason });
                 }
                 if (applied.length) {
+                  const summary = buildRpEventSummary(applied, story.rpConfig);
+                  const eventEntry: RpEventLogEntry = { ts: Date.now(), summary };
+                  const prevLog: RpEventLogEntry[] = Array.isArray(nextStats.eventLog) ? nextStats.eventLog : [];
+                  nextStats = { ...nextStats, eventLog: [eventEntry, ...prevLog].slice(0, 100) };
+
                   const latestState = await repository.getStoryState(storyId);
                   const latestParsed = latestState?.stateJson
                     ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()
@@ -4400,6 +4407,7 @@ export function StoryEngineProvider({
                     updatedAt: new Date().toISOString(),
                   });
                   appliedRpChanges = applied;
+                  rpEventSummary = summary;
                 }
                 if (coreDeltas.length) {
                   pendingCoreStatChanges = coreDeltas;
@@ -4654,7 +4662,7 @@ export function StoryEngineProvider({
             await queueStoryIndexJob(storyId, { trigger: "auto" });
           } catch {}
         })();
-        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges };
+        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary };
       },
     };
   }, [

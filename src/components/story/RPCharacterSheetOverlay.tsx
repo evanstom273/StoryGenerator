@@ -135,7 +135,7 @@ function NumberField({
   );
 }
 
-type Tab = "stats" | "hp" | "currency" | "changelog" | "config" | "export";
+type Tab = "stats" | "hp" | "currency" | "eventlog" | "changelog" | "config" | "export";
 
 export function RPCharacterSheetOverlay(props: {
   open: boolean;
@@ -249,6 +249,7 @@ export function RPCharacterSheetOverlay(props: {
         { id: "stats", label: "Stats" },
         { id: "hp", label: "HP" },
         { id: "currency", label: config.currencyName || "Currency" },
+        { id: "eventlog", label: "Events" },
         { id: "changelog", label: "Log" },
         { id: "config", label: "Config" },
         { id: "export", label: "Export" },
@@ -401,6 +402,34 @@ export function RPCharacterSheetOverlay(props: {
                   }
                 />
                 <p className="text-xs text-ink-muted">Balance: {formatGold(rpStats.gold, config)}</p>
+              </div>
+            )}
+
+            {activeTab === "eventlog" && rpStats && (
+              <div className="space-y-2">
+                {!rpStats.eventLog || rpStats.eventLog.length === 0 ? (
+                  <p className="text-xs text-ink-muted">No RP events recorded yet.</p>
+                ) : (
+                  <>
+                    {rpStats.eventLog.map((entry, i) => {
+                      const age = Date.now() - entry.ts;
+                      const relTime =
+                        age < 60_000
+                          ? "just now"
+                          : age < 3_600_000
+                          ? `${Math.floor(age / 60_000)}m ago`
+                          : age < 86_400_000
+                          ? `${Math.floor(age / 3_600_000)}h ago`
+                          : `${Math.floor(age / 86_400_000)}d ago`;
+                      return (
+                        <div key={i} className="rounded-lg border border-divider/40 bg-panel-muted/40 px-3 py-2 text-xs">
+                          <p className="text-ink">{entry.summary}</p>
+                          <p className="mt-0.5 text-white/25">{relTime}</p>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             )}
 
