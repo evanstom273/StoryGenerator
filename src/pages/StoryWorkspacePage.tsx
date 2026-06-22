@@ -17,7 +17,7 @@ import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { cn } from "../utils/cn";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
-import { applyStatChange as applyRpStatChange } from "../lib/rpStats";
+import { applyStatChange as applyRpStatChange, formatGold } from "../lib/rpStats";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
 import type {
@@ -160,10 +160,23 @@ export function StoryWorkspacePage() {
   const [pendingCoreStatChanges, setPendingCoreStatChanges] = useState<RpStatDelta[] | null>(null);
   const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
   const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
+  const [taskbarGold, setTaskbarGold] = useState<number | null>(null);
   const [showZeroHpModal, setShowZeroHpModal] = useState(false);
   const [zeroHpConsequenceChoice, setZeroHpConsequenceChoice] = useState<string>("");
   const [zeroHpCustom, setZeroHpCustom] = useState("");
   const [pendingZeroHpConsequence, setPendingZeroHpConsequence] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!storyId || !story?.rpMode) { setTaskbarGold(null); return; }
+    fetchStoryState(storyId).then((state) => {
+      if (!state) return;
+      try {
+        const parsed = JSON.parse(state.stateJson) as { rpStats?: { gold?: number } };
+        const g = parsed?.rpStats?.gold;
+        if (typeof g === "number") setTaskbarGold(g);
+      } catch {}
+    });
+  }, [storyId, rpStatsRefreshKey, story?.rpMode]);
 
   useEffect(() => {
     setEditingMessage(null);
@@ -832,6 +845,11 @@ export function StoryWorkspacePage() {
           <span className="shrink-0 text-[11px] text-white/30">
             {messages.length} {messages.length === 1 ? "entry" : "entries"}
           </span>
+          {activeStory?.rpMode && activeStory.rpConfig && taskbarGold !== null && (
+            <span className="shrink-0 text-[11px] text-white/40">
+              💰 {formatGold(taskbarGold, activeStory.rpConfig)}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-0.5">
           <WorkspaceIconBtn

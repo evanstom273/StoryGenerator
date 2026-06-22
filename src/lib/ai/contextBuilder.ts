@@ -249,6 +249,7 @@ export function buildStoryChatContext({
         "Critical condition: severely impaired — each action carries cost; may slur, stumble, or fail.",
         "Incapacitated: cannot meaningfully resist events. Reaching 0 HP does not mean automatic death — the consequence (unconsciousness, capture, rescue, treatment, arrest) should fit the scene and context.",
         "",
+        `The character's ${rpConfig.currencyName} balance represents their total financial position — savings, income, and assets — not just pocket money. Treat it as meaningful characterisation: a teenager may have only a little, a working adult considerably more.`,
         `Currency rule: if the player attempts a purchase they cannot afford, reflect this naturally in the scene (declined card, putting items back, asking for credit, etc.). Do not let a purchase silently succeed if the character lacks funds.${debtLine ? `\n${debtLine}` : ""}`,
         "",
         "Core stats are narrative guidance. They shape plausibility and colour consequences — they never gate an attempt. Higher scores suggest ease and competence; lower scores suggest difficulty, awkwardness, or risk of failure.",

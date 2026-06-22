@@ -18,6 +18,8 @@ import {
   type RpExportData,
 } from "../../lib/rpExport";
 import { downloadFile } from "../../lib/download";
+import { createAIProvider } from "../../lib/ai/providerFactory";
+import { getProviderDefaultModel } from "../../lib/ai/models";
 import type { RpConfig, RpStats, Story } from "../../types/models";
 import { cn } from "../../utils/cn";
 
@@ -135,7 +137,7 @@ function NumberField({
   );
 }
 
-type Tab = "stats" | "hp" | "currency" | "eventlog" | "changelog" | "config" | "export";
+type Tab = "profile" | "stats" | "hp" | "currency" | "eventlog" | "changelog" | "config" | "export";
 
 export function RPCharacterSheetOverlay(props: {
   open: boolean;
@@ -143,14 +145,17 @@ export function RPCharacterSheetOverlay(props: {
   onClose: () => void;
   refreshKey?: number;
 }) {
-  const { fetchStoryState, updateRpStats, updateStory, messages: allMessages } = useStoryEngine();
+  const { fetchStoryState, updateRpStats, updateStory, messages: allMessages, getPlayerCharacterById, aiSettings } = useStoryEngine();
+  const playerCharacter = getPlayerCharacterById(props.story.playerCharacterId);
   const [rpStats, setRpStats] = useState<RpStats | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("stats");
+  const [activeTab, setActiveTab] = useState<Tab>("profile");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState<"json" | "md" | "txt" | "pdf" | null>(null);
   const [rpEnabled, setRpEnabled] = useState(props.story.rpMode ?? false);
   const [togglingRp, setTogglingRp] = useState(false);
   const [configDraft, setConfigDraft] = useState<RpConfig>(props.story.rpConfig ?? DEFAULT_RP_CONFIG);
+  const [suggestingGold, setSuggestingGold] = useState(false);
+  const [suggestGoldError, setSuggestGoldError] = useState<string | null>(null);
 
   useEffect(() => {
     setRpEnabled(props.story.rpMode ?? false);
@@ -228,6 +233,7 @@ export function RPCharacterSheetOverlay(props: {
         rpStats,
         rpConfig: config,
         messages: storyMessages,
+        playerCharacter,
       };
       const safe = props.story.title.replace(/[^a-zA-Z0-9_-]/g, "_");
       if (format === "json") {
@@ -245,8 +251,46 @@ export function RPCharacterSheetOverlay(props: {
     }
   }
 
+  async function suggestStartingGold() {
+    if (!playerCharacter || !aiSettings) return;
+    setSuggestingGold(true);
+    setSuggestGoldError(null);
+    try {
+      const providerType = aiSettings.activeProviderType;
+      const apiKey = aiSettings.apiKeys?.[providerType]?.trim() ?? "";
+      const model = getProviderDefaultModel(providerType);
+      if (!apiKey) { setSuggestGoldError("No API key configured"); return; }
+      const provider = createAIProvider(providerType);
+      const profileText = [
+        playerCharacter.name ? `Name: ${playerCharacter.name}` : "",
+        playerCharacter.age ? `Age: ${playerCharacter.age}` : "",
+        playerCharacter.species ? `Species: ${playerCharacter.species}` : "",
+        playerCharacter.background ? `Background: ${playerCharacter.background}` : "",
+        playerCharacter.goals ? `Goals: ${playerCharacter.goals}` : "",
+        playerCharacter.notes ? `Notes: ${playerCharacter.notes}` : "",
+      ].filter(Boolean).join("\n");
+      const prompt = `You are a narrative roleplay assistant. Given this character profile, estimate a realistic starting financial balance in ${config.currencyName || "gold"}. Consider their age, background, occupation, living situation, and socioeconomic circumstances. Reply with a single number only — no explanation, no currency symbol, no text.\n\nCharacter:\n${profileText}`;
+      const result = await provider.generateResponse({
+        apiKey,
+        model,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const suggested = parseFloat(result.content.replace(/[^0-9.]/g, ""));
+      if (!isNaN(suggested) && suggested >= 0) {
+        setConfigDraft((c) => ({ ...c, startingGold: config.currencyDecimals ? suggested : Math.round(suggested) }));
+      } else {
+        setSuggestGoldError("Could not parse suggestion");
+      }
+    } catch {
+      setSuggestGoldError("AI request failed");
+    } finally {
+      setSuggestingGold(false);
+    }
+  }
+
   const tabs: { id: Tab; label: string }[] = rpEnabled
     ? [
+        { id: "profile", label: "Profile" },
         { id: "stats", label: "Stats" },
         { id: "hp", label: "HP" },
         { id: "currency", label: config.currencyName || "Currency" },
@@ -323,6 +367,43 @@ export function RPCharacterSheetOverlay(props: {
 
           {/* Body */}
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            {activeTab === "profile" && (
+              <div className="space-y-4">
+                {!playerCharacter ? (
+                  <p className="text-xs text-ink-muted">Character not found.</p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-divider/40 bg-panel-muted/40 px-4 py-3">
+                      {[
+                        ["Name", playerCharacter.name],
+                        ["Age", playerCharacter.age],
+                        ["Species", playerCharacter.species],
+                        ["Gender", playerCharacter.gender],
+                        ["Pronouns", playerCharacter.pronouns],
+                      ].filter(([, v]) => v?.trim()).map(([label, val]) => (
+                        <div key={label}>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{label}</p>
+                          <p className="text-sm text-ink">{val}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {[
+                      ["Appearance", playerCharacter.appearance],
+                      ["Personality", playerCharacter.personality],
+                      ["Background", playerCharacter.background],
+                      ["Goals", playerCharacter.goals],
+                      ["Notes", playerCharacter.notes],
+                    ].filter(([, v]) => (v as string)?.trim()).map(([label, val]) => (
+                      <div key={label as string} className="space-y-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{label}</p>
+                        <p className="whitespace-pre-wrap text-sm text-ink">{val as string}</p>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+
             {activeTab === "stats" && rpStats && (
               <div className="space-y-4">
                 <p className="text-xs text-ink-muted">Click any value to edit.</p>
@@ -529,17 +610,31 @@ export function RPCharacterSheetOverlay(props: {
                   />
                 </label>
 
-                <label className="block space-y-1">
+                <div className="space-y-1">
                   <span className="text-xs text-ink-muted">Starting {configDraft.currencyName || "Gold"}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={configDraft.currencyDecimals ? 0.01 : 1}
-                    className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
-                    value={configDraft.startingGold}
-                    onChange={(e) => setConfigDraft((c) => ({ ...c, startingGold: Math.max(0, parseFloat(e.target.value) || 0) }))}
-                  />
-                </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step={configDraft.currencyDecimals ? 0.01 : 1}
+                      className="min-w-0 flex-1 rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                      value={configDraft.startingGold}
+                      onChange={(e) => setConfigDraft((c) => ({ ...c, startingGold: Math.max(0, parseFloat(e.target.value) || 0) }))}
+                    />
+                    {playerCharacter && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={suggestingGold}
+                        onClick={() => void suggestStartingGold()}
+                        title="Suggest from character profile"
+                      >
+                        {suggestingGold ? "…" : "Suggest"}
+                      </Button>
+                    )}
+                  </div>
+                  {suggestGoldError && <p className="text-xs text-red-400">{suggestGoldError}</p>}
+                </div>
 
                 <div className="space-y-2">
                   <p className="text-xs text-ink-muted">Starting core stats</p>
