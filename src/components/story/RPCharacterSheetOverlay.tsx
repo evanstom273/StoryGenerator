@@ -137,7 +137,7 @@ function NumberField({
   );
 }
 
-type Tab = "profile" | "stats" | "hp" | "currency" | "eventlog" | "changelog" | "config" | "export";
+type Tab = "profile" | "stats" | "hp" | "currency" | "eventlog" | "changelog" | "config";
 
 export function RPCharacterSheetOverlay(props: {
   open: boolean;
@@ -209,6 +209,9 @@ export function RPCharacterSheetOverlay(props: {
     setSaving(true);
     try {
       await updateStory(props.story.id, { rpConfig: configDraft });
+      if (rpStats && configDraft.startingGold !== config.startingGold) {
+        await save({ ...rpStats, gold: configDraft.startingGold });
+      }
     } finally {
       setSaving(false);
     }
@@ -296,10 +299,9 @@ export function RPCharacterSheetOverlay(props: {
         { id: "currency", label: config.currencyName || "Currency" },
         { id: "eventlog", label: "Events" },
         { id: "changelog", label: "Log" },
-        { id: "config", label: "Config" },
-        { id: "export", label: "Export" },
+        { id: "config", label: "Settings" },
       ]
-    : [{ id: "config", label: "Config" }];
+    : [{ id: "config", label: "Settings" }];
 
   return (
     <div className="fixed inset-0 z-[55] flex flex-col bg-app">
@@ -347,14 +349,14 @@ export function RPCharacterSheetOverlay(props: {
       ) : (
         <>
           {/* Tabs */}
-          <div className="flex shrink-0 gap-1 border-b border-divider/[0.3] px-4 pt-2">
+          <div className="flex shrink-0 overflow-x-auto border-b border-divider/[0.3] px-2 pt-2 scrollbar-none">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "rounded-t-md px-4 py-2 text-xs font-semibold transition",
+                  "shrink-0 whitespace-nowrap rounded-t-md px-3 py-2 text-xs font-semibold transition",
                   activeTab === tab.id
                     ? "border-b-2 border-accent text-ink"
                     : "text-ink-muted hover:text-ink",
@@ -539,42 +541,6 @@ export function RPCharacterSheetOverlay(props: {
               </div>
             )}
 
-            {activeTab === "export" && rpStats && (
-              <div className="space-y-4">
-                <p className="text-xs text-ink-muted">
-                  Download a snapshot of your character sheet, stat changelog, NPC HP, and the full story transcript.
-                </p>
-                <div className="space-y-2">
-                  {(
-                    [
-                      { fmt: "json", label: "JSON", desc: "Structured data — import or process elsewhere" },
-                      { fmt: "md", label: "Markdown", desc: "Human-readable with tables and headers" },
-                      { fmt: "txt", label: "Plain Text", desc: "Simple text file, no markup" },
-                      { fmt: "pdf", label: "PDF", desc: "Formatted document for printing or sharing" },
-                    ] as const
-                  ).map(({ fmt, label, desc }) => (
-                    <div
-                      key={fmt}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-divider/40 bg-panel-muted/40 px-3 py-2"
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-ink">{label}</p>
-                        <p className="text-xs text-ink-muted">{desc}</p>
-                      </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={exporting !== null}
-                        onClick={() => void handleExport(fmt)}
-                      >
-                        {exporting === fmt ? "…" : "Download"}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {activeTab === "config" && (
               <div className="space-y-3">
                 <label className="block space-y-1">
@@ -690,6 +656,39 @@ export function RPCharacterSheetOverlay(props: {
                 <Button variant="primary" size="sm" className="w-full" disabled={saving} onClick={() => void handleSaveConfig()}>
                   {saving ? "Saving…" : "Save Config"}
                 </Button>
+
+                {rpStats && (
+                  <div className="border-t border-divider/40 pt-3 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Export</p>
+                    <p className="text-xs text-ink-muted">Download a snapshot of your character sheet and story transcript.</p>
+                    {(
+                      [
+                        { fmt: "json", label: "JSON", desc: "Structured data" },
+                        { fmt: "md", label: "Markdown", desc: "Tables and headers" },
+                        { fmt: "txt", label: "Plain Text", desc: "Simple text file" },
+                        { fmt: "pdf", label: "PDF", desc: "Formatted document" },
+                      ] as const
+                    ).map(({ fmt, label, desc }) => (
+                      <div
+                        key={fmt}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-divider/40 bg-panel-muted/40 px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-ink">{label}</p>
+                          <p className="text-xs text-ink-muted">{desc}</p>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={exporting !== null}
+                          onClick={() => void handleExport(fmt)}
+                        >
+                          {exporting === fmt ? "…" : "Download"}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
