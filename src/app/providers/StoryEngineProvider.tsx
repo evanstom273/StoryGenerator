@@ -4368,7 +4368,7 @@ export function StoryEngineProvider({
 
           if (story.rpMode && story.rpConfig && currentRpStats) {
             try {
-              const deltas = await extractRpStatChanges(
+              const extracted = await extractRpStatChanges(
                 finalSanitizedText,
                 currentRpStats,
                 story.rpConfig,
@@ -4376,7 +4376,8 @@ export function StoryEngineProvider({
                 apiKey,
                 model,
               );
-              if (deltas?.length) {
+              if (extracted) {
+                const { deltas, narrative } = extracted;
                 const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
                 const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
                 const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
@@ -4390,8 +4391,12 @@ export function StoryEngineProvider({
                   nextStats = applyStatChange(nextStats, { field: d.field, from, to, reason: d.reason });
                   applied.push({ ts: Date.now(), field: d.field, from, to, reason: d.reason });
                 }
-                if (applied.length) {
-                  const summary = buildRpEventSummary(applied, story.rpConfig);
+
+                const summary = applied.length
+                  ? buildRpEventSummary(applied, story.rpConfig)
+                  : (narrative ?? null);
+
+                if (summary) {
                   const eventEntry: RpEventLogEntry = { ts: Date.now(), summary };
                   const prevLog: RpEventLogEntry[] = Array.isArray(nextStats.eventLog) ? nextStats.eventLog : [];
                   nextStats = { ...nextStats, eventLog: [eventEntry, ...prevLog].slice(0, 100) };
