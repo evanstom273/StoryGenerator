@@ -1,5 +1,15 @@
 import type { RpConfig, RpStats, StoryMessage } from "../types/models";
 import { effectiveCoreStats } from "./rpStats";
+import {
+  createPdfDoc,
+  pdfDimensions,
+  heading,
+  body,
+  metaLine,
+  speakerLine,
+  rule,
+  PDF_MARGIN,
+} from "./pdfLayout";
 
 export interface RpExportData {
   storyTitle: string;
@@ -191,103 +201,58 @@ export function buildRpExportText(data: RpExportData): string {
 // ── PDF (jsPDF) ───────────────────────────────────────────────────────────────
 
 export async function buildRpExportPdf(data: RpExportData): Promise<Blob> {
-  const { default: jsPDF } = await import("jspdf");
   const { storyTitle, exportedAt, rpStats, rpConfig, messages } = data;
 
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
-  const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
-  const margin = 48;
-  const contentW = pageW - margin * 2;
-  let y = margin;
-
-  function checkPage(needed = 24) {
-    if (y + needed > pageH - margin) {
-      doc.addPage();
-      y = margin;
-    }
-  }
-
-  function heading(text: string, size = 16) {
-    checkPage(size + 12);
-    doc.setFontSize(size);
-    doc.setFont("helvetica", "bold");
-    doc.text(text, margin, y);
-    y += size + 6;
-  }
-
-  function subheading(text: string) {
-    checkPage(14);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text(text, margin, y);
-    y += 16;
-  }
-
-  function body(text: string, indent = 0) {
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    const wrapped = doc.splitTextToSize(text, contentW - indent);
-    for (const line of wrapped) {
-      checkPage(13);
-      doc.text(line as string, margin + indent, y);
-      y += 13;
-    }
-  }
-
-  function rule() {
-    checkPage(10);
-    doc.setDrawColor(180, 180, 180);
-    doc.line(margin, y, pageW - margin, y);
-    y += 8;
-  }
+  const doc = createPdfDoc();
+  const { pageW, pageH } = pdfDimensions(doc);
+  let y = PDF_MARGIN;
 
   // Title
-  heading(`${storyTitle} — RP Export`, 18);
-  body(`Exported ${new Date(exportedAt).toLocaleString()}`);
-  y += 8;
-  rule();
+  y = heading(doc, y, `${storyTitle} — RP Export`, 18, pageH);
+  y = body(doc, y, `Exported ${new Date(exportedAt).toLocaleString()}`, 0, undefined, pageH);
+  y += 6;
+  y = rule(doc, y, pageW);
 
   // Character Sheet
-  heading("Character Sheet");
-  body(`HP: ${rpStats.hp} / ${rpConfig.maxHp}`);
-  body(`${rpConfig.currencyName}: ${rpStats.gold}`);
+  y = heading(doc, y, "Character Sheet", 14, pageH);
+  y = metaLine(doc, y, "HP", `${rpStats.hp} / ${rpConfig.maxHp}`, pageH);
+  y = metaLine(doc, y, rpConfig.currencyName, String(rpStats.gold), pageH);
   for (const [label, val] of coreStatEntries(rpStats, rpConfig)) {
-    body(`${label}: ${val}`);
+    y = metaLine(doc, y, label, String(val), pageH);
   }
-  y += 6;
+  y += 4;
+  y = rule(doc, y, pageW);
 
   // NPC HP
   const npcEntries = Object.values(rpStats.npcHp);
   if (npcEntries.length > 0) {
-    heading("NPC HP");
+    y = heading(doc, y, "NPC HP", 14, pageH);
     for (const npc of npcEntries) {
-      body(`${npc.name}: ${npc.current} / ${npc.max}`);
+      y = metaLine(doc, y, npc.name, `${npc.current} / ${npc.max}`, pageH);
     }
-    y += 6;
+    y += 4;
+    y = rule(doc, y, pageW);
   }
 
   // Changelog
-  heading("Stat Changelog");
+  y = heading(doc, y, "Stat Changelog", 14, pageH);
   if (rpStats.changelog.length === 0) {
-    body("No changes recorded.");
+    y = body(doc, y, "No changes recorded.", 0, undefined, pageH);
   } else {
     rpStats.changelog.forEach((e, i) => {
-      body(`${i + 1}. [${formatDate(e.ts)}] ${e.field}: ${e.from} -> ${e.to}`, 0);
-      body(`   ${e.reason}`, 12);
+      y = body(doc, y, `${i + 1}. [${formatDate(e.ts)}] ${e.field}: ${e.from} → ${e.to} — ${e.reason}`, 0, undefined, pageH);
     });
   }
-  y += 6;
+  y += 4;
+  y = rule(doc, y, pageW);
 
   // Transcript
-  heading("Story Transcript");
-  rule();
+  y = heading(doc, y, "Story Transcript", 14, pageH);
+  y = rule(doc, y, pageW);
   for (const msg of messages) {
     const speaker = msg.speakerName ?? (msg.role === "user" ? "Player" : "Narrator");
-    subheading(speaker);
-    body(msg.content);
-    y += 4;
-    rule();
+    y = speakerLine(doc, y, speaker, msg.content, pageH);
+    y = rule(doc, y, pageW);
   }
 
   return doc.output("blob");

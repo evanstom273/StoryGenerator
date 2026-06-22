@@ -1,246 +1,159 @@
-import { jsPDF } from "jspdf";
 import type { StoryExportBundle, StoryMessage } from "../types/models";
 import { formatDateTime, sortByTimestampAsc } from "./dates";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "./storyStateV2";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
+import {
+  createPdfDoc,
+  pdfDimensions,
+  heading,
+  subheading,
+  body,
+  metaLine,
+  speakerLine,
+  rule,
+  checkPage,
+  PDF_MARGIN,
+  PDF_FONT,
+} from "./pdfLayout";
 
 function trimStringList(value: unknown, maxItems: number): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
+  if (!Array.isArray(value)) return [];
   return value
-    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-    .map((entry) => entry.trim())
+    .filter((e): e is string => typeof e === "string" && e.trim().length > 0)
+    .map((e) => e.trim())
     .slice(0, maxItems);
 }
 
 function coerceEvidenceNumbers(value: unknown): number[] {
   const raw = (value as any)?.evidence?.messageNumbers;
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-
-  return raw.filter((entry) => typeof entry === "number" && Number.isFinite(entry));
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((e) => typeof e === "number" && Number.isFinite(e));
 }
 
-function formatEvidence(numbers: number[]) {
-  const uniqueSorted = Array.from(new Set(numbers))
-    .filter((value) => value >= 1)
+function formatEvidence(numbers: number[]): string {
+  const sorted = Array.from(new Set(numbers))
+    .filter((v) => v >= 1)
     .sort((a, b) => a - b);
-
-  if (!uniqueSorted.length) {
-    return "";
-  }
-
-  const visible = uniqueSorted.slice(0, 10);
-  const remaining = uniqueSorted.length - visible.length;
+  if (!sorted.length) return "";
+  const visible = sorted.slice(0, 10);
+  const remaining = sorted.length - visible.length;
   const base = `[Message ${visible.join(", ")}]`;
   return remaining > 0 ? `${base} (+${remaining} more)` : base;
 }
 
-function resolveTranscriptSpeakerLabel(message: StoryMessage, playerName: string) {
+function resolveTranscriptSpeaker(message: StoryMessage, playerName: string): string {
   if (message.role === "user") {
-    const label = message.speakerName?.trim() || playerName;
-    return `USER (${label})`;
+    return message.speakerName?.trim() || playerName;
   }
-
-  if (message.role === "system" || message.speakerType === "system") {
-    return "SYSTEM";
-  }
-
-  if (message.speakerType === "narrator") {
-    return "NARRATOR";
-  }
-
-  if (message.speakerName?.trim()) {
-    return `CANON (${message.speakerName.trim()})`;
-  }
-
-  return "ASSISTANT";
+  if (message.role === "system" || message.speakerType === "system") return "System";
+  if (message.speakerType === "narrator") return "Narrator";
+  if (message.speakerName?.trim()) return message.speakerName.trim();
+  return "Narrator";
 }
 
 export function serializeStoryArchivePdf(
   bundle: StoryExportBundle,
 ): { content: Uint8Array; mimeType: string } {
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const marginX = 56;
-  const marginY = 64;
-  const contentWidth = pageWidth - marginX * 2;
-
-  let y = marginY;
+  const doc = createPdfDoc();
+  const { pageW, pageH } = pdfDimensions(doc);
+  let y = PDF_MARGIN;
 
   const storyStateData = (() => {
     const json = bundle.storyState?.stateJson?.trim() ?? "";
     if (!json) return null;
-    const parsed = safeParseStoryStateData(json);
-    return normalizeStoryStateToV2(parsed);
+    return normalizeStoryStateToV2(safeParseStoryStateData(json));
   })();
-  const currentSceneLocation =
-    typeof (storyStateData as any)?.scene?.currentLocation === "string"
-      ? (storyStateData as any).scene.currentLocation.trim()
-      : "";
 
-  function ensureSpace(nextHeight: number) {
-    if (y + nextHeight <= pageHeight - marginY) {
-      return;
-    }
-    doc.addPage();
-    y = marginY;
-  }
+  const indexes = (storyStateData as any)?.indexes;
 
-  function writeHeading(text: string, size: number) {
-    doc.setFont("times", "bold");
-    doc.setFontSize(size);
-    const lines = doc.splitTextToSize(text, contentWidth);
-    const lineHeight = Math.ceil(size * 1.25);
-    ensureSpace(lines.length * lineHeight + 8);
-    for (const line of lines) {
-      doc.text(line, marginX, y);
-      y += lineHeight;
-    }
-    y += 10;
-  }
+  // ── 1. Title + metadata ──────────────────────────────────────────────────
+  y = heading(doc, y, bundle.story.title, 18, pageH);
+  y = rule(doc, y, pageW);
 
-  function writeParagraph(text: string, size = 11, style: "normal" | "italic" | "bold" = "normal") {
-    doc.setFont("times", style);
-    doc.setFontSize(size);
-    const lineHeight = Math.ceil(size * 1.55);
-    const blocks = (text ?? "").replace(/\r\n/g, "\n").split("\n");
-    for (const rawLine of blocks) {
-      const line = rawLine ?? "";
-      if (!line.trim()) {
-        ensureSpace(lineHeight);
-        y += lineHeight;
-        continue;
-      }
-
-      const wrapped = doc.splitTextToSize(line, contentWidth);
-      ensureSpace(wrapped.length * lineHeight + 4);
-      for (const piece of wrapped) {
-        doc.text(piece, marginX, y);
-        y += lineHeight;
-      }
-    }
-    y += 8;
-  }
-
-  function writeBullet(label: string, value: string) {
-    const size = 11;
-    doc.setFont("times", "bold");
-    doc.setFontSize(size);
-    const prefix = `${label}: `;
-    const prefixWidth = doc.getTextWidth(prefix);
-    const maxWidth = Math.max(80, contentWidth - prefixWidth);
-
-    const wrapped = doc.splitTextToSize(value, maxWidth);
-    const lineHeight = Math.ceil(size * 1.55);
-    ensureSpace(wrapped.length * lineHeight + 4);
-
-    doc.text(prefix, marginX, y);
-    doc.setFont("times", "normal");
-    doc.text(wrapped[0] ?? "", marginX + prefixWidth, y);
-    y += lineHeight;
-
-    for (let i = 1; i < wrapped.length; i += 1) {
-      doc.text(wrapped[i] ?? "", marginX + prefixWidth, y);
-      y += lineHeight;
-    }
-
-    y += 2;
-  }
-
-  function writeSubheading(text: string) {
-    doc.setFont("times", "bold");
-    doc.setFontSize(12);
-    const lines = doc.splitTextToSize(text, contentWidth);
-    const lineHeight = Math.ceil(12 * 1.4);
-    ensureSpace(lines.length * lineHeight + 8);
-    for (const line of lines) {
-      doc.text(line, marginX, y);
-      y += lineHeight;
-    }
-    y += 4;
-  }
-
-  function writeListSection(title: string, entries: string[]) {
-    const cleaned = entries.filter((entry) => typeof entry === "string" && entry.trim());
-    if (!cleaned.length) {
-      return;
-    }
-
-    writeSubheading(title);
-    for (const entry of cleaned) {
-      writeParagraph(`• ${entry}`);
-    }
-  }
-
-  function writeMonospace(text: string) {
-    doc.setFont("courier", "bold");
-    doc.setFontSize(10);
-    const lines = doc.splitTextToSize(text, contentWidth);
-    const lineHeight = Math.ceil(10 * 1.55);
-    ensureSpace(lines.length * lineHeight + 6);
-    for (const line of lines) {
-      doc.text(line, marginX, y);
-      y += lineHeight;
-    }
-    y += 4;
-  }
-
-  writeHeading(bundle.story.title, 22);
-  writeBullet("Universe", bundle.universe.name);
-  writeBullet("Player Character", bundle.playerCharacter.name);
-  writeBullet("Creation date", formatDateTime(bundle.story.createdAt));
-  writeBullet("Last updated", formatDateTime(bundle.story.updatedAt));
-  writeBullet("Exported", formatDateTime(bundle.exportedAt));
-  y += 8;
-
-  writeHeading("Basic Metadata", 14);
-  writeBullet("Exported at", formatDateTime(bundle.exportedAt));
+  y = metaLine(doc, y, "Universe", bundle.universe.name, pageH);
+  y = metaLine(doc, y, "Protagonist", bundle.playerCharacter.name, pageH);
+  y = metaLine(doc, y, "Exported", formatDateTime(bundle.exportedAt), pageH);
   if (storyStateData?.indexedAt) {
-    writeBullet("Indexed at", formatDateTime(storyStateData.indexedAt));
+    y = metaLine(doc, y, "Indexed", formatDateTime(storyStateData.indexedAt), pageH);
   }
-  if (storyStateData?.memoryArchitectureVersion) {
-    writeBullet("Memory architecture", storyStateData.memoryArchitectureVersion);
+  if (
+    typeof storyStateData?.indexes?.messageCount === "number" &&
+    Number.isFinite(storyStateData.indexes.messageCount)
+  ) {
+    y = metaLine(doc, y, "Indexed messages", String(Math.trunc(storyStateData.indexes.messageCount)), pageH);
   }
-  if (typeof storyStateData?.indexes?.messageCount === "number" && Number.isFinite(storyStateData.indexes.messageCount)) {
-    writeBullet("Indexed messages", String(Math.trunc(storyStateData.indexes.messageCount)));
-  }
-  writeBullet("Transcript messages", String(bundle.messages.length));
-  y += 10;
+  y = metaLine(doc, y, "Transcript messages", String(bundle.messages.length), pageH);
+  y += 6;
 
-  writeHeading("Full Transcript", 14);
+  // ── 2. Story summary / premise ───────────────────────────────────────────
+  const premise = storyStateData?.summaries?.premise?.trim() ?? "";
+  const protagonistFocus = storyStateData?.summaries?.protagonistSummary?.trim() ?? "";
+  const currentSituation = storyStateData?.summaries?.currentSituation?.trim() ?? "";
+  const recentDevelopments = trimStringList(storyStateData?.summaries?.recentDevelopments, 8);
+
+  if (premise || protagonistFocus || currentSituation || recentDevelopments.length) {
+    y = rule(doc, y, pageW);
+    y = heading(doc, y, "Story Summary", 14, pageH);
+
+    if (premise) {
+      y = subheading(doc, y, "Premise", pageH);
+      y = body(doc, y, premise, 0, undefined, pageH);
+    }
+    if (protagonistFocus) {
+      y = subheading(doc, y, "Protagonist", pageH);
+      y = body(doc, y, protagonistFocus, 0, undefined, pageH);
+    }
+    if (currentSituation) {
+      y = subheading(doc, y, "Current Situation", pageH);
+      y = body(doc, y, currentSituation, 0, undefined, pageH);
+    }
+    if (recentDevelopments.length) {
+      y = subheading(doc, y, "Recent Developments", pageH);
+      for (const dev of recentDevelopments) {
+        y = body(doc, y, dev, 0, undefined, pageH);
+      }
+    }
+  } else {
+    const bestSummary =
+      bundle.story.currentSummary?.trim() || storyStateData?.summaries?.worldSummary?.trim() || "";
+    if (bestSummary) {
+      y = rule(doc, y, pageW);
+      y = heading(doc, y, "Summary", 14, pageH);
+      y = body(doc, y, bestSummary, 0, undefined, pageH);
+    }
+  }
+
+  // ── 3. Transcript ────────────────────────────────────────────────────────
+  y = rule(doc, y, pageW);
+  y = heading(doc, y, "Transcript", 14, pageH);
+  y = rule(doc, y, pageW);
+
   const sortedMessages = sortByTimestampAsc(bundle.messages);
   let latestUserMessage: string | null = null;
+
   const chapterMarkers = new Map<number, string>();
   for (const chapter of bundle.chapters ?? []) {
-    const index = typeof (chapter as any)?.endsAtIndex === "number" ? Math.trunc((chapter as any).endsAtIndex) : 0;
+    const idx = typeof (chapter as any)?.endsAtIndex === "number" ? Math.trunc((chapter as any).endsAtIndex) : 0;
     const label = typeof (chapter as any)?.label === "string" ? (chapter as any).label.trim() : "";
-    if (index >= 1 && label) {
-      chapterMarkers.set(index, label);
-    }
+    if (idx >= 1 && label) chapterMarkers.set(idx, label);
   }
 
-  for (let index = 0; index < sortedMessages.length; index += 1) {
-    const message = sortedMessages[index];
-    const number = index + 1;
+  for (let i = 0; i < sortedMessages.length; i++) {
+    const message = sortedMessages[i];
+    const num = i + 1;
 
-    if (index > 0) {
-      ensureSpace(18);
-      y += 18;
-    }
+    if (message.role === "user") latestUserMessage = message.content;
 
-    if (message.role === "user") {
-      latestUserMessage = message.content;
-    }
+    // Message number label
+    y = checkPage(doc, y, pageH, 14);
+    doc.setFont(PDF_FONT, "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(140, 140, 140);
+    doc.text(`[${num}]`, PDF_MARGIN, y);
+    doc.setTextColor(0, 0, 0);
+    y += 12;
 
-    writeMonospace(`[Message ${number}]`);
-    writeSubheading(resolveTranscriptSpeakerLabel(message, bundle.playerCharacter.name));
-
+    const speaker = resolveTranscriptSpeaker(message, bundle.playerCharacter.name);
     const resolvedContent =
       message.role === "assistant"
         ? sanitizeAssistantTranscript({
@@ -249,334 +162,164 @@ export function serializeStoryArchivePdf(
             playerName: bundle.playerCharacter.name,
           }).text
         : message.content;
-    writeParagraph((resolvedContent ?? "").trim());
-    writeMonospace(`Time: ${formatDateTime(message.timestamp)}`);
-    ensureSpace(18);
-    y += 18;
 
-    const chapterLabel = chapterMarkers.get(number);
+    y = speakerLine(doc, y, speaker, resolvedContent ?? "", pageH);
+
+    const chapterLabel = chapterMarkers.get(num);
     if (chapterLabel) {
-      writeMonospace(`----- CHAPTER END: ${chapterLabel} -----`);
-      ensureSpace(18);
-      y += 18;
+      y = checkPage(doc, y, pageH, 14);
+      doc.setFont(PDF_FONT, "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(140, 140, 140);
+      doc.text(`— Chapter end: ${chapterLabel} —`, PDF_MARGIN, y);
+      doc.setTextColor(0, 0, 0);
+      y += 14;
     }
+
+    y = rule(doc, y, pageW);
   }
 
-  const bestSummary = bundle.story.currentSummary?.trim() || storyStateData?.summaries?.worldSummary?.trim() || "";
-  if (bestSummary) {
-    writeHeading("Current Summary", 14);
-    writeParagraph(bestSummary);
-  }
-
-  const indexes = (storyStateData as any)?.indexes;
-  const openThreadsRaw = Array.isArray(indexes?.openThreads)
-    ? indexes.openThreads
-    : Array.isArray((storyStateData as any)?.unresolvedThreads)
-      ? (storyStateData as any).unresolvedThreads
-      : [];
-
-  const openThreads = openThreadsRaw
-    .map((entry: any) => {
-      if (typeof entry === "string") {
-        return { thread: entry.trim(), evidence: "" };
-      }
-      const thread = typeof entry?.thread === "string" ? entry.thread.trim() : "";
-      const evidence = formatEvidence(coerceEvidenceNumbers(entry));
-      return { thread, evidence };
-    })
-    .filter((entry: any) => entry.thread);
-
-  if (openThreads.length) {
-    writeHeading("Open Threads", 14);
-    for (const entry of openThreads) {
-      const line = entry.evidence ? `${entry.thread}  Evidence: ${entry.evidence}` : entry.thread;
-      writeParagraph(`• ${line}`);
-    }
-    y += 10;
-  }
-
+  // ── 4. Character registry ────────────────────────────────────────────────
   const characterRegistryRaw =
     indexes?.characters && typeof indexes.characters === "object" && !Array.isArray(indexes.characters)
       ? Object.values(indexes.characters)
       : [];
-  const characterRegistry = characterRegistryRaw
-    .map((entry: any) => ({
-      name: typeof entry?.name === "string" ? entry.name.trim() : "",
-      aliases: Array.isArray(entry?.aliases) ? entry.aliases.filter((v: unknown) => typeof v === "string" && v.trim()) : [],
-      description: typeof entry?.description === "string" ? entry.description.trim() : "",
-      firstSeenMessage: typeof entry?.firstSeenMessage === "number" ? entry.firstSeenMessage : null,
-      lastSeenMessage: typeof entry?.lastSeenMessage === "number" ? entry.lastSeenMessage : null,
-      evidence: formatEvidence(coerceEvidenceNumbers(entry)),
+  const characterRegistry = (characterRegistryRaw as any[])
+    .map((e) => ({
+      name: typeof e?.name === "string" ? e.name.trim() : "",
+      aliases: Array.isArray(e?.aliases) ? (e.aliases as unknown[]).filter((v): v is string => typeof v === "string" && !!v.trim()) : [],
+      description: typeof e?.description === "string" ? e.description.trim() : "",
+      firstSeenMessage: typeof e?.firstSeenMessage === "number" ? e.firstSeenMessage : null,
+      lastSeenMessage: typeof e?.lastSeenMessage === "number" ? e.lastSeenMessage : null,
+      evidence: formatEvidence(coerceEvidenceNumbers(e)),
+      status: (() => {
+        const stateEntry = (storyStateData?.characters as Record<string, any> | undefined)?.[typeof e?.name === "string" ? e.name.trim() : ""];
+        const bullets = trimStringList(stateEntry?.statusBullets, 4);
+        const fallback = !bullets.length && typeof stateEntry?.status === "string" && stateEntry.status.trim() ? [stateEntry.status.trim()] : [];
+        return [...bullets, ...fallback].join(" | ");
+      })(),
     }))
-    .filter((entry: any) => entry.name)
-    .sort((a: any, b: any) => a.name.localeCompare(b.name));
+    .filter((e) => e.name)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   if (characterRegistry.length) {
-    writeHeading("Character Registry", 14);
+    y = rule(doc, y, pageW);
+    y = heading(doc, y, "Characters", 14, pageH);
     for (const entry of characterRegistry) {
-      const stateEntry = (storyStateData?.characters as Record<string, any> | undefined)?.[entry.name];
-      const statusBullets = trimStringList(stateEntry?.statusBullets, 4);
-      const fallbackStatus =
-        !statusBullets.length && typeof stateEntry?.status === "string" && stateEntry.status.trim()
-          ? [stateEntry.status.trim()]
-          : [];
-      const currentState = trimStringList(stateEntry?.characterStateTransient, 4);
-      writeSubheading(entry.name);
-      if (entry.aliases.length) writeBullet("Aliases", entry.aliases.join(", "));
-      if (entry.firstSeenMessage) writeBullet("First seen", `Message ${entry.firstSeenMessage}`);
-      if (entry.lastSeenMessage) writeBullet("Last seen", `Message ${entry.lastSeenMessage}`);
-      if (entry.description) writeBullet("Description", entry.description);
-      if (statusBullets.length || fallbackStatus.length) {
-        writeBullet("Status", [...statusBullets, ...fallbackStatus].join(" | "));
-      }
-      if (currentState.length) {
-        writeBullet("Current state", currentState.join(" | "));
-      }
-      if (entry.evidence) writeBullet("Evidence", entry.evidence);
-      y += 6;
+      y = subheading(doc, y, entry.name, pageH);
+      if (entry.aliases.length) y = metaLine(doc, y, "Aliases", entry.aliases.join(", "), pageH);
+      if (entry.firstSeenMessage) y = metaLine(doc, y, "First seen", `Message ${entry.firstSeenMessage}`, pageH);
+      if (entry.lastSeenMessage) y = metaLine(doc, y, "Last seen", `Message ${entry.lastSeenMessage}`, pageH);
+      if (entry.description) y = body(doc, y, entry.description, 0, undefined, pageH);
+      if (entry.status) y = metaLine(doc, y, "Status", entry.status, pageH);
+      if (entry.evidence) y = metaLine(doc, y, "Evidence", entry.evidence, pageH);
+      y += 4;
+      y = rule(doc, y, pageW);
     }
-    y += 6;
   }
 
-  const locationRegistryRaw =
-    indexes?.locations && typeof indexes.locations === "object" && !Array.isArray(indexes.locations)
-      ? Object.values(indexes.locations)
-      : [];
-  const locationRegistry = locationRegistryRaw
-    .map((entry: any) => ({
-      name: typeof entry?.name === "string" ? entry.name.trim() : "",
-      aliases: Array.isArray(entry?.aliases) ? entry.aliases.filter((v: unknown) => typeof v === "string" && v.trim()) : [],
-      description: typeof entry?.description === "string" ? entry.description.trim() : "",
-      firstSeenMessage: typeof entry?.firstSeenMessage === "number" ? entry.firstSeenMessage : null,
-      lastSeenMessage: typeof entry?.lastSeenMessage === "number" ? entry.lastSeenMessage : null,
-      evidence: formatEvidence(coerceEvidenceNumbers(entry)),
-    }))
-    .filter((entry: any) => entry.name)
-    .sort((a: any, b: any) => a.name.localeCompare(b.name));
-
-  if (locationRegistry.length) {
-    writeHeading("Location Registry", 14);
-    for (const entry of locationRegistry) {
-      writeSubheading(entry.name);
-      if (entry.aliases.length) writeBullet("Aliases", entry.aliases.join(", "));
-      if (entry.firstSeenMessage) writeBullet("First seen", `Message ${entry.firstSeenMessage}`);
-      if (entry.lastSeenMessage) writeBullet("Last seen", `Message ${entry.lastSeenMessage}`);
-      if (entry.description) writeBullet("Description", entry.description);
-      if (currentSceneLocation && currentSceneLocation.toLowerCase() === entry.name.toLowerCase()) {
-        writeBullet("Current relevance", "Active scene location");
-      } else if (entry.lastSeenMessage) {
-        writeBullet("Current relevance", `Last referenced around message ${entry.lastSeenMessage}`);
-      }
-      if (entry.evidence) writeBullet("Evidence", entry.evidence);
-      y += 6;
-    }
-    y += 6;
-  }
-
+  // ── 5. Relationships ─────────────────────────────────────────────────────
   const relationshipRegistryRaw = Array.isArray(indexes?.relationships) ? indexes.relationships : [];
-  const relationshipRegistry = relationshipRegistryRaw
-    .map((entry: any) => ({
-      a: typeof entry?.a === "string" ? entry.a.trim() : "",
-      b: typeof entry?.b === "string" ? entry.b.trim() : "",
-      friendship: typeof entry?.friendship === "number" ? entry.friendship : null,
-      trust: typeof entry?.trust === "number" ? entry.trust : null,
-      respect: typeof entry?.respect === "number" ? entry.respect : null,
-      loyalty: typeof entry?.loyalty === "number" ? entry.loyalty : null,
-      comfort: typeof entry?.comfort === "number" ? entry.comfort : null,
-      suspicion: typeof entry?.suspicion === "number" ? entry.suspicion : null,
-      fear: typeof entry?.fear === "number" ? entry.fear : null,
-      affection: typeof entry?.affection === "number" ? entry.affection : null,
-      tension: typeof entry?.tension === "number" ? entry.tension : null,
-      hostility: typeof entry?.hostility === "number" ? entry.hostility : null,
-      summary: typeof entry?.summary === "string" ? entry.summary.trim() : "",
-      evidence: formatEvidence(coerceEvidenceNumbers(entry)),
+  const relationshipRegistry = (relationshipRegistryRaw as any[])
+    .map((e) => ({
+      a: typeof e?.a === "string" ? e.a.trim() : "",
+      b: typeof e?.b === "string" ? e.b.trim() : "",
+      summary: typeof e?.summary === "string" ? e.summary.trim() : "",
+      evidence: formatEvidence(coerceEvidenceNumbers(e)),
+      metrics: (
+        [
+          ["Friendship", e?.friendship],
+          ["Trust", e?.trust],
+          ["Respect", e?.respect],
+          ["Loyalty", e?.loyalty],
+          ["Comfort", e?.comfort],
+          ["Suspicion", e?.suspicion],
+          ["Fear", e?.fear],
+          ["Affection", e?.affection],
+          ["Tension", e?.tension],
+          ["Hostility", e?.hostility],
+        ] as [string, unknown][]
+      )
+        .filter(([, v]) => typeof v === "number" && (v as number) !== 0)
+        .map(([label, v]) => `${label}: ${Math.round(v as number)}`),
     }))
-    .filter((entry: any) => entry.a && entry.b);
+    .filter((e) => e.a && e.b);
 
   if (relationshipRegistry.length) {
-    writeHeading("Relationship Registry", 14);
+    y = rule(doc, y, pageW);
+    y = heading(doc, y, "Relationships", 14, pageH);
     for (const entry of relationshipRegistry) {
-      writeSubheading(`${entry.a} <-> ${entry.b}`);
-      if (entry.friendship != null) writeBullet("Friendship", String(Math.round(entry.friendship)));
-      if (entry.trust != null) writeBullet("Trust", String(Math.round(entry.trust)));
-      if (entry.respect != null) writeBullet("Respect", String(Math.round(entry.respect)));
-      if (entry.loyalty != null) writeBullet("Loyalty", String(Math.round(entry.loyalty)));
-      if (entry.comfort != null) writeBullet("Comfort", String(Math.round(entry.comfort)));
-      if (entry.suspicion != null) writeBullet("Suspicion", String(Math.round(entry.suspicion)));
-      if (entry.fear != null) writeBullet("Fear", String(Math.round(entry.fear)));
-      if (entry.affection != null) writeBullet("Affection", String(Math.round(entry.affection)));
-      if (entry.tension != null) writeBullet("Tension", String(Math.round(entry.tension)));
-      if (entry.hostility != null) writeBullet("Hostility", String(Math.round(entry.hostility)));
-      if (entry.summary) writeParagraph(entry.summary);
-      if (entry.evidence) writeBullet("Evidence", entry.evidence);
-      y += 6;
+      y = subheading(doc, y, `${entry.a} ↔ ${entry.b}`, pageH);
+      if (entry.summary) y = body(doc, y, entry.summary, 0, undefined, pageH);
+      if (entry.metrics.length) y = body(doc, y, entry.metrics.join("  ·  "), 0, undefined, pageH);
+      if (entry.evidence) y = metaLine(doc, y, "Evidence", entry.evidence, pageH);
+      y += 4;
+      y = rule(doc, y, pageW);
     }
-    y += 6;
   }
 
+  // ── 6. World facts ───────────────────────────────────────────────────────
   const worldFactsRaw = Array.isArray(indexes?.worldFacts)
     ? indexes.worldFacts
     : Array.isArray((storyStateData as any)?.worldFacts)
       ? (storyStateData as any).worldFacts
       : [];
-  const worldFacts = worldFactsRaw
-    .map((entry: any) => {
-      if (typeof entry === "string") {
-        return { text: entry.trim(), evidence: "" };
-      }
-      const fact = typeof entry?.fact === "string" ? entry.fact.trim() : "";
-      const evidence = formatEvidence(coerceEvidenceNumbers(entry));
-      return { text: fact, evidence };
+  const worldFacts = (worldFactsRaw as unknown[])
+    .map((e) => {
+      if (typeof e === "string") return { text: e.trim(), evidence: "" };
+      const fact = typeof (e as any)?.fact === "string" ? (e as any).fact.trim() : "";
+      return { text: fact, evidence: formatEvidence(coerceEvidenceNumbers(e)) };
     })
-    .filter((entry: any) => entry.text);
+    .filter((e) => e.text);
 
   if (worldFacts.length) {
-    writeHeading("World Facts", 14);
-    for (const entry of worldFacts) {
-      const line = entry.evidence ? `${entry.text}  Evidence: ${entry.evidence}` : entry.text;
-      writeParagraph(`• ${line}`);
+    y = rule(doc, y, pageW);
+    y = heading(doc, y, "World Facts", 14, pageH);
+    for (let i = 0; i < worldFacts.length; i++) {
+      const e = worldFacts[i];
+      const line = e.evidence ? `${e.text}  (${e.evidence})` : e.text;
+      y = body(doc, y, `${i + 1}. ${line}`, 0, undefined, pageH);
     }
-    y += 10;
   }
 
-  const memoriesRaw = Array.isArray(indexes?.significantMemories)
-    ? indexes.significantMemories
-    : Array.isArray((storyStateData as any)?.significantMemories)
-      ? (storyStateData as any).significantMemories
+  // ── 7. Active threads ────────────────────────────────────────────────────
+  const openThreadsRaw = Array.isArray(indexes?.openThreads)
+    ? indexes.openThreads
+    : Array.isArray((storyStateData as any)?.unresolvedThreads)
+      ? (storyStateData as any).unresolvedThreads
       : [];
-  const memories = memoriesRaw
-    .map((entry: any) => {
-      if (typeof entry === "string") {
-        return { text: entry.trim(), evidence: "" };
-      }
-      const moment = typeof entry?.moment === "string" ? entry.moment.trim() : "";
-      const evidence = formatEvidence(coerceEvidenceNumbers(entry));
-      return { text: moment, evidence };
+  const openThreads = (openThreadsRaw as unknown[])
+    .map((e) => {
+      if (typeof e === "string") return { thread: e.trim(), evidence: "" };
+      const thread = typeof (e as any)?.thread === "string" ? (e as any).thread.trim() : "";
+      return { thread, evidence: formatEvidence(coerceEvidenceNumbers(e)) };
     })
-    .filter((entry: any) => entry.text);
+    .filter((e) => e.thread);
 
-  if (memories.length) {
-    writeHeading("Significant Memories", 14);
-    for (const entry of memories) {
-      const line = entry.evidence ? `${entry.text}  Evidence: ${entry.evidence}` : entry.text;
-      writeParagraph(`• ${line}`);
+  if (openThreads.length) {
+    y = rule(doc, y, pageW);
+    y = heading(doc, y, "Active Threads", 14, pageH);
+    for (let i = 0; i < openThreads.length; i++) {
+      const e = openThreads[i];
+      const line = e.evidence ? `${e.thread}  (${e.evidence})` : e.thread;
+      y = body(doc, y, `${i + 1}. ${line}`, 0, undefined, pageH);
     }
-    y += 10;
   }
 
-  const appendixChunks: Array<() => void> = [];
-
-  const premise = storyStateData?.summaries?.premise?.trim() ?? "";
-  const protagonistFocus = storyStateData?.summaries?.protagonistSummary?.trim() ?? "";
-  const currentSituation = storyStateData?.summaries?.currentSituation?.trim() ?? "";
-  const recentDevelopments = trimStringList(storyStateData?.summaries?.recentDevelopments, 8);
-  if (premise || protagonistFocus || currentSituation || recentDevelopments.length) {
-    appendixChunks.push(() => {
-      writeHeading("Archive Story State", 14);
-      if (premise) {
-        writeSubheading("Premise");
-        writeParagraph(premise);
-      }
-      if (protagonistFocus) {
-        writeSubheading("Protagonist Focus");
-        writeParagraph(protagonistFocus);
-      }
-      if (currentSituation) {
-        writeSubheading("Current Situation");
-        writeParagraph(currentSituation);
-      }
-      if (recentDevelopments.length) {
-        writeListSection("Recent Developments", recentDevelopments);
-      }
-      y += 10;
-    });
-  }
-
-  appendixChunks.push(() => {
-    writeHeading("Player Character Sheet", 14);
-    writeBullet("Name", bundle.playerCharacter.name);
-    writeBullet("Age", bundle.playerCharacter.age || "Not specified");
-    writeBullet("Gender", bundle.playerCharacter.gender || "Not specified");
-    writeBullet("Species", bundle.playerCharacter.species || "Not specified");
-    writeBullet("Pronouns", bundle.playerCharacter.pronouns || "Not specified");
-    writeBullet("Appearance", bundle.playerCharacter.appearance || "Not specified");
-    writeBullet("Personality", bundle.playerCharacter.personality || "Not specified");
-    writeBullet("Background", bundle.playerCharacter.background || "Not specified");
-    writeBullet("Goals", bundle.playerCharacter.goals || "Not specified");
-    writeBullet("Notes", bundle.playerCharacter.notes || "Not specified");
-    y += 10;
-  });
-
-  const scene = (storyStateData as any)?.scene;
-  const snapshot = {
-    currentLocation: typeof scene?.currentLocation === "string" ? scene.currentLocation.trim() : "",
-    currentObjective: typeof scene?.currentObjective === "string" ? scene.currentObjective.trim() : "",
-    activeParticipants: Array.isArray(scene?.activeParticipants)
-      ? scene.activeParticipants.filter((value: unknown) => typeof value === "string" && value.trim())
-      : [],
-    sceneSummary: typeof scene?.sceneSummary === "string" ? scene.sceneSummary.trim() : "",
-  };
-  if (snapshot.currentLocation || snapshot.currentObjective || snapshot.activeParticipants.length || snapshot.sceneSummary) {
-    appendixChunks.push(() => {
-      writeHeading("Story State Snapshot", 14);
-      if (snapshot.currentLocation) writeBullet("Current location", snapshot.currentLocation);
-      if (snapshot.currentObjective) writeBullet("Current objective", snapshot.currentObjective);
-      if (snapshot.activeParticipants.length) writeBullet("Active participants", snapshot.activeParticipants.join(", "));
-      if (snapshot.sceneSummary) {
-        writeSubheading("Scene summary");
-        writeParagraph(snapshot.sceneSummary);
-      }
-      y += 10;
-    });
-  }
-
-  const characterStatusEntries = Object.entries(storyStateData?.characters ?? {})
-    .map(([name, entry]: [string, any]) => {
-      const statusBullets = trimStringList(entry?.statusBullets, 5);
-      const fallbackStatus =
-        !statusBullets.length && typeof entry?.status === "string" && entry.status.trim()
-          ? [entry.status.trim()]
-          : [];
-      const strengths = trimStringList(entry?.strengths, 4);
-      const weaknesses = trimStringList(entry?.weaknesses, 4);
-      const combinedStatus = [...statusBullets, ...fallbackStatus];
-
-      return {
-        name: name.trim(),
-        status: combinedStatus,
-        strengths,
-        weaknesses,
-      };
-    })
-    .filter((entry) => entry.name && (entry.status.length || entry.strengths.length || entry.weaknesses.length))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  if (characterStatusEntries.length) {
-    appendixChunks.push(() => {
-      writeHeading("Character Status", 14);
-      for (const entry of characterStatusEntries) {
-        writeSubheading(entry.name);
-        if (entry.status.length) {
-          for (const item of entry.status) {
-            writeParagraph(`• ${item}`);
-          }
-        }
-        if (entry.strengths.length) {
-          writeBullet("Strengths", entry.strengths.join(", "));
-        }
-        if (entry.weaknesses.length) {
-          writeBullet("Weaknesses", entry.weaknesses.join(", "));
-        }
-        y += 6;
-      }
-      y += 6;
-    });
-  }
-
-  if (appendixChunks.length) {
-    writeHeading("Appendix", 14);
-    for (const chunk of appendixChunks) {
-      chunk();
+  // ── 8. Chapters ──────────────────────────────────────────────────────────
+  const chapters = (bundle.chapters ?? []).filter(
+    (c) => typeof (c as any)?.label === "string" && (c as any).label.trim(),
+  );
+  if (chapters.length) {
+    y = rule(doc, y, pageW);
+    y = heading(doc, y, "Chapters", 14, pageH);
+    for (const chapter of chapters) {
+      const label = ((chapter as any).label as string).trim();
+      const summary = typeof (chapter as any)?.summary === "string" ? ((chapter as any).summary as string).trim() : "";
+      y = subheading(doc, y, label, pageH);
+      if (summary) y = body(doc, y, summary, 0, undefined, pageH);
+      y += 4;
+      y = rule(doc, y, pageW);
     }
   }
 
