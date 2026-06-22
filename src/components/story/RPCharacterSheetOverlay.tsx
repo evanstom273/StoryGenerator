@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../ui/Button";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
-import { safeParseStoryStateData } from "../../lib/storyStateV2";
 import {
   applyStatChange,
   DEFAULT_RP_CONFIG,
@@ -200,8 +199,17 @@ export function RPCharacterSheetOverlay(props: {
         setRpStats(defaultRpStats(config));
         return;
       }
-      const parsed = safeParseStoryStateData(state.stateJson);
-      setRpStats((parsed as any)?.rpStats ?? defaultRpStats(config));
+      // Read rpStats directly from raw JSON — safeParseStoryStateData requires full
+      // Story State V2 structure which new stories won't have yet, causing loss of
+      // saved timeState and other rpStats fields on re-fetch.
+      let savedRpStats: RpStats | null = null;
+      try {
+        const raw = JSON.parse(state.stateJson) as unknown;
+        if (raw && typeof raw === "object" && "rpStats" in raw && raw.rpStats && typeof raw.rpStats === "object") {
+          savedRpStats = raw.rpStats as RpStats;
+        }
+      } catch {}
+      setRpStats(savedRpStats ?? defaultRpStats(config));
     });
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
