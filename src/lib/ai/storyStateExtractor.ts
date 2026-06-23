@@ -5,7 +5,7 @@ import type {
   StoryStateDataV2,
 } from "../../types/models";
 import type { AIChatMessage } from "./types";
-import { extractFirstJsonObject, safeParseJsonObject } from "./json";
+import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "./json";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 
 const MAX_RECENT_MESSAGES = 40;
@@ -348,7 +348,16 @@ function sanitizeIndexes(value: any) {
 
 export function parseStoryStateData(text: string): StoryStateData | null {
   const jsonText = extractFirstJsonObject(text) ?? text.trim();
-  const parsed = safeParseJsonObject<StoryStateData>(jsonText);
+  let parsed = safeParseJsonObject<StoryStateData>(jsonText);
+
+  if (!parsed) {
+    // Response may be truncated — attempt structural repair before giving up
+    const repaired = tryRepairTruncatedJson(text);
+    if (repaired && repaired !== jsonText) {
+      parsed = safeParseJsonObject<StoryStateData>(repaired);
+    }
+  }
+
   if (!parsed) {
     return null;
   }

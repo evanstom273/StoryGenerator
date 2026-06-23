@@ -129,7 +129,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       apiKey,
       model,
       messages: extractionContext,
-      maxTokens: 24576,
+      maxTokens: 32768,
       temperature: 0,
       jsonMode: true,
       timeoutMs: REBUILD_REQUEST_TIMEOUT_MS,
@@ -142,8 +142,12 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
     const parsed = parseStoryStateData(responseContent);
     if (!parsed) {
-      const preview = responseContent.slice(0, 300).replace(/\n/g, " ") || "(empty)";
-      throw new Error(`Story state extraction returned invalid JSON. Response: ${preview}`);
+      const head = responseContent.slice(0, 200).replace(/\n/g, " ");
+      const tail = responseContent.slice(-200).replace(/\n/g, " ");
+      const len = responseContent.length;
+      throw new Error(
+        `Story state extraction returned invalid JSON (${len} chars). Head: ${head || "(empty)"} … Tail: ${tail || "(empty)"}`,
+      );
     }
 
     const normalized = normalizeStoryStateToV2(parsed);
