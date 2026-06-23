@@ -10,6 +10,7 @@ export interface GenerateResponseRequest {
   model: string;
   messages: AIChatMessage[];
   maxTokens?: number;
+  temperature?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
 }

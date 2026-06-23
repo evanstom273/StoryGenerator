@@ -97,7 +97,8 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       apiKey,
       model,
       messages: extractionContext,
-      maxTokens: 4096,
+      maxTokens: 8192,
+      temperature: 0,
       timeoutMs: REBUILD_REQUEST_TIMEOUT_MS,
       signal,
     });
@@ -108,7 +109,8 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
     const parsed = parseStoryStateData(stateResponse.content);
     if (!parsed) {
-      throw new Error("Story state extraction returned invalid JSON.");
+      const preview = stateResponse.content.slice(0, 300).replace(/\n/g, " ") || "(empty)";
+      throw new Error(`Story state extraction returned invalid JSON. Response: ${preview}`);
     }
 
     const normalized = normalizeStoryStateToV2(parsed);
