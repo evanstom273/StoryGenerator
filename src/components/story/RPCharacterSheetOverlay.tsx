@@ -20,7 +20,7 @@ import { downloadFile } from "../../lib/download";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../../lib/ai/models";
 import type { RpCalendarConfig, RpConfig, RpRecurringEvent, RpRecurringFrequency, RpStats, RpTimeState, Story } from "../../types/models";
-import { computeInitialNextDue, formatTime } from "../../lib/rpTime";
+import { computeInitialNextDue, formatTime, formatTimeShort } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 
 const STAT_LABELS: Record<string, string> = {
@@ -638,10 +638,41 @@ ${profileText}`;
                   decimals={config.currencyDecimals}
                   min={0}
                   onChange={(v) =>
-                    void save(applyStatChange(rpStats, { field: "gold", from: rpStats.gold, to: v, reason: "Manual edit" }))
+                    void save(applyStatChange(rpStats, { field: "gold", from: rpStats.gold, to: v, reason: "Manual edit", storyTime: rpStats.timeState, transactionType: "adjustment" }))
                   }
                 />
                 <p className="text-xs text-ink-muted">Balance: {formatGold(rpStats.gold, config)}</p>
+                {rpStats.changelog.some((e) => e.field === "gold") && (
+                  <div className="space-y-1 border-t border-divider/40 pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Transaction History</p>
+                    <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-2 border-b border-divider/40 pb-1 text-[10px] uppercase tracking-wider text-ink-muted">
+                      <span>Time</span><span>Description</span><span>Amount</span><span>Balance</span>
+                    </div>
+                    {rpStats.changelog.filter((e) => e.field === "gold").map((e, i) => {
+                      const delta = e.to - e.from;
+                      const typeLabel = e.transactionType ?? (delta >= 0 ? "income" : "expense");
+                      const typeColors: Record<string, string> = {
+                        income: "text-emerald-400",
+                        expense: "text-red-400",
+                        adjustment: "text-blue-400",
+                        recurring: "text-purple-400",
+                      };
+                      const timeStr = e.storyTime
+                        ? formatTimeShort(e.storyTime, configDraft)
+                        : new Date(e.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                      return (
+                        <div key={i} className="grid grid-cols-[auto_1fr_auto_auto] gap-x-2 items-baseline border-b border-divider/20 py-1 text-xs">
+                          <span className="shrink-0 text-ink-muted">{timeStr}</span>
+                          <span className="truncate text-ink">{e.reason}</span>
+                          <span className={cn("shrink-0 font-mono", typeColors[typeLabel] ?? "text-ink-muted")}>
+                            {delta >= 0 ? "+" : ""}{config.currencyDecimals ? delta.toFixed(2) : String(Math.round(delta))}
+                          </span>
+                          <span className="shrink-0 font-mono text-ink-muted">{formatGold(e.to, configDraft)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

@@ -130,12 +130,16 @@ export type RpNpcHpEntry = {
   max: number;
 };
 
+export type RpTransactionType = "income" | "expense" | "adjustment" | "recurring";
+
 export type RpChangelogEntry = {
   ts: number;
   field: string;
   from: number;
   to: number;
   reason: string;
+  storyTime?: RpTimeState;
+  transactionType?: RpTransactionType;
 };
 
 export type RpEventLogEntry = {

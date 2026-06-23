@@ -152,12 +152,18 @@ export function checkRecurringEvents(
   const prevMins = Math.max(0, (prev.storyDay - 1)) * 1440 + prev.hour * 60 + prev.minute;
   const nextMins = Math.max(0, (next.storyDay - 1)) * 1440 + next.hour * 60 + next.minute;
   const updated = events.map((event) => {
-    const dueMins = Math.max(0, (event.nextDue.storyDay - 1)) * 1440 + event.nextDue.hour * 60 + event.nextDue.minute;
-    if (nextMins > prevMins && dueMins > prevMins && dueMins <= nextMins) {
-      triggered.push(event);
-      return { ...event, nextDue: advanceEventNextDue(event) };
+    let current = event;
+    let dueMins = Math.max(0, (current.nextDue.storyDay - 1)) * 1440 + current.nextDue.hour * 60 + current.nextDue.minute;
+    // Self-heal stale nextDue: advance until it's after prev
+    while (dueMins <= prevMins) {
+      current = { ...current, nextDue: advanceEventNextDue(current) };
+      dueMins = Math.max(0, (current.nextDue.storyDay - 1)) * 1440 + current.nextDue.hour * 60 + current.nextDue.minute;
     }
-    return event;
+    if (nextMins > prevMins && dueMins <= nextMins) {
+      triggered.push(event);
+      return { ...current, nextDue: advanceEventNextDue(current) };
+    }
+    return current;
   });
   return { triggered, updated };
 }

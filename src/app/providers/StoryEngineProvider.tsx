@@ -3801,10 +3801,18 @@ export function StoryEngineProvider({
         let updatedMessages: StoryMessage[] = [];
 
         if (!shouldSkipAssistantReply) {
-          const parsedStoryState = storyState?.stateJson
-            ? safeParseStoryStateData(storyState.stateJson)
-            : null;
-          const currentRpStats = parsedStoryState?.rpStats ?? (story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null);
+          const currentRpStats = (() => {
+            if (!storyState?.stateJson) return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
+            const v2 = safeParseStoryStateData(storyState.stateJson);
+            if (v2?.rpStats) return v2.rpStats;
+            try {
+              const raw = JSON.parse(storyState.stateJson) as unknown;
+              if (raw && typeof raw === "object" && "rpStats" in raw && (raw as Record<string, unknown>).rpStats && typeof (raw as Record<string, unknown>).rpStats === "object") {
+                return (raw as Record<string, unknown>).rpStats as RpStats;
+              }
+            } catch {}
+            return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
+          })();
 
           const context = buildStoryChatContext({
             universe: effectiveUniverse,
@@ -4396,7 +4404,11 @@ export function StoryEngineProvider({
                   const from = getStatValue(nextStats, story.rpConfig, d.field);
                   const to = clampStat(d.field, from + d.delta, story.rpConfig);
                   if (to === from) continue;
-                  nextStats = applyStatChange(nextStats, { field: d.field, from, to, reason: d.reason });
+                  nextStats = applyStatChange(nextStats, {
+                    field: d.field, from, to, reason: d.reason,
+                    storyTime: nextStats.timeState,
+                    transactionType: d.field === "gold" ? (to > from ? "income" : "expense") : undefined,
+                  });
                   applied.push({ ts: Date.now(), field: d.field, from, to, reason: d.reason });
                 }
 
@@ -4431,7 +4443,11 @@ export function StoryEngineProvider({
                     const from = getStatValue(nextStats, story.rpConfig, "gold");
                     const to = clampStat("gold", from + event.amount, story.rpConfig);
                     if (to !== from) {
-                      nextStats = applyStatChange(nextStats, { field: "gold", from, to, reason: event.label });
+                      nextStats = applyStatChange(nextStats, {
+                        field: "gold", from, to, reason: event.label,
+                        storyTime: event.nextDue,
+                        transactionType: "recurring",
+                      });
                       applied.push({ ts: Date.now(), field: "gold", from, to, reason: event.label });
                     }
                     timeSummaryPart = (timeSummaryPart ? timeSummaryPart + " · " : "") + `${event.label} triggered (${event.amount >= 0 ? "+" : ""}${event.amount})`;
