@@ -27,7 +27,6 @@ import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
 import type {
-  RpChangelogEntry,
   RpTimeState,
   StoryMessage,
   StoryMessageRole,
@@ -164,7 +163,7 @@ export function StoryWorkspacePage() {
   const [isAssistantEditSaving, setIsAssistantEditSaving] = useState(false);
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
   const [relationshipsOpen, setRelationshipsOpen] = useState(false);
-  const [lastRpChanges, setLastRpChanges] = useState<RpChangelogEntry[] | null>(null);
+
   const [pendingCoreStatChanges, setPendingCoreStatChanges] = useState<RpStatDelta[] | null>(null);
   const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
   const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
@@ -220,7 +219,6 @@ export function StoryWorkspacePage() {
     setIsAssistantEditSaving(false);
     setRpSheetOpen(false);
     setRelationshipsOpen(false);
-    setLastRpChanges(null);
     setPendingCoreStatChanges(null);
     setRpToasts([]);
     setShowZeroHpModal(false);
@@ -388,7 +386,6 @@ export function StoryWorkspacePage() {
       if (consequence) setPendingZeroHpConsequence(null);
       const result = await sendChatMessage(activeStory.id, content, consequence ? { zeroHpConsequence: consequence } : undefined);
       if (result.appliedRpChanges?.length) {
-        setLastRpChanges(result.appliedRpChanges);
         const hpZero = result.appliedRpChanges.some((c) => c.field === "hp" && c.to === 0);
         if (hpZero) {
           setZeroHpConsequenceChoice("Unconscious / collapsed");
@@ -485,7 +482,6 @@ export function StoryWorkspacePage() {
       if (consequence) setPendingZeroHpConsequence(null);
       const result = await sendChatMessage(activeStory.id, content, consequence ? { zeroHpConsequence: consequence } : undefined);
       if (result.appliedRpChanges?.length) {
-        setLastRpChanges(result.appliedRpChanges);
         const hpZero = result.appliedRpChanges.some((c) => c.field === "hp" && c.to === 0);
         if (hpZero) {
           setZeroHpConsequenceChoice("Unconscious / collapsed");
@@ -711,18 +707,6 @@ export function StoryWorkspacePage() {
     }
   }
 
-  function formatRpChanges(changes: RpChangelogEntry[]): string {
-    return changes
-      .map((c) => {
-        const diff = c.to - c.from;
-        const sign = diff > 0 ? "+" : "−";
-        const abs = Math.abs(diff);
-        const label = c.field === "hp" ? "HP" : c.field === "gold" ? (activeStory.rpConfig?.currencyName ?? "Gold") : c.field.toUpperCase();
-        return `${label} ${sign}${abs}`;
-      })
-      .join(" · ");
-  }
-
   async function handleAcceptCoreStatChanges() {
     if (!pendingCoreStatChanges?.length || !storyId || !activeStory.rpConfig) return;
     const state = await fetchStoryState(storyId);
@@ -737,22 +721,6 @@ export function StoryWorkspacePage() {
       }
       await updateRpStats(storyId, next);
       setPendingCoreStatChanges(null);
-    } catch {}
-  }
-
-  async function handleUndoRpChanges() {
-    if (!lastRpChanges?.length || !storyId) return;
-    const state = await fetchStoryState(storyId);
-    if (!state) return;
-    try {
-      const base = JSON.parse(state.stateJson) as Record<string, unknown>;
-      if (!base.rpStats) return;
-      let next = base.rpStats as any;
-      for (const change of lastRpChanges) {
-        next = applyRpStatChange(next, { field: change.field, from: change.to, to: change.from, reason: `Undo: ${change.reason}` });
-      }
-      await updateRpStats(storyId, next);
-      setLastRpChanges(null);
     } catch {}
   }
 
@@ -1167,17 +1135,6 @@ export function StoryWorkspacePage() {
       {readerMode || archiveMode ? null : (
         latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
           <Panel variant="flat" className="mt-4" padding="sm">
-            {activeStory.rpMode && lastRpChanges?.length ? (
-              <div className="mb-3 flex items-center justify-between gap-3 rounded-[9px] border border-accent/20 bg-accent/10 px-3 py-2.5">
-                <span className="text-sm text-accent-soft">{formatRpChanges(lastRpChanges)}</span>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="text-xs text-ink-muted">Applied</span>
-                  <Button variant="secondary" size="sm" onClick={() => void handleUndoRpChanges()} disabled={isGenerating || isRegenerating}>
-                    Undo
-                  </Button>
-                </div>
-              </div>
-            ) : null}
             {activeStory.rpMode && pendingCoreStatChanges?.length ? (
               <div className="mb-3 rounded-[9px] border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
                 <div className="mb-2 flex items-start justify-between gap-3">

@@ -4472,23 +4472,33 @@ export function StoryEngineProvider({
                   const newTime = advanceTime(prevTime, timeAdvanceMinutes);
                   // Check and apply recurring events
                   const { triggered, updated } = checkRecurringEvents(prevTime, newTime, story.rpConfig.recurringEvents ?? []);
-                  for (const event of triggered) {
-                    const resolvedAmount = (event.amountMin != null && event.amountMax != null)
-                      ? Math.round(event.amountMin + Math.random() * (event.amountMax - event.amountMin))
-                      : event.amount;
-                    const from = getStatValue(nextStats, story.rpConfig, "gold");
-                    const to = clampStat("gold", from + resolvedAmount, story.rpConfig);
-                    if (to !== from) {
-                      nextStats = applyStatChange(nextStats, {
-                        field: "gold", from, to, reason: event.label,
-                        storyTime: event.nextDue,
-                        transactionType: "recurring",
-                      });
-                      applied.push({ ts: Date.now(), field: "gold", from, to, reason: event.label });
-                    }
-                    timeSummaryPart = (timeSummaryPart ? timeSummaryPart + " · " : "") + `${event.label} triggered (${resolvedAmount >= 0 ? "+" : ""}${resolvedAmount})`;
-                  }
                   if (triggered.length) {
+                    const recurringGoldBefore = getStatValue(nextStats, story.rpConfig, "gold");
+                    const recurringLabels: string[] = [];
+                    for (const event of triggered) {
+                      const resolvedAmount = (event.amountMin != null && event.amountMax != null)
+                        ? Math.round(event.amountMin + Math.random() * (event.amountMax - event.amountMin))
+                        : event.amount;
+                      const from = getStatValue(nextStats, story.rpConfig, "gold");
+                      const to = clampStat("gold", from + resolvedAmount, story.rpConfig);
+                      if (to !== from) {
+                        nextStats = applyStatChange(nextStats, {
+                          field: "gold", from, to, reason: event.label,
+                          storyTime: event.nextDue,
+                          transactionType: "recurring",
+                        });
+                        recurringLabels.push(event.label);
+                      }
+                    }
+                    // Push one summary entry to applied for toolbar gold tracking
+                    const recurringGoldAfter = getStatValue(nextStats, story.rpConfig, "gold");
+                    const uniqueLabels = [...new Set(recurringLabels)];
+                    const recurringReason = recurringLabels.length === 1
+                      ? recurringLabels[0]!
+                      : uniqueLabels.length === 1
+                        ? `${uniqueLabels[0]} ×${recurringLabels.length}`
+                        : `${recurringLabels.length} recurring events`;
+                    applied.push({ ts: Date.now(), field: "gold", from: recurringGoldBefore, to: recurringGoldAfter, reason: recurringReason });
                     // Save updated recurringEvents nextDue values to config
                     await repository.saveStory({ ...story, rpConfig: { ...story.rpConfig, recurringEvents: updated } });
                   }
