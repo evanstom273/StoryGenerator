@@ -431,6 +431,8 @@ async function generateResponseWithRetry(params: {
   apiKey: string;
   model: string;
   messages: AIChatMessage[];
+  maxTokens?: number;
+  temperature?: number;
   signal?: AbortSignal;
   maxAttempts?: number;
   debugTrace?: {
@@ -472,6 +474,8 @@ async function generateResponseWithRetry(params: {
         apiKey: params.apiKey,
         model: params.model,
         messages: params.messages,
+        maxTokens: params.maxTokens,
+        temperature: params.temperature,
         signal: params.signal,
       });
       // #region debug-point A:provider-response
@@ -2160,6 +2164,8 @@ export function StoryEngineProvider({
               { role: "system", content: systemPrompt },
               { role: "user", content: "Generate the JSON now." },
             ],
+            maxTokens: 1200,
+            temperature: 0,
           });
         } catch (error) {
           rethrowUserFacingGenerationError(error, providerType);
