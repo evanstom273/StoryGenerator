@@ -283,7 +283,7 @@ export function RelationshipsOverlay(props: {
   }
 
   return (
-    <div className="fixed inset-0 z-[55] flex flex-col bg-app">
+    <div className="fixed top-0 left-0 right-0 bottom-12 z-[55] flex flex-col bg-app">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-divider/[0.3] px-4 py-3">
         <div>

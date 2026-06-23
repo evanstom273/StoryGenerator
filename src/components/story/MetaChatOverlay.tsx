@@ -152,7 +152,7 @@ export function MetaChatOverlay(props: {
   }
 
   return (
-    <div className="fixed inset-0 z-[55] flex flex-col bg-app">
+    <div className="fixed top-0 left-0 right-0 bottom-12 z-[55] flex flex-col bg-app">
       {/* Header */}
       <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-divider/[0.3] px-5 py-3.5">
         <div className="min-w-0">

@@ -178,6 +178,7 @@ export function StoryWorkspacePage() {
   const [pendingZeroHpConsequence, setPendingZeroHpConsequence] = useState<string | null>(null);
   const [diceRollPending, setDiceRollPending] = useState<{ stat: string; modifier: number; resolvedMessage: string } | null>(null);
   const [diceStatLoading, setDiceStatLoading] = useState(false);
+  const pendingDiceEventRef = useRef<{ ts: number; summary: string } | null>(null);
 
   // Initial gold load only — live updates come from appliedRpChanges in sendChatMessage
   useEffect(() => {
@@ -438,9 +439,17 @@ export function StoryWorkspacePage() {
     const modLabel = result.modifier > 0 ? `+${result.modifier}` : result.modifier < 0 ? `${result.modifier}` : "±0";
     const resultTag = `[${statLabel} ${modLabel} | d12: ${result.die} | Total: ${result.total} — ${result.outcome}]`;
     const substituted = diceRollPending.resolvedMessage.replace(ROLL_TAG_RE, resultTag);
+
+    // Toast
+    const toastId = `dice-${Date.now()}-${Math.random()}`;
+    setRpToasts((prev) => [{ id: toastId, summary: `🎲 ${resultTag}` }, ...prev]);
+    setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== toastId)), 6000);
+
+    // Store event log entry to be written after sendChatMessage completes
+    pendingDiceEventRef.current = { ts: Date.now(), summary: resultTag };
+
     setDiceRollPending(null);
     setChatInput(substituted);
-    // Trigger send with substituted message after state settles
     setTimeout(() => {
       void sendChatMessageWithContent(substituted);
     }, 0);
@@ -489,7 +498,25 @@ export function StoryWorkspacePage() {
         if (goldChange !== undefined) setTaskbarGold(goldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
       }
+
+      // Write dice roll to eventLog after extractor has already saved rpStats
+      const diceEntry = pendingDiceEventRef.current;
+      if (diceEntry && storyId) {
+        pendingDiceEventRef.current = null;
+        const stateSnapshot = await fetchStoryState(storyId);
+        const parsedRpStats = stateSnapshot?.stateJson
+          ? safeParseStoryStateData(stateSnapshot.stateJson)?.rpStats
+          : null;
+        if (parsedRpStats) {
+          await updateRpStats(storyId, {
+            ...parsedRpStats,
+            eventLog: [diceEntry, ...(parsedRpStats.eventLog ?? [])],
+          });
+          setRpStatsRefreshKey((k) => k + 1);
+        }
+      }
     } catch (error) {
+      pendingDiceEventRef.current = null;
       reportWorkspaceUiAudit({
         msg: "Story workspace displayed generation error (dice)",
         data: {

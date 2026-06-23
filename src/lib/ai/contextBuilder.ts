@@ -256,6 +256,14 @@ export function buildStoryChatContext({
         "Core stats are narrative guidance. They shape plausibility and colour consequences — they never gate an attempt. Higher scores suggest ease and competence; lower scores suggest difficulty, awkwardness, or risk of failure.",
         "",
         "Do not narrate or reference stat values directly. Stat tracking happens separately.",
+        ...(rpConfig.diceRollsEnabled ? [
+          "",
+          "Dice roll rule: when the player's message contains a result tag like [CHA +1 | d12: 9 | Total: 10 — SUCCESS] or [STR -1 | d12: 3 | Total: 2 — FAILURE], treat that outcome as a binding mechanical fact — not flavour the story can ignore or soften:",
+          "- SUCCESS (total ≥ 7): the attempt works. Commit to it — let the moment land. The NPC softens, the task completes, the character earns what they reached for.",
+          "- CRITICAL SUCCESS (natural 12 on the die): the attempt succeeds perfectly. Go further — an unexpected bonus, an unusually warm response, a flawless execution that earns something extra.",
+          "- FAILURE (total < 7): the attempt fails. Commit to it — the NPC holds firm, the task goes wrong, the obstacle stands. Do not hedge or quietly let the player through anyway.",
+          "The dice result is the outcome. Narrate the scene to fit it, not the other way around.",
+        ] : []),
         ...(rpStats.timeState ? [
           "",
           `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,

@@ -6,7 +6,6 @@ import {
   DEFAULT_DICE_MODIFIERS,
   DEFAULT_RP_CONFIG,
   defaultRpStats,
-  effectiveCoreStats,
   formatGold,
   undoLastChange,
 } from "../../lib/rpStats";
@@ -24,61 +23,6 @@ import type { RpCalendarConfig, RpConfig, RpDiceModifiers, RpRecurringEvent, RpR
 import { computeInitialNextDue, formatTime, formatTimeShort } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 
-const STAT_LABELS: Record<string, string> = {
-  str: "STR",
-  dex: "DEX",
-  con: "CON",
-  int: "INT",
-  wis: "WIS",
-  cha: "CHA",
-};
-
-function StatBox({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(String(value));
-
-  useEffect(() => {
-    if (!editing) setDraft(String(value));
-  }, [value, editing]);
-
-  function commit() {
-    const n = parseInt(draft, 10);
-    if (!isNaN(n) && n !== value) onChange(n);
-    setEditing(false);
-  }
-
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-ink-muted">{label}</span>
-      {editing ? (
-        <input
-          autoFocus
-          className="h-10 w-14 rounded-lg border border-accent/40 bg-panel-muted text-center text-lg font-bold text-ink outline-none"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="flex h-10 w-14 items-center justify-center rounded-lg border border-divider/40 bg-panel-muted text-lg font-bold text-ink transition hover:border-accent/40"
-        >
-          {value}
-        </button>
-      )}
-    </div>
-  );
-}
 
 function NumberField({
   label,
@@ -138,7 +82,7 @@ function NumberField({
   );
 }
 
-type Tab = "profile" | "stats" | "hp" | "currency" | "eventlog" | "time" | "changelog" | "config";
+type Tab = "profile" | "hp" | "currency" | "eventlog" | "time" | "changelog" | "config";
 
 function formatEventSchedule(event: RpRecurringEvent): string {
   const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -243,8 +187,6 @@ export function RPCharacterSheetOverlay(props: {
 
   if (!props.open) return null;
 
-  const stats = rpStats ? effectiveCoreStats(rpStats, config) : config.coreStats;
-
   async function save(next: RpStats) {
     setRpStats(next);
     setSaving(true);
@@ -282,12 +224,6 @@ export function RPCharacterSheetOverlay(props: {
     } finally {
       setSaving(false);
     }
-  }
-
-  function handleStatChange(key: string, newVal: number) {
-    if (!rpStats) return;
-    const current = (stats as any)[key] ?? 10;
-    void save(applyStatChange(rpStats, { field: key, from: current, to: newVal, reason: "Manual edit" }));
   }
 
   async function handleExport(format: "json" | "md" | "txt" | "pdf") {
@@ -450,7 +386,6 @@ ${profileText}`;
   const tabs: { id: Tab; label: string }[] = rpEnabled
     ? [
         { id: "profile", label: "Profile" },
-        { id: "stats", label: "Stats" },
         { id: "hp", label: "HP" },
         { id: "currency", label: config.currencyName || "Currency" },
         { id: "eventlog", label: "Events" },
@@ -461,7 +396,7 @@ ${profileText}`;
     : [{ id: "config", label: "Settings" }];
 
   return (
-    <div className="fixed inset-0 z-[55] flex flex-col bg-app">
+    <div className="fixed top-0 left-0 right-0 bottom-12 z-[55] flex flex-col bg-app">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-divider/[0.3] px-4 py-3">
         <div>
@@ -560,22 +495,6 @@ ${profileText}`;
                     ))}
                   </>
                 )}
-              </div>
-            )}
-
-            {activeTab === "stats" && rpStats && (
-              <div className="space-y-4">
-                <p className="text-xs text-ink-muted">Click any value to edit.</p>
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-                  {Object.entries(STAT_LABELS).map(([key, label]) => (
-                    <StatBox
-                      key={key}
-                      label={label}
-                      value={(stats as any)[key] ?? 10}
-                      onChange={(v) => handleStatChange(key, v)}
-                    />
-                  ))}
-                </div>
               </div>
             )}
 
