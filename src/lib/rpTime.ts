@@ -195,6 +195,11 @@ export function checkRecurringEvents(
 }
 
 export function formatRecurringAmount(event: RpRecurringEvent, currencyName: string): string {
+  if (event.amountMin != null && event.amountMax != null) {
+    const lo = event.amountMin >= 0 ? `+${event.amountMin}` : String(event.amountMin);
+    const hi = event.amountMax >= 0 ? `+${event.amountMax}` : String(event.amountMax);
+    return `${lo}–${hi} ${currencyName}`;
+  }
   const sign = event.amount >= 0 ? "+" : "";
   return `${sign}${event.amount} ${currencyName}`;
 }

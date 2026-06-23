@@ -4473,8 +4473,11 @@ export function StoryEngineProvider({
                   // Check and apply recurring events
                   const { triggered, updated } = checkRecurringEvents(prevTime, newTime, story.rpConfig.recurringEvents ?? []);
                   for (const event of triggered) {
+                    const resolvedAmount = (event.amountMin != null && event.amountMax != null)
+                      ? Math.round(event.amountMin + Math.random() * (event.amountMax - event.amountMin))
+                      : event.amount;
                     const from = getStatValue(nextStats, story.rpConfig, "gold");
-                    const to = clampStat("gold", from + event.amount, story.rpConfig);
+                    const to = clampStat("gold", from + resolvedAmount, story.rpConfig);
                     if (to !== from) {
                       nextStats = applyStatChange(nextStats, {
                         field: "gold", from, to, reason: event.label,
@@ -4483,7 +4486,7 @@ export function StoryEngineProvider({
                       });
                       applied.push({ ts: Date.now(), field: "gold", from, to, reason: event.label });
                     }
-                    timeSummaryPart = (timeSummaryPart ? timeSummaryPart + " · " : "") + `${event.label} triggered (${event.amount >= 0 ? "+" : ""}${event.amount})`;
+                    timeSummaryPart = (timeSummaryPart ? timeSummaryPart + " · " : "") + `${event.label} triggered (${resolvedAmount >= 0 ? "+" : ""}${resolvedAmount})`;
                   }
                   if (triggered.length) {
                     // Save updated recurringEvents nextDue values to config

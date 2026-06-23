@@ -141,6 +141,8 @@ export function RPCharacterSheetOverlay(props: {
   const [newEventDraft, setNewEventDraft] = useState<{
     label: string;
     amount: string;
+    amountMax: string;
+    useRange: boolean;
     frequency: RpRecurringFrequency;
     dayOfWeek: number;
     dayOfMonth: number;
@@ -361,16 +363,28 @@ ${profileText}`;
   function handleAddRecurringEvent() {
     if (!newEventDraft) return;
     const label = newEventDraft.label.trim();
-    const amount = parseFloat(newEventDraft.amount) || 0;
     if (!label) return;
-    const { frequency, dayOfWeek, dayOfMonth, month } = newEventDraft;
+    const { frequency, dayOfWeek, dayOfMonth, month, useRange } = newEventDraft;
     const nextDue: RpTimeState = rpStats?.timeState
       ? computeInitialNextDue(rpStats.timeState, frequency, dayOfWeek, dayOfMonth)
       : { year: 2024, month: 1, day: 1, hour: 0, minute: 0, storyDay: 1 };
+    let rangeFields: { amountMin?: number; amountMax?: number } = {};
+    let amount: number;
+    if (useRange) {
+      const lo = parseFloat(newEventDraft.amount) || 0;
+      const hi = parseFloat(newEventDraft.amountMax) || 0;
+      const amountMin = Math.min(lo, hi);
+      const amountMax = Math.max(lo, hi);
+      amount = amountMin;
+      rangeFields = { amountMin, amountMax };
+    } else {
+      amount = parseFloat(newEventDraft.amount) || 0;
+    }
     const event: RpRecurringEvent = {
       id: `evt_${Date.now()}`,
       label,
       amount,
+      ...rangeFields,
       frequency,
       ...(frequency === "weekly" ? { dayOfWeek } : {}),
       ...(frequency === "monthly" ? { dayOfMonth } : {}),
@@ -731,9 +745,15 @@ ${profileText}`;
                           <div className="min-w-0">
                             <div>
                               <span className="font-semibold text-ink">{event.label}</span>
-                              <span className={cn("ml-2", event.amount >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                {event.amount >= 0 ? "+" : ""}{event.amount} {configDraft.currencyName}
-                              </span>
+                              {event.amountMin != null && event.amountMax != null ? (
+                                <span className={cn("ml-2", event.amountMax >= 0 ? "text-emerald-400" : "text-red-400")}>
+                                  {event.amountMin >= 0 ? "+" : ""}{event.amountMin}–{event.amountMax >= 0 ? "+" : ""}{event.amountMax} {configDraft.currencyName}
+                                </span>
+                              ) : (
+                                <span className={cn("ml-2", event.amount >= 0 ? "text-emerald-400" : "text-red-400")}>
+                                  {event.amount >= 0 ? "+" : ""}{event.amount} {configDraft.currencyName}
+                                </span>
+                              )}
                               <span className="ml-2 text-ink-muted">{formatEventSchedule(event)}</span>
                             </div>
                             {formatEventCountdown(event, rpStats?.timeState) ? (
@@ -757,8 +777,11 @@ ${profileText}`;
                       </label>
                       <div className="grid grid-cols-2 gap-2">
                         <label className="space-y-0.5">
-                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Amount</span>
-                          <input type="number" className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="-500" value={newEventDraft.amount} onChange={(e) => setNewEventDraft((d) => d ? { ...d, amount: e.target.value } : d)} />
+                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Amount type</span>
+                          <select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" value={newEventDraft.useRange ? "range" : "fixed"} onChange={(e) => setNewEventDraft((d) => d ? { ...d, useRange: e.target.value === "range" } : d)}>
+                            <option value="fixed">Fixed</option>
+                            <option value="range">Range</option>
+                          </select>
                         </label>
                         <label className="space-y-0.5">
                           <span className="text-[10px] uppercase tracking-wider text-ink-muted">Frequency</span>
@@ -769,6 +792,23 @@ ${profileText}`;
                           </select>
                         </label>
                       </div>
+                      {newEventDraft.useRange ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="space-y-0.5">
+                            <span className="text-[10px] uppercase tracking-wider text-ink-muted">Min</span>
+                            <input type="number" className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="-1000" value={newEventDraft.amount} onChange={(e) => setNewEventDraft((d) => d ? { ...d, amount: e.target.value } : d)} />
+                          </label>
+                          <label className="space-y-0.5">
+                            <span className="text-[10px] uppercase tracking-wider text-ink-muted">Max</span>
+                            <input type="number" className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="-500" value={newEventDraft.amountMax} onChange={(e) => setNewEventDraft((d) => d ? { ...d, amountMax: e.target.value } : d)} />
+                          </label>
+                        </div>
+                      ) : (
+                        <label className="block space-y-0.5">
+                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Amount</span>
+                          <input type="number" className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="-500" value={newEventDraft.amount} onChange={(e) => setNewEventDraft((d) => d ? { ...d, amount: e.target.value } : d)} />
+                        </label>
+                      )}
                       {newEventDraft.frequency === "weekly" && (
                         <label className="block space-y-0.5">
                           <span className="text-[10px] uppercase tracking-wider text-ink-muted">Day of week</span>
@@ -811,7 +851,7 @@ ${profileText}`;
                       {!rpStats?.timeState && (
                         <p className="text-xs text-amber-400">Set the story clock first — recurring events need a starting date to schedule correctly.</p>
                       )}
-                      <Button variant="ghost" size="sm" onClick={() => setNewEventDraft({ label: "", amount: "", frequency: "weekly", dayOfWeek: 1, dayOfMonth: 1, month: 1 })}>
+                      <Button variant="ghost" size="sm" onClick={() => setNewEventDraft({ label: "", amount: "", amountMax: "", useRange: false, frequency: "weekly", dayOfWeek: 1, dayOfMonth: 1, month: 1 })}>
                         + Add Recurring Event
                       </Button>
                     </>

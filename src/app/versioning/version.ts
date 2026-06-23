@@ -378,6 +378,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     added: [
       "Danger Zone section in Settings → Storage: bulk delete all stories (with full cascade), all characters, or all universes — each requires typing a confirmation phrase",
       "Recurring event rows now show a countdown to the next trigger (e.g. \"in 8 days\", \"in 4h\", \"due soon\")",
+      "Recurring events now support an amount range (e.g. 500–1000) — a random value within the range is applied each time the event fires",
     ],
     fixed: [
       "Monthly recurring events now fire on the correct calendar day each month — the previous flat +30 day advance caused the date to drift by ±1 day over time",

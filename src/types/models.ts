@@ -105,6 +105,8 @@ export type RpRecurringEvent = {
   id: string;
   label: string;
   amount: number;              // positive = income, negative = expense
+  amountMin?: number;          // when both set, a random integer in [amountMin, amountMax] is applied
+  amountMax?: number;
   frequency: RpRecurringFrequency;
   dayOfWeek?: number;          // 0=Sun..6=Sat, used for weekly
   dayOfMonth?: number;         // 1-31, used for monthly/annually
