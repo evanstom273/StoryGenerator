@@ -199,6 +199,9 @@ interface StoryEngineContextValue {
   createStory: (draft: StoryDraft) => Promise<Story>;
   updateStory: (id: string, patch: Partial<StoryDraft>) => Promise<Story | null>;
   deleteStory: (id: string) => Promise<void>;
+  deleteAllStories: () => Promise<void>;
+  deleteAllPlayerCharacters: () => Promise<void>;
+  deleteAllUniverses: () => Promise<void>;
   createMessage: (draft: StoryMessageDraft) => Promise<StoryMessage>;
   updateMessage: (
     id: string,
@@ -2489,6 +2492,18 @@ export function StoryEngineProvider({
       },
       async deleteStory(id) {
         await repository.deleteStory(id);
+        await hydrate(false);
+      },
+      async deleteAllStories() {
+        await repository.deleteAllStories();
+        await hydrate(false);
+      },
+      async deleteAllPlayerCharacters() {
+        await repository.deleteAllPlayerCharacters();
+        await hydrate(false);
+      },
+      async deleteAllUniverses() {
+        await repository.deleteAllUniverses();
         await hydrate(false);
       },
       async createMessage(draft) {

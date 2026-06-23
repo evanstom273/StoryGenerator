@@ -110,6 +110,9 @@ export interface StoryEngineRepository {
   getDeveloperTestingNote(id: EntityId): Promise<DeveloperTestingNote | null>;
   saveDeveloperTestingNote(record: DeveloperTestingNote): Promise<DeveloperTestingNote>;
   deleteDeveloperTestingNote(id: EntityId): Promise<void>;
+  deleteAllStories(): Promise<void>;
+  deleteAllPlayerCharacters(): Promise<void>;
+  deleteAllUniverses(): Promise<void>;
   exportWorkspaceBackup(): Promise<StoryEngineBackup>;
   clearWorkspace(): Promise<void>;
   importWorkspaceBackup(
@@ -737,6 +740,25 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           textSize: readTextSize("story-engine:v2:text-size", "md"),
         },
       };
+    },
+    async deleteAllStories() {
+      await Promise.all([
+        clearStore("stories"),
+        clearStore("messages"),
+        clearStore("storyMetaMessages"),
+        clearStore("storyChapters"),
+        clearStore("storySummaries"),
+        clearStore("storyStates"),
+        clearStore("storyAiConfigs"),
+        clearStore("backgroundJobs"),
+        clearStore("storyUiStates"),
+      ]);
+    },
+    async deleteAllPlayerCharacters() {
+      await clearStore("playerCharacters");
+    },
+    async deleteAllUniverses() {
+      await Promise.all([clearStore("universes"), clearStore("universeImports")]);
     },
     async clearWorkspace() {
       await Promise.all([

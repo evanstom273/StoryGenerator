@@ -63,6 +63,9 @@ export function SettingsPage() {
     importStoryExport,
     exportWorkspaceBackup,
     importWorkspaceBackup,
+    deleteAllStories,
+    deleteAllPlayerCharacters,
+    deleteAllUniverses,
   } = useStoryEngine();
 
   const { openChangelog, openChangelogHistory } = useChangelog();
@@ -119,6 +122,10 @@ export function SettingsPage() {
     readStoredTextSize(UI_PREFS_KEYS.textSize, "md"),
   );
   const [versionCopyStatus, setVersionCopyStatus] = useState<string | null>(null);
+  const [deleteStoriesConfirm, setDeleteStoriesConfirm] = useState("");
+  const [deleteCharactersConfirm, setDeleteCharactersConfirm] = useState("");
+  const [deleteUniversesConfirm, setDeleteUniversesConfirm] = useState("");
+  const [dangerZoneLoading, setDangerZoneLoading] = useState<"stories" | "characters" | "universes" | null>(null);
 
   useEffect(() => {
     setActiveProviderType(aiSettings?.activeProviderType ?? "openai");
@@ -918,6 +925,121 @@ export function SettingsPage() {
                 {storageStatus.errorMessage}
               </div>
             ) : null}
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-rose-400/70">Danger Zone</div>
+            <div className="mt-3 space-y-3">
+              {/* Delete All Stories */}
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/5 px-4 py-4 space-y-3">
+                <div>
+                  <div className="font-semibold text-sm text-ink">Delete All Stories</div>
+                  <div className="text-xs text-ink-muted mt-0.5">Delete {storageStatus.storiesCount} {storageStatus.storiesCount === 1 ? "story" : "stories"}?</div>
+                </div>
+                <ul className="text-xs text-ink-muted space-y-0.5 list-disc list-inside">
+                  <li>Stories and chapters</li>
+                  <li>Messages and transcripts</li>
+                  <li>RP data, HP, money and events</li>
+                  <li>Relationships and timelines</li>
+                </ul>
+                <div className="text-xs text-ink-muted">
+                  Type <span className="font-mono font-semibold text-ink">DELETE STORIES</span> to continue.
+                </div>
+                <input
+                  className="w-full rounded-[6px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-rose-400/40 focus:ring-2 focus:ring-rose-400/10"
+                  value={deleteStoriesConfirm}
+                  onChange={(e) => setDeleteStoriesConfirm(e.target.value)}
+                  placeholder="Type DELETE STORIES"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full border-rose-400/30 text-rose-300 hover:bg-rose-400/10 disabled:opacity-40"
+                  disabled={deleteStoriesConfirm !== "DELETE STORIES" || dangerZoneLoading !== null}
+                  onClick={async () => {
+                    setDangerZoneLoading("stories");
+                    try { await deleteAllStories(); } finally {
+                      setDangerZoneLoading(null);
+                      setDeleteStoriesConfirm("");
+                    }
+                  }}
+                >
+                  {dangerZoneLoading === "stories" ? "Deleting…" : "Delete All Stories"}
+                </Button>
+              </div>
+
+              {/* Delete All Characters */}
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/5 px-4 py-4 space-y-3">
+                <div>
+                  <div className="font-semibold text-sm text-ink">Delete All Characters</div>
+                  <div className="text-xs text-ink-muted mt-0.5">Delete {storageStatus.playerCharactersCount} {storageStatus.playerCharactersCount === 1 ? "character" : "characters"}?</div>
+                </div>
+                <div className="text-xs text-ink-muted">This may affect stories that reference these characters.</div>
+                <div className="text-xs text-ink-muted">
+                  Type <span className="font-mono font-semibold text-ink">DELETE CHARACTERS</span> to continue.
+                </div>
+                <input
+                  className="w-full rounded-[6px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-rose-400/40 focus:ring-2 focus:ring-rose-400/10"
+                  value={deleteCharactersConfirm}
+                  onChange={(e) => setDeleteCharactersConfirm(e.target.value)}
+                  placeholder="Type DELETE CHARACTERS"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full border-rose-400/30 text-rose-300 hover:bg-rose-400/10 disabled:opacity-40"
+                  disabled={deleteCharactersConfirm !== "DELETE CHARACTERS" || dangerZoneLoading !== null}
+                  onClick={async () => {
+                    setDangerZoneLoading("characters");
+                    try { await deleteAllPlayerCharacters(); } finally {
+                      setDangerZoneLoading(null);
+                      setDeleteCharactersConfirm("");
+                    }
+                  }}
+                >
+                  {dangerZoneLoading === "characters" ? "Deleting…" : "Delete All Characters"}
+                </Button>
+              </div>
+
+              {/* Delete All Universes */}
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/5 px-4 py-4 space-y-3">
+                <div>
+                  <div className="font-semibold text-sm text-ink">Delete All Universes</div>
+                  <div className="text-xs text-ink-muted mt-0.5">Delete {storageStatus.universesCount} {storageStatus.universesCount === 1 ? "universe" : "universes"}?</div>
+                </div>
+                <div className="text-xs text-ink-muted">Stories will remain, but universe-specific lore and settings will be lost.</div>
+                <div className="text-xs text-ink-muted">
+                  Type <span className="font-mono font-semibold text-ink">DELETE UNIVERSES</span> to continue.
+                </div>
+                <input
+                  className="w-full rounded-[6px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-rose-400/40 focus:ring-2 focus:ring-rose-400/10"
+                  value={deleteUniversesConfirm}
+                  onChange={(e) => setDeleteUniversesConfirm(e.target.value)}
+                  placeholder="Type DELETE UNIVERSES"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full border-rose-400/30 text-rose-300 hover:bg-rose-400/10 disabled:opacity-40"
+                  disabled={deleteUniversesConfirm !== "DELETE UNIVERSES" || dangerZoneLoading !== null}
+                  onClick={async () => {
+                    setDangerZoneLoading("universes");
+                    try { await deleteAllUniverses(); } finally {
+                      setDangerZoneLoading(null);
+                      setDeleteUniversesConfirm("");
+                    }
+                  }}
+                >
+                  {dangerZoneLoading === "universes" ? "Deleting…" : "Delete All Universes"}
+                </Button>
+              </div>
+            </div>
           </Panel>
         </div>
       )}
