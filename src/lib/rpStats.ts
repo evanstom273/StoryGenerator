@@ -1,4 +1,4 @@
-import type { RpChangelogEntry, RpConfig, RpCoreStats, RpStats } from "../types/models";
+import type { RpChangelogEntry, RpConfig, RpCoreStats, RpDiceModifiers, RpStats } from "../types/models";
 
 export const DEFAULT_CORE_STATS: RpCoreStats = {
   str: 10,
@@ -9,6 +9,15 @@ export const DEFAULT_CORE_STATS: RpCoreStats = {
   cha: 10,
 };
 
+export const DEFAULT_DICE_MODIFIERS: RpDiceModifiers = {
+  str: 0,
+  dex: 0,
+  con: 0,
+  int: 0,
+  wis: 0,
+  cha: 0,
+};
+
 export const DEFAULT_RP_CONFIG: RpConfig = {
   currencyName: "Gold",
   currencyDecimals: false,
@@ -17,6 +26,8 @@ export const DEFAULT_RP_CONFIG: RpConfig = {
   coreStats: { ...DEFAULT_CORE_STATS },
   allowDebt: false,
   creditLimit: null,
+  diceRollsEnabled: false,
+  diceModifiers: { ...DEFAULT_DICE_MODIFIERS },
 };
 
 export function defaultRpStats(config: RpConfig): RpStats {
