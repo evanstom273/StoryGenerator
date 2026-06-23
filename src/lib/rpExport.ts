@@ -1,5 +1,6 @@
 import type { PlayerCharacter, RpConfig, RpEventLogEntry, RpStats, StoryMessage } from "../types/models";
-import { effectiveCoreStats } from "./rpStats";
+import { effectiveCoreStats, formatGold } from "./rpStats";
+import { formatTimeShort } from "./rpTime";
 import {
   createPdfDoc,
   pdfDimensions,
@@ -9,7 +10,9 @@ import {
   metaLine,
   speakerLine,
   rule,
+  checkPage,
   PDF_MARGIN,
+  PDF_FONT,
 } from "./pdfLayout";
 
 // jsPDF uses Latin-1 (ISO 8859-1) — replace non-Latin-1 chars with ASCII equivalents
@@ -405,6 +408,74 @@ export async function buildRpExportPdf(data: RpExportData): Promise<Blob> {
   }
   y += 4;
   y = rule(doc, y, pageW);
+
+  // Transaction History
+  const PDF_LINE_H = 13;
+  const txEntries = rpStats.changelog.filter((e) => e.field === "gold");
+  if (txEntries.length > 0) {
+    y = heading(doc, y, "Transaction History", 14, pageH);
+
+    const TX_TIME_X = PDF_MARGIN;
+    const TX_DESC_X = PDF_MARGIN + 90;
+    const TX_AMT_X  = PDF_MARGIN + 90 + 255 + 60;
+    const TX_BAL_X  = pageW - PDF_MARGIN;
+    const TX_DESC_W = 255;
+
+    doc.setFont(PDF_FONT, "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    y = checkPage(doc, y, pageH, PDF_LINE_H);
+    doc.text("TIME", TX_TIME_X, y);
+    doc.text("DESCRIPTION", TX_DESC_X, y);
+    doc.text("AMOUNT", TX_AMT_X, y, { align: "right" });
+    doc.text("BALANCE", TX_BAL_X, y, { align: "right" });
+    y += PDF_LINE_H;
+    doc.setDrawColor(180, 180, 180);
+    doc.line(PDF_MARGIN, y - 4, pageW - PDF_MARGIN, y - 4);
+
+    const typeColorMap: Record<string, [number, number, number]> = {
+      income:     [52,  211, 153],
+      expense:    [248, 113, 113],
+      adjustment: [96,  165, 250],
+      recurring:  [192, 132, 252],
+    };
+
+    for (const e of txEntries) {
+      const delta = e.to - e.from;
+      const typeLabel = e.transactionType ?? (delta >= 0 ? "income" : "expense");
+      const amtColor = typeColorMap[typeLabel] ?? ([0, 0, 0] as [number, number, number]);
+      const timeStr = sanitizePdf(
+        e.storyTime ? formatTimeShort(e.storyTime, rpConfig) : new Date(e.ts).toLocaleString(),
+      );
+      const descStr = sanitizePdf(e.reason ?? "");
+      const amtStr = `${delta >= 0 ? "+" : ""}${rpConfig.currencyDecimals ? delta.toFixed(2) : String(Math.round(delta))}`;
+      const balStr = sanitizePdf(formatGold(e.to, rpConfig));
+
+      y = checkPage(doc, y, pageH, PDF_LINE_H + 4);
+
+      doc.setFont(PDF_FONT, "normal");
+      doc.setFontSize(9);
+
+      doc.setTextColor(130, 130, 130);
+      doc.text(timeStr, TX_TIME_X, y);
+
+      doc.setTextColor(0, 0, 0);
+      const descLines = doc.splitTextToSize(descStr, TX_DESC_W) as string[];
+      doc.text(descLines[0] ?? "", TX_DESC_X, y);
+
+      doc.setTextColor(...amtColor);
+      doc.text(amtStr, TX_AMT_X, y, { align: "right" });
+
+      doc.setTextColor(130, 130, 130);
+      doc.text(balStr, TX_BAL_X, y, { align: "right" });
+
+      y += PDF_LINE_H + 2;
+    }
+
+    doc.setTextColor(0, 0, 0);
+    y += 4;
+    y = rule(doc, y, pageW);
+  }
 
   // Transcript
   y = heading(doc, y, "Story Transcript", 14, pageH);
