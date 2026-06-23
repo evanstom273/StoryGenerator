@@ -6,8 +6,8 @@ import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storySta
 import { normalizeStoryStateToV2, safeParseStoryStateData, withIndexedMetadata } from "../storyStateV2";
 import { AIError } from "./errors";
 
-const REBUILD_REQUEST_TIMEOUT_MS = 120_000;
-const REBUILD_MAX_ATTEMPTS = 4;
+const REBUILD_REQUEST_TIMEOUT_MS = 180_000;
+const REBUILD_MAX_ATTEMPTS = 3;
 
 async function generateWithRetry(
   provider: AIProvider,
@@ -129,7 +129,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       apiKey,
       model,
       messages: extractionContext,
-      maxTokens: 65536,
+      maxTokens: 24576,
       temperature: 0,
       jsonMode: true,
       timeoutMs: REBUILD_REQUEST_TIMEOUT_MS,
