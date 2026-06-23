@@ -4689,6 +4689,15 @@ export function StoryEngineProvider({
             ) {
               const now = new Date().toISOString();
               const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages);
+              // Preserve rpStats from raw state when safeParseStoryStateData returns null
+              const rawRpStatsForCounter = (() => {
+                if (baseParsed) return undefined; // handled via baseState spread
+                try {
+                  const raw = JSON.parse(latestStoryState?.stateJson ?? "{}") as Record<string, unknown>;
+                  return raw?.rpStats as RpStats | undefined;
+                } catch { return undefined; }
+              })();
+
               const patched = withIndexedMetadata(
                 baseParsed
                   ? {
@@ -4704,6 +4713,7 @@ export function StoryEngineProvider({
                       },
                     }
                   : {
+                      ...(rawRpStatsForCounter ? { rpStats: rawRpStatsForCounter } : {}),
                       updatedAt: now,
                       characters: {},
                       worldFacts: [],
