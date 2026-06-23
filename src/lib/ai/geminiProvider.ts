@@ -25,7 +25,7 @@ interface GeminiGenerateContentResponse {
     finishReason?: string;
     safetyRatings?: unknown;
     content?: {
-      parts?: Array<{ text?: string }>;
+      parts?: Array<{ text?: string; thought?: boolean }>;
     };
   }>;
   promptFeedback?: unknown;
@@ -197,7 +197,10 @@ async function callGenerateContent(
     }
 
     const json = (await response.json()) as GeminiGenerateContentResponse;
-    const content = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    const content = (json.candidates?.[0]?.content?.parts ?? [])
+      .filter((part) => !part.thought)
+      .map((part) => part.text ?? "")
+      .join("") ?? "";
     // #region debug-point A:gemini-response
     reportGeminiAudit({
       hypothesisId: "A",
