@@ -99,6 +99,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       messages: extractionContext,
       maxTokens: 8192,
       temperature: 0,
+      jsonMode: true,
       timeoutMs: REBUILD_REQUEST_TIMEOUT_MS,
       signal,
     });

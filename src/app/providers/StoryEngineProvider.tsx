@@ -433,6 +433,7 @@ async function generateResponseWithRetry(params: {
   messages: AIChatMessage[];
   maxTokens?: number;
   temperature?: number;
+  jsonMode?: boolean;
   signal?: AbortSignal;
   maxAttempts?: number;
   debugTrace?: {
@@ -476,6 +477,7 @@ async function generateResponseWithRetry(params: {
         messages: params.messages,
         maxTokens: params.maxTokens,
         temperature: params.temperature,
+        jsonMode: params.jsonMode,
         signal: params.signal,
       });
       // #region debug-point A:provider-response
@@ -2166,6 +2168,7 @@ export function StoryEngineProvider({
             ],
             maxTokens: 1200,
             temperature: 0,
+            jsonMode: true,
           });
         } catch (error) {
           rethrowUserFacingGenerationError(error, providerType);

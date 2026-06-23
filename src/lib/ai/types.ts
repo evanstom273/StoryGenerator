@@ -11,6 +11,7 @@ export interface GenerateResponseRequest {
   messages: AIChatMessage[];
   maxTokens?: number;
   temperature?: number;
+  jsonMode?: boolean;
   timeoutMs?: number;
   signal?: AbortSignal;
 }
