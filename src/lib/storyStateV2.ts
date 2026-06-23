@@ -360,7 +360,16 @@ export function finalizeStoryStateForSave(params: {
   const previous = (() => {
     const json = params.previousStateJson?.trim() ?? "";
     if (!json) return null;
-    return safeParseStoryStateData(json);
+    const v2 = safeParseStoryStateData(json);
+    if (v2) return v2;
+    // Raw states (no V2 metadata yet) still carry rpStats — preserve it
+    try {
+      const raw = JSON.parse(json) as unknown;
+      if (raw && typeof raw === "object" && "rpStats" in raw) {
+        return { rpStats: (raw as Record<string, unknown>).rpStats } as StoryStateData;
+      }
+    } catch {}
+    return null;
   })();
   const previousV2 = normalizeStoryStateToV2(previous);
 
