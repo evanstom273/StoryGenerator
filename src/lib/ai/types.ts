@@ -9,6 +9,7 @@ export interface GenerateResponseRequest {
   apiKey: string;
   model: string;
   messages: AIChatMessage[];
+  maxTokens?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
 }

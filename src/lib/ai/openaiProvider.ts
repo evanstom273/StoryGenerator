@@ -89,12 +89,12 @@ export function createOpenAIProvider(): AIProvider {
         throw new Error("OpenAI validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages, timeoutMs, signal }) {
+    async generateResponse({ apiKey, model, messages, maxTokens, timeoutMs, signal }) {
       const content = await callChatCompletions(apiKey, {
         model,
         messages: toOpenAIMessages(messages),
         temperature: 0.8,
-        max_tokens: 700,
+        max_tokens: maxTokens ?? 700,
       }, { timeoutMs, signal });
 
       return { content };

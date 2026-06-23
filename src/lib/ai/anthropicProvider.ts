@@ -113,13 +113,13 @@ export function createAnthropicProvider(): AIProvider {
       }
     },
 
-    async generateResponse({ apiKey, model, messages, timeoutMs, signal }) {
+    async generateResponse({ apiKey, model, messages, maxTokens, timeoutMs, signal }) {
       const { system, messages: chatMessages } = splitSystemAndMessages(messages);
       const content = await callMessages(
         apiKey,
         {
           model,
-          max_tokens: 700,
+          max_tokens: maxTokens ?? 700,
           temperature: 0.8,
           system,
           messages: chatMessages,

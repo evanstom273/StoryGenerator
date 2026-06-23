@@ -97,6 +97,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       apiKey,
       model,
       messages: extractionContext,
+      maxTokens: 4096,
       timeoutMs: REBUILD_REQUEST_TIMEOUT_MS,
       signal,
     });
