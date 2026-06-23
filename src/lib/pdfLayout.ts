@@ -28,7 +28,7 @@ export function checkPage(doc: jsPDF, y: number, pageH: number, needed = LINE_H)
 export function rule(doc: jsPDF, y: number, pageW: number): number {
   doc.setDrawColor(RULE_COLOR, RULE_COLOR, RULE_COLOR);
   doc.line(PDF_MARGIN, y, pageW - PDF_MARGIN, y);
-  return y + 8;
+  return y + 14;
 }
 
 export function heading(doc: jsPDF, y: number, text: string, size = 14, pageH = 842): number {

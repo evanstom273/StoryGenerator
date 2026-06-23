@@ -411,39 +411,41 @@ export async function buildRpExportPdf(data: RpExportData): Promise<Blob> {
 
   // Transaction History
   const PDF_LINE_H = 13;
+  const TX_TYPE_COLORS: Record<string, string> = {
+    income:     "#34d399",
+    expense:    "#f87171",
+    adjustment: "#60a5fa",
+    recurring:  "#c084fc",
+  };
   const txEntries = rpStats.changelog.filter((e) => e.field === "gold");
   if (txEntries.length > 0) {
     y = heading(doc, y, "Transaction History", 14, pageH);
 
     const TX_TIME_X = PDF_MARGIN;
-    const TX_DESC_X = PDF_MARGIN + 90;
-    const TX_AMT_X  = PDF_MARGIN + 90 + 255 + 60;
+    const TX_DESC_X = PDF_MARGIN + 105;
+    const TX_AMT_X  = PDF_MARGIN + 105 + 235 + 60;
     const TX_BAL_X  = pageW - PDF_MARGIN;
-    const TX_DESC_W = 255;
+    const TX_DESC_W = 235;
 
+    // Header row
+    y = checkPage(doc, y, pageH, 30);
     doc.setFont(PDF_FONT, "bold");
     doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    y = checkPage(doc, y, pageH, PDF_LINE_H);
+    doc.setTextColor("#888888");
     doc.text("TIME", TX_TIME_X, y);
     doc.text("DESCRIPTION", TX_DESC_X, y);
     doc.text("AMOUNT", TX_AMT_X, y, { align: "right" });
     doc.text("BALANCE", TX_BAL_X, y, { align: "right" });
-    y += PDF_LINE_H;
+    // Underline: draw at y+4 (below 8pt baseline, safe from descenders)
     doc.setDrawColor(180, 180, 180);
-    doc.line(PDF_MARGIN, y - 4, pageW - PDF_MARGIN, y - 4);
+    doc.line(PDF_MARGIN, y + 4, pageW - PDF_MARGIN, y + 4);
+    y += 18; // clear header + underline + gap before first row
 
-    const typeColorMap: Record<string, [number, number, number]> = {
-      income:     [52,  211, 153],
-      expense:    [248, 113, 113],
-      adjustment: [96,  165, 250],
-      recurring:  [192, 132, 252],
-    };
-
+    // Data rows
     for (const e of txEntries) {
       const delta = e.to - e.from;
       const typeLabel = e.transactionType ?? (delta >= 0 ? "income" : "expense");
-      const amtColor = typeColorMap[typeLabel] ?? ([0, 0, 0] as [number, number, number]);
+      const amtColor = TX_TYPE_COLORS[typeLabel] ?? "#000000";
       const timeStr = sanitizePdf(
         e.storyTime ? formatTimeShort(e.storyTime, rpConfig) : new Date(e.ts).toLocaleString(),
       );
@@ -452,27 +454,26 @@ export async function buildRpExportPdf(data: RpExportData): Promise<Blob> {
       const balStr = sanitizePdf(formatGold(e.to, rpConfig));
 
       y = checkPage(doc, y, pageH, PDF_LINE_H + 4);
-
       doc.setFont(PDF_FONT, "normal");
       doc.setFontSize(9);
 
-      doc.setTextColor(130, 130, 130);
+      doc.setTextColor("#888888");
       doc.text(timeStr, TX_TIME_X, y);
 
-      doc.setTextColor(0, 0, 0);
+      doc.setTextColor("#000000");
       const descLines = doc.splitTextToSize(descStr, TX_DESC_W) as string[];
       doc.text(descLines[0] ?? "", TX_DESC_X, y);
 
-      doc.setTextColor(...amtColor);
+      doc.setTextColor(amtColor);
       doc.text(amtStr, TX_AMT_X, y, { align: "right" });
 
-      doc.setTextColor(130, 130, 130);
+      doc.setTextColor("#888888");
       doc.text(balStr, TX_BAL_X, y, { align: "right" });
 
-      y += PDF_LINE_H + 2;
+      y += PDF_LINE_H + 3;
     }
 
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor("#000000");
     y += 4;
     y = rule(doc, y, pageW);
   }
