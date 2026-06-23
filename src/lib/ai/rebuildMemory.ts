@@ -5,9 +5,10 @@ import { sortByTimestampAsc } from "../dates";
 import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storyStateExtractor";
 import { normalizeStoryStateToV2, safeParseStoryStateData, withIndexedMetadata } from "../storyStateV2";
 import { AIError } from "./errors";
+import { extractFirstJsonObject, safeParseJsonObject } from "./json";
 
-const REBUILD_REQUEST_TIMEOUT_MS = 120_000;
-const REBUILD_MAX_ATTEMPTS = 4;
+const REBUILD_REQUEST_TIMEOUT_MS = 180_000;
+const REBUILD_MAX_ATTEMPTS = 3;
 
 async function generateWithRetry(
   provider: AIProvider,
@@ -44,13 +45,20 @@ function chunkMessages(messages: StoryMessage[], chunkSize: number) {
   return chunks;
 }
 
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const id = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => { clearTimeout(id); reject(new Error("Rebuild aborted.")); }, { once: true });
+  });
+}
+
 export async function rebuildStoryMemoryAndIndexes(params: {
   storyId: string;
   repository: StoryEngineRepository;
   provider: AIProvider;
   apiKey: string;
   model: string;
-  onProgress?: (p: { processed: number; total: number; message?: string }) => void;
+  onProgress?: (p: { processed: number; total: number; message?: string; warning?: string }) => void;
   signal?: AbortSignal;
 }): Promise<{ stateJson: string; summaryText?: string }> {
   const { storyId, repository, provider, apiKey, model, onProgress, signal } = params;
@@ -79,11 +87,19 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
   const chunkSize = 40;
   const chunks = chunkMessages(messages, chunkSize);
+  const totalChunks = chunks.length;
 
   let processed = 0;
-  onProgress?.({ processed, total, message: "Loading transcript..." });
+  onProgress?.({
+    processed,
+    total,
+    message: total === 0
+      ? "No messages to index."
+      : `Loading ${total} message${total === 1 ? "" : "s"}…`,
+  });
 
-  for (const chunk of chunks) {
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex]!;
     if (signal?.aborted) {
       throw new Error("Rebuild aborted.");
     }
@@ -99,7 +115,10 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
     const existingStateJson = (() => {
       try {
-        return JSON.stringify(currentState);
+        // Strip indexes from the prompt — the model rebuilds them from the transcript.
+        // Keeping them just bloats the prompt and pushes the response over token limits.
+        const { indexes: _indexes, ...stateForPrompt } = currentState as any;
+        return JSON.stringify(stateForPrompt);
       } catch {
         return "";
       }
@@ -112,6 +131,12 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       return fromState ?? "";
     })();
 
+    const chunkStart = processed + 1;
+    const chunkEnd = processed + chunk.length;
+    const chunkLabel = totalChunks > 1
+      ? ` (batch ${chunkIndex + 1}/${totalChunks})`
+      : "";
+
     const extractionContext = buildStoryStateExtractionPrompt({
       playerName: playerCharacter.name,
       playerCharacter,
@@ -122,26 +147,61 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       messageNumberTotal: total,
     });
 
-    const responseContent = await generateWithRetry(provider, {
+    const generateParams = {
       apiKey,
       model,
       messages: extractionContext,
-      maxTokens: 16384,
+      maxTokens: 32768,
       temperature: 0,
       jsonMode: true,
       timeoutMs: REBUILD_REQUEST_TIMEOUT_MS,
       signal,
+    };
+
+    onProgress?.({
+      processed,
+      total,
+      message: `Sending messages ${chunkStart}–${chunkEnd} to AI${chunkLabel}…`,
     });
+
+    let responseContent = await generateWithRetry(provider, generateParams);
 
     if (signal?.aborted) {
       throw new Error("Rebuild aborted.");
     }
 
-    const parsed = parseStoryStateData(responseContent);
+    onProgress?.({
+      processed,
+      total,
+      message: `Parsing AI response${chunkLabel}…`,
+    });
+
+    let parsed = parseStoryStateData(responseContent);
+
     if (!parsed) {
-      const preview = responseContent.slice(0, 300).replace(/\n/g, " ") || "(empty)";
-      throw new Error(`Story state extraction returned invalid JSON. Response: ${preview}`);
+      // Parse failed — retry the AI call once before giving up
+      onProgress?.({
+        processed,
+        total,
+        message: `Retrying batch ${chunkIndex + 1}${totalChunks > 1 ? `/${totalChunks}` : ""} (AI response unparseable)…`,
+      });
+      await sleep(1000, signal);
+      if (signal?.aborted) throw new Error("Rebuild aborted.");
+      responseContent = await generateWithRetry(provider, generateParams);
+      parsed = parseStoryStateData(responseContent);
+      if (!parsed) {
+        const head = responseContent.slice(0, 200).replace(/\n/g, " ");
+        const tail = responseContent.slice(-200).replace(/\n/g, " ");
+        const len = responseContent.length;
+        throw new Error(
+          `Story state extraction returned invalid JSON (${len} chars). Head: ${head || "(empty)"} … Tail: ${tail || "(empty)"}`,
+        );
+      }
     }
+
+    // Check if truncation repair was silently used (direct parse fails but parseStoryStateData succeeded via repair)
+    const directParse = safeParseJsonObject(extractFirstJsonObject(responseContent) ?? responseContent.trim());
+    const wasRepaired = !directParse;
 
     const normalized = normalizeStoryStateToV2(parsed);
     currentState = {
@@ -155,8 +215,19 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     };
 
     processed += chunk.length;
-    onProgress?.({ processed, total, message: `Extracted ${processed}/${total} messages` });
+    onProgress?.({
+      processed,
+      total,
+      message: totalChunks > 1
+        ? `Batch ${chunkIndex + 1}/${totalChunks} done — ${processed}/${total} messages indexed`
+        : `${processed}/${total} messages indexed`,
+      warning: wasRepaired
+        ? `Batch ${chunkIndex + 1}: AI response was truncated — partial data recovered. Some fields in this batch may be missing.`
+        : undefined,
+    });
   }
+
+  onProgress?.({ processed, total, message: "Building final indexes…" });
 
   const finalState = withIndexedMetadata({ ...currentState, memoryArchitectureVersion: "2.0" });
   const finalJson = JSON.stringify(finalState);

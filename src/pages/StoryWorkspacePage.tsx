@@ -994,7 +994,7 @@ export function StoryWorkspacePage() {
 
       <div
         className={[
-          "fixed bottom-0 right-0 z-30 flex items-center justify-between border-t border-divider/[0.3] bg-app/90 px-4 py-2 backdrop-blur-md",
+          "fixed bottom-0 right-0 z-30 flex items-center justify-between border-t border-divider/[0.3] bg-app will-change-transform px-4 py-2",
           readerMode ? "left-0" : "left-0 lg:left-[266px]",
         ].join(" ")}
       >

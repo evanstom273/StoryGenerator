@@ -148,6 +148,7 @@ interface StoryEngineContextValue {
     totalMessages: number;
     message?: string;
     error?: string;
+    warning?: string;
   };
   jobNotice?: {
     id: string;
@@ -1450,7 +1451,7 @@ export function StoryEngineProvider({
           apiKey,
           model,
           signal,
-          onProgress: ({ processed, total, message }) => {
+          onProgress: ({ processed, total, message, warning }) => {
             // #region debug-point job-cancel-timeout:deep-index-progress
             reportJobDebug({
               hypothesisId: "B",
@@ -1476,6 +1477,7 @@ export function StoryEngineProvider({
                 processedMessages: processed,
                 totalMessages: total,
                 message,
+                warning: warning ?? current.warning,
               };
             });
           },
@@ -1568,10 +1570,14 @@ export function StoryEngineProvider({
             const threadCount = Array.isArray(indexes.openThreads)
               ? indexes.openThreads.length
               : 0;
+            const relationshipCount = Array.isArray(indexes.relationships)
+              ? indexes.relationships.length
+              : 0;
             const parts = [
-              characterCount ? `${characterCount} characters` : null,
-              locationCount ? `${locationCount} locations` : null,
-              threadCount ? `${threadCount} threads` : null,
+              characterCount ? `${characterCount} character${characterCount === 1 ? "" : "s"}` : null,
+              locationCount ? `${locationCount} location${locationCount === 1 ? "" : "s"}` : null,
+              relationshipCount ? `${relationshipCount} relationship${relationshipCount === 1 ? "" : "s"}` : null,
+              threadCount ? `${threadCount} thread${threadCount === 1 ? "" : "s"}` : null,
             ].filter(Boolean);
             return parts.length
               ? `Re-index complete. Indexed: ${parts.join(", ")}.`
@@ -1590,6 +1596,14 @@ export function StoryEngineProvider({
         });
 
         return summaryLine;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        setRebuildStatus((current) =>
+          current?.storyId === storyId
+            ? { ...current, phase: "error", error: msg }
+            : current,
+        );
+        throw error;
       } finally {
         if (rebuildAbortRef.current === controller) {
           rebuildAbortRef.current = null;
