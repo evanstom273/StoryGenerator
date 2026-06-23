@@ -599,14 +599,18 @@ export function sanitizeMessageForDisplay(args: {
   // Respect manual transcript fixes. If the user edited the assistant message,
   // render the saved text as-is instead of re-sanitising it back into a different shape.
   if (args.message.editedAt) {
-    return normalizeTranscriptWhitespace(args.message.content);
+    return capitalizeFirstLetter(normalizeTranscriptWhitespace(args.message.content));
   }
 
-  return sanitizeAssistantTranscript({
+  return capitalizeFirstLetter(sanitizeAssistantTranscript({
     text: args.message.content,
     latestUserMessage: args.latestUserMessage,
     playerName: args.playerName,
-  }).text;
+  }).text);
+}
+
+function capitalizeFirstLetter(text: string): string {
+  return text.replace(/^([^a-zA-Z]*)([a-zA-Z])/, (_, prefix, letter) => prefix + letter.toUpperCase());
 }
 
 function stripForOverlap(value: string) {

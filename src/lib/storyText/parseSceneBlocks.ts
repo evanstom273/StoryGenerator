@@ -6,6 +6,15 @@ export interface SceneBlock {
   segments: StoryTextSegment[];
 }
 
+function isValidSpeakerLabel(label: string): boolean {
+  if (!label) return false;
+  // Commas indicate a narrative phrase, not a speaker name
+  if (label.includes(",")) return false;
+  // More than 5 words is almost certainly a narrative aside, not a name
+  if (label.trim().split(/\s+/).length > 5) return false;
+  return true;
+}
+
 function isSpeakerHeader(line: string) {
   const match = line.match(/^([^\n:]{1,48})(:|\s[-—])\s*$/);
   if (!match) {
@@ -13,7 +22,8 @@ function isSpeakerHeader(line: string) {
   }
 
   const label = match[1]?.trim();
-  return label ? label : null;
+  if (!label || !isValidSpeakerLabel(label)) return null;
+  return label;
 }
 
 function parseInlineSpeakerLine(line: string) {
@@ -26,6 +36,10 @@ function parseInlineSpeakerLine(line: string) {
   const remainder = match[3]?.trim();
 
   if (!label || !remainder) {
+    return null;
+  }
+
+  if (!isValidSpeakerLabel(label)) {
     return null;
   }
 
