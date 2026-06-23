@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.1.0";
+export const APP_VERSION = "2.2.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -370,6 +370,23 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
       "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
       "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
+    ],
+    knownIssues: [],
+  },
+  "2.2.0": {
+    title: "Dice Roll System for RP Mode",
+    added: [
+      "Optional dice roll system for RP mode: write [roll] or [roll str/dex/con/int/wis/cha] in a message to trigger a d12 skill check; AI selects the stat automatically if not specified",
+      "Dice modifiers (-2 to +2) per stat (STR/DEX/CON/INT/WIS/CHA) configurable in Character Sheet Settings",
+      "Dice roll modal: displays stat and modifier, roll button, colour-coded outcome (SUCCESS green / FAILURE red / CRITICAL SUCCESS gold on natural 12)",
+      "Roll results appear as a toast notification and are permanently logged in the Events tab with the triggering action text for context",
+      "Transaction History table in RP Mode PDF export with colour-coded transaction types",
+    ],
+    fixed: [
+      "Character Sheet, Relationships, and MetaChat overlays no longer cover the taskbar",
+      "Stats tab removed from the Character Sheet (modifiers are now in Settings under Dice Rolls)",
+      "PDF rule lines no longer intersect text headings",
+      "Toolbar time chip no longer overflows into icon buttons on small screens",
     ],
     knownIssues: [],
   },
