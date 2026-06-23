@@ -370,31 +370,31 @@ export function parseStoryStateData(text: string): StoryStateData | null {
   }
 
   if (parsed.sceneState && !Array.isArray(parsed.sceneState)) {
-    return null;
+    delete (parsed as any).sceneState;
   }
 
   if (parsed.significantMemories && !Array.isArray(parsed.significantMemories)) {
-    return null;
+    delete (parsed as any).significantMemories;
   }
 
   if (parsed.relationshipState && !Array.isArray(parsed.relationshipState)) {
-    return null;
+    delete (parsed as any).relationshipState;
   }
 
-  if (parsed.relationships && typeof parsed.relationships !== "object") {
-    return null;
+  if (parsed.relationships && (typeof parsed.relationships !== "object" || Array.isArray(parsed.relationships))) {
+    delete (parsed as any).relationships;
   }
 
-  if (parsed.npcs && typeof parsed.npcs !== "object") {
-    return null;
+  if (parsed.npcs && (typeof parsed.npcs !== "object" || Array.isArray(parsed.npcs))) {
+    delete (parsed as any).npcs;
   }
 
-  if (parsed.locations && typeof parsed.locations !== "object") {
-    return null;
+  if (parsed.locations && (typeof parsed.locations !== "object" || Array.isArray(parsed.locations))) {
+    delete (parsed as any).locations;
   }
 
-  if (parsed.summaries && typeof parsed.summaries !== "object") {
-    return null;
+  if (parsed.summaries && (typeof parsed.summaries !== "object" || Array.isArray(parsed.summaries))) {
+    delete (parsed as any).summaries;
   }
 
   if ((parsed as any).indexes) {
