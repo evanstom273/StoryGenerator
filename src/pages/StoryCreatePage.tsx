@@ -538,6 +538,7 @@ export function StoryCreatePage() {
                   <option value="openai">OpenAI</option>
                   <option value="gemini">Gemini</option>
                   <option value="openrouter">OpenRouter</option>
+                  <option value="anthropic">Anthropic</option>
                 </SelectInput>
               </Field>
               <Field label="Model">

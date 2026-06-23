@@ -777,6 +777,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       <option value="openai">OpenAI</option>
                       <option value="gemini">Gemini</option>
                       <option value="openrouter">OpenRouter</option>
+                      <option value="anthropic">Anthropic</option>
                     </select>
                   </label>
 
