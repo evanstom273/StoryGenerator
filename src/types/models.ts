@@ -112,6 +112,15 @@ export type RpRecurringEvent = {
   nextDue: RpTimeState;
 };
 
+export type RpDiceModifiers = {
+  str: number; // -2 to +2
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+};
+
 export type RpConfig = {
   currencyName: string;
   currencyDecimals: boolean;
@@ -122,6 +131,8 @@ export type RpConfig = {
   creditLimit?: number | null;
   calendarConfig?: RpCalendarConfig;
   recurringEvents?: RpRecurringEvent[];
+  diceRollsEnabled?: boolean;
+  diceModifiers?: RpDiceModifiers;
 };
 
 export type RpNpcHpEntry = {

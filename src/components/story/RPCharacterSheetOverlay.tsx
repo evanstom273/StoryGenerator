@@ -3,6 +3,7 @@ import { Button } from "../ui/Button";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import {
   applyStatChange,
+  DEFAULT_DICE_MODIFIERS,
   DEFAULT_RP_CONFIG,
   defaultRpStats,
   effectiveCoreStats,
@@ -19,7 +20,7 @@ import {
 import { downloadFile } from "../../lib/download";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../../lib/ai/models";
-import type { RpCalendarConfig, RpConfig, RpRecurringEvent, RpRecurringFrequency, RpStats, RpTimeState, Story } from "../../types/models";
+import type { RpCalendarConfig, RpConfig, RpDiceModifiers, RpRecurringEvent, RpRecurringFrequency, RpStats, RpTimeState, Story } from "../../types/models";
 import { computeInitialNextDue, formatTime, formatTimeShort } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 
@@ -1014,6 +1015,58 @@ ${profileText}`;
                         }}
                       />
                     </label>
+                  )}
+                </div>
+
+                <div className="border-t border-divider/40 pt-3 space-y-3">
+                  <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider">Dice Rolls</p>
+                  <label className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-ink-muted">Enable dice rolls (use [roll] in messages)</span>
+                    <select
+                      className="rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none"
+                      value={configDraft.diceRollsEnabled ? "yes" : "no"}
+                      onChange={(e) => setConfigDraft((c) => ({
+                        ...c,
+                        diceRollsEnabled: e.target.value === "yes",
+                        diceModifiers: c.diceModifiers ?? { ...DEFAULT_DICE_MODIFIERS },
+                      }))}
+                    >
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </label>
+
+                  {configDraft.diceRollsEnabled && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-ink-muted">Stat modifiers (−2 to +2)</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(["str", "dex", "con", "int", "wis", "cha"] as const).map((stat) => (
+                          <label key={stat} className="block space-y-0.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{stat}</span>
+                            <select
+                              className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-center text-sm text-ink outline-none"
+                              value={(configDraft.diceModifiers ?? DEFAULT_DICE_MODIFIERS)[stat]}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                setConfigDraft((c) => ({
+                                  ...c,
+                                  diceModifiers: {
+                                    ...(c.diceModifiers ?? DEFAULT_DICE_MODIFIERS),
+                                    [stat]: val,
+                                  } as RpDiceModifiers,
+                                }));
+                              }}
+                            >
+                              <option value="-2">−2</option>
+                              <option value="-1">−1</option>
+                              <option value="0">0</option>
+                              <option value="1">+1</option>
+                              <option value="2">+2</option>
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
 

@@ -17,7 +17,11 @@ import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { cn } from "../utils/cn";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
-import { applyStatChange as applyRpStatChange } from "../lib/rpStats";
+import { createAIProvider } from "../lib/ai/providerFactory";
+import { getProviderDefaultModel } from "../lib/ai/models";
+import { selectDiceStat } from "../lib/ai/diceStatSelector";
+import { DiceRollModal, type DiceRollResult } from "../components/story/DiceRollModal";
+import { DEFAULT_DICE_MODIFIERS, applyStatChange as applyRpStatChange } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
@@ -111,6 +115,7 @@ export function StoryWorkspacePage() {
     setStorySettingsOpen,
   } = useUiPrefs();
   const {
+    aiSettings,
     createMessage,
     deleteMessage,
     fetchStoryState,
@@ -171,6 +176,8 @@ export function StoryWorkspacePage() {
   const [zeroHpConsequenceChoice, setZeroHpConsequenceChoice] = useState<string>("");
   const [zeroHpCustom, setZeroHpCustom] = useState("");
   const [pendingZeroHpConsequence, setPendingZeroHpConsequence] = useState<string | null>(null);
+  const [diceRollPending, setDiceRollPending] = useState<{ stat: string; modifier: number; resolvedMessage: string } | null>(null);
+  const [diceStatLoading, setDiceStatLoading] = useState(false);
 
   // Initial gold load only — live updates come from appliedRpChanges in sendChatMessage
   useEffect(() => {
@@ -316,11 +323,50 @@ export function StoryWorkspacePage() {
   const activePlayerCharacter = playerCharacter;
 
   const LARGE_TIME_SKIP_RE = /\b(sleep|slept|nap|napped|rest overnight|overnight|wake up|woke up|next morning|next day|tomorrow|next week|next month|days? later|weeks? later|months? later|skip to|fast forward|travel(?:l?ed)? to|long journey|hospital|recover(?:y|ing)?|unconscious)\b/i;
+  const ROLL_TAG_RE = /\[roll(?:\s+(str|dex|con|int|wis|cha))?\]/i;
 
   async function handleSendChat() {
     if (!chatInput.trim()) {
       setChatError("Message content is required.");
       return;
+    }
+
+    // Intercept [roll] / [roll stat] tags when dice rolls are enabled
+    const rpConfig = activeStory?.rpConfig;
+    if (activeStory?.rpMode && rpConfig?.diceRollsEnabled) {
+      const rollMatch = ROLL_TAG_RE.exec(chatInput);
+      if (rollMatch) {
+        const specifiedStat = rollMatch[1]?.toLowerCase() as "str" | "dex" | "con" | "int" | "wis" | "cha" | undefined;
+        const modifiers = rpConfig.diceModifiers ?? DEFAULT_DICE_MODIFIERS;
+
+        if (specifiedStat) {
+          const modifier = modifiers[specifiedStat];
+          setDiceRollPending({ stat: specifiedStat, modifier, resolvedMessage: chatInput });
+          return;
+        }
+
+        // No stat specified — ask AI to pick one
+        if (!aiSettings) {
+          setChatError("Configure an AI provider in Settings before using dice rolls.");
+          return;
+        }
+        const providerType = aiSettings.activeProviderType;
+        const apiKey = aiSettings.apiKeys?.[providerType]?.trim() ?? "";
+        const model = aiSettings.defaultModels?.[providerType]?.trim() || getProviderDefaultModel(providerType);
+        const provider = createAIProvider(providerType);
+
+        setDiceStatLoading(true);
+        try {
+          const resolvedStat = await selectDiceStat(chatInput, provider, apiKey, model);
+          const modifier = modifiers[resolvedStat];
+          setDiceRollPending({ stat: resolvedStat, modifier, resolvedMessage: chatInput });
+        } catch {
+          setChatError("Failed to select a stat for the dice roll. Try specifying one: [roll str]");
+        } finally {
+          setDiceStatLoading(false);
+        }
+        return;
+      }
     }
 
     // Warn before potentially large time skips (8+ hours)
@@ -379,6 +425,87 @@ export function StoryWorkspacePage() {
         setChatError(
           error instanceof Error ? error.message : "Unable to generate a response.",
         );
+      }
+      setChatInput(content);
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  function handleDiceConfirm(result: DiceRollResult) {
+    if (!diceRollPending) return;
+    const statLabel = result.stat.toUpperCase();
+    const modLabel = result.modifier > 0 ? `+${result.modifier}` : result.modifier < 0 ? `${result.modifier}` : "±0";
+    const resultTag = `[${statLabel} ${modLabel} | d12: ${result.die} | Total: ${result.total} — ${result.outcome}]`;
+    const substituted = diceRollPending.resolvedMessage.replace(ROLL_TAG_RE, resultTag);
+    setDiceRollPending(null);
+    setChatInput(substituted);
+    // Trigger send with substituted message after state settles
+    setTimeout(() => {
+      void sendChatMessageWithContent(substituted);
+    }, 0);
+  }
+
+  function handleDiceCancel() {
+    if (diceRollPending) {
+      setChatInput(diceRollPending.resolvedMessage);
+    }
+    setDiceRollPending(null);
+  }
+
+  async function sendChatMessageWithContent(content: string) {
+    if (!skipTimeCheckRef.current && activeStory?.rpMode && taskbarTime && LARGE_TIME_SKIP_RE.test(content)) {
+      setShowLargeSkipModal(true);
+      return;
+    }
+    skipTimeCheckRef.current = false;
+
+    setIsGenerating(true);
+    setChatError(null);
+    setLastChatContent(content);
+    setChatInput("");
+
+    try {
+      const consequence = pendingZeroHpConsequence;
+      if (consequence) setPendingZeroHpConsequence(null);
+      const result = await sendChatMessage(activeStory.id, content, consequence ? { zeroHpConsequence: consequence } : undefined);
+      if (result.appliedRpChanges?.length) {
+        setLastRpChanges(result.appliedRpChanges);
+        const hpZero = result.appliedRpChanges.some((c) => c.field === "hp" && c.to === 0);
+        if (hpZero) {
+          setZeroHpConsequenceChoice("Unconscious / collapsed");
+          setZeroHpCustom("");
+          setShowZeroHpModal(true);
+        }
+      }
+      if (result.pendingCoreStatChanges?.length) setPendingCoreStatChanges(result.pendingCoreStatChanges);
+      if (result.rpEventSummary) {
+        const id = `${Date.now()}-${Math.random()}`;
+        setRpToasts((prev) => [{ id, summary: result.rpEventSummary! }, ...prev]);
+        setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+      }
+      if (activeStory.rpMode) {
+        const goldChange = result.appliedRpChanges?.find((c) => c.field === "gold");
+        if (goldChange !== undefined) setTaskbarGold(goldChange.to);
+        setRpStatsRefreshKey((k) => k + 1);
+      }
+    } catch (error) {
+      reportWorkspaceUiAudit({
+        msg: "Story workspace displayed generation error (dice)",
+        data: {
+          storyId: activeStory.id,
+          originalUserText: content,
+          failureKind: isGenerationFailureError(error) ? error.failure.kind : null,
+          failureStage: isGenerationFailureError(error) ? error.failure.stage : null,
+          errorMessage: error instanceof Error ? error.message : "Unable to generate a response.",
+        },
+      });
+      if (isGenerationFailureError(error)) {
+        setGenerationFailure(error.failure);
+        setGenerationFailureOpen(true);
+        setChatError(error.failure.summaryMessage);
+      } else {
+        setChatError(error instanceof Error ? error.message : "Unable to generate a response.");
       }
       setChatInput(content);
     } finally {
@@ -1126,8 +1253,8 @@ export function StoryWorkspacePage() {
             ) : null}
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Button onClick={handleSendChat} disabled={isGenerating}>
-                {isGenerating ? "Generating Scene..." : "Send"}
+              <Button onClick={handleSendChat} disabled={isGenerating || diceStatLoading}>
+                {diceStatLoading ? "Selecting stat…" : isGenerating ? "Generating Scene..." : "Send"}
               </Button>
               <Button
                 variant="secondary"
@@ -1323,6 +1450,16 @@ export function StoryWorkspacePage() {
           </div>
         </div>
       )}
+      {diceRollPending && (
+        <DiceRollModal
+          stat={diceRollPending.stat}
+          modifier={diceRollPending.modifier}
+          actionText={diceRollPending.resolvedMessage}
+          onConfirm={handleDiceConfirm}
+          onCancel={handleDiceCancel}
+        />
+      )}
+
       {storyId && relationshipsOpen ? (
         <RelationshipsOverlay
           open={relationshipsOpen}
