@@ -15,14 +15,14 @@ const PROVIDER_MODELS: Record<AIProviderType, ProviderModelOption[]> = {
   gemini: [
     { id: "gemini-2.5-flash", label: "gemini-2.5-flash" },
     { id: "gemini-2.5-pro", label: "gemini-2.5-pro" },
+    { id: "gemma-4-31b-it", label: "Gemma 4 31B" },
+    { id: "gemma-4-26b-it", label: "Gemma 4 26B" },
   ],
   openrouter: [
     { id: "openai/gpt-oss-20b:free", label: "openai/gpt-oss-20b:free" },
     { id: "qwen/qwen3-32b:free", label: "qwen/qwen3-32b:free" },
     { id: "deepseek/deepseek-r1-0528:free", label: "deepseek/deepseek-r1-0528:free" },
     { id: "google/gemma-3-27b-it:free", label: "google/gemma-3-27b-it:free" },
-    { id: "google/gemma-4-31b-it", label: "Gemma 4 31B" },
-    { id: "google/gemma-4-26b-it", label: "Gemma 4 26B" },
     {
       id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
       label: "Venice / Dolphin-Mistral 24B (Free)",
