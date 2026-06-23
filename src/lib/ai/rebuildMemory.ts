@@ -99,7 +99,10 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
     const existingStateJson = (() => {
       try {
-        return JSON.stringify(currentState);
+        // Strip indexes from the prompt — the model rebuilds them from the transcript.
+        // Keeping them just bloats the prompt and pushes the response over token limits.
+        const { indexes: _indexes, ...stateForPrompt } = currentState as any;
+        return JSON.stringify(stateForPrompt);
       } catch {
         return "";
       }
@@ -126,7 +129,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       apiKey,
       model,
       messages: extractionContext,
-      maxTokens: 16384,
+      maxTokens: 65536,
       temperature: 0,
       jsonMode: true,
       timeoutMs: REBUILD_REQUEST_TIMEOUT_MS,
