@@ -83,9 +83,13 @@ export function SettingsPage() {
   const [openrouterModel, setOpenrouterModel] = useState(
     aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
   );
+  const [anthropicModel, setAnthropicModel] = useState(
+    aiSettings?.defaultModels?.anthropic ?? getProviderDefaultModel("anthropic"),
+  );
   const [openaiKeyInput, setOpenaiKeyInput] = useState("");
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
   const [openrouterKeyInput, setOpenrouterKeyInput] = useState("");
+  const [anthropicKeyInput, setAnthropicKeyInput] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -137,6 +141,9 @@ export function SettingsPage() {
     );
     setOpenrouterModel(
       aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
+    );
+    setAnthropicModel(
+      aiSettings?.defaultModels?.anthropic ?? getProviderDefaultModel("anthropic"),
     );
   }, [aiSettings]);
 
@@ -199,7 +206,9 @@ export function SettingsPage() {
         openaiModel === (aiSettings.defaultModels?.openai ?? getProviderDefaultModel("openai")) &&
         geminiModel === (aiSettings.defaultModels?.gemini ?? getProviderDefaultModel("gemini")) &&
         openrouterModel ===
-          (aiSettings.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"))
+          (aiSettings.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter")) &&
+        anthropicModel ===
+          (aiSettings.defaultModels?.anthropic ?? getProviderDefaultModel("anthropic"))
       ) {
         return;
       }
@@ -210,11 +219,12 @@ export function SettingsPage() {
           openai: openaiModel,
           gemini: geminiModel,
           openrouter: openrouterModel,
+          anthropic: anthropicModel,
         },
       }).catch(() => {});
     },
     800,
-    [aiSettings, isSaving, activeProviderType, openaiModel, geminiModel, openrouterModel],
+    [aiSettings, isSaving, activeProviderType, openaiModel, geminiModel, openrouterModel, anthropicModel],
   );
 
   useDebouncedEffect(
@@ -226,8 +236,9 @@ export function SettingsPage() {
       const openaiKey = openaiKeyInput.trim();
       const geminiKey = geminiKeyInput.trim();
       const openrouterKey = openrouterKeyInput.trim();
+      const anthropicKey = anthropicKeyInput.trim();
 
-      if (!openaiKey && !geminiKey && !openrouterKey) {
+      if (!openaiKey && !geminiKey && !openrouterKey && !anthropicKey) {
         return;
       }
 
@@ -237,17 +248,20 @@ export function SettingsPage() {
           openai: openaiKey ? openaiKey : undefined,
           gemini: geminiKey ? geminiKey : undefined,
           openrouter: openrouterKey ? openrouterKey : undefined,
+          anthropic: anthropicKey ? anthropicKey : undefined,
         },
         defaultModels: {
           openai: openaiModel,
           gemini: geminiModel,
           openrouter: openrouterModel,
+          anthropic: anthropicModel,
         },
       })
         .then(() => {
           setOpenaiKeyInput("");
           setGeminiKeyInput("");
           setOpenrouterKeyInput("");
+          setAnthropicKeyInput("");
           setStatusMessage("AI settings saved locally.");
         })
         .catch((error) => {
@@ -263,22 +277,25 @@ export function SettingsPage() {
       openaiModel,
       geminiModel,
       openrouterModel,
+      anthropicModel,
       openaiKeyInput,
       geminiKeyInput,
       openrouterKeyInput,
+      anthropicKeyInput,
     ],
   );
 
   const openaiConfigured = Boolean(aiSettings?.apiKeys?.openai?.trim());
   const geminiConfigured = Boolean(aiSettings?.apiKeys?.gemini?.trim());
   const openrouterConfigured = Boolean(aiSettings?.apiKeys?.openrouter?.trim());
+  const anthropicConfigured = Boolean(aiSettings?.apiKeys?.anthropic?.trim());
   const providerBadge = useMemo(() => {
-    if (!openaiConfigured && !geminiConfigured && !openrouterConfigured) {
+    if (!openaiConfigured && !geminiConfigured && !openrouterConfigured && !anthropicConfigured) {
       return <Badge variant="warning">Not configured</Badge>;
     }
 
     return <Badge variant="accent">Configured</Badge>;
-  }, [geminiConfigured, openaiConfigured, openrouterConfigured]);
+  }, [anthropicConfigured, geminiConfigured, openaiConfigured, openrouterConfigured]);
 
   async function handleSave() {
     setIsSaving(true);
@@ -292,16 +309,19 @@ export function SettingsPage() {
           openai: openaiKeyInput.trim() ? openaiKeyInput : undefined,
           gemini: geminiKeyInput.trim() ? geminiKeyInput : undefined,
           openrouter: openrouterKeyInput.trim() ? openrouterKeyInput : undefined,
+          anthropic: anthropicKeyInput.trim() ? anthropicKeyInput : undefined,
         },
         defaultModels: {
           openai: openaiModel,
           gemini: geminiModel,
           openrouter: openrouterModel,
+          anthropic: anthropicModel,
         },
       });
       setOpenaiKeyInput("");
       setGeminiKeyInput("");
       setOpenrouterKeyInput("");
+      setAnthropicKeyInput("");
       setStatusMessage("AI settings saved locally.");
     } catch (error) {
       setErrorMessage(
@@ -681,6 +701,7 @@ export function SettingsPage() {
                 <option value="openai">OpenAI</option>
                 <option value="gemini">Gemini</option>
                 <option value="openrouter">OpenRouter</option>
+                <option value="anthropic">Anthropic</option>
               </SelectInput>
             </div>
           </Panel>
@@ -716,6 +737,16 @@ export function SettingsPage() {
                 keyInput: openrouterKeyInput,
                 setKeyInput: setOpenrouterKeyInput,
                 placeholder: "sk-or-...",
+              },
+              {
+                id: "anthropic" as const,
+                label: "Anthropic",
+                configured: anthropicConfigured,
+                model: anthropicModel,
+                setModel: setAnthropicModel,
+                keyInput: anthropicKeyInput,
+                setKeyInput: setAnthropicKeyInput,
+                placeholder: "sk-ant-...",
               },
             ] as const
           ).map((provider) => (

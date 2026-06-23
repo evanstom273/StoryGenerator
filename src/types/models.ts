@@ -8,7 +8,7 @@ export type StoryMessageSpeakerType =
   | "narrator"
   | "system";
 export type ExportFormat = "json" | "markdown" | "txt" | "pdf" | "archive_pdf";
-export type AIProviderType = "openai" | "gemini" | "openrouter";
+export type AIProviderType = "openai" | "gemini" | "openrouter" | "anthropic";
 export type DeveloperBugStatus = "open" | "in-progress" | "resolved" | "closed";
 export type DeveloperFeaturePriority = "low" | "medium" | "high";
 export type AutoIndexInterval = 5 | 10 | 15 | 20 | "disabled";

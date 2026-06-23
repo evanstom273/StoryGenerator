@@ -15,8 +15,11 @@ const PROVIDER_MODELS: Record<AIProviderType, ProviderModelOption[]> = {
   gemini: [
     { id: "gemini-2.5-flash", label: "gemini-2.5-flash" },
     { id: "gemini-2.5-pro", label: "gemini-2.5-pro" },
-    { id: "gemma-4-31b-it", label: "Gemma 4 31B" },
-    { id: "gemma-4-26b-it", label: "Gemma 4 26B" },
+  ],
+  anthropic: [
+    { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+    { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+    { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
   ],
   openrouter: [
     { id: "openai/gpt-oss-20b:free", label: "openai/gpt-oss-20b:free" },
@@ -46,6 +49,7 @@ const DEFAULT_MODEL: Record<AIProviderType, string> = {
   openai: "gpt-4o",
   gemini: "gemini-2.5-flash",
   openrouter: "openai/gpt-oss-20b:free",
+  anthropic: "claude-sonnet-4-6",
 };
 
 export function getProviderModels(providerType: AIProviderType) {
