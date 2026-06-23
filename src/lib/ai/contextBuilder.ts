@@ -259,6 +259,7 @@ export function buildStoryChatContext({
         ...(rpStats.timeState ? [
           "",
           `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,
+          "The in-story date above is authoritative. Characters must not state, imply, or act as though a different month, season, or year applies. If the in-story date is June, characters cannot say 'it's October' or reference autumn/fall/Christmas season as current.",
           "Time-of-day awareness: apply realistic schedules — shops and businesses typically open 9am–6pm, restaurants until 10pm, bars/clubs evenings and nights. NPCs follow their own routines and may not be available at all hours.",
           ...(rpConfig.recurringEvents?.length ? [
             `Upcoming obligations: ${rpConfig.recurringEvents.map(e => `${e.label} due in ~${Math.round(minutesBetween(rpStats.timeState!, e.nextDue) / 1440)} days`).join(", ")}.`,
