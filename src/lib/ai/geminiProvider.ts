@@ -14,6 +14,10 @@ interface GeminiGenerateContentRequest {
   systemInstruction?: {
     parts: Array<{ text: string }>;
   };
+  generationConfig?: {
+    maxOutputTokens?: number;
+    temperature?: number;
+  };
 }
 
 interface GeminiGenerateContentResponse {
@@ -58,7 +62,10 @@ function reportGeminiAudit(args: {
   // #endregion
 }
 
-function buildGeminiRequest(messages: AIChatMessage[]): GeminiGenerateContentRequest {
+function buildGeminiRequest(
+  messages: AIChatMessage[],
+  opts?: { maxTokens?: number; temperature?: number },
+): GeminiGenerateContentRequest {
   const systemText = messages
     .filter((message) => message.role === "system")
     .map((message) => message.content.trim())
@@ -74,9 +81,14 @@ function buildGeminiRequest(messages: AIChatMessage[]): GeminiGenerateContentReq
       }),
     );
 
+  const generationConfig: GeminiGenerateContentRequest["generationConfig"] = {};
+  if (opts?.maxTokens != null) generationConfig.maxOutputTokens = opts.maxTokens;
+  if (opts?.temperature != null) generationConfig.temperature = opts.temperature;
+
   return {
     contents,
     systemInstruction: systemText ? { parts: [{ text: systemText }] } : undefined,
+    ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
   };
 }
 
@@ -102,7 +114,7 @@ async function callGenerateContent(
   apiKey: string,
   model: string,
   messages: AIChatMessage[],
-  opts?: { timeoutMs?: number; signal?: AbortSignal },
+  opts?: { timeoutMs?: number; signal?: AbortSignal; maxTokens?: number; temperature?: number },
 ) {
   const controller = new AbortController();
   const abortListener = () => controller.abort();
@@ -144,7 +156,7 @@ async function callGenerateContent(
           "Content-Type": "application/json",
           "x-goog-api-key": safeKey,
         },
-        body: JSON.stringify(buildGeminiRequest(messages)),
+        body: JSON.stringify(buildGeminiRequest(messages, { maxTokens: opts?.maxTokens, temperature: opts?.temperature })),
         signal: controller.signal,
       },
     );
@@ -235,8 +247,8 @@ export function createGeminiProvider(): AIProvider {
         throw new Error("Gemini validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages, timeoutMs, signal }) {
-      const content = await callGenerateContent(apiKey, model, messages, { timeoutMs, signal });
+    async generateResponse({ apiKey, model, messages, maxTokens, temperature, timeoutMs, signal }) {
+      const content = await callGenerateContent(apiKey, model, messages, { timeoutMs, signal, maxTokens, temperature });
       return { content };
     },
     async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs, signal }) {
