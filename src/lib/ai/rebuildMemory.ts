@@ -1,11 +1,40 @@
 import type { StoryEngineRepository } from "../repository";
-import type { AIProvider } from "./types";
+import type { AIProvider, AIChatMessage } from "./types";
 import type { StoryMessage, StoryStateDataV2 } from "../../types/models";
 import { sortByTimestampAsc } from "../dates";
 import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storyStateExtractor";
 import { normalizeStoryStateToV2, safeParseStoryStateData, withIndexedMetadata } from "../storyStateV2";
+import { AIError } from "./errors";
 
 const REBUILD_REQUEST_TIMEOUT_MS = 120_000;
+const REBUILD_MAX_ATTEMPTS = 4;
+
+async function generateWithRetry(
+  provider: AIProvider,
+  params: { apiKey: string; model: string; messages: AIChatMessage[]; maxTokens: number; temperature: number; jsonMode: boolean; timeoutMs: number; signal?: AbortSignal },
+): Promise<string> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= REBUILD_MAX_ATTEMPTS; attempt++) {
+    if (params.signal?.aborted) throw new Error("Rebuild aborted.");
+    try {
+      const result = await provider.generateResponse(params);
+      return result.content;
+    } catch (error) {
+      lastError = error;
+      const retryable =
+        error instanceof AIError
+          ? error.code === "provider_unavailable" || error.code === "rate_limited" || error.code === "timeout"
+          : false;
+      if (!retryable || attempt >= REBUILD_MAX_ATTEMPTS) throw error;
+      const delayMs = 500 * Math.pow(2, attempt - 1);
+      await new Promise<void>((resolve, reject) => {
+        const id = setTimeout(resolve, delayMs);
+        params.signal?.addEventListener("abort", () => { clearTimeout(id); reject(new Error("Rebuild aborted.")); }, { once: true });
+      });
+    }
+  }
+  throw lastError;
+}
 
 function chunkMessages(messages: StoryMessage[], chunkSize: number) {
   const chunks: StoryMessage[][] = [];
@@ -93,7 +122,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       messageNumberTotal: total,
     });
 
-    const stateResponse = await provider.generateResponse({
+    const responseContent = await generateWithRetry(provider, {
       apiKey,
       model,
       messages: extractionContext,
@@ -108,9 +137,9 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       throw new Error("Rebuild aborted.");
     }
 
-    const parsed = parseStoryStateData(stateResponse.content);
+    const parsed = parseStoryStateData(responseContent);
     if (!parsed) {
-      const preview = stateResponse.content.slice(0, 300).replace(/\n/g, " ") || "(empty)";
+      const preview = responseContent.slice(0, 300).replace(/\n/g, " ") || "(empty)";
       throw new Error(`Story state extraction returned invalid JSON. Response: ${preview}`);
     }
 
