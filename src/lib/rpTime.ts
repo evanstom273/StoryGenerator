@@ -1,4 +1,4 @@
-import type { RpCalendarConfig, RpConfig, RpRecurringEvent, RpTimeState } from "../types/models";
+import type { RpCalendarConfig, RpConfig, RpRecurringEvent, RpRecurringFrequency, RpTimeState } from "../types/models";
 
 const DEFAULT_MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -84,8 +84,15 @@ export function formatTime(t: RpTimeState, config: RpConfig): string {
 
 export function formatTimeShort(t: RpTimeState, config: RpConfig): string {
   const cal = config.calendarConfig;
-  const dow = getDayOfWeek(t, cal).slice(0, 3); // Mon, Tue, etc.
+  const dow = getDayOfWeek(t, cal).slice(0, 3);
   return `${dow} · Day ${t.storyDay} · ${formatHourMinute(t)}`;
+}
+
+/** Ultra-compact format for the story toolbar chip: "D7 · 3pm" */
+export function formatTimeCompact(t: RpTimeState): string {
+  const h = t.hour % 12 || 12;
+  const ampm = t.hour < 12 ? "am" : "pm";
+  return `D${t.storyDay} · ${h}${ampm}`;
 }
 
 export function timesDiffer(a: RpTimeState, b: RpTimeState): boolean {
@@ -100,20 +107,55 @@ export function minutesBetween(a: RpTimeState, b: RpTimeState): number {
   return bTotal - aTotal;
 }
 
+const FREQUENCY_ADVANCE_DAYS: Record<RpRecurringFrequency, number> = {
+  weekly: 7,
+  monthly: 30,
+  annually: 365,
+};
+
+/** Advance nextDue to the next occurrence after it triggered. */
+function advanceEventNextDue(event: RpRecurringEvent): RpTimeState {
+  const days = FREQUENCY_ADVANCE_DAYS[event.frequency] ?? 7;
+  return advanceTime(event.nextDue, days * 1440);
+}
+
+/** Compute the initial nextDue for a new recurring event. */
+export function computeInitialNextDue(from: RpTimeState, frequency: RpRecurringFrequency, dayOfWeek?: number, dayOfMonth?: number): RpTimeState {
+  if (frequency === "weekly" && dayOfWeek != null) {
+    const d = new Date(from.year, from.month - 1, from.day);
+    const currentDow = d.getDay();
+    let daysUntil = (dayOfWeek - currentDow + 7) % 7;
+    if (daysUntil === 0) daysUntil = 7; // same day → schedule for next week
+    return advanceTime(from, daysUntil * 1440);
+  }
+  if (frequency === "monthly" && dayOfMonth != null) {
+    const target = Math.max(1, Math.min(31, dayOfMonth));
+    let year = from.year, month = from.month;
+    // If the target day is still in the future this month, use this month; otherwise next
+    if (from.day >= target) { month++; if (month > 12) { month = 1; year++; } }
+    const actualDay = Math.min(target, daysInMonth(month, year));
+    const daysUntil = Math.max(1, (new Date(year, month - 1, actualDay).getTime() - new Date(from.year, from.month - 1, from.day).getTime()) / 86400000);
+    return advanceTime(from, Math.round(daysUntil) * 1440);
+  }
+  // annually or fallback: advance by frequency interval
+  const days = FREQUENCY_ADVANCE_DAYS[frequency] ?? 7;
+  return advanceTime(from, days * 1440);
+}
+
 export function checkRecurringEvents(
   prev: RpTimeState,
   next: RpTimeState,
   events: RpRecurringEvent[],
 ): { triggered: RpRecurringEvent[]; updated: RpRecurringEvent[] } {
   const triggered: RpRecurringEvent[] = [];
+  // Use storyDay for comparison; fall back to 0 if storyDay missing to avoid false triggers
+  const prevMins = Math.max(0, (prev.storyDay - 1)) * 1440 + prev.hour * 60 + prev.minute;
+  const nextMins = Math.max(0, (next.storyDay - 1)) * 1440 + next.hour * 60 + next.minute;
   const updated = events.map((event) => {
-    const dueMins = (event.nextDue.storyDay - 1) * 1440 + event.nextDue.hour * 60 + event.nextDue.minute;
-    const prevMins = (prev.storyDay - 1) * 1440 + prev.hour * 60 + prev.minute;
-    const nextMins = (next.storyDay - 1) * 1440 + next.hour * 60 + next.minute;
-    if (dueMins > prevMins && dueMins <= nextMins) {
+    const dueMins = Math.max(0, (event.nextDue.storyDay - 1)) * 1440 + event.nextDue.hour * 60 + event.nextDue.minute;
+    if (nextMins > prevMins && dueMins > prevMins && dueMins <= nextMins) {
       triggered.push(event);
-      // Advance nextDue by intervalDays
-      return { ...event, nextDue: advanceTime(event.nextDue, event.intervalDays * 1440) };
+      return { ...event, nextDue: advanceEventNextDue(event) };
     }
     return event;
   });

@@ -99,11 +99,16 @@ export type RpTimeState = {
   storyDay: number; // days elapsed since story began (1-indexed)
 };
 
+export type RpRecurringFrequency = "weekly" | "monthly" | "annually";
+
 export type RpRecurringEvent = {
   id: string;
-  label: string;         // e.g. "Rent", "Paycheck"
-  amount: number;        // positive = income, negative = expense
-  intervalDays: number;  // 7 = weekly, 30 = monthly
+  label: string;
+  amount: number;              // positive = income, negative = expense
+  frequency: RpRecurringFrequency;
+  dayOfWeek?: number;          // 0=Sun..6=Sat, used for weekly
+  dayOfMonth?: number;         // 1-31, used for monthly/annually
+  month?: number;              // 1-12, used for annually
   nextDue: RpTimeState;
 };
 

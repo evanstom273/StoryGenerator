@@ -18,7 +18,7 @@ import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { cn } from "../utils/cn";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
 import { applyStatChange as applyRpStatChange } from "../lib/rpStats";
-import { formatTimeShort } from "../lib/rpTime";
+import { formatTimeCompact } from "../lib/rpTime";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
@@ -874,13 +874,13 @@ export function StoryWorkspacePage() {
             {messages.length} {messages.length === 1 ? "entry" : "entries"}
           </span>
           {activeStory?.rpMode && activeStory.rpConfig && taskbarGold !== null && (
-            <span className="max-w-[90px] truncate text-[11px] text-white/40">
+            <span className="shrink-0 text-[11px] text-white/40">
               💰 {activeStory.rpConfig.currencyDecimals ? taskbarGold.toFixed(2) : Math.floor(taskbarGold)}
             </span>
           )}
           {activeStory?.rpMode && activeStory.rpConfig && taskbarTime && (
-            <span className="truncate text-[11px] text-white/30">
-              {formatTimeShort(taskbarTime, activeStory.rpConfig)}
+            <span className="shrink-0 text-[11px] text-white/30">
+              {formatTimeCompact(taskbarTime)}
             </span>
           )}
         </div>

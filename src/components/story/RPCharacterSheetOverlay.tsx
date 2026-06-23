@@ -19,8 +19,8 @@ import {
 import { downloadFile } from "../../lib/download";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../../lib/ai/models";
-import type { RpCalendarConfig, RpConfig, RpRecurringEvent, RpStats, RpTimeState, Story } from "../../types/models";
-import { advanceTime, formatTime } from "../../lib/rpTime";
+import type { RpCalendarConfig, RpConfig, RpRecurringEvent, RpRecurringFrequency, RpStats, RpTimeState, Story } from "../../types/models";
+import { computeInitialNextDue, formatTime } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 
 const STAT_LABELS: Record<string, string> = {
@@ -139,6 +139,24 @@ function NumberField({
 
 type Tab = "profile" | "stats" | "hp" | "currency" | "eventlog" | "time" | "changelog" | "config";
 
+function formatEventSchedule(event: RpRecurringEvent): string {
+  const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  if (event.frequency === "weekly") {
+    const day = event.dayOfWeek != null ? DOW[event.dayOfWeek] ?? "Mon" : "week";
+    return `Every ${day}`;
+  }
+  if (event.frequency === "monthly") {
+    return event.dayOfMonth != null ? `Monthly on the ${event.dayOfMonth}` : "Monthly";
+  }
+  if (event.frequency === "annually") {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const m = event.month != null ? (months[(event.month - 1) % 12] ?? "") : "";
+    const d = event.dayOfMonth != null ? ` ${event.dayOfMonth}` : "";
+    return `Annually on ${m}${d}`.trim();
+  }
+  return event.frequency;
+}
+
 export function RPCharacterSheetOverlay(props: {
   open: boolean;
   story: Story;
@@ -163,7 +181,14 @@ export function RPCharacterSheetOverlay(props: {
   const [timeDraft, setTimeDraft] = useState({ year: "", month: "", day: "", hour: "", minute: "" });
   const [savingTime, setSavingTime] = useState(false);
   const [calDraft, setCalDraft] = useState({ yearSuffix: "", monthNames: "", weekdayNames: "" });
-  const [newEventDraft, setNewEventDraft] = useState<{ label: string; amount: string; intervalDays: string } | null>(null);
+  const [newEventDraft, setNewEventDraft] = useState<{
+    label: string;
+    amount: string;
+    frequency: RpRecurringFrequency;
+    dayOfWeek: number;
+    dayOfMonth: number;
+    month: number;
+  } | null>(null);
 
   useEffect(() => {
     setRpEnabled(props.story.rpMode ?? false);
@@ -388,16 +413,19 @@ ${profileText}`;
     if (!newEventDraft) return;
     const label = newEventDraft.label.trim();
     const amount = parseFloat(newEventDraft.amount) || 0;
-    const intervalDays = Math.max(1, parseInt(newEventDraft.intervalDays) || 7);
     if (!label) return;
+    const { frequency, dayOfWeek, dayOfMonth, month } = newEventDraft;
     const nextDue: RpTimeState = rpStats?.timeState
-      ? advanceTime(rpStats.timeState, intervalDays * 1440)
+      ? computeInitialNextDue(rpStats.timeState, frequency, dayOfWeek, dayOfMonth)
       : { year: 2024, month: 1, day: 1, hour: 0, minute: 0, storyDay: 1 };
     const event: RpRecurringEvent = {
       id: `evt_${Date.now()}`,
       label,
       amount,
-      intervalDays,
+      frequency,
+      ...(frequency === "weekly" ? { dayOfWeek } : {}),
+      ...(frequency === "monthly" ? { dayOfMonth } : {}),
+      ...(frequency === "annually" ? { dayOfMonth, month } : {}),
       nextDue,
     };
     const newConfig: RpConfig = {
@@ -742,7 +770,7 @@ ${profileText}`;
                             <span className={cn("ml-2", event.amount >= 0 ? "text-emerald-400" : "text-red-400")}>
                               {event.amount >= 0 ? "+" : ""}{event.amount} {configDraft.currencyName}
                             </span>
-                            <span className="ml-2 text-ink-muted">every {event.intervalDays}d</span>
+                            <span className="ml-2 text-ink-muted">{formatEventSchedule(event)}</span>
                           </div>
                           <button type="button" className="shrink-0 text-ink-muted transition hover:text-red-400" onClick={() => handleRemoveRecurringEvent(event.id)}>
                             Remove
@@ -753,27 +781,63 @@ ${profileText}`;
                   )}
                   {newEventDraft ? (
                     <div className="space-y-2 rounded-lg border border-accent/20 bg-accent/5 px-3 py-3">
-                      <div className="grid grid-cols-3 gap-2">
-                        <label className="col-span-3 space-y-0.5">
-                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Label</span>
-                          <input className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="Rent, Paycheck…" value={newEventDraft.label} onChange={(e) => setNewEventDraft((d) => d ? { ...d, label: e.target.value } : d)} />
-                        </label>
+                      <label className="block space-y-0.5">
+                        <span className="text-[10px] uppercase tracking-wider text-ink-muted">Label</span>
+                        <input className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="Rent, Paycheck…" value={newEventDraft.label} onChange={(e) => setNewEventDraft((d) => d ? { ...d, label: e.target.value } : d)} />
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
                         <label className="space-y-0.5">
                           <span className="text-[10px] uppercase tracking-wider text-ink-muted">Amount</span>
                           <input type="number" className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="-500" value={newEventDraft.amount} onChange={(e) => setNewEventDraft((d) => d ? { ...d, amount: e.target.value } : d)} />
                         </label>
-                        <label className="col-span-2 space-y-0.5">
-                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Every N days</span>
-                          <input type="number" min={1} className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="30" value={newEventDraft.intervalDays} onChange={(e) => setNewEventDraft((d) => d ? { ...d, intervalDays: e.target.value } : d)} />
+                        <label className="space-y-0.5">
+                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Frequency</span>
+                          <select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" value={newEventDraft.frequency} onChange={(e) => setNewEventDraft((d) => d ? { ...d, frequency: e.target.value as RpRecurringFrequency } : d)}>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="annually">Annually</option>
+                          </select>
                         </label>
                       </div>
+                      {newEventDraft.frequency === "weekly" && (
+                        <label className="block space-y-0.5">
+                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Day of week</span>
+                          <select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" value={newEventDraft.dayOfWeek} onChange={(e) => setNewEventDraft((d) => d ? { ...d, dayOfWeek: Number(e.target.value) } : d)}>
+                            {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((n, i) => (
+                              <option key={i} value={i}>{n}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      {newEventDraft.frequency === "monthly" && (
+                        <label className="block space-y-0.5">
+                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Day of month</span>
+                          <input type="number" min={1} max={31} className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" value={newEventDraft.dayOfMonth} onChange={(e) => setNewEventDraft((d) => d ? { ...d, dayOfMonth: Number(e.target.value) } : d)} />
+                        </label>
+                      )}
+                      {newEventDraft.frequency === "annually" && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="space-y-0.5">
+                            <span className="text-[10px] uppercase tracking-wider text-ink-muted">Month</span>
+                            <select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" value={newEventDraft.month} onChange={(e) => setNewEventDraft((d) => d ? { ...d, month: Number(e.target.value) } : d)}>
+                              {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((n, i) => (
+                                <option key={i} value={i + 1}>{n}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="space-y-0.5">
+                            <span className="text-[10px] uppercase tracking-wider text-ink-muted">Day</span>
+                            <input type="number" min={1} max={31} className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" value={newEventDraft.dayOfMonth} onChange={(e) => setNewEventDraft((d) => d ? { ...d, dayOfMonth: Number(e.target.value) } : d)} />
+                          </label>
+                        </div>
+                      )}
                       <div className="flex gap-2">
                         <Button variant="primary" size="sm" onClick={handleAddRecurringEvent}>Add</Button>
                         <Button variant="ghost" size="sm" onClick={() => setNewEventDraft(null)}>Cancel</Button>
                       </div>
                     </div>
                   ) : (
-                    <Button variant="ghost" size="sm" onClick={() => setNewEventDraft({ label: "", amount: "", intervalDays: "7" })}>
+                    <Button variant="ghost" size="sm" onClick={() => setNewEventDraft({ label: "", amount: "", frequency: "weekly", dayOfWeek: 1, dayOfMonth: 1, month: 1 })}>
                       + Add Recurring Event
                     </Button>
                   )}
