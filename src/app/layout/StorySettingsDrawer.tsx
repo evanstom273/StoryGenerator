@@ -1029,7 +1029,17 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   {rebuildInfo ? (
                     <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm">
                       {rebuildInfo.phase === "error" ? (
-                        <span className="text-rose-300">{rebuildInfo.error || "Rebuild failed."}</span>
+                        <div className="space-y-1">
+                          <div className="font-medium text-rose-300">Re-index failed</div>
+                          <div className="text-xs text-rose-300/80">{rebuildInfo.error || "An unknown error occurred."}</div>
+                        </div>
+                      ) : rebuildInfo.phase === "done" ? (
+                        <div className="space-y-1">
+                          <div className="text-emerald-300">✓ {rebuildInfo.message || "Re-index complete."}</div>
+                          {rebuildInfo.warning && (
+                            <div className="text-xs text-amber-300/80">⚠ {rebuildInfo.warning}</div>
+                          )}
+                        </div>
                       ) : (
                         <div className="space-y-2">
                           <div className="text-ink-soft">
@@ -1055,6 +1065,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                             <div className="text-xs text-ink-muted">
                               {rebuildInfo.processedMessages} / {rebuildInfo.totalMessages} messages
                             </div>
+                          )}
+                          {rebuildInfo.warning && (
+                            <div className="text-xs text-amber-300/80">⚠ {rebuildInfo.warning}</div>
                           )}
                         </div>
                       )}
