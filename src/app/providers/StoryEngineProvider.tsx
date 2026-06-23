@@ -1499,6 +1499,15 @@ export function StoryEngineProvider({
           try {
             const parsed = safeParseStoryStateData(result.stateJson);
             if (!parsed) {
+              // Preserve rpStats through fallback path (AI state failed V2 validation)
+              try {
+                const rawNew = JSON.parse(result.stateJson) as Record<string, unknown>;
+                if (!rawNew.rpStats && existingStoryState?.stateJson) {
+                  const rawPrev = JSON.parse(existingStoryState.stateJson) as Record<string, unknown>;
+                  const prevRpStats = rawPrev?.rpStats ?? (safeParseStoryStateData(existingStoryState.stateJson))?.rpStats;
+                  if (prevRpStats) return JSON.stringify({ ...rawNew, rpStats: prevRpStats });
+                }
+              } catch {}
               return result.stateJson;
             }
             return finalizeStoryStateForSave({
@@ -1948,6 +1957,15 @@ export function StoryEngineProvider({
         try {
           const parsed = safeParseStoryStateData(rebuilt.stateJson);
           if (!parsed) {
+            // Preserve rpStats through fallback path (AI state failed V2 validation)
+            try {
+              const rawNew = JSON.parse(rebuilt.stateJson) as Record<string, unknown>;
+              if (!rawNew.rpStats && storyState?.stateJson) {
+                const rawPrev = JSON.parse(storyState.stateJson) as Record<string, unknown>;
+                const prevRpStats = rawPrev?.rpStats ?? (safeParseStoryStateData(storyState.stateJson))?.rpStats;
+                if (prevRpStats) return JSON.stringify({ ...rawNew, rpStats: prevRpStats });
+              }
+            } catch {}
             return rebuilt.stateJson;
           }
 

@@ -868,9 +868,14 @@ ${profileText}`;
                       </div>
                     </div>
                   ) : (
-                    <Button variant="ghost" size="sm" onClick={() => setNewEventDraft({ label: "", amount: "", frequency: "weekly", dayOfWeek: 1, dayOfMonth: 1, month: 1 })}>
-                      + Add Recurring Event
-                    </Button>
+                    <>
+                      {!rpStats?.timeState && (
+                        <p className="text-xs text-amber-400">Set the story clock first — recurring events need a starting date to schedule correctly.</p>
+                      )}
+                      <Button variant="ghost" size="sm" onClick={() => setNewEventDraft({ label: "", amount: "", frequency: "weekly", dayOfWeek: 1, dayOfMonth: 1, month: 1 })}>
+                        + Add Recurring Event
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
