@@ -869,7 +869,7 @@ export function StoryWorkspacePage() {
           readerMode ? "left-0" : "left-0 lg:left-[266px]",
         ].join(" ")}
       >
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 overflow-hidden items-center gap-3">
           <span className="shrink-0 text-[11px] text-white/30">
             {messages.length} {messages.length === 1 ? "entry" : "entries"}
           </span>
