@@ -185,9 +185,11 @@ export function checkRecurringEvents(
       current = { ...current, nextDue: advanceEventNextDue(current) };
       dueMins = Math.max(0, (current.nextDue.storyDay - 1)) * 1440 + current.nextDue.hour * 60 + current.nextDue.minute;
     }
-    if (nextMins > prevMins && dueMins <= nextMins) {
-      triggered.push(event);
-      return { ...current, nextDue: advanceEventNextDue(current) };
+    // Fire every occurrence that falls within the time window
+    while (nextMins > prevMins && dueMins <= nextMins) {
+      triggered.push(current);
+      current = { ...current, nextDue: advanceEventNextDue(current) };
+      dueMins = Math.max(0, (current.nextDue.storyDay - 1)) * 1440 + current.nextDue.hour * 60 + current.nextDue.minute;
     }
     return current;
   });

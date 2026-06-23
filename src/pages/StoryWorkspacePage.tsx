@@ -403,8 +403,9 @@ export function StoryWorkspacePage() {
         setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
       }
       if (activeStory.rpMode) {
-        const goldChange = result.appliedRpChanges?.find((c) => c.field === "gold");
-        if (goldChange !== undefined) setTaskbarGold(goldChange.to);
+        const allGoldChanges = result.appliedRpChanges?.filter((c) => c.field === "gold");
+        const lastGoldChange = allGoldChanges?.at(-1);
+        if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
       }
     } catch (error) {
@@ -499,8 +500,9 @@ export function StoryWorkspacePage() {
         setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
       }
       if (activeStory.rpMode) {
-        const goldChange = result.appliedRpChanges?.find((c) => c.field === "gold");
-        if (goldChange !== undefined) setTaskbarGold(goldChange.to);
+        const allGoldChanges = result.appliedRpChanges?.filter((c) => c.field === "gold");
+        const lastGoldChange = allGoldChanges?.at(-1);
+        if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
       }
 
