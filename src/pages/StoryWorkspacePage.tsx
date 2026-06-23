@@ -446,7 +446,12 @@ export function StoryWorkspacePage() {
     setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== toastId)), 6000);
 
     // Store event log entry to be written after sendChatMessage completes
-    pendingDiceEventRef.current = { ts: Date.now(), summary: resultTag };
+    const actionText = diceRollPending.resolvedMessage.replace(ROLL_TAG_RE, "").trim();
+    const truncated = actionText.length > 120 ? actionText.slice(0, 117) + "…" : actionText;
+    pendingDiceEventRef.current = {
+      ts: Date.now(),
+      summary: truncated ? `${resultTag}\n"${truncated}"` : resultTag,
+    };
 
     setDiceRollPending(null);
     setChatInput(substituted);
