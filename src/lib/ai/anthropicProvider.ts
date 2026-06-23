@@ -1,36 +1,52 @@
 import type { AIProvider, AIChatMessage } from "./types";
-import { normalizeAIError, normalizeOpenRouterError } from "./errors";
+import { normalizeAIError } from "./errors";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 
 const REQUEST_TIMEOUT_MS = 45_000;
 
-interface OpenRouterChatCompletionRequest {
+interface AnthropicMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface AnthropicMessagesRequest {
   model: string;
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  max_tokens: number;
+  system?: string;
+  messages: AnthropicMessage[];
   temperature?: number;
-  max_tokens?: number;
 }
 
-interface OpenRouterChatCompletionResponse {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
+interface AnthropicMessagesResponse {
+  content?: Array<{ type: string; text?: string }>;
 }
 
-function toChatMessages(messages: AIChatMessage[]) {
-  return messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
+function splitSystemAndMessages(messages: AIChatMessage[]): {
+  system: string | undefined;
+  messages: AnthropicMessage[];
+} {
+  const systemParts: string[] = [];
+  const rest: AnthropicMessage[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === "system") {
+      systemParts.push(msg.content);
+    } else {
+      rest.push({ role: msg.role as "user" | "assistant", content: msg.content });
+    }
+  }
+
+  return {
+    system: systemParts.length > 0 ? systemParts.join("\n\n") : undefined,
+    messages: rest,
+  };
 }
 
-async function callChatCompletions(
+async function callMessages(
   apiKey: string,
-  payload: OpenRouterChatCompletionRequest,
+  payload: AnthropicMessagesRequest,
   opts?: { timeoutMs?: number; signal?: AbortSignal },
-) {
+): Promise<string> {
   const controller = new AbortController();
   const abortListener = () => controller.abort();
   if (opts?.signal) {
@@ -45,23 +61,32 @@ async function callChatCompletions(
 
   const safeKey = apiKey.replace(/[^\x00-\xFF]/g, "");
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${safeKey}`,
-        "Content-Type": "application/json",
+        "x-api-key": safeKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+        "content-type": "application/json",
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
     if (!response.ok) {
-      throw await normalizeOpenRouterError(response);
+      let message = `Anthropic API error ${response.status}`;
+      try {
+        const errJson = (await response.json()) as { error?: { message?: string } };
+        if (errJson.error?.message) message = errJson.error.message;
+      } catch {
+        // ignore parse error
+      }
+      throw new Error(message);
     }
 
-    const json = (await response.json()) as OpenRouterChatCompletionResponse;
-    const content = json.choices?.[0]?.message?.content ?? "";
-    return content.trim();
+    const json = (await response.json()) as AnthropicMessagesResponse;
+    const text = json.content?.find((b) => b.type === "text")?.text ?? "";
+    return text.trim();
   } catch (error) {
     throw normalizeAIError(error);
   } finally {
@@ -70,34 +95,40 @@ async function callChatCompletions(
   }
 }
 
-export function createOpenRouterProvider(): AIProvider {
+export function createAnthropicProvider(): AIProvider {
   const matureFictionSummaryPolicy = buildMatureFictionPolicyBlock({
     includeExtractionFocus: true,
   });
 
   return {
     async validateConnection(apiKey, model) {
-      const content = await callChatCompletions(apiKey, {
+      const content = await callMessages(apiKey, {
         model,
-        messages: [{ role: "user", content: "Reply with OK." }],
         max_tokens: 4,
-        temperature: 0,
+        messages: [{ role: "user", content: "Reply with OK." }],
       });
 
       if (!content) {
-        throw new Error("OpenRouter validation returned an empty response.");
+        throw new Error("Anthropic validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages, maxTokens, temperature, timeoutMs, signal }) {
-      const content = await callChatCompletions(apiKey, {
-        model,
-        messages: toChatMessages(messages),
-        temperature: temperature ?? 0.8,
-        max_tokens: maxTokens ?? 700,
-      }, { timeoutMs, signal });
 
+    async generateResponse({ apiKey, model, messages, maxTokens, temperature, timeoutMs, signal }) {
+      const { system, messages: chatMessages } = splitSystemAndMessages(messages);
+      const content = await callMessages(
+        apiKey,
+        {
+          model,
+          max_tokens: maxTokens ?? 700,
+          temperature: temperature ?? 0.8,
+          system,
+          messages: chatMessages,
+        },
+        { timeoutMs, signal },
+      );
       return { content };
     },
+
     async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs, signal }) {
       const prompt = [
         `You are a story summarizer. Summarize the story "${storyTitle}" for continuity.`,
@@ -118,12 +149,19 @@ export function createOpenRouterProvider(): AIProvider {
         .filter(Boolean)
         .join("\n\n");
 
-      const content = await callChatCompletions(apiKey, {
-        model,
-        messages: [{ role: "system", content: prompt }, ...toChatMessages(messages)],
-        temperature: 0.2,
-        max_tokens: 350,
-      }, { timeoutMs, signal });
+      const { messages: chatMessages } = splitSystemAndMessages(messages);
+
+      const content = await callMessages(
+        apiKey,
+        {
+          model,
+          max_tokens: 350,
+          temperature: 0.2,
+          system: prompt,
+          messages: chatMessages,
+        },
+        { timeoutMs, signal },
+      );
 
       return content;
     },

@@ -115,8 +115,34 @@ const FREQUENCY_ADVANCE_DAYS: Record<RpRecurringFrequency, number> = {
 
 /** Advance nextDue to the next occurrence after it triggered. */
 function advanceEventNextDue(event: RpRecurringEvent): RpTimeState {
+  const from = event.nextDue;
+
+  if (event.frequency === "monthly" && event.dayOfMonth != null) {
+    const target = Math.max(1, Math.min(31, event.dayOfMonth));
+    let month = from.month + 1;
+    let year = from.year;
+    if (month > 12) { month = 1; year++; }
+    const day = Math.min(target, daysInMonth(month, year));
+    const daysAdvanced = Math.round(
+      (new Date(year, month - 1, day).getTime() - new Date(from.year, from.month - 1, from.day).getTime()) / 86400000,
+    );
+    return { ...from, year, month, day, storyDay: from.storyDay + Math.max(1, daysAdvanced) };
+  }
+
+  if (event.frequency === "annually") {
+    const targetDay = event.dayOfMonth != null ? Math.max(1, Math.min(31, event.dayOfMonth)) : from.day;
+    const targetMonth = event.month ?? from.month;
+    const year = from.year + 1;
+    const day = Math.min(targetDay, daysInMonth(targetMonth, year));
+    const daysAdvanced = Math.round(
+      (new Date(year, targetMonth - 1, day).getTime() - new Date(from.year, from.month - 1, from.day).getTime()) / 86400000,
+    );
+    return { ...from, year, month: targetMonth, day, storyDay: from.storyDay + Math.max(1, daysAdvanced) };
+  }
+
+  // weekly and fallback
   const days = FREQUENCY_ADVANCE_DAYS[event.frequency] ?? 7;
-  return advanceTime(event.nextDue, days * 1440);
+  return advanceTime(from, days * 1440);
 }
 
 /** Compute the initial nextDue for a new recurring event. */
@@ -159,9 +185,11 @@ export function checkRecurringEvents(
       current = { ...current, nextDue: advanceEventNextDue(current) };
       dueMins = Math.max(0, (current.nextDue.storyDay - 1)) * 1440 + current.nextDue.hour * 60 + current.nextDue.minute;
     }
-    if (nextMins > prevMins && dueMins <= nextMins) {
-      triggered.push(event);
-      return { ...current, nextDue: advanceEventNextDue(current) };
+    // Fire every occurrence that falls within the time window
+    while (nextMins > prevMins && dueMins <= nextMins) {
+      triggered.push(current);
+      current = { ...current, nextDue: advanceEventNextDue(current) };
+      dueMins = Math.max(0, (current.nextDue.storyDay - 1)) * 1440 + current.nextDue.hour * 60 + current.nextDue.minute;
     }
     return current;
   });
@@ -169,6 +197,11 @@ export function checkRecurringEvents(
 }
 
 export function formatRecurringAmount(event: RpRecurringEvent, currencyName: string): string {
+  if (event.amountMin != null && event.amountMax != null) {
+    const lo = event.amountMin >= 0 ? `+${event.amountMin}` : String(event.amountMin);
+    const hi = event.amountMax >= 0 ? `+${event.amountMax}` : String(event.amountMax);
+    return `${lo}–${hi} ${currencyName}`;
+  }
   const sign = event.amount >= 0 ? "+" : "";
   return `${sign}${event.amount} ${currencyName}`;
 }

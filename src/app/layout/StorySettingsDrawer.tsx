@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DownloadIcon, TrashIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
+import { MarkdownText } from "../../components/ui/MarkdownText";
 import { Panel } from "../../components/ui/Panel";
 import { downloadFile } from "../../lib/download";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
@@ -777,6 +778,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       <option value="openai">OpenAI</option>
                       <option value="gemini">Gemini</option>
                       <option value="openrouter">OpenRouter</option>
+                      <option value="anthropic">Anthropic</option>
                     </select>
                   </label>
 
@@ -1098,9 +1100,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                           <span className="shrink-0">Ends at #{chapter.endsAtIndex}</span>
                                         </div>
                                         {chapter.summary?.trim() ? (
-                                          <div className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">
-                                            {chapter.summary.trim()}
-                                          </div>
+                                          <MarkdownText text={chapter.summary.trim()} className="mt-2 text-sm text-ink-soft" />
                                         ) : (
                                           <div className="mt-2 text-sm text-ink-muted">
                                             No summary yet.
@@ -1231,9 +1231,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                           <span className="shrink-0">Ends at #{chapter.endsAtIndex}</span>
                                         </div>
                                         {chapter.summary?.trim() ? (
-                                          <div className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">
-                                            {chapter.summary.trim()}
-                                          </div>
+                                          <MarkdownText text={chapter.summary.trim()} className="mt-2 text-sm text-ink-soft" />
                                         ) : (
                                           <div className="mt-2 text-sm text-ink-muted">
                                             No summary yet.
@@ -1256,7 +1254,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
                                           Premise
                                         </div>
-                                        <div className="mt-2 text-sm text-ink-soft">{premise}</div>
+                                        <MarkdownText text={premise} className="mt-2 text-sm text-ink-soft" />
                                       </div>
                                     ) : null}
                                     {protagonistSummary ? (
@@ -1264,7 +1262,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
                                           Protagonist
                                         </div>
-                                        <div className="mt-2 text-sm text-ink-soft">{protagonistSummary}</div>
+                                        <MarkdownText text={protagonistSummary} className="mt-2 text-sm text-ink-soft" />
                                       </div>
                                     ) : null}
                                     {currentSituation ? (
@@ -1272,7 +1270,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
                                           Current Situation
                                         </div>
-                                        <div className="mt-2 text-sm text-ink-soft">{currentSituation}</div>
+                                        <MarkdownText text={currentSituation} className="mt-2 text-sm text-ink-soft" />
                                       </div>
                                     ) : null}
                                     {recentDevelopments.length ? (
@@ -1282,9 +1280,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                         </div>
                                         <div className="mt-2 space-y-2">
                                           {recentDevelopments.map((entry) => (
-                                            <div key={entry} className="text-sm text-ink-soft">
-                                              {entry}
-                                            </div>
+                                            <MarkdownText key={entry} text={entry} className="text-sm text-ink-soft" />
                                           ))}
                                         </div>
                                       </div>
@@ -1303,7 +1299,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                   <div className="space-y-3">
                                     {openThreads.slice(0, 8).map((entry, index) => (
                                       <div key={index} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
-                                        <div className="text-ink-soft">{entry.thread}</div>
+                                        <MarkdownText text={entry.thread} className="text-sm text-ink-soft" />
                                         {renderEvidencePills(entry.evidence?.messageNumbers, `thread-${index}`)}
                                       </div>
                                     ))}
@@ -1320,7 +1316,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                   <div className="space-y-3">
                                     {worldFacts.slice(0, 8).map((entry, index) => (
                                       <div key={index} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
-                                        <div className="text-ink-soft">{entry.fact}</div>
+                                        <MarkdownText text={entry.fact} className="text-sm text-ink-soft" />
                                         {renderEvidencePills(entry.evidence?.messageNumbers, `fact-${index}`)}
                                       </div>
                                     ))}
@@ -1350,9 +1346,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                             <div className="font-semibold text-ink-soft">{name}</div>
                                             <div className="mt-2 space-y-2">
                                               {statusLines.map((line) => (
-                                                <div key={line} className="text-sm text-ink-soft">
-                                                  {line}
-                                                </div>
+                                                <MarkdownText key={line} text={line} className="text-sm text-ink-soft" />
                                               ))}
                                               {strengths.length ? (
                                                 <div className="text-xs text-emerald-200/90">
@@ -1386,7 +1380,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                         <div key={entry.name} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                           <div className="font-semibold text-ink-soft">{entry.name}</div>
                                           {entry.description ? (
-                                            <div className="mt-1 text-sm text-ink-muted">{entry.description}</div>
+                                            <MarkdownText text={entry.description} className="mt-1 text-sm text-ink-muted" />
                                           ) : null}
                                           {renderEvidencePills(entry.evidence?.messageNumbers, `char-${entry.name}`)}
                                         </div>
@@ -1409,7 +1403,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                         <div key={entry.name} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
                                           <div className="font-semibold text-ink-soft">{entry.name}</div>
                                           {entry.description ? (
-                                            <div className="mt-1 text-sm text-ink-muted">{entry.description}</div>
+                                            <MarkdownText text={entry.description} className="mt-1 text-sm text-ink-muted" />
                                           ) : null}
                                           {renderEvidencePills(entry.evidence?.messageNumbers, `loc-${entry.name}`)}
                                         </div>
@@ -1466,7 +1460,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                             ) : null;
                                           })()}
                                           {entry.summary ? (
-                                            <div className="mt-1 text-xs text-ink-muted">{entry.summary}</div>
+                                            <MarkdownText text={entry.summary} className="mt-1 text-xs text-ink-muted" />
                                           ) : null}
                                           {Array.isArray(entry.history) && entry.history.length ? (
                                             <div className="mt-2 space-y-1">
@@ -1496,7 +1490,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                   <div className="space-y-3">
                                     {significantMemories.slice(0, 8).map((entry: any, index: number) => (
                                       <div key={index} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
-                                        <div className="text-ink-soft">{entry?.moment ?? entry?.memory ?? entry?.fact ?? "—"}</div>
+                                        <MarkdownText text={entry?.moment ?? entry?.memory ?? entry?.fact ?? "—"} className="text-sm text-ink-soft" />
                                         {renderEvidencePills(entry?.evidence?.messageNumbers, `mem-${index}`)}
                                       </div>
                                     ))}

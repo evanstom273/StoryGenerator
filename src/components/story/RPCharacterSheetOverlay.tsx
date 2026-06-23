@@ -20,7 +20,7 @@ import { downloadFile } from "../../lib/download";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../../lib/ai/models";
 import type { RpCalendarConfig, RpConfig, RpDiceModifiers, RpRecurringEvent, RpRecurringFrequency, RpStats, RpTimeState, Story } from "../../types/models";
-import { computeInitialNextDue, formatTime, formatTimeShort } from "../../lib/rpTime";
+import { computeInitialNextDue, formatTime, formatTimeShort, minutesBetween } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 
 
@@ -102,6 +102,18 @@ function formatEventSchedule(event: RpRecurringEvent): string {
   return event.frequency;
 }
 
+function formatEventCountdown(event: RpRecurringEvent, timeState: RpTimeState | undefined): string | null {
+  if (!timeState) return null;
+  const mins = minutesBetween(timeState, event.nextDue);
+  if (mins <= 0) return "overdue";
+  const days = Math.floor(mins / 1440);
+  const hours = Math.floor((mins % 1440) / 60);
+  if (days >= 2) return `in ${days} days`;
+  if (days === 1) return hours > 0 ? `in 1 day, ${hours}h` : "in 1 day";
+  if (hours >= 1) return `in ${hours}h`;
+  return "due soon";
+}
+
 export function RPCharacterSheetOverlay(props: {
   open: boolean;
   story: Story;
@@ -125,10 +137,12 @@ export function RPCharacterSheetOverlay(props: {
   // Time tab state
   const [timeDraft, setTimeDraft] = useState({ year: "", month: "", day: "", hour: "", minute: "" });
   const [savingTime, setSavingTime] = useState(false);
-  const [calDraft, setCalDraft] = useState({ yearSuffix: "", monthNames: "", weekdayNames: "" });
+  const [calDraft, setCalDraft] = useState({ yearSuffix: "", monthNames: "", weekdayNames: "", birthdayMonth: "", birthdayDay: "" });
   const [newEventDraft, setNewEventDraft] = useState<{
     label: string;
     amount: string;
+    amountMax: string;
+    useRange: boolean;
     frequency: RpRecurringFrequency;
     dayOfWeek: number;
     dayOfMonth: number;
@@ -157,6 +171,8 @@ export function RPCharacterSheetOverlay(props: {
       yearSuffix: configDraft.calendarConfig?.yearSuffix ?? "",
       monthNames: configDraft.calendarConfig?.monthNames?.join(", ") ?? "",
       weekdayNames: configDraft.calendarConfig?.weekdayNames?.join(", ") ?? "",
+      birthdayMonth: configDraft.birthdayMonth != null ? String(configDraft.birthdayMonth) : "",
+      birthdayDay: configDraft.birthdayDay != null ? String(configDraft.birthdayDay) : "",
     });
   }, [activeTab, configDraft.calendarConfig]);
 
@@ -336,7 +352,9 @@ ${profileText}`;
     const calendarConfig: RpCalendarConfig | undefined = (yearSuffix || monthNames || weekdayNames)
       ? { yearSuffix, monthNames, weekdayNames }
       : undefined;
-    const newConfig: RpConfig = { ...configDraft, calendarConfig };
+    const birthdayMonth = parseInt(calDraft.birthdayMonth) || undefined;
+    const birthdayDay = parseInt(calDraft.birthdayDay) || undefined;
+    const newConfig: RpConfig = { ...configDraft, calendarConfig, birthdayMonth, birthdayDay };
     setConfigDraft(newConfig);
     setSaving(true);
     try {
@@ -349,16 +367,28 @@ ${profileText}`;
   function handleAddRecurringEvent() {
     if (!newEventDraft) return;
     const label = newEventDraft.label.trim();
-    const amount = parseFloat(newEventDraft.amount) || 0;
     if (!label) return;
-    const { frequency, dayOfWeek, dayOfMonth, month } = newEventDraft;
+    const { frequency, dayOfWeek, dayOfMonth, month, useRange } = newEventDraft;
     const nextDue: RpTimeState = rpStats?.timeState
       ? computeInitialNextDue(rpStats.timeState, frequency, dayOfWeek, dayOfMonth)
       : { year: 2024, month: 1, day: 1, hour: 0, minute: 0, storyDay: 1 };
+    let rangeFields: { amountMin?: number; amountMax?: number } = {};
+    let amount: number;
+    if (useRange) {
+      const lo = parseFloat(newEventDraft.amount) || 0;
+      const hi = parseFloat(newEventDraft.amountMax) || 0;
+      const amountMin = Math.min(lo, hi);
+      const amountMax = Math.max(lo, hi);
+      amount = amountMin;
+      rangeFields = { amountMin, amountMax };
+    } else {
+      amount = parseFloat(newEventDraft.amount) || 0;
+    }
     const event: RpRecurringEvent = {
       id: `evt_${Date.now()}`,
       label,
       amount,
+      ...rangeFields,
       frequency,
       ...(frequency === "weekly" ? { dayOfWeek } : {}),
       ...(frequency === "monthly" ? { dayOfMonth } : {}),
@@ -701,6 +731,44 @@ ${profileText}`;
                       onChange={(e) => setCalDraft((d) => ({ ...d, weekdayNames: e.target.value }))}
                     />
                   </label>
+                  <div className="space-y-1">
+                    <span className="text-xs text-ink-muted">Character birthday</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block space-y-1">
+                        <span className="text-xs text-ink-muted/70">Month (1–12)</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={12}
+                          className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                          placeholder="—"
+                          value={calDraft.birthdayMonth}
+                          onChange={(e) => setCalDraft((d) => ({ ...d, birthdayMonth: e.target.value }))}
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-xs text-ink-muted/70">Day (1–31)</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={31}
+                          className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                          placeholder="—"
+                          value={calDraft.birthdayDay}
+                          onChange={(e) => setCalDraft((d) => ({ ...d, birthdayDay: e.target.value }))}
+                        />
+                      </label>
+                    </div>
+                    {configDraft.birthdayMonth != null && configDraft.birthdayDay != null && (
+                      <p className="text-xs text-ink-muted/60">
+                        {(() => {
+                          const names = configDraft.calendarConfig?.monthNames;
+                          const mName = names ? (names[(configDraft.birthdayMonth) - 1] ?? String(configDraft.birthdayMonth)) : String(configDraft.birthdayMonth);
+                          return `${configDraft.birthdayDay} ${mName}`;
+                        })()}
+                      </p>
+                    )}
+                  </div>
                   <Button variant="primary" size="sm" disabled={saving} onClick={() => void handleSaveCalendar()}>
                     {saving ? "Saving…" : "Save Calendar"}
                   </Button>
@@ -717,11 +785,24 @@ ${profileText}`;
                       {(configDraft.recurringEvents ?? []).map((event) => (
                         <div key={event.id} className="flex items-center justify-between gap-2 rounded-lg border border-divider/40 bg-panel-muted/40 px-3 py-2 text-xs">
                           <div className="min-w-0">
-                            <span className="font-semibold text-ink">{event.label}</span>
-                            <span className={cn("ml-2", event.amount >= 0 ? "text-emerald-400" : "text-red-400")}>
-                              {event.amount >= 0 ? "+" : ""}{event.amount} {configDraft.currencyName}
-                            </span>
-                            <span className="ml-2 text-ink-muted">{formatEventSchedule(event)}</span>
+                            <div>
+                              <span className="font-semibold text-ink">{event.label}</span>
+                              {event.amountMin != null && event.amountMax != null ? (
+                                <span className={cn("ml-2", event.amountMax >= 0 ? "text-emerald-400" : "text-red-400")}>
+                                  {event.amountMin >= 0 ? "+" : ""}{event.amountMin}–{event.amountMax >= 0 ? "+" : ""}{event.amountMax} {configDraft.currencyName}
+                                </span>
+                              ) : (
+                                <span className={cn("ml-2", event.amount >= 0 ? "text-emerald-400" : "text-red-400")}>
+                                  {event.amount >= 0 ? "+" : ""}{event.amount} {configDraft.currencyName}
+                                </span>
+                              )}
+                              <span className="ml-2 text-ink-muted">{formatEventSchedule(event)}</span>
+                            </div>
+                            {formatEventCountdown(event, rpStats?.timeState) ? (
+                              <div className="mt-0.5 text-[10px] text-ink-muted/60">
+                                {formatEventCountdown(event, rpStats?.timeState)}
+                              </div>
+                            ) : null}
                           </div>
                           <button type="button" className="shrink-0 text-ink-muted transition hover:text-red-400" onClick={() => handleRemoveRecurringEvent(event.id)}>
                             Remove
@@ -738,8 +819,11 @@ ${profileText}`;
                       </label>
                       <div className="grid grid-cols-2 gap-2">
                         <label className="space-y-0.5">
-                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Amount</span>
-                          <input type="number" className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="-500" value={newEventDraft.amount} onChange={(e) => setNewEventDraft((d) => d ? { ...d, amount: e.target.value } : d)} />
+                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Amount type</span>
+                          <select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" value={newEventDraft.useRange ? "range" : "fixed"} onChange={(e) => setNewEventDraft((d) => d ? { ...d, useRange: e.target.value === "range" } : d)}>
+                            <option value="fixed">Fixed</option>
+                            <option value="range">Range</option>
+                          </select>
                         </label>
                         <label className="space-y-0.5">
                           <span className="text-[10px] uppercase tracking-wider text-ink-muted">Frequency</span>
@@ -750,6 +834,23 @@ ${profileText}`;
                           </select>
                         </label>
                       </div>
+                      {newEventDraft.useRange ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="space-y-0.5">
+                            <span className="text-[10px] uppercase tracking-wider text-ink-muted">Min</span>
+                            <input type="number" className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="-1000" value={newEventDraft.amount} onChange={(e) => setNewEventDraft((d) => d ? { ...d, amount: e.target.value } : d)} />
+                          </label>
+                          <label className="space-y-0.5">
+                            <span className="text-[10px] uppercase tracking-wider text-ink-muted">Max</span>
+                            <input type="number" className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="-500" value={newEventDraft.amountMax} onChange={(e) => setNewEventDraft((d) => d ? { ...d, amountMax: e.target.value } : d)} />
+                          </label>
+                        </div>
+                      ) : (
+                        <label className="block space-y-0.5">
+                          <span className="text-[10px] uppercase tracking-wider text-ink-muted">Amount</span>
+                          <input type="number" className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-sm text-ink outline-none transition focus:border-accent/[0.4]" placeholder="-500" value={newEventDraft.amount} onChange={(e) => setNewEventDraft((d) => d ? { ...d, amount: e.target.value } : d)} />
+                        </label>
+                      )}
                       {newEventDraft.frequency === "weekly" && (
                         <label className="block space-y-0.5">
                           <span className="text-[10px] uppercase tracking-wider text-ink-muted">Day of week</span>
@@ -792,7 +893,7 @@ ${profileText}`;
                       {!rpStats?.timeState && (
                         <p className="text-xs text-amber-400">Set the story clock first — recurring events need a starting date to schedule correctly.</p>
                       )}
-                      <Button variant="ghost" size="sm" onClick={() => setNewEventDraft({ label: "", amount: "", frequency: "weekly", dayOfWeek: 1, dayOfMonth: 1, month: 1 })}>
+                      <Button variant="ghost" size="sm" onClick={() => setNewEventDraft({ label: "", amount: "", amountMax: "", useRange: false, frequency: "weekly", dayOfWeek: 1, dayOfMonth: 1, month: 1 })}>
                         + Add Recurring Event
                       </Button>
                     </>

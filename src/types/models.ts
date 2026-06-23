@@ -8,7 +8,7 @@ export type StoryMessageSpeakerType =
   | "narrator"
   | "system";
 export type ExportFormat = "json" | "markdown" | "txt" | "pdf" | "archive_pdf";
-export type AIProviderType = "openai" | "gemini" | "openrouter";
+export type AIProviderType = "openai" | "gemini" | "openrouter" | "anthropic";
 export type DeveloperBugStatus = "open" | "in-progress" | "resolved" | "closed";
 export type DeveloperFeaturePriority = "low" | "medium" | "high";
 export type AutoIndexInterval = 5 | 10 | 15 | 20 | "disabled";
@@ -105,6 +105,8 @@ export type RpRecurringEvent = {
   id: string;
   label: string;
   amount: number;              // positive = income, negative = expense
+  amountMin?: number;          // when both set, a random integer in [amountMin, amountMax] is applied
+  amountMax?: number;
   frequency: RpRecurringFrequency;
   dayOfWeek?: number;          // 0=Sun..6=Sat, used for weekly
   dayOfMonth?: number;         // 1-31, used for monthly/annually
@@ -133,6 +135,8 @@ export type RpConfig = {
   recurringEvents?: RpRecurringEvent[];
   diceRollsEnabled?: boolean;
   diceModifiers?: RpDiceModifiers;
+  birthdayMonth?: number;  // 1-12
+  birthdayDay?: number;    // 1-31
 };
 
 export type RpNpcHpEntry = {

@@ -354,15 +354,19 @@ export function parseStoryStateData(text: string): StoryStateData | null {
   }
 
   if (!parsed.updatedAt || typeof parsed.updatedAt !== "string") {
-    return null;
+    parsed.updatedAt = new Date().toISOString();
   }
 
-  if (!parsed.characters || typeof parsed.characters !== "object") {
-    return null;
+  if (!parsed.characters || typeof parsed.characters !== "object" || Array.isArray(parsed.characters)) {
+    parsed.characters = {};
   }
 
-  if (!Array.isArray(parsed.worldFacts) || !Array.isArray(parsed.unresolvedThreads)) {
-    return null;
+  if (!Array.isArray(parsed.worldFacts)) {
+    parsed.worldFacts = [];
+  }
+
+  if (!Array.isArray(parsed.unresolvedThreads)) {
+    parsed.unresolvedThreads = [];
   }
 
   if (parsed.sceneState && !Array.isArray(parsed.sceneState)) {

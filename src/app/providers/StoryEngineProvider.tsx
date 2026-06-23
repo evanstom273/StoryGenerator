@@ -199,6 +199,9 @@ interface StoryEngineContextValue {
   createStory: (draft: StoryDraft) => Promise<Story>;
   updateStory: (id: string, patch: Partial<StoryDraft>) => Promise<Story | null>;
   deleteStory: (id: string) => Promise<void>;
+  deleteAllStories: () => Promise<void>;
+  deleteAllPlayerCharacters: () => Promise<void>;
+  deleteAllUniverses: () => Promise<void>;
   createMessage: (draft: StoryMessageDraft) => Promise<StoryMessage>;
   updateMessage: (
     id: string,
@@ -2491,6 +2494,18 @@ export function StoryEngineProvider({
         await repository.deleteStory(id);
         await hydrate(false);
       },
+      async deleteAllStories() {
+        await repository.deleteAllStories();
+        await hydrate(false);
+      },
+      async deleteAllPlayerCharacters() {
+        await repository.deleteAllPlayerCharacters();
+        await hydrate(false);
+      },
+      async deleteAllUniverses() {
+        await repository.deleteAllUniverses();
+        await hydrate(false);
+      },
       async createMessage(draft) {
         const prefix = draft.role === "user" ? extractSpeakerPrefix(draft.content) : null;
         const nextMessage: StoryMessage = {
@@ -4457,20 +4472,33 @@ export function StoryEngineProvider({
                   const newTime = advanceTime(prevTime, timeAdvanceMinutes);
                   // Check and apply recurring events
                   const { triggered, updated } = checkRecurringEvents(prevTime, newTime, story.rpConfig.recurringEvents ?? []);
-                  for (const event of triggered) {
-                    const from = getStatValue(nextStats, story.rpConfig, "gold");
-                    const to = clampStat("gold", from + event.amount, story.rpConfig);
-                    if (to !== from) {
-                      nextStats = applyStatChange(nextStats, {
-                        field: "gold", from, to, reason: event.label,
-                        storyTime: event.nextDue,
-                        transactionType: "recurring",
-                      });
-                      applied.push({ ts: Date.now(), field: "gold", from, to, reason: event.label });
-                    }
-                    timeSummaryPart = (timeSummaryPart ? timeSummaryPart + " · " : "") + `${event.label} triggered (${event.amount >= 0 ? "+" : ""}${event.amount})`;
-                  }
                   if (triggered.length) {
+                    const recurringGoldBefore = getStatValue(nextStats, story.rpConfig, "gold");
+                    const recurringLabels: string[] = [];
+                    for (const event of triggered) {
+                      const resolvedAmount = (event.amountMin != null && event.amountMax != null)
+                        ? Math.round(event.amountMin + Math.random() * (event.amountMax - event.amountMin))
+                        : event.amount;
+                      const from = getStatValue(nextStats, story.rpConfig, "gold");
+                      const to = clampStat("gold", from + resolvedAmount, story.rpConfig);
+                      if (to !== from) {
+                        nextStats = applyStatChange(nextStats, {
+                          field: "gold", from, to, reason: event.label,
+                          storyTime: event.nextDue,
+                          transactionType: "recurring",
+                        });
+                        recurringLabels.push(event.label);
+                      }
+                    }
+                    // Push one summary entry to applied for toolbar gold tracking
+                    const recurringGoldAfter = getStatValue(nextStats, story.rpConfig, "gold");
+                    const uniqueLabels = [...new Set(recurringLabels)];
+                    const recurringReason = recurringLabels.length === 1
+                      ? recurringLabels[0]!
+                      : uniqueLabels.length === 1
+                        ? `${uniqueLabels[0]} ×${recurringLabels.length}`
+                        : `${recurringLabels.length} recurring events`;
+                    applied.push({ ts: Date.now(), field: "gold", from: recurringGoldBefore, to: recurringGoldAfter, reason: recurringReason });
                     // Save updated recurringEvents nextDue values to config
                     await repository.saveStory({ ...story, rpConfig: { ...story.rpConfig, recurringEvents: updated } });
                   }

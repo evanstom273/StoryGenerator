@@ -6,8 +6,27 @@ export function extractFirstJsonObject(text: string) {
   }
 
   let depth = 0;
+  let inString = false;
+  let escape = false;
+
   for (let i = start; i < trimmed.length; i += 1) {
     const char = trimmed[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === "\\") {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
 
     if (char === "{") {
       depth += 1;

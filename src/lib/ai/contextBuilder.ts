@@ -264,6 +264,14 @@ export function buildStoryChatContext({
           "- FAILURE (total < 7): the attempt introduces a complication, setback, or obstacle. The character is not made incapable and the worst-case outcome is not automatic — instead, something goes wrong in a way that creates pressure, costs time or goodwill, or makes the next step harder.",
           "Do not ignore or quietly override the roll result. Narrate the scene so the outcome feels earned and real.",
         ] : []),
+        ...(rpConfig.birthdayMonth != null && rpConfig.birthdayDay != null ? [
+          "",
+          (() => {
+            const names = rpConfig.calendarConfig?.monthNames;
+            const mName = names ? (names[rpConfig.birthdayMonth! - 1] ?? String(rpConfig.birthdayMonth)) : String(rpConfig.birthdayMonth);
+            return `Player character birthday: ${rpConfig.birthdayDay} ${mName}. When the in-story date reaches this each year, the character has turned a year older.`;
+          })(),
+        ] : []),
         ...(rpStats.timeState ? [
           "",
           `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,
@@ -286,6 +294,7 @@ export function buildStoryChatContext({
 
   const sceneGuidance = normalizeWhitespace(
     [
+      "CRITICAL: Output only story content. Do not write your reasoning, planning notes, analysis, context summaries, grammar rule lists, bullet-point breakdowns, or any preamble. Do not explain what you are about to do. Start writing the scene directly.",
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
       matureFictionPolicy,
       matureFictionModeNote,

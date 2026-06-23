@@ -63,6 +63,9 @@ export function SettingsPage() {
     importStoryExport,
     exportWorkspaceBackup,
     importWorkspaceBackup,
+    deleteAllStories,
+    deleteAllPlayerCharacters,
+    deleteAllUniverses,
   } = useStoryEngine();
 
   const { openChangelog, openChangelogHistory } = useChangelog();
@@ -80,9 +83,13 @@ export function SettingsPage() {
   const [openrouterModel, setOpenrouterModel] = useState(
     aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
   );
+  const [anthropicModel, setAnthropicModel] = useState(
+    aiSettings?.defaultModels?.anthropic ?? getProviderDefaultModel("anthropic"),
+  );
   const [openaiKeyInput, setOpenaiKeyInput] = useState("");
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
   const [openrouterKeyInput, setOpenrouterKeyInput] = useState("");
+  const [anthropicKeyInput, setAnthropicKeyInput] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -119,6 +126,10 @@ export function SettingsPage() {
     readStoredTextSize(UI_PREFS_KEYS.textSize, "md"),
   );
   const [versionCopyStatus, setVersionCopyStatus] = useState<string | null>(null);
+  const [deleteStoriesConfirm, setDeleteStoriesConfirm] = useState("");
+  const [deleteCharactersConfirm, setDeleteCharactersConfirm] = useState("");
+  const [deleteUniversesConfirm, setDeleteUniversesConfirm] = useState("");
+  const [dangerZoneLoading, setDangerZoneLoading] = useState<"stories" | "characters" | "universes" | null>(null);
 
   useEffect(() => {
     setActiveProviderType(aiSettings?.activeProviderType ?? "openai");
@@ -130,6 +141,9 @@ export function SettingsPage() {
     );
     setOpenrouterModel(
       aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
+    );
+    setAnthropicModel(
+      aiSettings?.defaultModels?.anthropic ?? getProviderDefaultModel("anthropic"),
     );
   }, [aiSettings]);
 
@@ -192,7 +206,9 @@ export function SettingsPage() {
         openaiModel === (aiSettings.defaultModels?.openai ?? getProviderDefaultModel("openai")) &&
         geminiModel === (aiSettings.defaultModels?.gemini ?? getProviderDefaultModel("gemini")) &&
         openrouterModel ===
-          (aiSettings.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"))
+          (aiSettings.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter")) &&
+        anthropicModel ===
+          (aiSettings.defaultModels?.anthropic ?? getProviderDefaultModel("anthropic"))
       ) {
         return;
       }
@@ -203,11 +219,12 @@ export function SettingsPage() {
           openai: openaiModel,
           gemini: geminiModel,
           openrouter: openrouterModel,
+          anthropic: anthropicModel,
         },
       }).catch(() => {});
     },
     800,
-    [aiSettings, isSaving, activeProviderType, openaiModel, geminiModel, openrouterModel],
+    [aiSettings, isSaving, activeProviderType, openaiModel, geminiModel, openrouterModel, anthropicModel],
   );
 
   useDebouncedEffect(
@@ -219,8 +236,9 @@ export function SettingsPage() {
       const openaiKey = openaiKeyInput.trim();
       const geminiKey = geminiKeyInput.trim();
       const openrouterKey = openrouterKeyInput.trim();
+      const anthropicKey = anthropicKeyInput.trim();
 
-      if (!openaiKey && !geminiKey && !openrouterKey) {
+      if (!openaiKey && !geminiKey && !openrouterKey && !anthropicKey) {
         return;
       }
 
@@ -230,17 +248,20 @@ export function SettingsPage() {
           openai: openaiKey ? openaiKey : undefined,
           gemini: geminiKey ? geminiKey : undefined,
           openrouter: openrouterKey ? openrouterKey : undefined,
+          anthropic: anthropicKey ? anthropicKey : undefined,
         },
         defaultModels: {
           openai: openaiModel,
           gemini: geminiModel,
           openrouter: openrouterModel,
+          anthropic: anthropicModel,
         },
       })
         .then(() => {
           setOpenaiKeyInput("");
           setGeminiKeyInput("");
           setOpenrouterKeyInput("");
+          setAnthropicKeyInput("");
           setStatusMessage("AI settings saved locally.");
         })
         .catch((error) => {
@@ -256,22 +277,25 @@ export function SettingsPage() {
       openaiModel,
       geminiModel,
       openrouterModel,
+      anthropicModel,
       openaiKeyInput,
       geminiKeyInput,
       openrouterKeyInput,
+      anthropicKeyInput,
     ],
   );
 
   const openaiConfigured = Boolean(aiSettings?.apiKeys?.openai?.trim());
   const geminiConfigured = Boolean(aiSettings?.apiKeys?.gemini?.trim());
   const openrouterConfigured = Boolean(aiSettings?.apiKeys?.openrouter?.trim());
+  const anthropicConfigured = Boolean(aiSettings?.apiKeys?.anthropic?.trim());
   const providerBadge = useMemo(() => {
-    if (!openaiConfigured && !geminiConfigured && !openrouterConfigured) {
+    if (!openaiConfigured && !geminiConfigured && !openrouterConfigured && !anthropicConfigured) {
       return <Badge variant="warning">Not configured</Badge>;
     }
 
     return <Badge variant="accent">Configured</Badge>;
-  }, [geminiConfigured, openaiConfigured, openrouterConfigured]);
+  }, [anthropicConfigured, geminiConfigured, openaiConfigured, openrouterConfigured]);
 
   async function handleSave() {
     setIsSaving(true);
@@ -285,16 +309,19 @@ export function SettingsPage() {
           openai: openaiKeyInput.trim() ? openaiKeyInput : undefined,
           gemini: geminiKeyInput.trim() ? geminiKeyInput : undefined,
           openrouter: openrouterKeyInput.trim() ? openrouterKeyInput : undefined,
+          anthropic: anthropicKeyInput.trim() ? anthropicKeyInput : undefined,
         },
         defaultModels: {
           openai: openaiModel,
           gemini: geminiModel,
           openrouter: openrouterModel,
+          anthropic: anthropicModel,
         },
       });
       setOpenaiKeyInput("");
       setGeminiKeyInput("");
       setOpenrouterKeyInput("");
+      setAnthropicKeyInput("");
       setStatusMessage("AI settings saved locally.");
     } catch (error) {
       setErrorMessage(
@@ -674,6 +701,7 @@ export function SettingsPage() {
                 <option value="openai">OpenAI</option>
                 <option value="gemini">Gemini</option>
                 <option value="openrouter">OpenRouter</option>
+                <option value="anthropic">Anthropic</option>
               </SelectInput>
             </div>
           </Panel>
@@ -709,6 +737,16 @@ export function SettingsPage() {
                 keyInput: openrouterKeyInput,
                 setKeyInput: setOpenrouterKeyInput,
                 placeholder: "sk-or-...",
+              },
+              {
+                id: "anthropic" as const,
+                label: "Anthropic",
+                configured: anthropicConfigured,
+                model: anthropicModel,
+                setModel: setAnthropicModel,
+                keyInput: anthropicKeyInput,
+                setKeyInput: setAnthropicKeyInput,
+                placeholder: "sk-ant-...",
               },
             ] as const
           ).map((provider) => (
@@ -918,6 +956,121 @@ export function SettingsPage() {
                 {storageStatus.errorMessage}
               </div>
             ) : null}
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-rose-400/70">Danger Zone</div>
+            <div className="mt-3 space-y-3">
+              {/* Delete All Stories */}
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/5 px-4 py-4 space-y-3">
+                <div>
+                  <div className="font-semibold text-sm text-ink">Delete All Stories</div>
+                  <div className="text-xs text-ink-muted mt-0.5">Delete {storageStatus.storiesCount} {storageStatus.storiesCount === 1 ? "story" : "stories"}?</div>
+                </div>
+                <ul className="text-xs text-ink-muted space-y-0.5 list-disc list-inside">
+                  <li>Stories and chapters</li>
+                  <li>Messages and transcripts</li>
+                  <li>RP data, HP, money and events</li>
+                  <li>Relationships and timelines</li>
+                </ul>
+                <div className="text-xs text-ink-muted">
+                  Type <span className="font-mono font-semibold text-ink">DELETE STORIES</span> to continue.
+                </div>
+                <input
+                  className="w-full rounded-[6px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-rose-400/40 focus:ring-2 focus:ring-rose-400/10"
+                  value={deleteStoriesConfirm}
+                  onChange={(e) => setDeleteStoriesConfirm(e.target.value)}
+                  placeholder="Type DELETE STORIES"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full border-rose-400/30 text-rose-300 hover:bg-rose-400/10 disabled:opacity-40"
+                  disabled={deleteStoriesConfirm !== "DELETE STORIES" || dangerZoneLoading !== null}
+                  onClick={async () => {
+                    setDangerZoneLoading("stories");
+                    try { await deleteAllStories(); } finally {
+                      setDangerZoneLoading(null);
+                      setDeleteStoriesConfirm("");
+                    }
+                  }}
+                >
+                  {dangerZoneLoading === "stories" ? "Deleting…" : "Delete All Stories"}
+                </Button>
+              </div>
+
+              {/* Delete All Characters */}
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/5 px-4 py-4 space-y-3">
+                <div>
+                  <div className="font-semibold text-sm text-ink">Delete All Characters</div>
+                  <div className="text-xs text-ink-muted mt-0.5">Delete {storageStatus.playerCharactersCount} {storageStatus.playerCharactersCount === 1 ? "character" : "characters"}?</div>
+                </div>
+                <div className="text-xs text-ink-muted">This may affect stories that reference these characters.</div>
+                <div className="text-xs text-ink-muted">
+                  Type <span className="font-mono font-semibold text-ink">DELETE CHARACTERS</span> to continue.
+                </div>
+                <input
+                  className="w-full rounded-[6px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-rose-400/40 focus:ring-2 focus:ring-rose-400/10"
+                  value={deleteCharactersConfirm}
+                  onChange={(e) => setDeleteCharactersConfirm(e.target.value)}
+                  placeholder="Type DELETE CHARACTERS"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full border-rose-400/30 text-rose-300 hover:bg-rose-400/10 disabled:opacity-40"
+                  disabled={deleteCharactersConfirm !== "DELETE CHARACTERS" || dangerZoneLoading !== null}
+                  onClick={async () => {
+                    setDangerZoneLoading("characters");
+                    try { await deleteAllPlayerCharacters(); } finally {
+                      setDangerZoneLoading(null);
+                      setDeleteCharactersConfirm("");
+                    }
+                  }}
+                >
+                  {dangerZoneLoading === "characters" ? "Deleting…" : "Delete All Characters"}
+                </Button>
+              </div>
+
+              {/* Delete All Universes */}
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/5 px-4 py-4 space-y-3">
+                <div>
+                  <div className="font-semibold text-sm text-ink">Delete All Universes</div>
+                  <div className="text-xs text-ink-muted mt-0.5">Delete {storageStatus.universesCount} {storageStatus.universesCount === 1 ? "universe" : "universes"}?</div>
+                </div>
+                <div className="text-xs text-ink-muted">Stories will remain, but universe-specific lore and settings will be lost.</div>
+                <div className="text-xs text-ink-muted">
+                  Type <span className="font-mono font-semibold text-ink">DELETE UNIVERSES</span> to continue.
+                </div>
+                <input
+                  className="w-full rounded-[6px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-rose-400/40 focus:ring-2 focus:ring-rose-400/10"
+                  value={deleteUniversesConfirm}
+                  onChange={(e) => setDeleteUniversesConfirm(e.target.value)}
+                  placeholder="Type DELETE UNIVERSES"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full border-rose-400/30 text-rose-300 hover:bg-rose-400/10 disabled:opacity-40"
+                  disabled={deleteUniversesConfirm !== "DELETE UNIVERSES" || dangerZoneLoading !== null}
+                  onClick={async () => {
+                    setDangerZoneLoading("universes");
+                    try { await deleteAllUniverses(); } finally {
+                      setDangerZoneLoading(null);
+                      setDeleteUniversesConfirm("");
+                    }
+                  }}
+                >
+                  {dangerZoneLoading === "universes" ? "Deleting…" : "Delete All Universes"}
+                </Button>
+              </div>
+            </div>
           </Panel>
         </div>
       )}

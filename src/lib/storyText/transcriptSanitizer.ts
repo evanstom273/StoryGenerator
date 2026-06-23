@@ -529,12 +529,44 @@ function normalizeTranscriptWhitespace(text: string) {
   return normalized;
 }
 
+function stripReasoningPreamble(text: string): string {
+  const lines = text.split("\n");
+  const cleaned: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Detect lines that are clearly model reasoning/meta-commentary
+    const isReasoningLine =
+      /^(User wants|Context:|Setting:|NPC:|Atmosphere:|PC:|Player Character[\s(])/i.test(trimmed) ||
+      /->\s*[Cc]hecked/.test(trimmed) ||
+      trimmed.endsWith("-> Checked") ||
+      trimmed.endsWith("-> checked") ||
+      // Bullet lines that contain reasoning markers
+      (/^[*\-]\s/.test(trimmed) && /(->|Checked|No narrator|No PC|No repeat|No playing|No inventing)/i.test(trimmed));
+
+    if (isReasoningLine) {
+      continue;
+    }
+
+    // Backtick spans containing checklist content — strip the whole line
+    if (/`[^`]*(->\s*[Cc]hecked|No narrator|No PC control)[^`]*`/.test(trimmed)) {
+      continue;
+    }
+
+    cleaned.push(line);
+  }
+
+  const result = cleaned.join("\n").trim();
+  return result.length > 0 ? result : text;
+}
+
 export function sanitizeAssistantTranscript(args: {
   text: string;
   latestUserMessage?: string | null;
   playerName?: string | null;
 }) {
-  const echoed = removeEchoBlocks(args.text, args.latestUserMessage);
+  const preambleStripped = stripReasoningPreamble(args.text);
+  const echoed = removeEchoBlocks(preambleStripped, args.latestUserMessage);
   const narratorStripped = stripNarratorHeaders(echoed.text);
   const markdownStripped = stripMarkdownArtifacts(narratorStripped.text);
   const normalizedActions = normalizeThirdPersonActions(markdownStripped.text, args.playerName);
