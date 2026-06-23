@@ -135,6 +135,8 @@ export type RpConfig = {
   recurringEvents?: RpRecurringEvent[];
   diceRollsEnabled?: boolean;
   diceModifiers?: RpDiceModifiers;
+  birthdayMonth?: number;  // 1-12
+  birthdayDay?: number;    // 1-31
 };
 
 export type RpNpcHpEntry = {

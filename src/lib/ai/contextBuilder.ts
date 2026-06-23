@@ -264,6 +264,14 @@ export function buildStoryChatContext({
           "- FAILURE (total < 7): the attempt introduces a complication, setback, or obstacle. The character is not made incapable and the worst-case outcome is not automatic — instead, something goes wrong in a way that creates pressure, costs time or goodwill, or makes the next step harder.",
           "Do not ignore or quietly override the roll result. Narrate the scene so the outcome feels earned and real.",
         ] : []),
+        ...(rpConfig.birthdayMonth != null && rpConfig.birthdayDay != null ? [
+          "",
+          (() => {
+            const names = rpConfig.calendarConfig?.monthNames;
+            const mName = names ? (names[rpConfig.birthdayMonth! - 1] ?? String(rpConfig.birthdayMonth)) : String(rpConfig.birthdayMonth);
+            return `Player character birthday: ${rpConfig.birthdayDay} ${mName}. When the in-story date reaches this each year, the character has turned a year older.`;
+          })(),
+        ] : []),
         ...(rpStats.timeState ? [
           "",
           `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,

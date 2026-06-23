@@ -137,7 +137,7 @@ export function RPCharacterSheetOverlay(props: {
   // Time tab state
   const [timeDraft, setTimeDraft] = useState({ year: "", month: "", day: "", hour: "", minute: "" });
   const [savingTime, setSavingTime] = useState(false);
-  const [calDraft, setCalDraft] = useState({ yearSuffix: "", monthNames: "", weekdayNames: "" });
+  const [calDraft, setCalDraft] = useState({ yearSuffix: "", monthNames: "", weekdayNames: "", birthdayMonth: "", birthdayDay: "" });
   const [newEventDraft, setNewEventDraft] = useState<{
     label: string;
     amount: string;
@@ -171,6 +171,8 @@ export function RPCharacterSheetOverlay(props: {
       yearSuffix: configDraft.calendarConfig?.yearSuffix ?? "",
       monthNames: configDraft.calendarConfig?.monthNames?.join(", ") ?? "",
       weekdayNames: configDraft.calendarConfig?.weekdayNames?.join(", ") ?? "",
+      birthdayMonth: configDraft.birthdayMonth != null ? String(configDraft.birthdayMonth) : "",
+      birthdayDay: configDraft.birthdayDay != null ? String(configDraft.birthdayDay) : "",
     });
   }, [activeTab, configDraft.calendarConfig]);
 
@@ -350,7 +352,9 @@ ${profileText}`;
     const calendarConfig: RpCalendarConfig | undefined = (yearSuffix || monthNames || weekdayNames)
       ? { yearSuffix, monthNames, weekdayNames }
       : undefined;
-    const newConfig: RpConfig = { ...configDraft, calendarConfig };
+    const birthdayMonth = parseInt(calDraft.birthdayMonth) || undefined;
+    const birthdayDay = parseInt(calDraft.birthdayDay) || undefined;
+    const newConfig: RpConfig = { ...configDraft, calendarConfig, birthdayMonth, birthdayDay };
     setConfigDraft(newConfig);
     setSaving(true);
     try {
@@ -727,6 +731,44 @@ ${profileText}`;
                       onChange={(e) => setCalDraft((d) => ({ ...d, weekdayNames: e.target.value }))}
                     />
                   </label>
+                  <div className="space-y-1">
+                    <span className="text-xs text-ink-muted">Character birthday</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block space-y-1">
+                        <span className="text-xs text-ink-muted/70">Month (1–12)</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={12}
+                          className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                          placeholder="—"
+                          value={calDraft.birthdayMonth}
+                          onChange={(e) => setCalDraft((d) => ({ ...d, birthdayMonth: e.target.value }))}
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-xs text-ink-muted/70">Day (1–31)</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={31}
+                          className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
+                          placeholder="—"
+                          value={calDraft.birthdayDay}
+                          onChange={(e) => setCalDraft((d) => ({ ...d, birthdayDay: e.target.value }))}
+                        />
+                      </label>
+                    </div>
+                    {configDraft.birthdayMonth != null && configDraft.birthdayDay != null && (
+                      <p className="text-xs text-ink-muted/60">
+                        {(() => {
+                          const names = configDraft.calendarConfig?.monthNames;
+                          const mName = names ? (names[(configDraft.birthdayMonth) - 1] ?? String(configDraft.birthdayMonth)) : String(configDraft.birthdayMonth);
+                          return `${configDraft.birthdayDay} ${mName}`;
+                        })()}
+                      </p>
+                    )}
+                  </div>
                   <Button variant="primary" size="sm" disabled={saving} onClick={() => void handleSaveCalendar()}>
                     {saving ? "Saving…" : "Save Calendar"}
                   </Button>
