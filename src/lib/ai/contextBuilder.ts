@@ -258,11 +258,11 @@ export function buildStoryChatContext({
         "Do not narrate or reference stat values directly. Stat tracking happens separately.",
         ...(rpConfig.diceRollsEnabled ? [
           "",
-          "Dice roll rule: when the player's message contains a result tag like [CHA +1 | d12: 9 | Total: 10 — SUCCESS] or [STR -1 | d12: 3 | Total: 2 — FAILURE], treat that outcome as a binding mechanical fact — not flavour the story can ignore or soften:",
-          "- SUCCESS (total ≥ 7): the attempt works. Commit to it — let the moment land. The NPC softens, the task completes, the character earns what they reached for.",
-          "- CRITICAL SUCCESS (natural 12 on the die): the attempt succeeds perfectly. Go further — an unexpected bonus, an unusually warm response, a flawless execution that earns something extra.",
-          "- FAILURE (total < 7): the attempt fails. Commit to it — the NPC holds firm, the task goes wrong, the obstacle stands. Do not hedge or quietly let the player through anyway.",
-          "The dice result is the outcome. Narrate the scene to fit it, not the other way around.",
+          "Dice roll rule: when the player's message contains a result tag like [CHA +1 | d12: 9 | Total: 10 — SUCCESS] or [STR -1 | d12: 3 | Total: 2 — FAILURE], treat that outcome as a binding narrative fact. Interpret each result as follows:",
+          "- SUCCESS (total ≥ 7): the character's approach is effective, or circumstances become more favourable. This does not automatically resolve the entire situation — narrate the process and the feel of the success unfolding rather than jumping straight to a final outcome. Unless the action would reasonably conclude the situation on its own, leave threads open.",
+          "- CRITICAL SUCCESS (natural 12 on the die): the approach lands especially well. Go a step further than a standard success — an unexpected benefit, a warmer-than-expected response, something that earns the character a small advantage or moment of grace.",
+          "- FAILURE (total < 7): the attempt introduces a complication, setback, or obstacle. The character is not made incapable and the worst-case outcome is not automatic — instead, something goes wrong in a way that creates pressure, costs time or goodwill, or makes the next step harder.",
+          "Do not ignore or quietly override the roll result. Narrate the scene so the outcome feels earned and real.",
         ] : []),
         ...(rpStats.timeState ? [
           "",
