@@ -294,6 +294,7 @@ export function buildStoryChatContext({
 
   const sceneGuidance = normalizeWhitespace(
     [
+      "CRITICAL: Output only story content. Do not write your reasoning, planning notes, analysis, context summaries, grammar rule lists, bullet-point breakdowns, or any preamble. Do not explain what you are about to do. Start writing the scene directly.",
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
       matureFictionPolicy,
       matureFictionModeNote,
