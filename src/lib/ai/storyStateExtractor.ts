@@ -113,7 +113,7 @@ export function buildStoryStateExtractionPrompt({
       '    "locations"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
       '    "items"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
       '    "factions"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
-      '    "relationships"?: Array<{ "a": string, "b": string, "friendship"?: number, "trust"?: number, "respect"?: number, "loyalty"?: number, "comfort"?: number, "suspicion"?: number, "fear"?: number, "affection"?: number, "tension"?: number, "hostility"?: number, "summary"?: string, "evidence"?: { "messageNumbers": number[] } }>,',
+      '    "relationships"?: Array<{ "a": string, "b": string, "tier": "stranger"|"acquaintance"|"friend"|"family"|"ally"|"rival"|"enemy"|"nemesis"|"lover", "summary"?: string, "history"?: Array<{ "summary": string, "messageNumber"?: number }>, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "worldFacts"?: Array<{ "fact": string, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "significantMemories"?: Array<{ "moment": string, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "openThreads"?: Array<{ "thread": string, "evidence"?: { "messageNumbers": number[] } }>',
@@ -150,9 +150,13 @@ export function buildStoryStateExtractionPrompt({
       "- If a major event is trivial or local, do not let it overwrite the premise. If it is story-defining, reflect it in premise/currentSituation/recentDevelopments.",
       "- Treat probable spelling variants, nicknames, and near-identical names as the same person unless the transcript clearly establishes separate individuals.",
       "- Keep lists short and deduplicated.",
-      "- Keep indexes bounded: max 50 entities per category, max 30 worldFacts, max 50 significantMemories, max 20 openThreads, max 30 relationships.",
+      "- Keep indexes bounded: max 50 entities per category, max 30 worldFacts, max 50 significantMemories, max 20 openThreads, max 60 relationships.",
       "- Evidence should use messageNumbers from the transcript brackets. If uncertain, omit the entry instead of guessing.",
-      "- For indexes.relationships: represent the CURRENT dynamic state (not a timeline). Keep only one entry per pair. Update/overwrite the pair instead of adding duplicates. Prefer stable ordering for pairs.",
+      "- For indexes.relationships: create an entry for EVERY named character who appears in the story, paired with the player character. Also create entries between NPCs who have direct notable interaction. Never omit a named character. Tier is REQUIRED on every entry — default to 'stranger' if there has been no meaningful interaction.",
+      "- For indexes.relationships: represent the CURRENT dynamic state (not a timeline). Keep only one entry per pair. Update/overwrite the pair instead of adding duplicates.",
+      "- For indexes.relationships.tier: assign the single best-fit tier. Use: stranger (named but minimal/no direct contact), acquaintance (met, some interaction, neutral), friend (genuine positive bond), family (parent, child, sibling, spouse, or other blood/legal kinship), ally (actively cooperating toward shared goals), rival (competitive or opposed but not hateful), enemy (active antagonism or opposing goals), nemesis (personal, intense, defining enmity), lover (romantic or intimate bond). Re-evaluate on every index pass.",
+      "- For indexes.relationships.summary: write 1-2 sentences describing the current state of this relationship. Required for non-strangers; optional but encouraged even for strangers.",
+      "- For indexes.relationships.history: record up to 3 key turning-point moments (first meeting counts). Each entry: concise 1-sentence summary + messageNumber if available. Preserve previous history entries unless superseded.",
       "- Preserve Open Threads quality. Track the questions/tensions a reader would still care about.",
       "- If nothing changed, return the previous state with a refreshed updatedAt.",
       "- Never generate dialogue or actions for the player character; this is metadata only.",
@@ -263,32 +267,35 @@ function sanitizeIndexes(value: any) {
   const maxMessageNumber = messageCount && messageCount > 0 ? messageCount : undefined;
 
   const relationshipsList = (value as any).relationships;
+  const validTiers = ["stranger", "acquaintance", "friend", "family", "ally", "rival", "enemy", "nemesis", "lover"] as const;
   const relationships = Array.isArray(relationshipsList)
     ? relationshipsList
         .filter((entry: unknown) => entry && typeof entry === "object" && !Array.isArray(entry))
-        .slice(0, 30)
+        .slice(0, 60)
         .map((entry: any) => {
           if (typeof entry.a !== "string" || typeof entry.b !== "string") return null;
-          const clampScore = (score: unknown) =>
-            typeof score === "number" && Number.isFinite(score)
-              ? Math.max(0, Math.min(100, Math.trunc(score)))
-              : undefined;
+          if (!entry.a.trim() || !entry.b.trim()) return null;
 
           const evidence = sanitizeEvidence(entry.evidence, maxMessageNumber);
+          const tier = typeof entry.tier === "string" && validTiers.includes(entry.tier as any)
+            ? (entry.tier as (typeof validTiers)[number])
+            : "stranger";
+
+          const sanitizedHistory = Array.isArray(entry.history)
+            ? entry.history
+                .filter((h: unknown) => h && typeof h === "object" && !Array.isArray(h) && typeof (h as any).summary === "string" && (h as any).summary.trim())
+                .slice(0, 5)
+                .map((h: any) => ({
+                  summary: h.summary.trim(),
+                  ...(typeof h.messageNumber === "number" && Number.isFinite(h.messageNumber) ? { messageNumber: Math.trunc(h.messageNumber) } : {}),
+                }))
+            : undefined;
 
           return {
             a: entry.a.trim(),
             b: entry.b.trim(),
-            ...(clampScore(entry.friendship) !== undefined ? { friendship: clampScore(entry.friendship) } : {}),
-            ...(clampScore(entry.trust) !== undefined ? { trust: clampScore(entry.trust) } : {}),
-            ...(clampScore(entry.respect) !== undefined ? { respect: clampScore(entry.respect) } : {}),
-            ...(clampScore(entry.loyalty) !== undefined ? { loyalty: clampScore(entry.loyalty) } : {}),
-            ...(clampScore(entry.comfort) !== undefined ? { comfort: clampScore(entry.comfort) } : {}),
-            ...(clampScore(entry.suspicion) !== undefined ? { suspicion: clampScore(entry.suspicion) } : {}),
-            ...(clampScore(entry.fear) !== undefined ? { fear: clampScore(entry.fear) } : {}),
-            ...(clampScore(entry.affection) !== undefined ? { affection: clampScore(entry.affection) } : {}),
-            ...(clampScore(entry.tension) !== undefined ? { tension: clampScore(entry.tension) } : {}),
-            ...(clampScore(entry.hostility) !== undefined ? { hostility: clampScore(entry.hostility) } : {}),
+            tier,
+            ...(sanitizedHistory?.length ? { history: sanitizedHistory } : {}),
             ...(typeof entry.summary === "string" && entry.summary.trim() ? { summary: entry.summary.trim() } : {}),
             ...(evidence ? { evidence } : {}),
           };
@@ -587,6 +594,22 @@ export function formatStoryLongTermMemoryForPrompt(
       lines.push("");
       lines.push("Relationships:");
       lines.push(...relationshipLines.slice(0, 16));
+    }
+  }
+
+  const indexedRelationships = storyStateData.indexes?.relationships;
+  if (Array.isArray(indexedRelationships) && indexedRelationships.length) {
+    const relLines: string[] = [];
+    for (const rel of indexedRelationships.slice(0, 20)) {
+      if (!rel.a || !rel.b) continue;
+      const tierLabel = rel.tier ? ` [${rel.tier}]` : "";
+      const summaryPart = rel.summary ? ` — ${rel.summary}` : "";
+      relLines.push(`- ${rel.a} ↔ ${rel.b}${tierLabel}${summaryPart}`);
+    }
+    if (relLines.length) {
+      lines.push("");
+      lines.push("Indexed Relationships:");
+      lines.push(...relLines);
     }
   }
 

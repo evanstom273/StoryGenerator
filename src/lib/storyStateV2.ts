@@ -1,5 +1,6 @@
 import type {
   MemoryArchitectureVersion,
+  RelationshipHistoryEntry,
   RelationshipIndexEntry,
   StoryIndexesV2,
   StoryStateData,
@@ -129,34 +130,37 @@ function mergeEvidence(left: any, right: any) {
   return merged.length ? { messageNumbers: merged } : undefined;
 }
 
+function mergeHistory(
+  left: RelationshipHistoryEntry[] | undefined,
+  right: RelationshipHistoryEntry[] | undefined,
+): RelationshipHistoryEntry[] | undefined {
+  const combined = [...(left ?? []), ...(right ?? [])];
+  if (!combined.length) return undefined;
+  const seen = new Set<string>();
+  const deduped = combined.filter((h) => {
+    const key = h.summary.toLowerCase().trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return deduped.slice(0, 5);
+}
+
 function mergeRelationship(left: RelationshipIndexEntry, right: RelationshipIndexEntry): RelationshipIndexEntry {
-  const pick = <T>(next: T | undefined, prev: T | undefined) => (next !== undefined ? next : prev);
   const summary = typeof right.summary === "string" && right.summary.trim()
     ? right.summary.trim()
     : typeof left.summary === "string" && left.summary.trim()
       ? left.summary.trim()
       : undefined;
   const evidence = mergeEvidence(left.evidence, right.evidence);
+  const tier = right.tier ?? left.tier ?? "stranger";
+  const history = mergeHistory(left.history, right.history);
 
   return {
     a: left.a,
     b: left.b,
-    ...(pick(right.friendship, left.friendship) !== undefined
-      ? { friendship: pick(right.friendship, left.friendship) }
-      : {}),
-    ...(pick(right.trust, left.trust) !== undefined ? { trust: pick(right.trust, left.trust) } : {}),
-    ...(pick(right.respect, left.respect) !== undefined ? { respect: pick(right.respect, left.respect) } : {}),
-    ...(pick(right.loyalty, left.loyalty) !== undefined ? { loyalty: pick(right.loyalty, left.loyalty) } : {}),
-    ...(pick(right.comfort, left.comfort) !== undefined ? { comfort: pick(right.comfort, left.comfort) } : {}),
-    ...(pick(right.suspicion, left.suspicion) !== undefined
-      ? { suspicion: pick(right.suspicion, left.suspicion) }
-      : {}),
-    ...(pick(right.fear, left.fear) !== undefined ? { fear: pick(right.fear, left.fear) } : {}),
-    ...(pick(right.affection, left.affection) !== undefined
-      ? { affection: pick(right.affection, left.affection) }
-      : {}),
-    ...(pick(right.tension, left.tension) !== undefined ? { tension: pick(right.tension, left.tension) } : {}),
-    ...(pick(right.hostility, left.hostility) !== undefined ? { hostility: pick(right.hostility, left.hostility) } : {}),
+    tier,
+    ...(history?.length ? { history } : {}),
     ...(summary ? { summary } : {}),
     ...(evidence ? { evidence } : {}),
   };
@@ -190,16 +194,8 @@ function reconcileRelationships(
     const normalizedEntry: RelationshipIndexEntry = {
       a: ordered.a,
       b: ordered.b,
-      ...(typeof entry.friendship === "number" ? { friendship: entry.friendship } : {}),
-      ...(typeof entry.trust === "number" ? { trust: entry.trust } : {}),
-      ...(typeof entry.respect === "number" ? { respect: entry.respect } : {}),
-      ...(typeof entry.loyalty === "number" ? { loyalty: entry.loyalty } : {}),
-      ...(typeof entry.comfort === "number" ? { comfort: entry.comfort } : {}),
-      ...(typeof entry.suspicion === "number" ? { suspicion: entry.suspicion } : {}),
-      ...(typeof entry.fear === "number" ? { fear: entry.fear } : {}),
-      ...(typeof entry.affection === "number" ? { affection: entry.affection } : {}),
-      ...(typeof entry.tension === "number" ? { tension: entry.tension } : {}),
-      ...(typeof entry.hostility === "number" ? { hostility: entry.hostility } : {}),
+      tier: entry.tier ?? "stranger",
+      ...(Array.isArray(entry.history) && entry.history.length ? { history: entry.history } : {}),
       ...(typeof entry.summary === "string" && entry.summary.trim() ? { summary: entry.summary.trim() } : {}),
       ...(mergeEvidence(entry.evidence, undefined) ? { evidence: mergeEvidence(entry.evidence, undefined) } : {}),
     };
@@ -364,7 +360,16 @@ export function finalizeStoryStateForSave(params: {
   const previous = (() => {
     const json = params.previousStateJson?.trim() ?? "";
     if (!json) return null;
-    return safeParseStoryStateData(json);
+    const v2 = safeParseStoryStateData(json);
+    if (v2) return v2;
+    // Raw states (no V2 metadata yet) still carry rpStats — preserve it
+    try {
+      const raw = JSON.parse(json) as unknown;
+      if (raw && typeof raw === "object" && "rpStats" in raw) {
+        return { rpStats: (raw as Record<string, unknown>).rpStats } as StoryStateData;
+      }
+    } catch {}
+    return null;
   })();
   const previousV2 = normalizeStoryStateToV2(previous);
 

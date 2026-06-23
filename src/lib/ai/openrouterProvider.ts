@@ -43,11 +43,12 @@ async function callChatCompletions(
   const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
+  const safeKey = apiKey.replace(/[^\x00-\xFF]/g, "");
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${safeKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),

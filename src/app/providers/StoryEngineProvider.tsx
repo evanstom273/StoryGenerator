@@ -80,6 +80,9 @@ import {
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent } from "../../lib/storyText/directorIntent";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
+import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
+import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
+import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
   formatUniverseWikiSources,
   getPrimaryUniverseWikiUrl,
@@ -99,6 +102,10 @@ import type {
   PlayerCharacterExportBundleV1,
   PlayerCharacter,
   PlayerCharacterDraft,
+  RelationshipIndexEntry,
+  RpChangelogEntry,
+  RpEventLogEntry,
+  RpStats,
   StorageStatus,
   Story,
   StoryAIConfig,
@@ -237,6 +244,8 @@ interface StoryEngineContextValue {
     characterId: string,
   ) => Promise<PlayerCharacterExportBundleV1 | null>;
   fetchStoryState: (storyId: string) => Promise<StoryState | null>;
+  updateRpStats: (storyId: string, rpStats: RpStats | null) => Promise<void>;
+  updateRelationshipsIndex: (storyId: string, relationships: RelationshipIndexEntry[]) => Promise<void>;
   refreshStoryState: (storyId: string, opts?: { force?: boolean }) => Promise<void>;
   updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal }) => Promise<void>;
   queueStoryIndexJob: (
@@ -284,7 +293,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string) => Promise<StoryMessage | null>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
 }
@@ -1490,6 +1499,15 @@ export function StoryEngineProvider({
           try {
             const parsed = safeParseStoryStateData(result.stateJson);
             if (!parsed) {
+              // Preserve rpStats through fallback path (AI state failed V2 validation)
+              try {
+                const rawNew = JSON.parse(result.stateJson) as Record<string, unknown>;
+                if (!rawNew.rpStats && existingStoryState?.stateJson) {
+                  const rawPrev = JSON.parse(existingStoryState.stateJson) as Record<string, unknown>;
+                  const prevRpStats = rawPrev?.rpStats ?? (safeParseStoryStateData(existingStoryState.stateJson))?.rpStats;
+                  if (prevRpStats) return JSON.stringify({ ...rawNew, rpStats: prevRpStats });
+                }
+              } catch {}
               return result.stateJson;
             }
             return finalizeStoryStateForSave({
@@ -1939,6 +1957,15 @@ export function StoryEngineProvider({
         try {
           const parsed = safeParseStoryStateData(rebuilt.stateJson);
           if (!parsed) {
+            // Preserve rpStats through fallback path (AI state failed V2 validation)
+            try {
+              const rawNew = JSON.parse(rebuilt.stateJson) as Record<string, unknown>;
+              if (!rawNew.rpStats && storyState?.stateJson) {
+                const rawPrev = JSON.parse(storyState.stateJson) as Record<string, unknown>;
+                const prevRpStats = rawPrev?.rpStats ?? (safeParseStoryStateData(storyState.stateJson))?.rpStats;
+                if (prevRpStats) return JSON.stringify({ ...rawNew, rpStats: prevRpStats });
+              }
+            } catch {}
             return rebuilt.stateJson;
           }
 
@@ -2448,6 +2475,8 @@ export function StoryEngineProvider({
             patch.playerCharacterId ?? currentStory.playerCharacterId,
           isArchived: patch.isArchived ?? currentStory.isArchived,
           matureFictionMode: patch.matureFictionMode ?? currentStory.matureFictionMode,
+          rpMode: patch.rpMode ?? currentStory.rpMode,
+          rpConfig: patch.rpConfig ?? currentStory.rpConfig,
           autoIndexMode: patch.autoIndexMode ?? currentStory.autoIndexMode,
           autoIndexInterval: patch.autoIndexInterval ?? currentStory.autoIndexInterval,
           updatedAt: new Date().toISOString(),
@@ -3198,6 +3227,37 @@ export function StoryEngineProvider({
       fetchStoryState(storyId) {
         return repository.getStoryState(storyId);
       },
+      async updateRelationshipsIndex(storyId, relationships) {
+        const existing = await repository.getStoryState(storyId);
+        const parsed = existing?.stateJson
+          ? (() => { try { return JSON.parse(existing.stateJson); } catch { return {}; } })()
+          : {};
+        const next = {
+          ...parsed,
+          indexes: { ...(parsed.indexes ?? {}), relationships },
+        };
+        await repository.saveStoryState({
+          id: `story-state:${storyId}`,
+          storyId,
+          stateJson: JSON.stringify(next),
+          updatedAt: new Date().toISOString(),
+        });
+      },
+      async updateRpStats(storyId, rpStats) {
+        const existing = await repository.getStoryState(storyId);
+        const parsed = existing?.stateJson
+          ? (() => { try { return JSON.parse(existing.stateJson); } catch { return {}; } })()
+          : {};
+        const next = rpStats === null
+          ? { ...parsed, rpStats: undefined }
+          : { ...parsed, rpStats };
+        await repository.saveStoryState({
+          id: `story-state:${storyId}`,
+          storyId,
+          stateJson: JSON.stringify(next),
+          updatedAt: new Date().toISOString(),
+        });
+      },
       refreshStoryState: refreshStoryStateInternal,
       async updateIndexesDeep(storyId, opts) {
         await runDeepIndexProcess(storyId, {
@@ -3494,7 +3554,7 @@ export function StoryEngineProvider({
 
         return draft;
       },
-      async sendChatMessage(storyId, content) {
+      async sendChatMessage(storyId, content, opts) {
         const trimmed = content.trim();
 
         if (!trimmed) {
@@ -3753,9 +3813,25 @@ export function StoryEngineProvider({
         const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
         const shouldSkipAssistantReply = Boolean(chapterBoundary);
         let assistantMessage: StoryMessage | null = null;
+        let appliedRpChanges: RpChangelogEntry[] | null = null;
+        let pendingCoreStatChanges: RpStatDelta[] | null = null;
+        let rpEventSummary: string | null = null;
         let updatedMessages: StoryMessage[] = [];
 
         if (!shouldSkipAssistantReply) {
+          const currentRpStats = (() => {
+            if (!storyState?.stateJson) return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
+            const v2 = safeParseStoryStateData(storyState.stateJson);
+            if (v2?.rpStats) return v2.rpStats;
+            try {
+              const raw = JSON.parse(storyState.stateJson) as unknown;
+              if (raw && typeof raw === "object" && "rpStats" in raw && (raw as Record<string, unknown>).rpStats && typeof (raw as Record<string, unknown>).rpStats === "object") {
+                return (raw as Record<string, unknown>).rpStats as RpStats;
+              }
+            } catch {}
+            return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
+          })();
+
           const context = buildStoryChatContext({
             universe: effectiveUniverse,
             story,
@@ -3766,6 +3842,9 @@ export function StoryEngineProvider({
             recentMessages: sanitizedHistoryMessages,
             latestUserMessage: userMessage.content,
             directorIntent: userMessage.directorIntent ?? null,
+            rpStats: currentRpStats,
+            rpConfig: story.rpConfig ?? null,
+            playerStateHintOverride: opts?.zeroHpConsequence ?? null,
           });
           // #region debug-point A:story-request-shape
           reportGenerationAudit({
@@ -4297,6 +4376,7 @@ export function StoryEngineProvider({
             content: finalSanitizedText,
             timestamp: new Date().toISOString(),
             speakerType: "narrator",
+            ...(currentRpStats?.timeState ? { storyTime: currentRpStats.timeState } : {}),
           };
 
           await repository.saveStoryMessage(assistantMessage);
@@ -4313,6 +4393,137 @@ export function StoryEngineProvider({
             },
           });
           // #endregion
+
+          if (story.rpMode && story.rpConfig && currentRpStats) {
+            try {
+              const extracted = await extractRpStatChanges(
+                finalSanitizedText,
+                currentRpStats,
+                story.rpConfig,
+                provider,
+                apiKey,
+                model,
+                {
+                  characterBackground: playerCharacter.background ?? undefined,
+                  universeLore: effectiveUniverse.description ?? undefined,
+                  playerMessage: trimmed,
+                  pendingTransaction: currentRpStats.pendingTransaction,
+                },
+              );
+              if (extracted) {
+                const { deltas, narrative, npcHpChanges, timeAdvanceMinutes, pendingTransaction: extractedPendingTx } = extracted;
+                const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
+                const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
+                const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
+
+                let nextStats = currentRpStats;
+                const applied: RpChangelogEntry[] = [];
+                for (const d of autoDeltas) {
+                  const from = getStatValue(nextStats, story.rpConfig, d.field);
+                  const to = clampStat(d.field, from + d.delta, story.rpConfig);
+                  if (to === from) continue;
+                  nextStats = applyStatChange(nextStats, {
+                    field: d.field, from, to, reason: d.reason,
+                    storyTime: nextStats.timeState,
+                    transactionType: d.field === "gold" ? (to > from ? "income" : "expense") : undefined,
+                  });
+                  applied.push({ ts: Date.now(), field: d.field, from, to, reason: d.reason });
+                }
+
+                // Apply NPC HP changes
+                const npcSummaryParts: string[] = [];
+                if (npcHpChanges?.length) {
+                  let updatedNpcHp = { ...nextStats.npcHp };
+                  for (const change of npcHpChanges) {
+                    const existing = updatedNpcHp[change.npcKey];
+                    const maxHp = existing?.max ?? change.maxHp ?? 100;
+                    const currentHp = existing?.current ?? maxHp;
+                    const newHp = Math.max(0, Math.min(maxHp, currentHp + change.delta));
+                    if (newHp === currentHp) continue;
+                    updatedNpcHp = {
+                      ...updatedNpcHp,
+                      [change.npcKey]: { name: change.name, current: newHp, max: maxHp },
+                    };
+                    const sign = newHp - currentHp > 0 ? "+" : "";
+                    npcSummaryParts.push(`${change.name} HP ${sign}${newHp - currentHp} (${change.reason})`);
+                  }
+                  nextStats = { ...nextStats, npcHp: updatedNpcHp };
+                }
+
+                // Apply time advance
+                let timeSummaryPart: string | null = null;
+                if (timeAdvanceMinutes && timeAdvanceMinutes > 0 && nextStats.timeState) {
+                  const prevTime = nextStats.timeState;
+                  const newTime = advanceTime(prevTime, timeAdvanceMinutes);
+                  // Check and apply recurring events
+                  const { triggered, updated } = checkRecurringEvents(prevTime, newTime, story.rpConfig.recurringEvents ?? []);
+                  for (const event of triggered) {
+                    const from = getStatValue(nextStats, story.rpConfig, "gold");
+                    const to = clampStat("gold", from + event.amount, story.rpConfig);
+                    if (to !== from) {
+                      nextStats = applyStatChange(nextStats, {
+                        field: "gold", from, to, reason: event.label,
+                        storyTime: event.nextDue,
+                        transactionType: "recurring",
+                      });
+                      applied.push({ ts: Date.now(), field: "gold", from, to, reason: event.label });
+                    }
+                    timeSummaryPart = (timeSummaryPart ? timeSummaryPart + " · " : "") + `${event.label} triggered (${event.amount >= 0 ? "+" : ""}${event.amount})`;
+                  }
+                  if (triggered.length) {
+                    // Save updated recurringEvents nextDue values to config
+                    await repository.saveStory({ ...story, rpConfig: { ...story.rpConfig, recurringEvents: updated } });
+                  }
+                  nextStats = { ...nextStats, timeState: newTime };
+                  const timeLabel = formatTimeShort(newTime, story.rpConfig);
+                  timeSummaryPart = (timeSummaryPart ? `${timeSummaryPart} · ` : "") + `Time → ${timeLabel}`;
+                }
+
+                // Apply pending transaction state change
+                if (extractedPendingTx !== undefined) {
+                  nextStats = { ...nextStats, pendingTransaction: extractedPendingTx ?? undefined };
+                }
+
+                const playerSummary = applied.length ? buildRpEventSummary(applied, story.rpConfig) : null;
+                const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" · ") : null;
+                const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" · ") || narrative || null;
+
+                if (summary) {
+                  const eventEntry: RpEventLogEntry = { ts: Date.now(), summary };
+                  const prevLog: RpEventLogEntry[] = Array.isArray(nextStats.eventLog) ? nextStats.eventLog : [];
+                  nextStats = { ...nextStats, eventLog: [eventEntry, ...prevLog].slice(0, 100) };
+
+                  const latestState = await repository.getStoryState(storyId);
+                  const latestParsed = latestState?.stateJson
+                    ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()
+                    : {};
+                  await repository.saveStoryState({
+                    id: `story-state:${storyId}`,
+                    storyId,
+                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
+                    updatedAt: new Date().toISOString(),
+                  });
+                  appliedRpChanges = applied;
+                  rpEventSummary = summary;
+                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState || extractedPendingTx !== undefined) {
+                  // NPC-only, time-only, or pending-transaction-only changes still need to be saved
+                  const latestState = await repository.getStoryState(storyId);
+                  const latestParsed = latestState?.stateJson
+                    ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()
+                    : {};
+                  await repository.saveStoryState({
+                    id: `story-state:${storyId}`,
+                    storyId,
+                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
+                    updatedAt: new Date().toISOString(),
+                  });
+                }
+                if (coreDeltas.length) {
+                  pendingCoreStatChanges = coreDeltas;
+                }
+              }
+            } catch {}
+          }
         } else {
           // #region debug-point D:story-skip
           reportGenerationAudit({
@@ -4478,6 +4689,15 @@ export function StoryEngineProvider({
             ) {
               const now = new Date().toISOString();
               const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages);
+              // Preserve rpStats from raw state when safeParseStoryStateData returns null
+              const rawRpStatsForCounter = (() => {
+                if (baseParsed) return undefined; // handled via baseState spread
+                try {
+                  const raw = JSON.parse(latestStoryState?.stateJson ?? "{}") as Record<string, unknown>;
+                  return raw?.rpStats as RpStats | undefined;
+                } catch { return undefined; }
+              })();
+
               const patched = withIndexedMetadata(
                 baseParsed
                   ? {
@@ -4493,6 +4713,7 @@ export function StoryEngineProvider({
                       },
                     }
                   : {
+                      ...(rawRpStatsForCounter ? { rpStats: rawRpStatsForCounter } : {}),
                       updatedAt: now,
                       characters: {},
                       worldFacts: [],
@@ -4560,7 +4781,7 @@ export function StoryEngineProvider({
             await queueStoryIndexJob(storyId, { trigger: "auto" });
           } catch {}
         })();
-        return assistantMessage;
+        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary };
       },
     };
   }, [

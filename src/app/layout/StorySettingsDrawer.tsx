@@ -929,6 +929,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 </div>
               </CollapsibleSection>
 
+
+
               <CollapsibleSection title="Export">
                 <div className="space-y-2">
                   <Button
@@ -1423,34 +1425,64 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                 countLabel: `${Math.min(relationships.length, 12)} shown`,
                                 children: (
                                   <div className="space-y-3">
-                                    {relationships.slice(0, 12).map((entry, index) => (
-                                      <div key={`${entry.a}-${entry.b}-${index}`} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
-                                        <div className="font-semibold text-ink-soft">
-                                          {entry.a} ↔ {entry.b}
+                                    {relationships.slice(0, 12).map((entry, index) => {
+                                      const tierColor: Record<string, string> = {
+                                        friend: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+                                        ally: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+                                        lover: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+                                        stranger: "bg-white/5 text-ink-muted border-white/10",
+                                        acquaintance: "bg-white/5 text-ink-muted border-white/10",
+                                        rival: "bg-orange-500/15 text-orange-400 border-orange-500/20",
+                                        enemy: "bg-red-500/15 text-red-400 border-red-500/20",
+                                        nemesis: "bg-red-500/15 text-red-400 border-red-500/20",
+                                      };
+                                      return (
+                                        <div key={`${entry.a}-${entry.b}-${index}`} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-semibold text-ink-soft">
+                                              {entry.a} ↔ {entry.b}
+                                            </span>
+                                            {entry.tier ? (
+                                              <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize", tierColor[entry.tier] ?? "bg-white/5 text-ink-muted border-white/10")}>
+                                                {entry.tier}
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                          {(() => {
+                                            const parts = [
+                                              typeof entry.friendship === "number" ? `Friendship ${Math.round(entry.friendship)}` : null,
+                                              typeof entry.trust === "number" ? `Trust ${Math.round(entry.trust)}` : null,
+                                              typeof entry.respect === "number" ? `Respect ${Math.round(entry.respect)}` : null,
+                                              typeof entry.loyalty === "number" ? `Loyalty ${Math.round(entry.loyalty)}` : null,
+                                              typeof entry.comfort === "number" ? `Comfort ${Math.round(entry.comfort)}` : null,
+                                              typeof entry.suspicion === "number" ? `Suspicion ${Math.round(entry.suspicion)}` : null,
+                                              typeof entry.fear === "number" ? `Fear ${Math.round(entry.fear)}` : null,
+                                              typeof entry.affection === "number" ? `Affection ${Math.round(entry.affection)}` : null,
+                                              typeof entry.tension === "number" ? `Tension ${Math.round(entry.tension)}` : null,
+                                              typeof entry.hostility === "number" ? `Hostility ${Math.round(entry.hostility)}` : null,
+                                            ].filter(Boolean);
+                                            return parts.length ? (
+                                              <div className="mt-1 text-xs text-ink-soft">{parts.join(" · ")}</div>
+                                            ) : null;
+                                          })()}
+                                          {entry.summary ? (
+                                            <div className="mt-1 text-xs text-ink-muted">{entry.summary}</div>
+                                          ) : null}
+                                          {Array.isArray(entry.history) && entry.history.length ? (
+                                            <div className="mt-2 space-y-1">
+                                              <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted/60">Key Moments</div>
+                                              {entry.history.slice(0, 3).map((h, hi) => (
+                                                <div key={hi} className="flex items-start gap-1.5 text-xs text-ink-muted">
+                                                  <span className="mt-px shrink-0 text-[10px] text-ink-muted/40">#{hi + 1}</span>
+                                                  <span>{h.summary}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : null}
+                                          {renderEvidencePills(entry.evidence?.messageNumbers, `rel-${index}`)}
                                         </div>
-                                        {(() => {
-                                          const parts = [
-                                            typeof entry.friendship === "number" ? `Friendship ${Math.round(entry.friendship)}` : null,
-                                            typeof entry.trust === "number" ? `Trust ${Math.round(entry.trust)}` : null,
-                                            typeof entry.respect === "number" ? `Respect ${Math.round(entry.respect)}` : null,
-                                            typeof entry.loyalty === "number" ? `Loyalty ${Math.round(entry.loyalty)}` : null,
-                                            typeof entry.comfort === "number" ? `Comfort ${Math.round(entry.comfort)}` : null,
-                                            typeof entry.suspicion === "number" ? `Suspicion ${Math.round(entry.suspicion)}` : null,
-                                            typeof entry.fear === "number" ? `Fear ${Math.round(entry.fear)}` : null,
-                                            typeof entry.affection === "number" ? `Affection ${Math.round(entry.affection)}` : null,
-                                            typeof entry.tension === "number" ? `Tension ${Math.round(entry.tension)}` : null,
-                                            typeof entry.hostility === "number" ? `Hostility ${Math.round(entry.hostility)}` : null,
-                                          ].filter(Boolean);
-                                          return parts.length ? (
-                                            <div className="mt-1 text-xs text-ink-soft">{parts.join(" · ")}</div>
-                                          ) : null;
-                                        })()}
-                                        {entry.summary ? (
-                                          <div className="mt-1 text-xs text-ink-muted">{entry.summary}</div>
-                                        ) : null}
-                                        {renderEvidencePills(entry.evidence?.messageNumbers, `rel-${index}`)}
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 ),
                               })

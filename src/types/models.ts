@@ -75,6 +75,94 @@ export interface PlayerCharacter {
   createdAt: Timestamp;
 }
 
+export type RpCoreStats = {
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+};
+
+export type RpCalendarConfig = {
+  monthNames?: string[];    // 12 names; default Gregorian
+  weekdayNames?: string[];  // 7 names starting Sunday; default English
+  yearSuffix?: string;      // e.g. "CE", "3E", "BBY"
+};
+
+export type RpTimeState = {
+  year: number;
+  month: number;   // 1–12
+  day: number;     // 1–31
+  hour: number;    // 0–23
+  minute: number;  // 0–59
+  storyDay: number; // days elapsed since story began (1-indexed)
+};
+
+export type RpRecurringFrequency = "weekly" | "monthly" | "annually";
+
+export type RpRecurringEvent = {
+  id: string;
+  label: string;
+  amount: number;              // positive = income, negative = expense
+  frequency: RpRecurringFrequency;
+  dayOfWeek?: number;          // 0=Sun..6=Sat, used for weekly
+  dayOfMonth?: number;         // 1-31, used for monthly/annually
+  month?: number;              // 1-12, used for annually
+  nextDue: RpTimeState;
+};
+
+export type RpConfig = {
+  currencyName: string;
+  currencyDecimals: boolean;
+  maxHp: number;
+  startingGold: number;
+  coreStats: RpCoreStats;
+  allowDebt?: boolean;
+  creditLimit?: number | null;
+  calendarConfig?: RpCalendarConfig;
+  recurringEvents?: RpRecurringEvent[];
+};
+
+export type RpNpcHpEntry = {
+  name: string;
+  current: number;
+  max: number;
+};
+
+export type RpTransactionType = "income" | "expense" | "adjustment" | "recurring";
+
+export type RpChangelogEntry = {
+  ts: number;
+  field: string;
+  from: number;
+  to: number;
+  reason: string;
+  storyTime?: RpTimeState;
+  transactionType?: RpTransactionType;
+};
+
+export type RpEventLogEntry = {
+  ts: number;
+  summary: string;
+};
+
+export type PendingTransaction = {
+  description: string;
+  amount: number;
+};
+
+export type RpStats = {
+  hp: number;
+  gold: number;
+  npcHp: Record<string, RpNpcHpEntry>;
+  statOverrides?: Partial<RpCoreStats>;
+  changelog: RpChangelogEntry[];
+  eventLog?: RpEventLogEntry[];
+  timeState?: RpTimeState;
+  pendingTransaction?: PendingTransaction;
+};
+
 export interface Story {
   id: EntityId;
   title: string;
@@ -84,6 +172,8 @@ export interface Story {
   universePackSnapshot?: UniversePackSnapshotV1;
   isArchived?: boolean;
   matureFictionMode?: boolean;
+  rpMode?: boolean;
+  rpConfig?: RpConfig;
   autoIndexMode?: AutoIndexMode;
   autoIndexInterval?: AutoIndexInterval;
   currentSummary: string;
@@ -107,6 +197,7 @@ export interface StoryMessage {
   editedAt?: Timestamp;
   regeneratedAt?: Timestamp;
   revision?: number;
+  storyTime?: RpTimeState;
 }
 
 export interface StoryMetaMessage {
@@ -216,6 +307,22 @@ export type IndexedEntity = {
   evidence?: EvidenceRef;
 };
 
+export type RelationshipTier =
+  | "stranger"
+  | "acquaintance"
+  | "friend"
+  | "family"
+  | "ally"
+  | "rival"
+  | "enemy"
+  | "nemesis"
+  | "lover";
+
+export type RelationshipHistoryEntry = {
+  summary: string;
+  messageNumber?: number;
+};
+
 export type RelationshipIndexEntry = {
   a: string;
   b: string;
@@ -229,6 +336,8 @@ export type RelationshipIndexEntry = {
   affection?: number;
   tension?: number;
   hostility?: number;
+  tier?: RelationshipTier;
+  history?: RelationshipHistoryEntry[];
   summary?: string;
   evidence?: EvidenceRef;
 };
@@ -354,6 +463,7 @@ export type StoryStateData = {
   indexes?: StoryIndexesV2;
   scene?: StorySceneSnapshotV2;
   threads?: StoryThreadsV2;
+  rpStats?: RpStats;
 };
 
 export type StoryStateDataV2 = Partial<StoryStateData> & {
@@ -438,6 +548,8 @@ export interface StoryDraft {
   playerCharacterId: EntityId;
   isArchived?: boolean;
   matureFictionMode?: boolean;
+  rpMode?: boolean;
+  rpConfig?: RpConfig;
   autoIndexMode?: AutoIndexMode;
   autoIndexInterval?: AutoIndexInterval;
   currentSummary: string;

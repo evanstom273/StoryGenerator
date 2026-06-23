@@ -132,6 +132,7 @@ async function callGenerateContent(
   });
   // #endregion
 
+  const safeKey = apiKey.replace(/[^\x00-\xFF]/g, "");
   try {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
@@ -141,7 +142,7 @@ async function callGenerateContent(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
+          "x-goog-api-key": safeKey,
         },
         body: JSON.stringify(buildGeminiRequest(messages)),
         signal: controller.signal,

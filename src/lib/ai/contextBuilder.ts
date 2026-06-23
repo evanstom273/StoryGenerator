@@ -1,6 +1,8 @@
 import type {
   DirectorIntent,
   PlayerCharacter,
+  RpConfig,
+  RpStats,
   Story,
   StoryMessage,
   StoryState,
@@ -19,6 +21,7 @@ import {
 import { safeParseStoryStateData } from "../storyStateV2";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
+import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
@@ -75,6 +78,9 @@ export interface BuildStoryChatContextInput {
   recentMessages: StoryMessage[];
   latestUserMessage: string;
   directorIntent?: DirectorIntent | null;
+  rpStats?: RpStats | null;
+  rpConfig?: RpConfig | null;
+  playerStateHintOverride?: string | null;
 }
 
 export function buildStoryChatContext({
@@ -87,12 +93,15 @@ export function buildStoryChatContext({
   recentMessages,
   latestUserMessage,
   directorIntent,
+  rpStats,
+  rpConfig,
+  playerStateHintOverride,
 }: BuildStoryChatContextInput): AIChatMessage[] {
   const sceneDepth = inferSceneDepth(latestUserMessage);
   const wordTarget = getSceneWordTarget(sceneDepth);
   const mostRecentImport = imports[0];
   const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
-  const playerStateHint = extractExplicitPlayerStateHint({
+  const playerStateHint = playerStateHintOverride?.trim() || extractExplicitPlayerStateHint({
     playerName: playerCharacter.name,
     recentMessages,
   });
@@ -210,6 +219,56 @@ export function buildStoryChatContext({
     );
   })();
 
+  const rpStatsBlock = (() => {
+    if (!story.rpMode || !rpStats || !rpConfig) return "";
+    const { str, dex, con, int: INT, wis, cha } = {
+      ...rpConfig.coreStats,
+      ...rpStats.statOverrides,
+    };
+    const hpPct = rpConfig.maxHp > 0 ? rpStats.hp / rpConfig.maxHp : 0;
+    const hpState =
+      rpStats.hp <= 0 ? "Incapacitated"
+      : hpPct <= 0.05 ? "Incapacitated"
+      : hpPct <= 0.25 ? "Critical condition"
+      : hpPct <= 0.50 ? "Seriously wounded"
+      : hpPct <= 0.75 ? "Injured"
+      : "Healthy";
+    const goldFormatted = rpConfig.currencyDecimals ? rpStats.gold.toFixed(2) : Math.floor(rpStats.gold).toString();
+    const debtLine = rpConfig.allowDebt
+      ? "Debt is enabled. Negative balances are a meaningful narrative state — overdraft fees, denied services, creditor pressure, or need to take on work are all appropriate consequences."
+      : "";
+    return normalizeWhitespace(
+      [
+        `HP: ${rpStats.hp} / ${rpConfig.maxHp} — ${hpState}`,
+        `${rpConfig.currencyName}: ${goldFormatted}`,
+        `STR ${str}  DEX ${dex}  CON ${con}  INT ${INT}  WIS ${wis}  CHA ${cha}`,
+        "",
+        "HP represents physical condition. Writing tone should reflect the current state:",
+        "Healthy: acts freely and without obvious impairment.",
+        "Injured: may show strain, wince, or move with care.",
+        "Seriously wounded: struggles with effort; pain is present.",
+        "Critical condition: severely impaired — each action carries cost; may slur, stumble, or fail.",
+        "Incapacitated: cannot meaningfully resist events. Reaching 0 HP does not mean automatic death — the consequence (unconsciousness, capture, rescue, treatment, arrest) should fit the scene and context.",
+        "",
+        `The character's ${rpConfig.currencyName} balance represents their total financial position — savings, income, and assets — not just pocket money. Treat it as meaningful characterisation: a teenager may have only a little, a working adult considerably more.`,
+        `Currency rule: if the player attempts a purchase they cannot afford, reflect this naturally in the scene (declined card, putting items back, asking for credit, etc.). Do not let a purchase silently succeed if the character lacks funds.${debtLine ? `\n${debtLine}` : ""}`,
+        "",
+        "Core stats are narrative guidance. They shape plausibility and colour consequences — they never gate an attempt. Higher scores suggest ease and competence; lower scores suggest difficulty, awkwardness, or risk of failure.",
+        "",
+        "Do not narrate or reference stat values directly. Stat tracking happens separately.",
+        ...(rpStats.timeState ? [
+          "",
+          `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,
+          "The in-story date above is authoritative. Characters must not state, imply, or act as though a different month, season, or year applies. If the in-story date is June, characters cannot say 'it's October' or reference autumn/fall/Christmas season as current.",
+          "Time-of-day awareness: apply realistic schedules — shops and businesses typically open 9am–6pm, restaurants until 10pm, bars/clubs evenings and nights. NPCs follow their own routines and may not be available at all hours.",
+          ...(rpConfig.recurringEvents?.length ? [
+            `Upcoming obligations: ${rpConfig.recurringEvents.map(e => `${e.label} due in ~${Math.round(minutesBetween(rpStats.timeState!, e.nextDue) / 1440)} days`).join(", ")}.`,
+          ] : []),
+        ] : []),
+      ].join("\n"),
+    );
+  })();
+
   const matureFictionPolicy = buildMatureFictionPolicyBlock({
     includeParity: true,
   });
@@ -270,6 +329,7 @@ export function buildStoryChatContext({
       "Interpret any *...* text in the conversation as an action and react to it naturally.",
       "When an unknown person is required, generate a new NPC instead of pulling a canon character by default.",
       "Canon characters should appear only if already present, introduced by the player, or logically located in the scene.",
+      "Do not introduce major characters into a scene unless their presence has been established, their arrival is logically explained by the narrative, or the player has explicitly invited, contacted, or sought them out. Do not introduce characters solely to solve problems or remove consequences.",
       "Output format guidance:",
       "- Use speaker headers like 'Jake:' and 'Amy:' on their own line when switching speakers.",
       "- Use 'Narrator:' only for pure scene-setting/environment narration. Do not use Narrator lines to describe character actions when a character is the actor.",
@@ -304,6 +364,9 @@ export function buildStoryChatContext({
       : []),
     ...(inputSafetyAnalysis.systemMessage
       ? [{ role: "system" as const, content: inputSafetyAnalysis.systemMessage }]
+      : []),
+    ...(rpStatsBlock
+      ? [{ role: "system" as const, content: `RP Character Sheet\n\n${rpStatsBlock}` }]
       : []),
     { role: "system", content: `Scene Direction\n\n${sceneGuidance}` },
     ...chatHistory,
