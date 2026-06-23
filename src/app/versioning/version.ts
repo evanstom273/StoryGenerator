@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.2.0";
+export const APP_VERSION = "2.2.1";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -370,6 +370,18 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
       "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
       "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
+    ],
+    knownIssues: [],
+  },
+  "2.2.1": {
+    title: "Bulk Delete, Recurring Event Fix & Countdown",
+    added: [
+      "Danger Zone section in Settings → Storage: bulk delete all stories (with full cascade), all characters, or all universes — each requires typing a confirmation phrase",
+      "Recurring event rows now show a countdown to the next trigger (e.g. \"in 8 days\", \"in 4h\", \"due soon\")",
+    ],
+    fixed: [
+      "Monthly recurring events now fire on the correct calendar day each month — the previous flat +30 day advance caused the date to drift by ±1 day over time",
+      "Short months (Feb, 30-day months) clamp the day to the last valid day of that month rather than overflowing",
     ],
     knownIssues: [],
   },
