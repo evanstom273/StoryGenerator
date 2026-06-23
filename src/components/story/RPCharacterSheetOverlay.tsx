@@ -20,7 +20,7 @@ import { downloadFile } from "../../lib/download";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../../lib/ai/models";
 import type { RpCalendarConfig, RpConfig, RpDiceModifiers, RpRecurringEvent, RpRecurringFrequency, RpStats, RpTimeState, Story } from "../../types/models";
-import { computeInitialNextDue, formatTime, formatTimeShort } from "../../lib/rpTime";
+import { computeInitialNextDue, formatTime, formatTimeShort, minutesBetween } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 
 
@@ -100,6 +100,18 @@ function formatEventSchedule(event: RpRecurringEvent): string {
     return `Annually on ${m}${d}`.trim();
   }
   return event.frequency;
+}
+
+function formatEventCountdown(event: RpRecurringEvent, timeState: RpTimeState | undefined): string | null {
+  if (!timeState) return null;
+  const mins = minutesBetween(timeState, event.nextDue);
+  if (mins <= 0) return "overdue";
+  const days = Math.floor(mins / 1440);
+  const hours = Math.floor((mins % 1440) / 60);
+  if (days >= 2) return `in ${days} days`;
+  if (days === 1) return hours > 0 ? `in 1 day, ${hours}h` : "in 1 day";
+  if (hours >= 1) return `in ${hours}h`;
+  return "due soon";
 }
 
 export function RPCharacterSheetOverlay(props: {
@@ -717,11 +729,18 @@ ${profileText}`;
                       {(configDraft.recurringEvents ?? []).map((event) => (
                         <div key={event.id} className="flex items-center justify-between gap-2 rounded-lg border border-divider/40 bg-panel-muted/40 px-3 py-2 text-xs">
                           <div className="min-w-0">
-                            <span className="font-semibold text-ink">{event.label}</span>
-                            <span className={cn("ml-2", event.amount >= 0 ? "text-emerald-400" : "text-red-400")}>
-                              {event.amount >= 0 ? "+" : ""}{event.amount} {configDraft.currencyName}
-                            </span>
-                            <span className="ml-2 text-ink-muted">{formatEventSchedule(event)}</span>
+                            <div>
+                              <span className="font-semibold text-ink">{event.label}</span>
+                              <span className={cn("ml-2", event.amount >= 0 ? "text-emerald-400" : "text-red-400")}>
+                                {event.amount >= 0 ? "+" : ""}{event.amount} {configDraft.currencyName}
+                              </span>
+                              <span className="ml-2 text-ink-muted">{formatEventSchedule(event)}</span>
+                            </div>
+                            {formatEventCountdown(event, rpStats?.timeState) ? (
+                              <div className="mt-0.5 text-[10px] text-ink-muted/60">
+                                {formatEventCountdown(event, rpStats?.timeState)}
+                              </div>
+                            ) : null}
                           </div>
                           <button type="button" className="shrink-0 text-ink-muted transition hover:text-red-400" onClick={() => handleRemoveRecurringEvent(event.id)}>
                             Remove
