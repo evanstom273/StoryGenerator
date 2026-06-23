@@ -79,11 +79,19 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
   const chunkSize = 40;
   const chunks = chunkMessages(messages, chunkSize);
+  const totalChunks = chunks.length;
 
   let processed = 0;
-  onProgress?.({ processed, total, message: "Loading transcript..." });
+  onProgress?.({
+    processed,
+    total,
+    message: total === 0
+      ? "No messages to index."
+      : `Loading ${total} message${total === 1 ? "" : "s"}…`,
+  });
 
-  for (const chunk of chunks) {
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex]!;
     if (signal?.aborted) {
       throw new Error("Rebuild aborted.");
     }
@@ -115,6 +123,12 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       return fromState ?? "";
     })();
 
+    const chunkStart = processed + 1;
+    const chunkEnd = processed + chunk.length;
+    const chunkLabel = totalChunks > 1
+      ? ` (batch ${chunkIndex + 1}/${totalChunks})`
+      : "";
+
     const extractionContext = buildStoryStateExtractionPrompt({
       playerName: playerCharacter.name,
       playerCharacter,
@@ -123,6 +137,12 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       existingStateJson,
       messageNumberStart: processed + 1,
       messageNumberTotal: total,
+    });
+
+    onProgress?.({
+      processed,
+      total,
+      message: `Sending messages ${chunkStart}–${chunkEnd} to AI${chunkLabel}…`,
     });
 
     const responseContent = await generateWithRetry(provider, {
@@ -139,6 +159,12 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     if (signal?.aborted) {
       throw new Error("Rebuild aborted.");
     }
+
+    onProgress?.({
+      processed,
+      total,
+      message: `Parsing AI response${chunkLabel}…`,
+    });
 
     const parsed = parseStoryStateData(responseContent);
     if (!parsed) {
@@ -162,8 +188,16 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     };
 
     processed += chunk.length;
-    onProgress?.({ processed, total, message: `Extracted ${processed}/${total} messages` });
+    onProgress?.({
+      processed,
+      total,
+      message: totalChunks > 1
+        ? `Batch ${chunkIndex + 1}/${totalChunks} done — ${processed}/${total} messages indexed`
+        : `${processed}/${total} messages indexed`,
+    });
   }
+
+  onProgress?.({ processed, total, message: "Building final indexes…" });
 
   const finalState = withIndexedMetadata({ ...currentState, memoryArchitectureVersion: "2.0" });
   const finalJson = JSON.stringify(finalState);

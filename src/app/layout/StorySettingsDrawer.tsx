@@ -1027,11 +1027,37 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     </div>
                   ) : null}
                   {rebuildInfo ? (
-                    <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
-                      {rebuildInfo.phase === "error"
-                        ? rebuildInfo.error || "Rebuild failed."
-                        : rebuildInfo.message ||
-                          `Rebuilding… ${rebuildInfo.processedMessages}/${rebuildInfo.totalMessages} messages`}
+                    <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm">
+                      {rebuildInfo.phase === "error" ? (
+                        <span className="text-rose-300">{rebuildInfo.error || "Rebuild failed."}</span>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="text-ink-soft">
+                            {rebuildInfo.message ||
+                              `Re-indexing… ${rebuildInfo.processedMessages}/${rebuildInfo.totalMessages} messages`}
+                          </div>
+                          {rebuildInfo.totalMessages > 0 && (
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
+                              <div
+                                className="h-full rounded-full bg-violet-400/70 transition-all duration-500"
+                                style={{
+                                  width: `${Math.max(
+                                    4,
+                                    Math.round(
+                                      (rebuildInfo.processedMessages / rebuildInfo.totalMessages) * 100,
+                                    ),
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                          )}
+                          {rebuildInfo.totalMessages > 0 && (
+                            <div className="text-xs text-ink-muted">
+                              {rebuildInfo.processedMessages} / {rebuildInfo.totalMessages} messages
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ) : null}
                   {storyJobs.length ? (
