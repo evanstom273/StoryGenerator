@@ -217,23 +217,6 @@ function wrapDialogue(value: string) {
   return `"${trimmed}"`;
 }
 
-function mergePhrases(parts: string[]) {
-  const items = parts.map((value) => value.trim()).filter(Boolean);
-  if (!items.length) {
-    return "";
-  }
-  if (items.length === 1) {
-    return items[0] ?? "";
-  }
-  if (items.length === 2) {
-    const left = (items[0] ?? "").replace(/[.]\s*$/g, "");
-    const right = items[1] ?? "";
-    return `${left}, and ${right}`.trim();
-  }
-  const leading = items.slice(0, -1);
-  const last = items[items.length - 1] ?? "";
-  return `${leading.join(", ")}, and ${last}`.trim();
-}
 
 export type StoryFormatIssue = {
   code: string;
