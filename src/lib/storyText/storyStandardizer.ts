@@ -157,8 +157,8 @@ function isLikelySpeakerLabel(label: string): boolean {
   if (!label || label.includes(",")) return false;
   const words = label.trim().split(/\s+/);
   if (words.length > 4) return false;
-  // Every word must start with uppercase — character names are proper nouns
-  if (!words.every((w) => /^[A-Z]/.test(w))) return false;
+  // Every word must start with uppercase OR be a number ("Paramedic 1", "Guard 2")
+  if (!words.every((w) => /^[A-Z]/.test(w) || /^\d/.test(w))) return false;
   if (words.length === 1 && NOT_A_SPEAKER.has(words[0]!)) return false;
   return true;
 }
@@ -420,15 +420,6 @@ export function standardizeAssistantStoryText(args: {
       return;
     }
 
-    const previous = speakerSegments[speakerSegments.length - 1] ?? "";
-    const previousIsAction =
-      previous.startsWith("*") && previous.endsWith("*") && previous.length > 2;
-    if (previousIsAction) {
-      const merged = mergePhrases([stripWrappingAsterisks(previous), action]);
-      speakerSegments[speakerSegments.length - 1] = wrapAction(merged);
-      return;
-    }
-
     speakerSegments.push(wrapAction(action));
   }
 
@@ -527,7 +518,9 @@ export function standardizeAssistantStoryText(args: {
 
     if (!trimmed) {
       if (currentSpeaker) {
-        continue;
+        if (speakerSegments.length > 0) {
+          flushSpeaker();
+        }
       }
       if (output.length && output[output.length - 1] !== "") {
         output.push("");

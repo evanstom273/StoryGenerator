@@ -22,8 +22,8 @@ function isValidSpeakerLabel(label: string): boolean {
   const words = label.trim().split(/\s+/);
   // More than 4 words is almost certainly a narrative aside, not a character name
   if (words.length > 4) return false;
-  // Every word must start with uppercase — character names are proper nouns
-  if (!words.every((w) => /^[A-Z]/.test(w))) return false;
+  // Every word must start with uppercase or be a number ("Paramedic 1", "Guard 2")
+  if (!words.every((w) => /^[A-Z]/.test(w) || /^\d/.test(w))) return false;
   // Single common words are narrative markers, not names
   if (words.length === 1 && NOT_A_NAME.has(words[0]!)) return false;
   return true;
