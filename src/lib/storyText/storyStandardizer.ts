@@ -144,13 +144,32 @@ function looksLikeDialogue(value: string) {
   return false;
 }
 
+// Words that start sentences but are never character names (shared with parseSceneBlocks).
+const NOT_A_SPEAKER = new Set([
+  "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
+  "The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
+  "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
+  "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
+  "Scene", "Chapter", "Part", "First", "Next",
+]);
+
+function isLikelySpeakerLabel(label: string): boolean {
+  if (!label || label.includes(",")) return false;
+  const words = label.trim().split(/\s+/);
+  if (words.length > 4) return false;
+  // Every word must start with uppercase — character names are proper nouns
+  if (!words.every((w) => /^[A-Z]/.test(w))) return false;
+  if (words.length === 1 && NOT_A_SPEAKER.has(words[0]!)) return false;
+  return true;
+}
+
 function isSpeakerHeaderOnly(line: string) {
   const match = line.match(/^([^\n:]{1,48})(:|\s[-—])\s*$/);
   if (!match) {
     return null;
   }
   const label = match[1]?.trim();
-  if (!label || label === "Time") {
+  if (!label || !isLikelySpeakerLabel(label)) {
     return null;
   }
   return label;
@@ -163,7 +182,7 @@ function parseInlineSpeakerLine(line: string) {
   }
   const label = match[1]?.trim();
   const remainder = match[3]?.trim();
-  if (!label || !remainder || label === "Time") {
+  if (!label || !remainder || !isLikelySpeakerLabel(label)) {
     return null;
   }
   return { speakerLabel: label, text: remainder };
@@ -301,21 +320,11 @@ export function standardizeAssistantStoryText(args: {
   }
 
   const stopNames = new Set([
-    "The",
-    "A",
-    "An",
-    "And",
-    "But",
-    "Or",
-    "So",
-    "Then",
-    "Now",
-    "Later",
-    "Meanwhile",
-    "Outside",
-    "Inside",
-    "Suddenly",
-    "Time",
+    "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
+    "The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
+    "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
+    "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
+    "Scene", "Chapter", "Part", "First", "Next",
   ]);
 
   let currentSpeaker: string | null = null;

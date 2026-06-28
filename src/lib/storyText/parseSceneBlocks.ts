@@ -6,12 +6,26 @@ export interface SceneBlock {
   segments: StoryTextSegment[];
 }
 
+// Words that start sentences but are never character names.
+const NOT_A_NAME = new Set([
+  "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
+  "The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
+  "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
+  "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
+  "Scene", "Chapter", "Part", "First", "Next",
+]);
+
 function isValidSpeakerLabel(label: string): boolean {
   if (!label) return false;
   // Commas indicate a narrative phrase, not a speaker name
   if (label.includes(",")) return false;
-  // More than 5 words is almost certainly a narrative aside, not a name
-  if (label.trim().split(/\s+/).length > 5) return false;
+  const words = label.trim().split(/\s+/);
+  // More than 4 words is almost certainly a narrative aside, not a character name
+  if (words.length > 4) return false;
+  // Every word must start with uppercase — character names are proper nouns
+  if (!words.every((w) => /^[A-Z]/.test(w))) return false;
+  // Single common words are narrative markers, not names
+  if (words.length === 1 && NOT_A_NAME.has(words[0]!)) return false;
   return true;
 }
 
