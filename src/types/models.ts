@@ -27,6 +27,8 @@ export type BackgroundJobType =
 
 export type DirectorIntent = {
   timeSkip?: { unit: "hours" | "days" | "weeks" | "months"; amount: number };
+  /** Exact minutes to advance, bypasses unit/amount conversion. Set by slash commands. */
+  exactMinutes?: number;
   sceneCut?: boolean;
   target?: string;
 };

@@ -78,7 +78,7 @@ import {
   sanitizeAssistantTranscript,
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
-import { detectDirectorIntent } from "../../lib/storyText/directorIntent";
+import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
@@ -98,6 +98,7 @@ import type {
   DeveloperFeatureRequestDraft,
   DeveloperTestingNote,
   DeveloperTestingNoteDraft,
+  DirectorIntent,
   GuardedDeleteResult,
   PlayerCharacterExportBundleV1,
   PlayerCharacter,
@@ -297,7 +298,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
 }
@@ -3637,7 +3638,7 @@ export function StoryEngineProvider({
 
         const prefix = extractSpeakerPrefix(trimmed);
         const strippedUserContent = (prefix?.strippedContent ?? trimmed).trim();
-        const detectedDirectorIntent = detectDirectorIntent(strippedUserContent);
+        const detectedDirectorIntent = opts?.directorIntentOverride ?? detectDirectorIntent(strippedUserContent);
         const detectedChapterBoundary = detectChapterBoundary(strippedUserContent);
         const chapterBoundary =
           detectedChapterBoundary.detected && detectedChapterBoundary.kind && detectedChapterBoundary.label
@@ -4449,7 +4450,7 @@ export function StoryEngineProvider({
                 },
               );
               if (extracted) {
-                const { deltas, narrative, npcHpChanges, timeAdvanceMinutes, pendingTransaction: extractedPendingTx } = extracted;
+                const { deltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx } = extracted;
                 const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
                 const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
                 const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
@@ -4488,11 +4489,12 @@ export function StoryEngineProvider({
                   nextStats = { ...nextStats, npcHp: updatedNpcHp };
                 }
 
-                // Apply time advance
+                // Apply time advance — player-declared only, exact minutes
                 let timeSummaryPart: string | null = null;
-                if (timeAdvanceMinutes && timeAdvanceMinutes > 0 && nextStats.timeState) {
+                const playerMinutes = userMessage.directorIntent ? resolveExactMinutes(userMessage.directorIntent) : null;
+                if (playerMinutes && playerMinutes > 0 && nextStats.timeState) {
                   const prevTime = nextStats.timeState;
-                  const newTime = advanceTime(prevTime, timeAdvanceMinutes);
+                  const newTime = advanceTime(prevTime, playerMinutes);
                   // Check and apply recurring events
                   const { triggered, updated } = checkRecurringEvents(prevTime, newTime, story.rpConfig.recurringEvents ?? []);
                   if (triggered.length) {

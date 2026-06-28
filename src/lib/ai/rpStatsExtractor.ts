@@ -17,7 +17,6 @@ export type RpExtractorResult = {
   deltas: RpStatDelta[];
   narrative?: string;
   npcHpChanges?: NpcHpChange[];
-  timeAdvanceMinutes?: number;
   /** undefined = no change; null = clear pending; object = set/update pending */
   pendingTransaction?: PendingTransaction | null;
 };
@@ -29,7 +28,7 @@ export type RpExtractorContext = {
   pendingTransaction?: PendingTransaction;
 };
 
-function safeParseExtractorResponse(text: string): { deltas: unknown[]; narrative?: string; npcHpChanges?: unknown[]; timeAdvanceMinutes?: number; pendingTransaction?: unknown } | null {
+function safeParseExtractorResponse(text: string): { deltas: unknown[]; narrative?: string; npcHpChanges?: unknown[]; pendingTransaction?: unknown } | null {
   const trimmed = text.trim();
 
   const objStart = trimmed.indexOf("{");
@@ -39,15 +38,12 @@ function safeParseExtractorResponse(text: string): { deltas: unknown[]; narrativ
       try {
         const parsed = JSON.parse(trimmed.slice(objStart, objEnd + 1)) as unknown;
         if (parsed && typeof parsed === "object" && "deltas" in parsed) {
-          const obj = parsed as { deltas: unknown; narrative?: unknown; npcHpChanges?: unknown; timeAdvanceMinutes?: unknown; pendingTransaction?: unknown };
+          const obj = parsed as { deltas: unknown; narrative?: unknown; npcHpChanges?: unknown; pendingTransaction?: unknown };
           const hasPendingField = "pendingTransaction" in obj;
           return {
             deltas: Array.isArray(obj.deltas) ? obj.deltas : [],
             narrative: typeof obj.narrative === "string" && obj.narrative.trim() ? obj.narrative.trim() : undefined,
             npcHpChanges: Array.isArray(obj.npcHpChanges) ? obj.npcHpChanges : undefined,
-            timeAdvanceMinutes: typeof obj.timeAdvanceMinutes === "number" && obj.timeAdvanceMinutes > 0
-              ? Math.round(obj.timeAdvanceMinutes)
-              : undefined,
             // Only include the key when it was actually present in the response
             ...(hasPendingField ? { pendingTransaction: obj.pendingTransaction } : {}),
           };
@@ -119,22 +115,22 @@ export async function extractRpStatChanges(
     "AMOUNT LOCK: Once pendingTransaction.amount is set from a stated price, do NOT change it for inferred extras (bag fees, taxes, tips). Only update if an NPC explicitly states a new total (e.g. 'With the bag that's $8.75').",
     "",
     "IMPORTANT: Return ONLY a JSON object. Always use this exact format:",
-    '{"deltas":[{"field":"hp","delta":-15,"reason":"Arrow wound"}],"narrative":"Short one-line summary","npcHpChanges":[],"timeAdvanceMinutes":10}',
+    '{"deltas":[{"field":"hp","delta":-15,"reason":"Arrow wound"}],"narrative":"Short one-line summary","npcHpChanges":[]}',
     "",
     "Format examples (pendingTransaction shown where relevant):",
-    '- Nothing RP-relevant:   {"deltas":[],"narrative":null,"npcHpChanges":[],"timeAdvanceMinutes":5}',
-    `- Blocked purchase:      {"deltas":[],"narrative":"Purchase blocked — ${config.currencyName} ${rpStats.gold} available, cost exceeded balance","npcHpChanges":[],"timeAdvanceMinutes":5}`,
-    '- Spoken price (pending):{"deltas":[],"narrative":"Cashier says eight-fifty for snacks","npcHpChanges":[],"timeAdvanceMinutes":1,"pendingTransaction":{"description":"snacks","amount":8.50}}',
-    '- Price stated (pending):{"deltas":[],"narrative":"Cashier rings up $5.87 for snacks","npcHpChanges":[],"timeAdvanceMinutes":2,"pendingTransaction":{"description":"snacks","amount":5.87}}',
-    '- Awaiting payment:      {"deltas":[],"narrative":"Awaiting $5.87 payment","npcHpChanges":[],"timeAdvanceMinutes":1,"pendingTransaction":{"description":"snacks","amount":5.87}}',
-    '- Payment completed:     {"deltas":[{"field":"gold","delta":-5.87,"reason":"snacks"}],"narrative":"Paid $5.87 for snacks","npcHpChanges":[],"timeAdvanceMinutes":2,"pendingTransaction":null}',
-    '- Transaction cancelled: {"deltas":[],"narrative":"Left without buying","npcHpChanges":[],"timeAdvanceMinutes":1,"pendingTransaction":null}',
-    '- Gold spent (no prior pending, inferred): {"deltas":[{"field":"gold","delta":-5,"reason":"coffee"}],"narrative":"Spent ~$5 on coffee","npcHpChanges":[],"timeAdvanceMinutes":3}',
-    '- Wages earned:          {"deltas":[{"field":"gold","delta":85,"reason":"4-hour shift at grocery store"}],"narrative":"Earned $85 after shift","npcHpChanges":[],"timeAdvanceMinutes":240}',
-    '- HP damage:             {"deltas":[{"field":"hp","delta":-10,"reason":"Fell off ledge"}],"narrative":"HP -10 from falling","npcHpChanges":[],"timeAdvanceMinutes":5}',
-    '- HP healing:            {"deltas":[{"field":"hp","delta":8,"reason":"Ibuprofen relieved headache"}],"narrative":"HP +8 from painkillers","npcHpChanges":[],"timeAdvanceMinutes":30}',
-    '- NPC health event:      {"deltas":[],"narrative":"Gladys collapsed with a cardiac event","npcHpChanges":[{"npcKey":"gladys","name":"Gladys","delta":-50,"maxHp":75,"reason":"cardiac seizure"}],"timeAdvanceMinutes":15}',
-    '- Sleep / rest:        {"deltas":[{"field":"hp","delta":20,"reason":"Full night sleep"}],"narrative":"Slept through the night, feeling better","npcHpChanges":[],"timeAdvanceMinutes":480}',
+    '- Nothing RP-relevant:   {"deltas":[],"narrative":null,"npcHpChanges":[]}',
+    `- Blocked purchase:      {"deltas":[],"narrative":"Purchase blocked — ${config.currencyName} ${rpStats.gold} available, cost exceeded balance","npcHpChanges":[]}`,
+    '- Spoken price (pending):{"deltas":[],"narrative":"Cashier says eight-fifty for snacks","npcHpChanges":[],"pendingTransaction":{"description":"snacks","amount":8.50}}',
+    '- Price stated (pending):{"deltas":[],"narrative":"Cashier rings up $5.87 for snacks","npcHpChanges":[],"pendingTransaction":{"description":"snacks","amount":5.87}}',
+    '- Awaiting payment:      {"deltas":[],"narrative":"Awaiting $5.87 payment","npcHpChanges":[],"pendingTransaction":{"description":"snacks","amount":5.87}}',
+    '- Payment completed:     {"deltas":[{"field":"gold","delta":-5.87,"reason":"snacks"}],"narrative":"Paid $5.87 for snacks","npcHpChanges":[],"pendingTransaction":null}',
+    '- Transaction cancelled: {"deltas":[],"narrative":"Left without buying","npcHpChanges":[],"pendingTransaction":null}',
+    '- Gold spent (no prior pending, inferred): {"deltas":[{"field":"gold","delta":-5,"reason":"coffee"}],"narrative":"Spent ~$5 on coffee","npcHpChanges":[]}',
+    '- Wages earned:          {"deltas":[{"field":"gold","delta":85,"reason":"4-hour shift at grocery store"}],"narrative":"Earned $85 after shift","npcHpChanges":[]}',
+    '- HP damage:             {"deltas":[{"field":"hp","delta":-10,"reason":"Fell off ledge"}],"narrative":"HP -10 from falling","npcHpChanges":[]}',
+    '- HP healing:            {"deltas":[{"field":"hp","delta":8,"reason":"Ibuprofen relieved headache"}],"narrative":"HP +8 from painkillers","npcHpChanges":[]}',
+    '- NPC health event:      {"deltas":[],"narrative":"Gladys collapsed with a cardiac event","npcHpChanges":[{"npcKey":"gladys","name":"Gladys","delta":-50,"maxHp":75,"reason":"cardiac seizure"}]}',
+    '- Sleep / rest:          {"deltas":[{"field":"hp","delta":20,"reason":"Full night sleep"}],"narrative":"Slept through the night, feeling better","npcHpChanges":[]}',
     "",
     "Rules for pendingTransaction:",
     "- Use pendingTransaction to track a purchase that has been started but not yet paid.",
@@ -164,23 +160,6 @@ export async function extractRpStatChanges(
     "- npcKey must be a lowercase slug of the NPC's name (e.g. 'mr_rossi', 'gladys').",
     "- Do NOT track NPCs for emotional distress, arguments, or non-physical events.",
     "- Do NOT invent NPC health changes — only include clearly implied physical harm or recovery.",
-    "",
-    "Rules for timeAdvanceMinutes:",
-    "- Estimate in-story minutes elapsed during this scene. Be realistic — most single exchanges take only a few minutes.",
-    "- Single line of dialogue / instant action (one remark, a glance, a quick decision): 1–3 min",
-    "- Brief exchange at a counter, vending machine, or register: 2–5 min",
-    "- Short conversation (a few back-and-forth lines): 5–10 min",
-    "- Walking a short distance (same block, same building): 5–15 min",
-    "- Short task (quick errand, self-checkout, buying a ticket): 5–15 min",
-    "- Meal, studying, light shopping, social visit: 30–120 min",
-    "- Short journey within a city / neighbourhood: 20–60 min",
-    "- Long journey (city to city, road trip, train/plane): 120–480 min",
-    "- Work shift (4–8 hrs): 240–480 min",
-    "- Sleep / overnight rest: 360–540 min",
-    "- Recovery, medical stay: 480–1440 min or more",
-    "- Explicit multi-day skip (next week, three months later): calculate as days × 1440",
-    "- PLAYER TIME SKIP OVERRIDE: If the player's message explicitly states that time has passed (e.g. 'a few days go by', 'it's now Thursday', 'three weeks later', 'skip to the next morning'), calculate timeAdvanceMinutes from THAT stated duration — do not estimate from the narrator's scene length. 'A few days' = 2–4 days × 1440. 'Next morning' after evening = ~480–600 min. 'A week later' = 7 × 1440.",
-    "- Set to 0 or null if time is indeterminate or the scene is instantaneous.",
     "",
     "Rules for narrative:",
     "- Write a short one-line summary whenever something RP-relevant happened, even if deltas is [].",
@@ -257,7 +236,6 @@ export async function extractRpStatChanges(
       : undefined;
 
     const narrative = parsed.narrative ?? blockedNarrative;
-    const timeAdvanceMinutes = parsed.timeAdvanceMinutes;
 
     // Parse pendingTransaction: undefined = field absent (no change), null = clear, object = set
     let pendingTransaction: PendingTransaction | null | undefined = undefined;
@@ -274,12 +252,11 @@ export async function extractRpStatChanges(
       }
     }
 
-    if (!deltas.length && !narrative && !npcHpChanges.length && !timeAdvanceMinutes && pendingTransaction === undefined) return null;
+    if (!deltas.length && !narrative && !npcHpChanges.length && pendingTransaction === undefined) return null;
     return {
       deltas,
       narrative,
       npcHpChanges: npcHpChanges.length ? npcHpChanges : undefined,
-      timeAdvanceMinutes,
       ...(pendingTransaction !== undefined ? { pendingTransaction } : {}),
     };
   } catch {

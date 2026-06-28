@@ -23,6 +23,7 @@ import { selectDiceStat } from "../lib/ai/diceStatSelector";
 import { DiceRollModal, type DiceRollResult } from "../components/story/DiceRollModal";
 import { DEFAULT_DICE_MODIFIERS, applyStatChange as applyRpStatChange } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
+import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
@@ -169,8 +170,6 @@ export function StoryWorkspacePage() {
   const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
   const [taskbarGold, setTaskbarGold] = useState<number | null>(null);
   const [taskbarTime, setTaskbarTime] = useState<RpTimeState | null>(null);
-  const [showLargeSkipModal, setShowLargeSkipModal] = useState(false);
-  const skipTimeCheckRef = useRef(false);
   const [showZeroHpModal, setShowZeroHpModal] = useState(false);
   const [zeroHpConsequenceChoice, setZeroHpConsequenceChoice] = useState<string>("");
   const [zeroHpCustom, setZeroHpCustom] = useState("");
@@ -321,7 +320,6 @@ export function StoryWorkspacePage() {
   const activeUniverse = universe;
   const activePlayerCharacter = playerCharacter;
 
-  const LARGE_TIME_SKIP_RE = /\b(sleep|slept|nap|napped|rest overnight|overnight|wake up|woke up|next morning|next day|tomorrow|next week|next month|days? later|weeks? later|months? later|skip to|fast forward|travel(?:l?ed)? to|long journey|hospital|recover(?:y|ing)?|unconscious)\b/i;
   const ROLL_TAG_RE = /\[roll(?:\s+(str|dex|con|int|wis|cha))?\]/i;
 
   async function handleSendChat() {
@@ -368,14 +366,11 @@ export function StoryWorkspacePage() {
       }
     }
 
-    // Warn before potentially large time skips (8+ hours)
-    if (!skipTimeCheckRef.current && activeStory?.rpMode && taskbarTime && LARGE_TIME_SKIP_RE.test(chatInput)) {
-      setShowLargeSkipModal(true);
-      return;
-    }
-    skipTimeCheckRef.current = false;
+    // Parse /time slash command and strip it from the message
+    const slashTime = parseSlashTimeCommand(chatInput);
+    const content = slashTime ? slashTime.strippedText || "." : chatInput;
+    const directorIntentOverride = slashTime?.intent;
 
-    const content = chatInput;
     setIsGenerating(true);
     setChatError(null);
     setLastChatContent(content);
@@ -384,7 +379,11 @@ export function StoryWorkspacePage() {
     try {
       const consequence = pendingZeroHpConsequence;
       if (consequence) setPendingZeroHpConsequence(null);
-      const result = await sendChatMessage(activeStory.id, content, consequence ? { zeroHpConsequence: consequence } : undefined);
+      const result = await sendChatMessage(
+        activeStory.id,
+        content,
+        { ...(consequence ? { zeroHpConsequence: consequence } : {}), ...(directorIntentOverride ? { directorIntentOverride } : {}) },
+      );
       if (result.appliedRpChanges?.length) {
         const hpZero = result.appliedRpChanges.some((c) => c.field === "hp" && c.to === 0);
         if (hpZero) {
@@ -466,12 +465,6 @@ export function StoryWorkspacePage() {
   }
 
   async function sendChatMessageWithContent(content: string) {
-    if (!skipTimeCheckRef.current && activeStory?.rpMode && taskbarTime && LARGE_TIME_SKIP_RE.test(content)) {
-      setShowLargeSkipModal(true);
-      return;
-    }
-    skipTimeCheckRef.current = false;
-
     setIsGenerating(true);
     setChatError(null);
     setLastChatContent(content);
@@ -1414,33 +1407,6 @@ export function StoryWorkspacePage() {
         />
       ) : null}
 
-      {/* Large time-skip confirmation modal */}
-      {showLargeSkipModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-sm rounded-2xl border border-divider bg-panel px-6 py-5 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-ink">Large time skip detected</h3>
-            <p className="text-sm text-ink-muted">Your message may advance story time by several hours or more (e.g. sleep, travel, recovery). The story clock will advance accordingly.</p>
-            <div className="flex gap-3">
-              <button
-                className="flex-1 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent/80"
-                onClick={() => {
-                  setShowLargeSkipModal(false);
-                  skipTimeCheckRef.current = true;
-                  void handleSendChat();
-                }}
-              >
-                Continue
-              </button>
-              <button
-                className="flex-1 rounded-xl border border-divider px-4 py-2 text-sm font-semibold text-ink-muted transition hover:text-ink"
-                onClick={() => setShowLargeSkipModal(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {diceRollPending && (
         <DiceRollModal
           stat={diceRollPending.stat}
