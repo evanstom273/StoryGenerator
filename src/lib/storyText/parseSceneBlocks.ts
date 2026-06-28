@@ -114,6 +114,16 @@ export function parseSceneBlocks(content: string): SceneBlock[] {
       continue;
     }
 
+    // Blank line: flush the current block and clear speaker so prose that follows
+    // isn't incorrectly attributed to the previous speaker (narrator fix).
+    if (trimmed === "") {
+      if (buffer.some((l) => l.trim())) {
+        flush();
+        currentSpeaker = undefined;
+      }
+      continue;
+    }
+
     buffer.push(line);
   }
 
