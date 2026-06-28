@@ -370,6 +370,7 @@ export function buildStoryChatContext({
       "Do not introduce major characters into a scene unless their presence has been established, their arrival is logically explained by the narrative, or the player has explicitly invited, contacted, or sought them out. Do not introduce characters solely to solve problems or remove consequences.",
       "Output format guidance:",
       "- Use speaker headers like 'Jake:' and 'Amy:' on their own line when switching speakers.",
+      "- Each time a character speaks, give them substance — at least two sentences of dialogue, or one sentence plus an action beat — before switching to another speaker. Single-sentence back-and-forth ping-pong ('Yes.' / 'No.' / 'Sure.') creates a wall of one-liners that is hard to read. Group a character's contribution into a proper block before handing off.",
       "- EVERY line of prose narration must start with 'Narrator:'. Never write prose narration as orphaned/unattributed text between character blocks — it will be incorrectly attributed to the previous speaker. If you need to describe the environment, atmosphere, or ambient action between two character lines, start a new 'Narrator:' block.",
       "- Use 'Narrator:' for scene-setting, ambient sounds, atmosphere, time passing, and any prose that is not a character speaking or acting.",
       "- Asterisks (*...*) are ONLY for character actions — physical movement, expression, gesture. They must always appear on their own line, never embedded inside quoted dialogue.",
