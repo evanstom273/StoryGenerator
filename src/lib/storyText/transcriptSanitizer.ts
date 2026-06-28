@@ -584,6 +584,11 @@ function fixDialogueColons(text: string): string {
   }).join("\n");
 }
 
+// Ensure action beats end with a period
+function ensureActionPeriods(text: string): string {
+  return text.replace(/\*([^*\n]+[^.!?,*\n])\*/g, "*$1.*");
+}
+
 function normalizeTranscriptWhitespace(text: string) {
   const normalized = normalizeNewlines(text)
     .replace(/[ \t]+\n/g, "\n")
@@ -635,7 +640,8 @@ export function sanitizeAssistantTranscript(args: {
   const markdownStripped = stripMarkdownArtifacts(narratorStripped.text);
   const bareNamesFixed = fixBareNameHeaders(markdownStripped.text);
   const dialogueColonsFixed = fixDialogueColons(bareNamesFixed);
-  const normalizedActions = normalizeThirdPersonActions(dialogueColonsFixed, args.playerName);
+  const actionPeriodsFixed = ensureActionPeriods(dialogueColonsFixed);
+  const normalizedActions = normalizeThirdPersonActions(actionPeriodsFixed, args.playerName);
   const emphasisStripped = stripInlineAsteriskEmphasis(normalizedActions);
   const standardized = standardizeAssistantStoryText({
     text: emphasisStripped,
