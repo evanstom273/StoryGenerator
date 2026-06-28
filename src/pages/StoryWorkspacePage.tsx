@@ -168,6 +168,7 @@ export function StoryWorkspacePage() {
   const [pendingCoreStatChanges, setPendingCoreStatChanges] = useState<RpStatDelta[] | null>(null);
   const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
   const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
+  const [relationshipsRefreshKey, setRelationshipsRefreshKey] = useState(0);
   const [taskbarGold, setTaskbarGold] = useState<number | null>(null);
   const [taskbarTime, setTaskbarTime] = useState<RpTimeState | null>(null);
   const [showZeroHpModal, setShowZeroHpModal] = useState(false);
@@ -403,6 +404,7 @@ export function StoryWorkspacePage() {
         const lastGoldChange = allGoldChanges?.at(-1);
         if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
+        if (result.appliedRelationshipDeltas?.length) setRelationshipsRefreshKey((k) => k + 1);
       }
     } catch (error) {
       reportWorkspaceUiAudit({
@@ -493,6 +495,7 @@ export function StoryWorkspacePage() {
         const lastGoldChange = allGoldChanges?.at(-1);
         if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
+        if (result.appliedRelationshipDeltas?.length) setRelationshipsRefreshKey((k) => k + 1);
       }
 
       // Write dice roll to eventLog after extractor has already saved rpStats
@@ -1423,6 +1426,7 @@ export function StoryWorkspacePage() {
           storyId={storyId}
           playerName={activePlayerCharacter?.name}
           onClose={() => setRelationshipsOpen(false)}
+          refreshKey={relationshipsRefreshKey}
         />
       ) : null}
 

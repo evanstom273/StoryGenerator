@@ -13,12 +13,24 @@ export type NpcHpChange = {
   reason: string;
 };
 
+export type RpRelationshipDelta = {
+  characterName: string;
+  trust?: number;
+  affection?: number;
+  fear?: number;
+  dependency?: number;
+  reason: string;
+};
+
 export type RpExtractorResult = {
   deltas: RpStatDelta[];
   narrative?: string;
   npcHpChanges?: NpcHpChange[];
   /** undefined = no change; null = clear pending; object = set/update pending */
   pendingTransaction?: PendingTransaction | null;
+  relationshipDeltas?: RpRelationshipDelta[];
+  suggestedCondition?: string;
+  characterStateSummary?: string;
 };
 
 export type RpExtractorContext = {
@@ -28,7 +40,17 @@ export type RpExtractorContext = {
   pendingTransaction?: PendingTransaction;
 };
 
-function safeParseExtractorResponse(text: string): { deltas: unknown[]; narrative?: string; npcHpChanges?: unknown[]; pendingTransaction?: unknown } | null {
+type ParsedExtractorResponse = {
+  deltas: unknown[];
+  narrative?: string;
+  npcHpChanges?: unknown[];
+  pendingTransaction?: unknown;
+  relationshipDeltas?: unknown[];
+  suggestedCondition?: string;
+  characterStateSummary?: string;
+};
+
+function safeParseExtractorResponse(text: string): ParsedExtractorResponse | null {
   const trimmed = text.trim();
 
   const objStart = trimmed.indexOf("{");
@@ -38,14 +60,16 @@ function safeParseExtractorResponse(text: string): { deltas: unknown[]; narrativ
       try {
         const parsed = JSON.parse(trimmed.slice(objStart, objEnd + 1)) as unknown;
         if (parsed && typeof parsed === "object" && "deltas" in parsed) {
-          const obj = parsed as { deltas: unknown; narrative?: unknown; npcHpChanges?: unknown; pendingTransaction?: unknown };
+          const obj = parsed as Record<string, unknown>;
           const hasPendingField = "pendingTransaction" in obj;
           return {
             deltas: Array.isArray(obj.deltas) ? obj.deltas : [],
             narrative: typeof obj.narrative === "string" && obj.narrative.trim() ? obj.narrative.trim() : undefined,
             npcHpChanges: Array.isArray(obj.npcHpChanges) ? obj.npcHpChanges : undefined,
-            // Only include the key when it was actually present in the response
             ...(hasPendingField ? { pendingTransaction: obj.pendingTransaction } : {}),
+            relationshipDeltas: Array.isArray(obj.relationshipDeltas) ? obj.relationshipDeltas : undefined,
+            suggestedCondition: typeof obj.suggestedCondition === "string" && obj.suggestedCondition.trim() ? obj.suggestedCondition.trim() : undefined,
+            characterStateSummary: typeof obj.characterStateSummary === "string" && obj.characterStateSummary.trim() ? obj.characterStateSummary.trim() : undefined,
           };
         }
       } catch {}
@@ -167,6 +191,20 @@ export async function extractRpStatChanges(
     `- For blocked purchases always write a narrative even though deltas is [].`,
     "- Set narrative to null only if the scene had absolutely no RP-relevant content.",
     "",
+    "RELATIONSHIP CHANGES:",
+    "If this turn contained a meaningful emotional shift between the player and a named character, include \"relationshipDeltas\": [{\"characterName\": \"...\", \"trust\": <±delta>, \"affection\": <±delta>, \"fear\": <±delta>, \"dependency\": <±delta>, \"reason\": \"...\"}].",
+    "- Only include metrics that actually changed this turn. Typical magnitude: ±3–12. Omit the field entirely if nothing meaningful shifted.",
+    "- trust = reliability/honesty between characters. affection = warmth/care/closeness. fear = dread, anxiety, or power imbalance. dependency = emotional or physical reliance.",
+    "- Omit the relationshipDeltas field entirely if no significant emotional shift occurred.",
+    "",
+    "CONDITIONS:",
+    "If a significant status-changing event occurred in this scene (hospital admission, surgery, diagnosis, arrest, major injury, treatment started), set \"suggestedCondition\" to a short label (e.g. \"Active Chemotherapy\", \"Post-Surgery\", \"Cardiac Arrest Survivor\").",
+    "- Only suggest on clear, dramatic events. Do NOT suggest for minor events or ordinary scenes.",
+    "- Omit suggestedCondition entirely if nothing significant happened.",
+    "",
+    "CHARACTER STATE:",
+    "Set \"characterStateSummary\" to 1-3 sentences describing the player character's current situation in present tense, third person. This replaces the previous summary — update it to reflect what just happened. Always include this field.",
+    "",
     `Era/genre price benchmarks for ${config.currencyName} (defer to setting context and universe lore when available):`,
     `MODERN: Coffee $3–6 · Fast food $8–15 · Sit-down meal $15–35 · Bus/subway $2–4 · Rideshare short $10–20 · Rideshare long $25–60 · Haircut $20–50 · Bar drink $5–12 · Movie $12–20 · Doctor/urgent care $100–300 · Prescription $10–50 · Grocery run (small) $20–60 · Clothing item $20–80 · Min-wage shift (4–8 hrs) $50–120 · Tips $10–50`,
     `FANTASY/RPG: Tavern meal+drink 5–10 sp · Night's lodging 5 sp–2 gp · Rope (50ft) 1 gp · Dagger 2 gp · Short sword 10 gp · Potion of healing 50 gp · Horse 75 gp · Laborer day wage 1–4 sp · Artisan day 5–20 sp`,
@@ -252,12 +290,36 @@ export async function extractRpStatChanges(
       }
     }
 
-    if (!deltas.length && !narrative && !npcHpChanges.length && pendingTransaction === undefined) return null;
+    // Parse relationship deltas
+    const relationshipDeltas: RpRelationshipDelta[] = [];
+    for (const item of parsed.relationshipDeltas ?? []) {
+      if (!item || typeof item !== "object") continue;
+      const d = item as Record<string, unknown>;
+      if (typeof d.characterName !== "string" || !d.characterName.trim()) continue;
+      if (typeof d.reason !== "string") continue;
+      const rd: RpRelationshipDelta = {
+        characterName: d.characterName.trim(),
+        reason: d.reason.trim(),
+      };
+      if (typeof d.trust === "number" && Number.isFinite(d.trust) && d.trust !== 0) rd.trust = Math.round(d.trust);
+      if (typeof d.affection === "number" && Number.isFinite(d.affection) && d.affection !== 0) rd.affection = Math.round(d.affection);
+      if (typeof d.fear === "number" && Number.isFinite(d.fear) && d.fear !== 0) rd.fear = Math.round(d.fear);
+      if (typeof d.dependency === "number" && Number.isFinite(d.dependency) && d.dependency !== 0) rd.dependency = Math.round(d.dependency);
+      if (rd.trust !== undefined || rd.affection !== undefined || rd.fear !== undefined || rd.dependency !== undefined) {
+        relationshipDeltas.push(rd);
+      }
+    }
+
+    if (!deltas.length && !narrative && !npcHpChanges.length && pendingTransaction === undefined
+        && !relationshipDeltas.length && !parsed.suggestedCondition && !parsed.characterStateSummary) return null;
     return {
       deltas,
       narrative,
       npcHpChanges: npcHpChanges.length ? npcHpChanges : undefined,
       ...(pendingTransaction !== undefined ? { pendingTransaction } : {}),
+      ...(relationshipDeltas.length ? { relationshipDeltas } : {}),
+      ...(parsed.suggestedCondition ? { suggestedCondition: parsed.suggestedCondition } : {}),
+      ...(parsed.characterStateSummary ? { characterStateSummary: parsed.characterStateSummary } : {}),
     };
   } catch {
     return null;

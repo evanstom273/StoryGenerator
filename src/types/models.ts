@@ -178,6 +178,9 @@ export type RpStats = {
   eventLog?: RpEventLogEntry[];
   timeState?: RpTimeState;
   pendingTransaction?: PendingTransaction;
+  conditions?: RpCondition[];
+  characterState?: string;
+  pendingConditionSuggestion?: string;
 };
 
 export interface Story {
@@ -353,10 +356,17 @@ export type RelationshipIndexEntry = {
   affection?: number;
   tension?: number;
   hostility?: number;
+  dependency?: number;
   tier?: RelationshipTier;
   history?: RelationshipHistoryEntry[];
   summary?: string;
   evidence?: EvidenceRef;
+};
+
+export type RpCondition = {
+  id: string;
+  label: string;
+  addedAt: number;
 };
 
 export type StoryIndexesV2 = {

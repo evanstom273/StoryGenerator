@@ -19,7 +19,7 @@ import {
 import { downloadFile } from "../../lib/download";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../../lib/ai/models";
-import type { RpCalendarConfig, RpConfig, RpDiceModifiers, RpRecurringEvent, RpRecurringFrequency, RpStats, RpTimeState, Story } from "../../types/models";
+import type { RpCalendarConfig, RpCondition, RpConfig, RpDiceModifiers, RpRecurringEvent, RpRecurringFrequency, RpStats, RpTimeState, Story } from "../../types/models";
 import { computeInitialNextDue, formatTime, formatTimeShort, minutesBetween } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 
@@ -511,6 +511,75 @@ ${profileText}`;
                         </div>
                       ))}
                     </div>
+
+                    {/* Current Situation — AI managed */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Current Situation</p>
+                      {rpStats?.characterState ? (
+                        <p className="whitespace-pre-wrap text-sm text-ink">{rpStats.characterState}</p>
+                      ) : (
+                        <p className="text-sm text-ink-muted/60 italic">Updates automatically as the story progresses.</p>
+                      )}
+                    </div>
+
+                    {/* Active Conditions */}
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Active Conditions</p>
+                      {rpStats?.pendingConditionSuggestion && (
+                        <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                          <span className="flex-1 text-xs text-amber-300">
+                            AI suggests: <strong>{rpStats.pendingConditionSuggestion}</strong>
+                          </span>
+                          <button
+                            type="button"
+                            className="text-[11px] font-medium text-amber-300 hover:text-amber-200"
+                            onClick={() => {
+                              if (!rpStats) return;
+                              const newCondition: RpCondition = { id: crypto.randomUUID(), label: rpStats.pendingConditionSuggestion!, addedAt: Date.now() };
+                              const updated: RpStats = {
+                                ...rpStats,
+                                conditions: [...(rpStats.conditions ?? []), newCondition],
+                                pendingConditionSuggestion: undefined,
+                              };
+                              setRpStats(updated);
+                              void updateRpStats(props.story.id, updated);
+                            }}
+                          >Add</button>
+                          <button
+                            type="button"
+                            className="text-[11px] text-ink-muted hover:text-ink"
+                            onClick={() => {
+                              if (!rpStats) return;
+                              const updated: RpStats = { ...rpStats, pendingConditionSuggestion: undefined };
+                              setRpStats(updated);
+                              void updateRpStats(props.story.id, updated);
+                            }}
+                          >Dismiss</button>
+                        </div>
+                      )}
+                      {rpStats?.conditions?.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {rpStats.conditions.map((c) => (
+                            <div key={c.id} className="flex items-center gap-1.5 rounded-full border border-divider/50 bg-panel-muted/50 px-3 py-1 text-xs text-ink">
+                              <span>{c.label}</span>
+                              <button
+                                type="button"
+                                className="text-ink-muted hover:text-red-400 transition"
+                                onClick={() => {
+                                  if (!rpStats) return;
+                                  const updated: RpStats = { ...rpStats, conditions: rpStats.conditions!.filter((x) => x.id !== c.id) };
+                                  setRpStats(updated);
+                                  void updateRpStats(props.story.id, updated);
+                                }}
+                              >×</button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : !rpStats?.pendingConditionSuggestion ? (
+                        <p className="text-sm text-ink-muted/60 italic">No active conditions.</p>
+                      ) : null}
+                    </div>
+
                     {[
                       ["Appearance", playerCharacter.appearance],
                       ["Personality", playerCharacter.personality],

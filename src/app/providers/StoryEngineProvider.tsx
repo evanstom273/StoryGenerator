@@ -80,7 +80,7 @@ import {
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
-import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
+import { extractRpStatChanges, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
@@ -298,7 +298,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
 }
@@ -886,6 +886,39 @@ function buildStorageStatus(
 interface StoryEngineProviderProps {
   children: ReactNode;
   repository?: StoryEngineRepository;
+}
+
+function applyRelationshipDeltas(
+  existing: RelationshipIndexEntry[],
+  deltas: RpRelationshipDelta[],
+  playerName: string,
+): RelationshipIndexEntry[] {
+  const updated = [...existing];
+  for (const delta of deltas) {
+    const nameNorm = delta.characterName.toLowerCase().trim();
+    const playerNorm = playerName.toLowerCase().trim();
+    const idx = updated.findIndex(
+      (r) => r.a.toLowerCase().trim() === nameNorm || r.b.toLowerCase().trim() === nameNorm,
+    );
+    let entry: RelationshipIndexEntry;
+    if (idx === -1) {
+      entry = { a: playerName, b: delta.characterName, tier: "stranger", trust: 50, affection: 50, fear: 50, dependency: 50 };
+    } else {
+      entry = { ...updated[idx]! };
+    }
+    const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+    if (delta.trust !== undefined) entry.trust = clamp((entry.trust ?? 50) + delta.trust);
+    if (delta.affection !== undefined) entry.affection = clamp((entry.affection ?? 50) + delta.affection);
+    if (delta.fear !== undefined) entry.fear = clamp((entry.fear ?? 50) + delta.fear);
+    if (delta.dependency !== undefined) entry.dependency = clamp((entry.dependency ?? 50) + delta.dependency);
+    if (idx === -1) {
+      // Only add if not the same as playerName
+      if (nameNorm !== playerNorm) updated.push(entry);
+    } else {
+      updated[idx] = entry;
+    }
+  }
+  return updated;
 }
 
 export function StoryEngineProvider({
@@ -3858,6 +3891,7 @@ export function StoryEngineProvider({
         let appliedRpChanges: RpChangelogEntry[] | null = null;
         let pendingCoreStatChanges: RpStatDelta[] | null = null;
         let rpEventSummary: string | null = null;
+        let appliedRelationshipDeltas: RpRelationshipDelta[] | null = null;
         let updatedMessages: StoryMessage[] = [];
 
         if (!shouldSkipAssistantReply) {
@@ -4453,7 +4487,7 @@ export function StoryEngineProvider({
                 },
               );
               if (extracted) {
-                const { deltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx } = extracted;
+                const { deltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx, relationshipDeltas, suggestedCondition, characterStateSummary } = extracted;
                 const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
                 const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
                 const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
@@ -4540,9 +4574,36 @@ export function StoryEngineProvider({
                   nextStats = { ...nextStats, pendingTransaction: extractedPendingTx ?? undefined };
                 }
 
+                // Apply character state summary
+                if (characterStateSummary) {
+                  nextStats = { ...nextStats, characterState: characterStateSummary };
+                }
+
+                // Apply condition suggestion
+                if (suggestedCondition && !nextStats.pendingConditionSuggestion) {
+                  nextStats = { ...nextStats, pendingConditionSuggestion: suggestedCondition };
+                }
+
                 const playerSummary = applied.length ? buildRpEventSummary(applied, story.rpConfig) : null;
                 const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" · ") : null;
                 const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" · ") || narrative || null;
+
+                // Compute updated relationships if deltas were returned
+                let updatedRelationships: RelationshipIndexEntry[] | null = null;
+                if (relationshipDeltas?.length) {
+                  const latestForRel = await repository.getStoryState(storyId);
+                  const parsedForRel = latestForRel?.stateJson
+                    ? (() => { try { return JSON.parse(latestForRel.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
+                    : {} as Record<string, unknown>;
+                  const existingRelationships: RelationshipIndexEntry[] = (() => {
+                    try {
+                      const idx = (parsedForRel as any)?.indexes?.relationships;
+                      return Array.isArray(idx) ? idx : [];
+                    } catch { return []; }
+                  })();
+                  updatedRelationships = applyRelationshipDeltas(existingRelationships, relationshipDeltas, playerCharacter.name);
+                  appliedRelationshipDeltas = relationshipDeltas;
+                }
 
                 if (summary) {
                   const eventEntry: RpEventLogEntry = { ts: Date.now(), summary };
@@ -4551,26 +4612,32 @@ export function StoryEngineProvider({
 
                   const latestState = await repository.getStoryState(storyId);
                   const latestParsed = latestState?.stateJson
-                    ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()
-                    : {};
+                    ? (() => { try { return JSON.parse(latestState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
+                    : {} as Record<string, unknown>;
+                  const mergedState = updatedRelationships
+                    ? { ...latestParsed, rpStats: nextStats, indexes: { ...(latestParsed.indexes as object | undefined ?? {}), relationships: updatedRelationships } }
+                    : { ...latestParsed, rpStats: nextStats };
                   await repository.saveStoryState({
                     id: `story-state:${storyId}`,
                     storyId,
-                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
+                    stateJson: JSON.stringify(mergedState),
                     updatedAt: new Date().toISOString(),
                   });
                   appliedRpChanges = applied;
                   rpEventSummary = summary;
-                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState || extractedPendingTx !== undefined) {
-                  // NPC-only, time-only, or pending-transaction-only changes still need to be saved
+                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState || extractedPendingTx !== undefined || characterStateSummary || suggestedCondition || updatedRelationships) {
+                  // NPC-only, time-only, pending-transaction, character-state, condition, or relationship-only changes still need to be saved
                   const latestState = await repository.getStoryState(storyId);
                   const latestParsed = latestState?.stateJson
-                    ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()
-                    : {};
+                    ? (() => { try { return JSON.parse(latestState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
+                    : {} as Record<string, unknown>;
+                  const mergedState = updatedRelationships
+                    ? { ...latestParsed, rpStats: nextStats, indexes: { ...(latestParsed.indexes as object | undefined ?? {}), relationships: updatedRelationships } }
+                    : { ...latestParsed, rpStats: nextStats };
                   await repository.saveStoryState({
                     id: `story-state:${storyId}`,
                     storyId,
-                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
+                    stateJson: JSON.stringify(mergedState),
                     updatedAt: new Date().toISOString(),
                   });
                 }
@@ -4837,7 +4904,7 @@ export function StoryEngineProvider({
             await queueStoryIndexJob(storyId, { trigger: "auto" });
           } catch {}
         })();
-        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary };
+        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary, appliedRelationshipDeltas };
       },
     };
   }, [

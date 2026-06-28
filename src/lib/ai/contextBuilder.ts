@@ -272,6 +272,14 @@ export function buildStoryChatContext({
             return `Player character birthday: ${rpConfig.birthdayDay} ${mName}. When the in-story date reaches this each year, the character has turned a year older.`;
           })(),
         ] : []),
+        ...(rpStats.characterState ? [
+          "",
+          `Current player situation: ${rpStats.characterState}`,
+        ] : []),
+        ...(rpStats.conditions?.length ? [
+          "",
+          `Active conditions: ${rpStats.conditions.map((c) => c.label).join(", ")}`,
+        ] : []),
         ...(rpStats.timeState ? [
           "",
           `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,

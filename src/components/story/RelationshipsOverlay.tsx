@@ -181,6 +181,24 @@ function RelationshipCard({
         </div>
       </div>
       {entry.summary ? <p className="mt-1.5 text-xs text-ink-muted">{entry.summary}</p> : null}
+      {(entry.trust != null || entry.affection != null || entry.fear != null || entry.dependency != null) && (
+        <div className="mt-2 space-y-1.5">
+          {([
+            { label: "Trust", value: entry.trust },
+            { label: "Affection", value: entry.affection },
+            { label: "Fear", value: entry.fear },
+            { label: "Dependency", value: entry.dependency },
+          ] as Array<{ label: string; value: number | undefined }>).filter((m) => m.value != null).map((m) => (
+            <div key={m.label} className="flex items-center gap-2 text-xs">
+              <span className="w-20 shrink-0 text-[10px] text-ink-muted">{m.label}</span>
+              <div className="flex-1 h-1 rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-accent/60 transition-all" style={{ width: `${m.value}%` }} />
+              </div>
+              <span className="w-6 shrink-0 text-right text-[10px] text-ink-muted/70">{m.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {Array.isArray(entry.history) && entry.history.length ? (
         <div className="mt-2 space-y-1">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted/50">Key Moments</p>
@@ -201,6 +219,7 @@ export function RelationshipsOverlay(props: {
   storyId: string;
   playerName?: string;
   onClose: () => void;
+  refreshKey?: number;
 }) {
   const { fetchStoryState, updateRelationshipsIndex, queueStoryIndexJob } = useStoryEngine();
   const [relationships, setRelationships] = useState<RelationshipIndexEntry[]>([]);
@@ -222,7 +241,7 @@ export function RelationshipsOverlay(props: {
     });
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
-  }, [props.open, props.storyId]);
+  }, [props.open, props.storyId, props.refreshKey]);
 
   if (!props.open) return null;
 
