@@ -107,6 +107,7 @@ import type {
   RpChangelogEntry,
   RpEventLogEntry,
   RpStats,
+  RpTimeState,
   StorageStatus,
   Story,
   StoryAIConfig,
@@ -4567,6 +4568,30 @@ export function StoryEngineProvider({
                   nextStats = { ...nextStats, timeState: newTime };
                   const timeLabel = formatTimeShort(newTime, story.rpConfig);
                   timeSummaryPart = (timeSummaryPart ? `${timeSummaryPart} · ` : "") + `Time → ${timeLabel}`;
+                }
+
+                // Apply absolute time set — e.g. "It's 12pm" in player message
+                const absoluteTime = userMessage.directorIntent?.absoluteTime;
+                if (absoluteTime && !playerMinutes) {
+                  if (nextStats.timeState) {
+                    const newTime = { ...nextStats.timeState, hour: absoluteTime.hour, minute: absoluteTime.minute };
+                    nextStats = { ...nextStats, timeState: newTime };
+                    const timeLabel = formatTimeShort(newTime, story.rpConfig);
+                    timeSummaryPart = `Time → ${timeLabel}`;
+                  } else {
+                    const now = new Date();
+                    const newTime: RpTimeState = {
+                      year: now.getFullYear(),
+                      month: now.getMonth() + 1,
+                      day: now.getDate(),
+                      hour: absoluteTime.hour,
+                      minute: absoluteTime.minute,
+                      storyDay: 1,
+                    };
+                    nextStats = { ...nextStats, timeState: newTime };
+                    const timeLabel = formatTimeShort(newTime, story.rpConfig);
+                    timeSummaryPart = `Time → ${timeLabel}`;
+                  }
                 }
 
                 // Apply pending transaction state change

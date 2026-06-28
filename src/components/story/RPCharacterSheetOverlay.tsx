@@ -161,7 +161,7 @@ export function RPCharacterSheetOverlay(props: {
       setTimeDraft({ year: String(t.year), month: String(t.month), day: String(t.day), hour: String(t.hour), minute: String(t.minute) });
     } else {
       const now = new Date();
-      setTimeDraft({ year: String(now.getFullYear()), month: String(now.getMonth() + 1), day: String(now.getDate()), hour: String(now.getHours()), minute: String(now.getMinutes()) });
+      setTimeDraft({ year: String(now.getFullYear()), month: String(now.getMonth() + 1), day: String(now.getDate()), hour: "12", minute: "0" });
     }
   }, [activeTab, rpStats?.timeState]);
 

@@ -31,6 +31,8 @@ export type DirectorIntent = {
   exactMinutes?: number;
   sceneCut?: boolean;
   target?: string;
+  /** Absolute time-of-day set, e.g. from "It's 12pm". Sets clock to this hour:minute without advancing. */
+  absoluteTime?: { hour: number; minute: number };
 };
 
 export interface UniverseWikiSource {

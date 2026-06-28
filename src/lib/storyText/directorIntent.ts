@@ -115,18 +115,47 @@ function parseSceneCut(text: string): { sceneCut: true; target?: string } | null
   return null;
 }
 
+function detectAbsoluteTime(text: string): { hour: number; minute: number } | null {
+  const normalized = text.toLowerCase();
+
+  if (/\bit'?s\s+noon\b/.test(normalized) || /\bit\s+is\s+noon\b/.test(normalized)) {
+    return { hour: 12, minute: 0 };
+  }
+  if (/\bit'?s\s+midnight\b/.test(normalized) || /\bit\s+is\s+midnight\b/.test(normalized)) {
+    return { hour: 0, minute: 0 };
+  }
+
+  const match =
+    normalized.match(/\bit'?s\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/) ??
+    normalized.match(/\bit\s+is\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
+  if (match) {
+    let hour = parseInt(match[1] ?? "0", 10);
+    const minute = parseInt(match[2] ?? "0", 10);
+    const ampm = match[3];
+    if (ampm === "pm" && hour !== 12) hour += 12;
+    if (ampm === "am" && hour === 12) hour = 0;
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+      return { hour, minute };
+    }
+  }
+
+  return null;
+}
+
 export function detectDirectorIntent(text: string): DirectorIntent | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
 
   const timeSkip = parseTimeSkip(trimmed);
   const sceneCut = parseSceneCut(trimmed);
+  const absoluteTime = !timeSkip ? detectAbsoluteTime(trimmed) : null;
 
-  if (!timeSkip && !sceneCut) return null;
+  if (!timeSkip && !sceneCut && !absoluteTime) return null;
 
   return {
     ...(timeSkip ? { timeSkip } : {}),
     ...(sceneCut ? { sceneCut: true, ...(sceneCut.target ? { target: sceneCut.target } : {}) } : {}),
+    ...(absoluteTime ? { absoluteTime } : {}),
   };
 }
 
