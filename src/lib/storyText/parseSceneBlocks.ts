@@ -114,12 +114,18 @@ export function parseSceneBlocks(content: string): SceneBlock[] {
       continue;
     }
 
-    // Blank line: flush the current block and clear speaker so prose that follows
-    // isn't incorrectly attributed to the previous speaker (narrator fix).
+    // Blank line handling:
+    // - Named character blocks (Jake, Amy, etc.) are flushed so narrator prose that follows
+    //   a blank line is not attributed to the character.
+    // - Narrator and unattributed blocks treat blank lines as paragraph breaks, keeping
+    //   related paragraphs together rather than splitting each sentence into its own block.
     if (trimmed === "") {
-      if (buffer.some((l) => l.trim())) {
+      const hasContent = buffer.some((l) => l.trim());
+      if (currentSpeaker && currentSpeaker !== "Narrator" && hasContent) {
         flush();
         currentSpeaker = undefined;
+      } else if (hasContent) {
+        buffer.push(""); // paragraph break within narrator / unattributed block
       }
       continue;
     }

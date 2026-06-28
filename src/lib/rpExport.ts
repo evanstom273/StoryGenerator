@@ -1,5 +1,6 @@
 import type { PlayerCharacter, RpConfig, RpEventLogEntry, RpStats, StoryMessage } from "../types/models";
 import { effectiveCoreStats, formatGold } from "./rpStats";
+import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { formatTimeShort } from "./rpTime";
 import {
   createPdfDoc,
@@ -219,8 +220,16 @@ export function buildRpExportMarkdown(data: RpExportData): string {
   lines.push("## Story Transcript");
   lines.push("");
   for (const msg of messages) {
-    const speaker = msg.speakerName ?? (msg.role === "user" ? "Player" : "Narrator");
-    lines.push(`**${speaker}:** ${msg.content}`);
+    if (msg.role === "user") {
+      const speaker = msg.speakerName ?? "Player";
+      lines.push(`**${speaker}:** ${msg.content}`);
+    } else {
+      const blocks = parseSceneBlocks(msg.content ?? "");
+      for (const block of blocks) {
+        const speaker = block.speakerLabel && block.speakerLabel !== "Narrator" ? block.speakerLabel : "Narrator";
+        lines.push(`**${speaker}:** ${block.text}`);
+      }
+    }
     lines.push("");
     lines.push("---");
     lines.push("");
@@ -311,10 +320,19 @@ export function buildRpExportText(data: RpExportData): string {
   lines.push("=".repeat(60));
   lines.push("");
   for (const msg of messages) {
-    const speaker = msg.speakerName ?? (msg.role === "user" ? "Player" : "Narrator");
-    lines.push(`${speaker}:`);
-    lines.push(msg.content);
-    lines.push("");
+    if (msg.role === "user") {
+      const speaker = msg.speakerName ?? "Player";
+      lines.push(`${speaker}:`);
+      lines.push(msg.content);
+    } else {
+      const blocks = parseSceneBlocks(msg.content ?? "");
+      for (const block of blocks) {
+        const speaker = block.speakerLabel && block.speakerLabel !== "Narrator" ? block.speakerLabel : "Narrator";
+        lines.push(`${speaker}:`);
+        lines.push(block.text);
+        lines.push("");
+      }
+    }
     lines.push("-".repeat(40));
     lines.push("");
   }
@@ -482,8 +500,16 @@ export async function buildRpExportPdf(data: RpExportData): Promise<Blob> {
   y = heading(doc, y, "Story Transcript", 14, pageH);
   y = rule(doc, y, pageW);
   for (const msg of messages) {
-    const speaker = msg.speakerName ?? (msg.role === "user" ? "Player" : "Narrator");
-    y = speakerLine(doc, y, sanitizePdf(speaker), sanitizePdf(msg.content), pageH);
+    if (msg.role === "user") {
+      const speaker = msg.speakerName ?? "Player";
+      y = speakerLine(doc, y, sanitizePdf(speaker), sanitizePdf(msg.content), pageH);
+    } else {
+      const blocks = parseSceneBlocks(msg.content ?? "");
+      for (const block of blocks) {
+        const speaker = block.speakerLabel && block.speakerLabel !== "Narrator" ? block.speakerLabel : "Narrator";
+        y = speakerLine(doc, y, sanitizePdf(speaker), sanitizePdf(block.text), pageH);
+      }
+    }
     y = rule(doc, y, pageW);
   }
 
