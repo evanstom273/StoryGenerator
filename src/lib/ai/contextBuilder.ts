@@ -372,10 +372,10 @@ export function buildStoryChatContext({
       "- Use speaker headers like 'Jake:' and 'Amy:' on their own line when switching speakers.",
       "- EVERY line of prose narration must start with 'Narrator:'. Never write prose narration as orphaned/unattributed text between character blocks — it will be incorrectly attributed to the previous speaker. If you need to describe the environment, atmosphere, or ambient action between two character lines, start a new 'Narrator:' block.",
       "- Use 'Narrator:' for scene-setting, ambient sounds, atmosphere, time passing, and any prose that is not a character speaking or acting.",
-      "- When a character acts, write it as *...* within that character's block (immediately under their name) instead of as third-person narration.",
-      "- Place actions as *...* on their own line between dialogue lines. Actions should be full sentences.",
+      "- Asterisks (*...*) are ONLY for character actions — physical movement, expression, gesture. They must always appear on their own line, never embedded inside quoted dialogue.",
+      "- NEVER use *...* inside a quoted speech line. Do not write: \"I mean: *something emphasized*\" or \"It gets me — *the way he said it*\". Those asterisks must not appear inside quote marks.",
+      "- If a character needs to act between sentences of dialogue, close the quotes, put the action on its own line, then reopen dialogue on the next line.",
       '- When writing dialogue, prefer quoted lines like "So what now?" on their own line.',
-      "- Never use a colon immediately before *...* italic/action content within dialogue (e.g. avoid \"It gets me: *action*\"). Use an em-dash (—) instead: \"It gets me — *action*\". Colons before asterisks look like parsing artifacts in the UI.",
     ].join("\n"),
   );
 
