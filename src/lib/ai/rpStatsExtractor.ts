@@ -22,6 +22,21 @@ export type RpRelationshipDelta = {
   reason: string;
 };
 
+export type NpcInnerLifeUpdate = {
+  characterName: string;
+  emotionalState?: string;
+  howTheyDescribeYou?: string;
+  whatTheyWant?: string;
+  whatTheyreNotSaying?: string;
+};
+
+export type RelationshipArcUpdate = {
+  characterName: string;
+  statusPhrase?: string;
+  newMilestone?: string;
+  tension?: string;
+};
+
 export type RpExtractorResult = {
   deltas: RpStatDelta[];
   narrative?: string;
@@ -29,6 +44,8 @@ export type RpExtractorResult = {
   /** undefined = no change; null = clear pending; object = set/update pending */
   pendingTransaction?: PendingTransaction | null;
   relationshipDeltas?: RpRelationshipDelta[];
+  npcInnerLifeUpdates?: NpcInnerLifeUpdate[];
+  arcUpdates?: RelationshipArcUpdate[];
   suggestedCondition?: string;
   characterStateSummary?: string;
 };
@@ -46,6 +63,8 @@ type ParsedExtractorResponse = {
   npcHpChanges?: unknown[];
   pendingTransaction?: unknown;
   relationshipDeltas?: unknown[];
+  npcInnerLifeUpdates?: unknown[];
+  arcUpdates?: unknown[];
   suggestedCondition?: string;
   characterStateSummary?: string;
 };
@@ -68,6 +87,8 @@ function safeParseExtractorResponse(text: string): ParsedExtractorResponse | nul
             npcHpChanges: Array.isArray(obj.npcHpChanges) ? obj.npcHpChanges : undefined,
             ...(hasPendingField ? { pendingTransaction: obj.pendingTransaction } : {}),
             relationshipDeltas: Array.isArray(obj.relationshipDeltas) ? obj.relationshipDeltas : undefined,
+            npcInnerLifeUpdates: Array.isArray(obj.npcInnerLifeUpdates) ? obj.npcInnerLifeUpdates : undefined,
+            arcUpdates: Array.isArray(obj.arcUpdates) ? obj.arcUpdates : undefined,
             suggestedCondition: typeof obj.suggestedCondition === "string" && obj.suggestedCondition.trim() ? obj.suggestedCondition.trim() : undefined,
             characterStateSummary: typeof obj.characterStateSummary === "string" && obj.characterStateSummary.trim() ? obj.characterStateSummary.trim() : undefined,
           };
@@ -205,6 +226,21 @@ export async function extractRpStatChanges(
     "CHARACTER STATE:",
     "Set \"characterStateSummary\" to 1-3 sentences describing the player character's current situation in present tense, third person. This replaces the previous summary — update it to reflect what just happened. Always include this field.",
     "",
+    "NPC INNER LIFE:",
+    "After a meaningful interaction with a named character, you may include \"npcInnerLifeUpdates\": [{\"characterName\": \"...\", \"emotionalState\": \"...\", \"howTheyDescribeYou\": \"...\", \"whatTheyWant\": \"...\", \"whatTheyreNotSaying\": \"...\"}].",
+    "- emotionalState: 2-5 words for how this character privately feels toward the player right now (e.g. \"quietly hopeful\", \"hurt and pulling away\", \"deeply worried but hiding it\").",
+    "- howTheyDescribeYou: one sentence in their internal voice describing the player (e.g. \"She means well but doesn't understand what I'm going through\").",
+    "- whatTheyWant: what they privately want from this relationship right now (e.g. \"wants space to grieve\", \"craving reassurance she won't leave\").",
+    "- whatTheyreNotSaying: something meaningful they are actively holding back (e.g. \"He knows the prognosis is worse than he admitted to her\").",
+    "- Only include fields the scene gives clear evidence for. Omit others. Omit the array entirely if no meaningful named-character interaction occurred.",
+    "",
+    "RELATIONSHIP ARC:",
+    "After a significant interaction with a named character, you may include \"arcUpdates\": [{\"characterName\": \"...\", \"statusPhrase\": \"...\", \"newMilestone\": \"...\", \"tension\": \"...\"}].",
+    "- statusPhrase: 3-6 evocative words capturing the current feel of this relationship (e.g. \"fragile but warming\", \"tested and holding\", \"quietly devoted\", \"at a crossroads\"). Include whenever any meaningful interaction occurred.",
+    "- newMilestone: ONLY on genuinely milestone-worthy events (first secret shared, betrayal revealed, crisis survived together). 3-6 words. Omit on ordinary turns.",
+    "- tension: the unresolved question or conflict currently driving this relationship forward (e.g. \"Will she ever forgive him?\", \"Can trust be rebuilt after the lie?\"). Update when the tension meaningfully shifts.",
+    "- Omit the array entirely if no named character had a significant interaction this turn.",
+    "",
     `Era/genre price benchmarks for ${config.currencyName} (defer to setting context and universe lore when available):`,
     `MODERN: Coffee $3–6 · Fast food $8–15 · Sit-down meal $15–35 · Bus/subway $2–4 · Rideshare short $10–20 · Rideshare long $25–60 · Haircut $20–50 · Bar drink $5–12 · Movie $12–20 · Doctor/urgent care $100–300 · Prescription $10–50 · Grocery run (small) $20–60 · Clothing item $20–80 · Min-wage shift (4–8 hrs) $50–120 · Tips $10–50`,
     `FANTASY/RPG: Tavern meal+drink 5–10 sp · Night's lodging 5 sp–2 gp · Rope (50ft) 1 gp · Dagger 2 gp · Short sword 10 gp · Potion of healing 50 gp · Horse 75 gp · Laborer day wage 1–4 sp · Artisan day 5–20 sp`,
@@ -310,14 +346,44 @@ export async function extractRpStatChanges(
       }
     }
 
+    // Parse NPC inner life updates
+    const npcInnerLifeUpdates: NpcInnerLifeUpdate[] = [];
+    for (const item of parsed.npcInnerLifeUpdates ?? []) {
+      if (!item || typeof item !== "object") continue;
+      const d = item as Record<string, unknown>;
+      if (typeof d.characterName !== "string" || !d.characterName.trim()) continue;
+      const u: NpcInnerLifeUpdate = { characterName: d.characterName.trim() };
+      if (typeof d.emotionalState === "string" && d.emotionalState.trim()) u.emotionalState = d.emotionalState.trim();
+      if (typeof d.howTheyDescribeYou === "string" && d.howTheyDescribeYou.trim()) u.howTheyDescribeYou = d.howTheyDescribeYou.trim();
+      if (typeof d.whatTheyWant === "string" && d.whatTheyWant.trim()) u.whatTheyWant = d.whatTheyWant.trim();
+      if (typeof d.whatTheyreNotSaying === "string" && d.whatTheyreNotSaying.trim()) u.whatTheyreNotSaying = d.whatTheyreNotSaying.trim();
+      if (u.emotionalState || u.howTheyDescribeYou || u.whatTheyWant || u.whatTheyreNotSaying) npcInnerLifeUpdates.push(u);
+    }
+
+    // Parse arc updates
+    const arcUpdates: RelationshipArcUpdate[] = [];
+    for (const item of parsed.arcUpdates ?? []) {
+      if (!item || typeof item !== "object") continue;
+      const d = item as Record<string, unknown>;
+      if (typeof d.characterName !== "string" || !d.characterName.trim()) continue;
+      const u: RelationshipArcUpdate = { characterName: d.characterName.trim() };
+      if (typeof d.statusPhrase === "string" && d.statusPhrase.trim()) u.statusPhrase = d.statusPhrase.trim();
+      if (typeof d.newMilestone === "string" && d.newMilestone.trim()) u.newMilestone = d.newMilestone.trim();
+      if (typeof d.tension === "string" && d.tension.trim()) u.tension = d.tension.trim();
+      if (u.statusPhrase || u.newMilestone || u.tension) arcUpdates.push(u);
+    }
+
     if (!deltas.length && !narrative && !npcHpChanges.length && pendingTransaction === undefined
-        && !relationshipDeltas.length && !parsed.suggestedCondition && !parsed.characterStateSummary) return null;
+        && !relationshipDeltas.length && !npcInnerLifeUpdates.length && !arcUpdates.length
+        && !parsed.suggestedCondition && !parsed.characterStateSummary) return null;
     return {
       deltas,
       narrative,
       npcHpChanges: npcHpChanges.length ? npcHpChanges : undefined,
       ...(pendingTransaction !== undefined ? { pendingTransaction } : {}),
       ...(relationshipDeltas.length ? { relationshipDeltas } : {}),
+      ...(npcInnerLifeUpdates.length ? { npcInnerLifeUpdates } : {}),
+      ...(arcUpdates.length ? { arcUpdates } : {}),
       ...(parsed.suggestedCondition ? { suggestedCondition: parsed.suggestedCondition } : {}),
       ...(parsed.characterStateSummary ? { characterStateSummary: parsed.characterStateSummary } : {}),
     };

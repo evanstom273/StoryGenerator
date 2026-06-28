@@ -280,6 +280,19 @@ export function buildStoryChatContext({
           "",
           `Active conditions: ${rpStats.conditions.map((c) => c.label).join(", ")}`,
         ] : []),
+        ...(() => {
+          const parsed = safeParseStoryStateData(storyState?.stateJson ?? "");
+          const rels = parsed?.indexes?.relationships ?? [];
+          const playerNorm = playerCharacter.name.toLowerCase().trim();
+          const intentions = rels
+            .filter((r) => r.playerIntention?.trim())
+            .map((r) => {
+              const npc = r.a.toLowerCase().trim() === playerNorm ? r.b : r.a;
+              return `${npc}: ${r.playerIntention}`;
+            });
+          if (!intentions.length) return [];
+          return ["", "Player's relationship intentions:", ...intentions.map((i) => `- ${i}`)];
+        })(),
         ...(rpStats.timeState ? [
           "",
           `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,

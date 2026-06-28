@@ -330,15 +330,49 @@ export type IndexedEntity = {
 };
 
 export type RelationshipTier =
+  // Close / warm
   | "stranger"
   | "acquaintance"
   | "friend"
+  | "close friend"
+  | "best friend"
+  | "confidant"
   | "family"
+  | "partner"
+  | "lover"
+  | "devoted"
+  | "mentor"
+  | "mentee"
+  | "caregiver"
+  | "patient"
+  // Professional / contextual
   | "ally"
+  | "colleague"
+  | "professional"
+  // Complex / difficult
+  | "complicated"
+  | "guarded"
+  | "distant"
+  | "estranged"
+  // Negative
   | "rival"
+  | "adversary"
   | "enemy"
   | "nemesis"
-  | "lover";
+  | "threat";
+
+export type NpcInnerLife = {
+  emotionalState?: string;
+  howTheyDescribeYou?: string;
+  whatTheyWant?: string;
+  whatTheyreNotSaying?: string;
+};
+
+export type RelationshipArc = {
+  statusPhrase?: string;
+  milestones?: string[];
+  tension?: string;
+};
 
 export type RelationshipHistoryEntry = {
   summary: string;
@@ -363,6 +397,9 @@ export type RelationshipIndexEntry = {
   history?: RelationshipHistoryEntry[];
   summary?: string;
   evidence?: EvidenceRef;
+  npcInnerLife?: NpcInnerLife;
+  arc?: RelationshipArc;
+  playerIntention?: string;
 };
 
 export type RpCondition = {

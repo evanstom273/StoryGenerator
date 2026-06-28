@@ -80,7 +80,7 @@ import {
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
-import { extractRpStatChanges, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
+import { extractRpStatChanges, type NpcInnerLifeUpdate, type RelationshipArcUpdate, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
@@ -893,33 +893,63 @@ function applyRelationshipDeltas(
   existing: RelationshipIndexEntry[],
   deltas: RpRelationshipDelta[],
   playerName: string,
+  innerLifeUpdates?: NpcInnerLifeUpdate[],
+  arcUpdates?: RelationshipArcUpdate[],
 ): RelationshipIndexEntry[] {
-  const updated = [...existing];
-  for (const delta of deltas) {
-    const nameNorm = delta.characterName.toLowerCase().trim();
-    const playerNorm = playerName.toLowerCase().trim();
-    const idx = updated.findIndex(
+  const playerNorm = playerName.toLowerCase().trim();
+  const working: RelationshipIndexEntry[] = existing.map((e) => ({ ...e }));
+
+  function findOrCreate(characterName: string): number | null {
+    const nameNorm = characterName.toLowerCase().trim();
+    if (nameNorm === playerNorm) return null;
+    const idx = working.findIndex(
       (r) => r.a.toLowerCase().trim() === nameNorm || r.b.toLowerCase().trim() === nameNorm,
     );
-    let entry: RelationshipIndexEntry;
-    if (idx === -1) {
-      entry = { a: playerName, b: delta.characterName, tier: "stranger", trust: 50, affection: 50, fear: 50, dependency: 50 };
-    } else {
-      entry = { ...updated[idx]! };
-    }
-    const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+    if (idx !== -1) return idx;
+    working.push({ a: playerName, b: characterName, tier: "stranger", trust: 50, affection: 50, fear: 50, dependency: 50 });
+    return working.length - 1;
+  }
+
+  const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+
+  for (const delta of deltas) {
+    const idx = findOrCreate(delta.characterName);
+    if (idx === null) continue;
+    const entry = working[idx]!;
     if (delta.trust !== undefined) entry.trust = clamp((entry.trust ?? 50) + delta.trust);
     if (delta.affection !== undefined) entry.affection = clamp((entry.affection ?? 50) + delta.affection);
     if (delta.fear !== undefined) entry.fear = clamp((entry.fear ?? 50) + delta.fear);
     if (delta.dependency !== undefined) entry.dependency = clamp((entry.dependency ?? 50) + delta.dependency);
-    if (idx === -1) {
-      // Only add if not the same as playerName
-      if (nameNorm !== playerNorm) updated.push(entry);
-    } else {
-      updated[idx] = entry;
-    }
   }
-  return updated;
+
+  for (const u of innerLifeUpdates ?? []) {
+    const idx = findOrCreate(u.characterName);
+    if (idx === null) continue;
+    const entry = working[idx]!;
+    const prev = entry.npcInnerLife ?? {};
+    entry.npcInnerLife = {
+      ...prev,
+      ...(u.emotionalState ? { emotionalState: u.emotionalState } : {}),
+      ...(u.howTheyDescribeYou ? { howTheyDescribeYou: u.howTheyDescribeYou } : {}),
+      ...(u.whatTheyWant ? { whatTheyWant: u.whatTheyWant } : {}),
+      ...(u.whatTheyreNotSaying ? { whatTheyreNotSaying: u.whatTheyreNotSaying } : {}),
+    };
+  }
+
+  for (const u of arcUpdates ?? []) {
+    const idx = findOrCreate(u.characterName);
+    if (idx === null) continue;
+    const entry = working[idx]!;
+    const prev = entry.arc ?? {};
+    entry.arc = {
+      ...prev,
+      ...(u.statusPhrase ? { statusPhrase: u.statusPhrase } : {}),
+      ...(u.tension ? { tension: u.tension } : {}),
+      ...(u.newMilestone ? { milestones: [...(prev.milestones ?? []), u.newMilestone].slice(-10) } : {}),
+    };
+  }
+
+  return working;
 }
 
 export function StoryEngineProvider({
@@ -4488,7 +4518,7 @@ export function StoryEngineProvider({
                 },
               );
               if (extracted) {
-                const { deltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx, relationshipDeltas, suggestedCondition, characterStateSummary } = extracted;
+                const { deltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx, relationshipDeltas, npcInnerLifeUpdates, arcUpdates, suggestedCondition, characterStateSummary } = extracted;
                 const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
                 const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
                 const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
@@ -4613,9 +4643,9 @@ export function StoryEngineProvider({
                 const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" · ") : null;
                 const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" · ") || narrative || null;
 
-                // Compute updated relationships if deltas were returned
+                // Compute updated relationships if any relationship data was returned
                 let updatedRelationships: RelationshipIndexEntry[] | null = null;
-                if (relationshipDeltas?.length) {
+                if (relationshipDeltas?.length || npcInnerLifeUpdates?.length || arcUpdates?.length) {
                   const latestForRel = await repository.getStoryState(storyId);
                   const parsedForRel = latestForRel?.stateJson
                     ? (() => { try { return JSON.parse(latestForRel.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
@@ -4626,8 +4656,8 @@ export function StoryEngineProvider({
                       return Array.isArray(idx) ? idx : [];
                     } catch { return []; }
                   })();
-                  updatedRelationships = applyRelationshipDeltas(existingRelationships, relationshipDeltas, playerCharacter.name);
-                  appliedRelationshipDeltas = relationshipDeltas;
+                  updatedRelationships = applyRelationshipDeltas(existingRelationships, relationshipDeltas ?? [], playerCharacter.name, npcInnerLifeUpdates, arcUpdates);
+                  if (relationshipDeltas?.length) appliedRelationshipDeltas = relationshipDeltas;
                 }
 
                 if (summary) {
