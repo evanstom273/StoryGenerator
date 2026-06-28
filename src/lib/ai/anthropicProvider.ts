@@ -1,5 +1,5 @@
 import type { AIProvider, AIChatMessage } from "./types";
-import { normalizeAIError } from "./errors";
+import { AIError, normalizeAIError, looksLikeSafetyRefusal } from "./errors";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -74,14 +74,32 @@ async function callMessages(
     });
 
     if (!response.ok) {
-      let message = `Anthropic API error ${response.status}`;
+      const status = response.status;
+      let message = `Anthropic API error ${status}`;
       try {
         const errJson = (await response.json()) as { error?: { message?: string } };
         if (errJson.error?.message) message = errJson.error.message;
       } catch {
         // ignore parse error
       }
-      throw new Error(message);
+      const diagnostic = `status=${status}; provider=Anthropic; raw=${message}`;
+      if (status === 401 || status === 403) {
+        throw new AIError("invalid_api_key", "Anthropic API key is invalid or unauthorized.", status, { diagnostic });
+      }
+      if (status === 429) {
+        throw new AIError("rate_limited", "Anthropic rate limit exceeded. Try again in a moment.", status, { diagnostic });
+      }
+      if (status >= 500) {
+        throw new AIError("provider_unavailable", "Anthropic service returned a server error. Try again.", status, { diagnostic, retryable: true });
+      }
+      if (status === 400) {
+        if (looksLikeSafetyRefusal(message)) {
+          throw new AIError("safety_refusal", message, status, { diagnostic });
+        }
+        // Expose the actual Anthropic 400 message so users can see what went wrong
+        throw new AIError("generation_failed", `Anthropic rejected the request: ${message}`, status, { diagnostic });
+      }
+      throw new AIError("generation_failed", message, status, { diagnostic });
     }
 
     const json = (await response.json()) as AnthropicMessagesResponse;
