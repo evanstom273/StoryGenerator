@@ -1,6 +1,6 @@
 import type { PendingTransaction, RpConfig, RpStats } from "../../types/models";
 import type { AIProvider } from "./types";
-import { clampStat, effectiveCoreStats, getStatValue, isValidStatField } from "../rpStats";
+import { clampStat, getStatValue, isValidStatField } from "../rpStats";
 import { formatTime } from "../rpTime";
 
 export type RpStatDelta = { field: string; delta: number; reason: string };
@@ -123,8 +123,6 @@ export async function extractRpStatChanges(
   model: string,
   context?: RpExtractorContext,
 ): Promise<RpExtractorResult | null> {
-  const core = effectiveCoreStats(rpStats, config);
-
   const goldFloor = config.allowDebt
     ? (config.creditLimit != null && config.creditLimit > 0 ? -config.creditLimit : null)
     : 0;
@@ -152,13 +150,13 @@ export async function extractRpStatChanges(
   const prompt = [
     "Analyze the story scene below and identify stat changes for the PLAYER CHARACTER, any NPC health events, and time elapsed.",
     "",
-    `Current player stats: HP ${rpStats.hp}/${config.maxHp}, ${config.currencyName} ${rpStats.gold}, STR ${core.str} DEX ${core.dex} CON ${core.con} INT ${core.int} WIS ${core.wis} CHA ${core.cha}`,
+    `Current player stats: HP ${rpStats.hp}/${config.maxHp}, ${config.currencyName} ${rpStats.gold}`,
     goldFloorNote,
     pendingTxContext,
     `Current NPC HP: ${npcHpContext}`,
     settingContext,
     "",
-    "Valid player fields: hp, gold, str, dex, con, int, wis, cha",
+    "Valid player fields: hp, gold",
     "",
     "PRICE RULE: When an NPC states a price verbatim (e.g. 'eight-fifty' = 8.50, 'five eighty-seven' = 5.87, 'twelve fifty' = 12.50), use EXACTLY that number for pendingTransaction.amount. Benchmarks are a fallback ONLY when no price is stated — they must NEVER override a spoken price.",
     "AMOUNT LOCK: Once pendingTransaction.amount is set from a stated price, do NOT change it for inferred extras (bag fees, taxes, tips). Only update if an NPC explicitly states a new total (e.g. 'With the bag that's $8.75').",
@@ -200,7 +198,6 @@ export async function extractRpStatChanges(
     "- If clearly gifted, comped, paid by someone else, or if the character did not participate in the transaction: do NOT apply a delta.",
     "- If a purchase was attempted but blocked due to insufficient funds, do NOT deduct gold — just set narrative.",
     "- HP can increase (healing). Apply a positive hp delta when the player takes medication and explicitly feels better (e.g. painkillers reducing a headache → +5 to +10 HP), receives direct medical treatment (+10 to +25 HP), or significantly rests/sleeps (+15 to +30 HP). Be conservative — over-the-counter pain relief is +5 to +10 HP max.",
-    "- Core stats (str, dex, con, int, wis, cha) should ONLY change for significant, persistent events — long-term training, major illness, lasting injury, profound personal growth. A single scene or ordinary activity almost never warrants a core stat change.",
     "",
     "Rules for npcHpChanges:",
     "- Track named NPCs who suffer or recover from significant PHYSICAL health events in this scene only.",

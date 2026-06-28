@@ -4553,10 +4553,7 @@ export function StoryEngineProvider({
                 },
               );
               if (extracted) {
-                const { deltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx, relationshipDeltas, npcInnerLifeUpdates, arcUpdates, suggestedCondition, characterStateSummary } = extracted;
-                const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
-                const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
-                const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
+                const { deltas: autoDeltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx, relationshipDeltas, npcInnerLifeUpdates, arcUpdates, suggestedCondition, characterStateSummary } = extracted;
 
                 let nextStats = currentRpStats;
                 const applied: RpChangelogEntry[] = [];
@@ -4720,9 +4717,6 @@ export function StoryEngineProvider({
                     stateJson: JSON.stringify(mergedState),
                     updatedAt: new Date().toISOString(),
                   });
-                }
-                if (coreDeltas.length) {
-                  pendingCoreStatChanges = coreDeltas;
                 }
               }
             } catch {}

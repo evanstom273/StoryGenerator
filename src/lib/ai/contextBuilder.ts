@@ -221,10 +221,6 @@ export function buildStoryChatContext({
 
   const rpStatsBlock = (() => {
     if (!story.rpMode || !rpStats || !rpConfig) return "";
-    const { str, dex, con, int: INT, wis, cha } = {
-      ...rpConfig.coreStats,
-      ...rpStats.statOverrides,
-    };
     const hpPct = rpConfig.maxHp > 0 ? rpStats.hp / rpConfig.maxHp : 0;
     const hpState =
       rpStats.hp <= 0 ? "Incapacitated"
@@ -241,8 +237,6 @@ export function buildStoryChatContext({
       [
         `HP: ${rpStats.hp} / ${rpConfig.maxHp} — ${hpState}`,
         `${rpConfig.currencyName}: ${goldFormatted}`,
-        `STR ${str}  DEX ${dex}  CON ${con}  INT ${INT}  WIS ${wis}  CHA ${cha}`,
-        "",
         "HP represents physical condition. Writing tone should reflect the current state:",
         "Healthy: acts freely and without obvious impairment.",
         "Injured: may show strain, wince, or move with care.",
@@ -253,15 +247,13 @@ export function buildStoryChatContext({
         `The character's ${rpConfig.currencyName} balance represents their total financial position — savings, income, and assets — not just pocket money. Treat it as meaningful characterisation: a teenager may have only a little, a working adult considerably more.`,
         `Currency rule: if the player attempts a purchase they cannot afford, reflect this naturally in the scene (declined card, putting items back, asking for credit, etc.). Do not let a purchase silently succeed if the character lacks funds.${debtLine ? `\n${debtLine}` : ""}`,
         "",
-        "Core stats are narrative guidance. They shape plausibility and colour consequences — they never gate an attempt. Higher scores suggest ease and competence; lower scores suggest difficulty, awkwardness, or risk of failure.",
-        "",
-        "Do not narrate or reference stat values directly. Stat tracking happens separately.",
         ...(rpConfig.diceRollsEnabled ? [
           "",
-          "Dice roll rule: when the player's message contains a result tag like [CHA +1 | d12: 9 | Total: 10 — SUCCESS] or [STR -1 | d12: 3 | Total: 2 — FAILURE], treat that outcome as a binding narrative fact. Interpret each result as follows:",
+          "Dice roll rule: when the player's message contains a result tag like [CHA +1 | 2d6: 4+3 | Total: 8 — SUCCESS] or [STR -1 | 2d6: 1+2 | Total: 2 — FAILURE], treat that outcome as a binding narrative fact. Interpret each result as follows:",
           "- SUCCESS (total ≥ 7): the character's approach is effective, or circumstances become more favourable. This does not automatically resolve the entire situation — narrate the process and the feel of the success unfolding rather than jumping straight to a final outcome. Unless the action would reasonably conclude the situation on its own, leave threads open.",
-          "- CRITICAL SUCCESS (natural 12 on the die): the approach lands especially well. Go a step further than a standard success — an unexpected benefit, a warmer-than-expected response, something that earns the character a small advantage or moment of grace.",
+          "- CRITICAL SUCCESS (both dice show 6): the approach lands exceptionally well. Go a step further than a standard success — an unexpected benefit, a warmer-than-expected response, something that earns the character a meaningful advantage or moment of grace.",
           "- FAILURE (total < 7): the attempt introduces a complication, setback, or obstacle. The character is not made incapable and the worst-case outcome is not automatic — instead, something goes wrong in a way that creates pressure, costs time or goodwill, or makes the next step harder.",
+          "- CRITICAL FAILURE (both dice show 1): the attempt backfires in a real, active way — not just a setback but a genuine negative consequence. Something is lost, broken, or made worse. The character may face embarrassment, danger, or an unexpected cost. This should sting.",
           "Do not ignore or quietly override the roll result. Narrate the scene so the outcome feels earned and real.",
         ] : []),
         ...(rpConfig.birthdayMonth != null && rpConfig.birthdayDay != null ? [

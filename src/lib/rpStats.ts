@@ -1,13 +1,4 @@
-import type { RpChangelogEntry, RpConfig, RpCoreStats, RpDiceModifiers, RpStats } from "../types/models";
-
-export const DEFAULT_CORE_STATS: RpCoreStats = {
-  str: 10,
-  dex: 10,
-  con: 10,
-  int: 10,
-  wis: 10,
-  cha: 10,
-};
+import type { RpChangelogEntry, RpConfig, RpDiceModifiers, RpStats } from "../types/models";
 
 export const DEFAULT_DICE_MODIFIERS: RpDiceModifiers = {
   str: 0,
@@ -23,7 +14,6 @@ export const DEFAULT_RP_CONFIG: RpConfig = {
   currencyDecimals: false,
   maxHp: 100,
   startingGold: 0,
-  coreStats: { ...DEFAULT_CORE_STATS },
   allowDebt: false,
   creditLimit: null,
   diceRollsEnabled: false,
@@ -48,10 +38,6 @@ export function applyStatChange(
     ...stats,
     hp: change.field === "hp" ? change.to : stats.hp,
     gold: change.field === "gold" ? change.to : stats.gold,
-    statOverrides:
-      change.field in DEFAULT_CORE_STATS
-        ? { ...stats.statOverrides, [change.field]: change.to }
-        : stats.statOverrides,
     npcHp:
       change.field.startsWith("npc:")
         ? (() => {
@@ -82,24 +68,16 @@ export function formatGold(amount: number, config: RpConfig): string {
   return `${val} ${config.currencyName}`;
 }
 
-export function effectiveCoreStats(stats: RpStats, config: RpConfig): RpCoreStats {
-  return {
-    ...config.coreStats,
-    ...stats.statOverrides,
-  };
-}
-
-const STAT_FIELDS = new Set(["hp", "gold", "str", "dex", "con", "int", "wis", "cha"]);
+const STAT_FIELDS = new Set(["hp", "gold"]);
 
 export function isValidStatField(field: string): boolean {
-  return STAT_FIELDS.has(field);
+  return STAT_FIELDS.has(field) || field.startsWith("npc:");
 }
 
-export function getStatValue(stats: RpStats, config: RpConfig, field: string): number {
+export function getStatValue(stats: RpStats, _config: RpConfig, field: string): number {
   if (field === "hp") return stats.hp;
   if (field === "gold") return stats.gold;
-  const coreStats = effectiveCoreStats(stats, config);
-  return (coreStats as Record<string, number>)[field] ?? 10;
+  return 0;
 }
 
 function hpStateName(hp: number, maxHp: number): string {
@@ -145,5 +123,5 @@ export function clampStat(field: string, value: number, config: RpConfig): numbe
     }
     return Math.max(0, value);
   }
-  return Math.min(30, Math.max(1, value));
+  return value;
 }

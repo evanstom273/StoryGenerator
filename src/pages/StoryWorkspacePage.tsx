@@ -21,7 +21,7 @@ import { createAIProvider } from "../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../lib/ai/models";
 import { selectDiceStat } from "../lib/ai/diceStatSelector";
 import { DiceRollModal, type DiceRollResult } from "../components/story/DiceRollModal";
-import { DEFAULT_DICE_MODIFIERS, applyStatChange as applyRpStatChange } from "../lib/rpStats";
+import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
 import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
@@ -33,7 +33,7 @@ import type {
   StoryMessageRole,
   StoryMessageSpeakerType,
 } from "../types/models";
-import type { RpStatDelta } from "../lib/ai/rpStatsExtractor";
+
 
 const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
 const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
@@ -165,7 +165,6 @@ export function StoryWorkspacePage() {
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
   const [relationshipsOpen, setRelationshipsOpen] = useState(false);
 
-  const [pendingCoreStatChanges, setPendingCoreStatChanges] = useState<RpStatDelta[] | null>(null);
   const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
   const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
   const [relationshipsRefreshKey, setRelationshipsRefreshKey] = useState(0);
@@ -219,7 +218,6 @@ export function StoryWorkspacePage() {
     setIsAssistantEditSaving(false);
     setRpSheetOpen(false);
     setRelationshipsOpen(false);
-    setPendingCoreStatChanges(null);
     setRpToasts([]);
     setShowZeroHpModal(false);
     setZeroHpConsequenceChoice("");
@@ -393,7 +391,6 @@ export function StoryWorkspacePage() {
           setShowZeroHpModal(true);
         }
       }
-      if (result.pendingCoreStatChanges?.length) setPendingCoreStatChanges(result.pendingCoreStatChanges);
       if (result.rpEventSummary) {
         const id = `${Date.now()}-${Math.random()}`;
         setRpToasts((prev) => [{ id, summary: result.rpEventSummary! }, ...prev]);
@@ -436,7 +433,7 @@ export function StoryWorkspacePage() {
     if (!diceRollPending) return;
     const statLabel = result.stat.toUpperCase();
     const modLabel = result.modifier > 0 ? `+${result.modifier}` : result.modifier < 0 ? `${result.modifier}` : "±0";
-    const resultTag = `[${statLabel} ${modLabel} | d12: ${result.die} | Total: ${result.total} — ${result.outcome}]`;
+    const resultTag = `[${statLabel} ${modLabel} | 2d6: ${result.dice[0]}+${result.dice[1]} | Total: ${result.total} — ${result.outcome}]`;
     const substituted = diceRollPending.resolvedMessage.replace(ROLL_TAG_RE, resultTag);
 
     // Toast
@@ -484,7 +481,6 @@ export function StoryWorkspacePage() {
           setShowZeroHpModal(true);
         }
       }
-      if (result.pendingCoreStatChanges?.length) setPendingCoreStatChanges(result.pendingCoreStatChanges);
       if (result.rpEventSummary) {
         const id = `${Date.now()}-${Math.random()}`;
         setRpToasts((prev) => [{ id, summary: result.rpEventSummary! }, ...prev]);
@@ -701,23 +697,6 @@ export function StoryWorkspacePage() {
     } finally {
       setIsGeneratingAssist(false);
     }
-  }
-
-  async function handleAcceptCoreStatChanges() {
-    if (!pendingCoreStatChanges?.length || !storyId || !activeStory.rpConfig) return;
-    const state = await fetchStoryState(storyId);
-    if (!state) return;
-    try {
-      const base = JSON.parse(state.stateJson) as Record<string, unknown>;
-      let next = (base.rpStats as any) ?? {};
-      for (const d of pendingCoreStatChanges) {
-        const from = (next.statOverrides?.[d.field] ?? activeStory.rpConfig.coreStats[d.field as keyof typeof activeStory.rpConfig.coreStats]) ?? 10;
-        const to = Math.min(30, Math.max(1, from + d.delta));
-        next = applyRpStatChange(next, { field: d.field, from, to, reason: d.reason });
-      }
-      await updateRpStats(storyId, next);
-      setPendingCoreStatChanges(null);
-    } catch {}
   }
 
   function applyComposerPreset(role: StoryMessageRole, speakerType?: StoryMessageSpeakerType) {
@@ -1131,29 +1110,6 @@ export function StoryWorkspacePage() {
       {readerMode || archiveMode ? null : (
         latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
           <Panel variant="flat" className="mt-4" padding="sm">
-            {activeStory.rpMode && pendingCoreStatChanges?.length ? (
-              <div className="mb-3 rounded-[9px] border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
-                <div className="mb-2 flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-amber-300">Stat change implied by narrative</p>
-                    <p className="mt-0.5 text-xs text-ink-muted">
-                      {pendingCoreStatChanges.map((d) => {
-                        const sign = d.delta > 0 ? "+" : "";
-                        return `${d.field.toUpperCase()} ${sign}${d.delta} — ${d.reason}`;
-                      }).join(" · ")}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="primary" size="sm" onClick={() => void handleAcceptCoreStatChanges()} disabled={isGenerating || isRegenerating}>
-                    Accept
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => setPendingCoreStatChanges(null)} disabled={isGenerating || isRegenerating}>
-                    Dismiss
-                  </Button>
-                </div>
-              </div>
-            ) : null}
             {latestDirectorIntentMessage?.directorIntent ? (
               <div className="mb-3 flex flex-col gap-3 rounded-[9px] border border-divider/[0.4] bg-panel-muted/50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-ink-muted">

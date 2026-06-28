@@ -1056,25 +1056,6 @@ ${profileText}`;
                   {suggestGoldError && <p className="text-xs text-red-400">{suggestGoldError}</p>}
                 </div>
 
-                <div className="space-y-2">
-                  <p className="text-xs text-ink-muted">Starting core stats</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["str", "dex", "con", "int", "wis", "cha"] as const).map((stat) => (
-                      <label key={stat} className="block space-y-0.5">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{stat}</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={30}
-                          className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-2 py-1.5 text-center text-sm text-ink outline-none transition focus:border-accent/[0.4]"
-                          value={configDraft.coreStats[stat]}
-                          onChange={(e) => setConfigDraft((c) => ({ ...c, coreStats: { ...c.coreStats, [stat]: Math.max(1, parseInt(e.target.value) || 1) } }))}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="border-t border-divider/40 pt-3 space-y-3">
                   <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider">Currency &amp; Debt</p>
                   <label className="flex items-center justify-between gap-3">

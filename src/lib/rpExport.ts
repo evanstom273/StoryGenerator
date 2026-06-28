@@ -1,5 +1,5 @@
 import type { PlayerCharacter, RpConfig, RpEventLogEntry, RpStats, StoryMessage } from "../types/models";
-import { effectiveCoreStats, formatGold } from "./rpStats";
+import { formatGold } from "./rpStats";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { formatTimeShort } from "./rpTime";
 import {
@@ -47,23 +47,10 @@ function relTime(ts: number): string {
   return new Date(ts).toLocaleString();
 }
 
-function coreStatEntries(rpStats: RpStats, rpConfig: RpConfig) {
-  const core = effectiveCoreStats(rpStats, rpConfig);
-  return [
-    ["STR", core.str],
-    ["DEX", core.dex],
-    ["CON", core.con],
-    ["INT", core.int],
-    ["WIS", core.wis],
-    ["CHA", core.cha],
-  ] as [string, number][];
-}
-
 // ── JSON ─────────────────────────────────────────────────────────────────────
 
 export function buildRpExportJson(data: RpExportData): string {
   const { storyTitle, exportedAt, rpStats, rpConfig, messages, playerCharacter } = data;
-  const core = effectiveCoreStats(rpStats, rpConfig);
 
   const payload: Record<string, unknown> = {
     story: { title: storyTitle, exportedAt },
@@ -87,12 +74,6 @@ export function buildRpExportJson(data: RpExportData): string {
   payload.characterSheet = {
     hp: { current: rpStats.hp, max: rpConfig.maxHp },
     [rpConfig.currencyName.toLowerCase() || "gold"]: rpStats.gold,
-    str: core.str,
-    dex: core.dex,
-    con: core.con,
-    int: core.int,
-    wis: core.wis,
-    cha: core.cha,
   };
 
   payload.npcHp = Object.fromEntries(
@@ -169,9 +150,6 @@ export function buildRpExportMarkdown(data: RpExportData): string {
   lines.push("|---|---|");
   lines.push(`| HP | ${rpStats.hp} / ${rpConfig.maxHp} |`);
   lines.push(`| ${rpConfig.currencyName} | ${rpStats.gold} |`);
-  for (const [label, val] of coreStatEntries(rpStats, rpConfig)) {
-    lines.push(`| ${label} | ${val} |`);
-  }
   lines.push("");
 
   // NPC HP
@@ -278,9 +256,6 @@ export function buildRpExportText(data: RpExportData): string {
   lines.push("-".repeat(30));
   lines.push(`HP: ${rpStats.hp} / ${rpConfig.maxHp}`);
   lines.push(`${rpConfig.currencyName}: ${rpStats.gold}`);
-  for (const [label, val] of coreStatEntries(rpStats, rpConfig)) {
-    lines.push(`${label}: ${val}`);
-  }
   lines.push("");
 
   const npcEntries = Object.values(rpStats.npcHp);
@@ -385,9 +360,6 @@ export async function buildRpExportPdf(data: RpExportData): Promise<Blob> {
   y = heading(doc, y, "Character Sheet", 14, pageH);
   y = metaLine(doc, y, "HP", `${rpStats.hp} / ${rpConfig.maxHp}`, pageH);
   y = metaLine(doc, y, rpConfig.currencyName, String(rpStats.gold), pageH);
-  for (const [label, val] of coreStatEntries(rpStats, rpConfig)) {
-    y = metaLine(doc, y, label, String(val), pageH);
-  }
   y += 4;
   y = rule(doc, y, pageW);
 

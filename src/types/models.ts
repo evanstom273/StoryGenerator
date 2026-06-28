@@ -79,15 +79,6 @@ export interface PlayerCharacter {
   createdAt: Timestamp;
 }
 
-export type RpCoreStats = {
-  str: number;
-  dex: number;
-  con: number;
-  int: number;
-  wis: number;
-  cha: number;
-};
-
 export type RpCalendarConfig = {
   monthNames?: string[];    // 12 names; default Gregorian
   weekdayNames?: string[];  // 7 names starting Sunday; default English
@@ -132,7 +123,6 @@ export type RpConfig = {
   currencyDecimals: boolean;
   maxHp: number;
   startingGold: number;
-  coreStats: RpCoreStats;
   allowDebt?: boolean;
   creditLimit?: number | null;
   calendarConfig?: RpCalendarConfig;
@@ -175,7 +165,6 @@ export type RpStats = {
   hp: number;
   gold: number;
   npcHp: Record<string, RpNpcHpEntry>;
-  statOverrides?: Partial<RpCoreStats>;
   changelog: RpChangelogEntry[];
   eventLog?: RpEventLogEntry[];
   timeState?: RpTimeState;
