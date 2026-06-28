@@ -113,19 +113,26 @@ export function createAnthropicProvider(): AIProvider {
       }
     },
 
-    async generateResponse({ apiKey, model, messages, maxTokens, temperature, timeoutMs, signal }) {
+    async generateResponse({ apiKey, model, messages, maxTokens, temperature, jsonMode, timeoutMs, signal }) {
       const { system, messages: chatMessages } = splitSystemAndMessages(messages);
-      const content = await callMessages(
+      // When JSON output is required, inject an assistant prefill of "{" so Claude
+      // is forced to continue with a JSON object rather than adding preamble.
+      const finalMessages: AnthropicMessage[] = jsonMode
+        ? [...chatMessages, { role: "assistant", content: "{" }]
+        : chatMessages;
+      const raw = await callMessages(
         apiKey,
         {
           model,
           max_tokens: maxTokens ?? 700,
           temperature: temperature ?? 0.8,
           system,
-          messages: chatMessages,
+          messages: finalMessages,
         },
         { timeoutMs, signal },
       );
+      // Prepend the prefill character — Anthropic returns only the continuation.
+      const content = jsonMode ? "{" + raw : raw;
       return { content };
     },
 

@@ -3560,6 +3560,9 @@ export function StoryEngineProvider({
               { role: "system", content: systemPrompt },
               { role: "user", content: "Generate the JSON now." },
             ],
+            maxTokens: 1200,
+            temperature: 0,
+            jsonMode: true,
           });
         } catch (error) {
           rethrowUserFacingGenerationError(error, providerType);
