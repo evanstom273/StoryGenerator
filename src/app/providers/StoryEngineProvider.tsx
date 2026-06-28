@@ -1340,6 +1340,13 @@ export function StoryEngineProvider({
         });
         const existingController = backgroundJobControllersRef.current[existing.id];
         existingController?.abort();
+        // Clear the active ref immediately so the new job can be picked up without
+        // waiting for the old job's async cleanup to settle (which can take up to
+        // REBUILD_REQUEST_TIMEOUT_MS if the abort signal lands mid-AI-call).
+        // The finally block guards against clearing a different job's ref.
+        if (activeBackgroundJobRef.current === existing.id) {
+          activeBackgroundJobRef.current = null;
+        }
       }
 
       const job: BackgroundJob = {
@@ -2016,7 +2023,11 @@ export function StoryEngineProvider({
 
     void processBackgroundJob(nextJob, controller.signal).finally(() => {
       delete backgroundJobControllersRef.current[nextJob.id];
-      activeBackgroundJobRef.current = null;
+      // Only clear the ref if it still points to this job.
+      // A force-cancel path may have already cleared it and set a new job's ref.
+      if (activeBackgroundJobRef.current === nextJob.id) {
+        activeBackgroundJobRef.current = null;
+      }
       void hydrate(false);
     });
   }, [backgroundJobs, errorMessage, hydrate, loading, processBackgroundJob]);
