@@ -58,6 +58,7 @@ export type RpExtractorContext = {
   universeLore?: string;
   playerMessage?: string;
   pendingTransaction?: PendingTransaction;
+  charactersInScene?: Array<{ name: string; tier?: string }>;
 };
 
 type ParsedExtractorResponse = {
@@ -239,6 +240,11 @@ export async function extractRpStatChanges(
     "howTheyDescribeYou: one sentence in their internal voice. Infer from how they talk about or act toward the player character. Never leave blank.",
     "Example: {\"characterName\": \"Jake\", \"tier\": \"family\", \"emotionalState\": \"proud but quietly anxious\", \"howTheyDescribeYou\": \"He's my kid and I need to get this right for him.\", \"whatTheyWant\": \"to help without overstepping\", \"whatTheyreNotSaying\": \"He's scared Jamie is already pulling away\"}",
     "Omit the npcInnerLifeUpdates array only if zero named characters appeared in the scene at all.",
+    ...(context?.charactersInScene?.length ? [
+      "",
+      `Characters who appeared in this scene: ${context.charactersInScene.map((c) => c.tier ? `${c.name} (${c.tier})` : c.name).join(", ")}.`,
+      "You MUST include an entry for EVERY character listed above in both npcInnerLifeUpdates and arcUpdates — no exceptions.",
+    ] : []),
     "",
     "RELATIONSHIP ARC:",
     "For every named character who appears in the scene, include an entry in \"arcUpdates\". You must always write statusPhrase — it is not optional.",

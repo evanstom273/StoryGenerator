@@ -79,6 +79,7 @@ import {
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
+import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type NpcInnerLifeUpdate, type RelationshipArcUpdate, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
@@ -4507,6 +4508,35 @@ export function StoryEngineProvider({
 
           if (story.rpMode && story.rpConfig && currentRpStats) {
             try {
+              // Load existing relationships before extraction so we can pass tiers to the extractor
+              const preExtractState = await repository.getStoryState(storyId);
+              const preExtractParsed = preExtractState?.stateJson
+                ? (() => { try { return JSON.parse(preExtractState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
+                : {} as Record<string, unknown>;
+              const preExtractRelationships: RelationshipIndexEntry[] = (() => {
+                try {
+                  const idx = (preExtractParsed as any)?.indexes?.relationships;
+                  return Array.isArray(idx) ? idx : [];
+                } catch { return []; }
+              })();
+
+              // Parse which named characters spoke in this scene (exclude player and Narrator)
+              const playerNameNorm = playerCharacter.name.toLowerCase().trim();
+              const speakerNamesInScene = [
+                ...new Set(
+                  parseSceneBlocks(finalSanitizedText)
+                    .map((b) => b.speakerLabel?.trim())
+                    .filter((l): l is string => !!l && l !== "Narrator" && l.toLowerCase() !== playerNameNorm),
+                ),
+              ];
+              const charactersInScene = speakerNamesInScene.map((name) => {
+                const nameNorm = name.toLowerCase();
+                const existing = preExtractRelationships.find(
+                  (r) => r.a.toLowerCase() === nameNorm || r.b.toLowerCase() === nameNorm,
+                );
+                return existing ? { name, tier: existing.tier as string } : { name };
+              });
+
               const extracted = await extractRpStatChanges(
                 finalSanitizedText,
                 currentRpStats,
@@ -4519,6 +4549,7 @@ export function StoryEngineProvider({
                   universeLore: effectiveUniverse.description ?? undefined,
                   playerMessage: trimmed,
                   pendingTransaction: currentRpStats.pendingTransaction,
+                  charactersInScene: charactersInScene.length ? charactersInScene : undefined,
                 },
               );
               if (extracted) {
@@ -4650,17 +4681,7 @@ export function StoryEngineProvider({
                 // Compute updated relationships if any relationship data was returned
                 let updatedRelationships: RelationshipIndexEntry[] | null = null;
                 if (relationshipDeltas?.length || npcInnerLifeUpdates?.length || arcUpdates?.length) {
-                  const latestForRel = await repository.getStoryState(storyId);
-                  const parsedForRel = latestForRel?.stateJson
-                    ? (() => { try { return JSON.parse(latestForRel.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
-                    : {} as Record<string, unknown>;
-                  const existingRelationships: RelationshipIndexEntry[] = (() => {
-                    try {
-                      const idx = (parsedForRel as any)?.indexes?.relationships;
-                      return Array.isArray(idx) ? idx : [];
-                    } catch { return []; }
-                  })();
-                  updatedRelationships = applyRelationshipDeltas(existingRelationships, relationshipDeltas ?? [], playerCharacter.name, npcInnerLifeUpdates, arcUpdates);
+                  updatedRelationships = applyRelationshipDeltas(preExtractRelationships, relationshipDeltas ?? [], playerCharacter.name, npcInnerLifeUpdates, arcUpdates);
                   if (relationshipDeltas?.length) appliedRelationshipDeltas = relationshipDeltas;
                 }
 
