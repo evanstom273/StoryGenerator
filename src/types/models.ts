@@ -282,6 +282,7 @@ export interface BackgroundJob {
   dedupeKey?: string;
   payload?: {
     trigger?: "manual" | "auto";
+    incremental?: boolean;
     content?: string;
     metaChatUserMessageId?: EntityId;
     metaChatOpenOnComplete?: boolean;

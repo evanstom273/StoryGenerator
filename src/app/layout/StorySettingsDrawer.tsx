@@ -599,7 +599,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     ? backgroundJobs.filter((job) => job.storyId === story.id)
     : [];
 
-  async function handleReindex() {
+  async function handleReindex(incremental: boolean) {
     if (!story) {
       return;
     }
@@ -607,13 +607,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     setPageError(null);
     setPageNotice(null);
     try {
-      const result = await queueStoryIndexJob(story.id, { trigger: "manual" });
+      const result = await queueStoryIndexJob(story.id, { trigger: "manual", incremental });
       if (result.duplicate) {
         setPageNotice("Indexing already running for this story.");
       } else if (await isAndroidNativePlatform()) {
         setPageNotice("Indexing queued on Android. You can leave the story while it runs.");
       } else {
-        setPageNotice("Indexing queued in the background.");
+        setPageNotice(incremental ? "Updating index with new messages…" : "Full reindex queued in the background.");
       }
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to re-index.");
@@ -993,9 +993,17 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
                     disabled={isRebuilding}
-                    onClick={handleReindex}
+                    onClick={() => void handleReindex(true)}
                   >
-                    {isRebuilding ? "Re-indexing..." : "Re-index"}
+                    {isRebuilding ? "Re-indexing..." : "Update index"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-[8px]"
+                    disabled={isRebuilding}
+                    onClick={() => void handleReindex(false)}
+                  >
+                    Full reindex
                   </Button>
                   <Button
                     variant="secondary"

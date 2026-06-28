@@ -592,10 +592,10 @@ export function RelationshipsOverlay(props: {
     setAddingNew(false);
   }
 
-  async function handleRefresh() {
+  async function handleRefresh(incremental: boolean) {
     setRefreshing(true);
     try {
-      await queueStoryIndexJob(props.storyId, { trigger: "manual" });
+      await queueStoryIndexJob(props.storyId, { trigger: "manual", incremental });
     } finally {
       setRefreshing(false);
     }
@@ -629,8 +629,11 @@ export function RelationshipsOverlay(props: {
           {saving ? <span className="text-xs text-ink-muted">Saving…</span> : null}
           {!selectedEntry && (
             <>
-              <Button variant="ghost" size="sm" disabled={refreshing} onClick={() => void handleRefresh()}>
-                {refreshing ? "Queued…" : "Refresh"}
+              <Button variant="ghost" size="sm" disabled={refreshing} onClick={() => void handleRefresh(true)}>
+                {refreshing ? "Queued…" : "Update"}
+              </Button>
+              <Button variant="ghost" size="sm" disabled={refreshing} onClick={() => void handleRefresh(false)}>
+                Full reindex
               </Button>
               <div className="flex rounded-lg border border-divider/40 bg-panel-muted/50 p-0.5">
                 {(["player", "all"] as Filter[]).map((f) => (

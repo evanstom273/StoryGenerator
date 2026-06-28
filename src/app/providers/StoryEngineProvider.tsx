@@ -255,10 +255,10 @@ interface StoryEngineContextValue {
   updateRpStats: (storyId: string, rpStats: RpStats | null) => Promise<void>;
   updateRelationshipsIndex: (storyId: string, relationships: RelationshipIndexEntry[]) => Promise<void>;
   refreshStoryState: (storyId: string, opts?: { force?: boolean }) => Promise<void>;
-  updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal }) => Promise<void>;
+  updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal; incremental?: boolean }) => Promise<void>;
   queueStoryIndexJob: (
     storyId: string,
-    opts?: { trigger?: "manual" | "auto" },
+    opts?: { trigger?: "manual" | "auto"; incremental?: boolean },
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
   cancelBackgroundJob: (jobId: string) => Promise<BackgroundJob | null>;
   dismissJobNotice: () => void;
@@ -1321,7 +1321,7 @@ export function StoryEngineProvider({
   );
 
   const queueStoryIndexJob = useCallback(
-    async (storyId: string, opts?: { trigger?: "manual" | "auto" }) => {
+    async (storyId: string, opts?: { trigger?: "manual" | "auto"; incremental?: boolean }) => {
       const existing = (await repository.listBackgroundJobs()).find(
         (job) =>
           job.type === "story_index" &&
@@ -1342,6 +1342,7 @@ export function StoryEngineProvider({
         dedupeKey: `story_index:${storyId}`,
         payload: {
           trigger: opts?.trigger ?? "manual",
+          incremental: opts?.incremental ?? false,
         },
       };
 
@@ -1456,7 +1457,7 @@ export function StoryEngineProvider({
   );
 
   const runDeepIndexProcess = useCallback(
-    async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto" }) => {
+    async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean }) => {
       rebuildAbortRef.current?.abort();
       const controller = new AbortController();
       rebuildAbortRef.current = controller;
@@ -1521,6 +1522,7 @@ export function StoryEngineProvider({
           apiKey,
           model,
           signal,
+          incremental: opts?.incremental ?? false,
           onProgress: ({ processed, total, message, warning }) => {
             // #region debug-point job-cancel-timeout:deep-index-progress
             reportJobDebug({
@@ -1801,6 +1803,7 @@ export function StoryEngineProvider({
           const summaryLine = await runDeepIndexProcess(job.storyId ?? "", {
             signal,
             trigger: job.payload?.trigger ?? "manual",
+            incremental: job.payload?.incremental ?? false,
           });
           const refreshed = await repository.getBackgroundJob(job.id);
           if (signal.aborted || refreshed?.status === "cancelled") {
@@ -3371,6 +3374,7 @@ export function StoryEngineProvider({
         await runDeepIndexProcess(storyId, {
           signal: opts?.signal,
           trigger: "manual",
+          incremental: opts?.incremental ?? false,
         });
       },
       queueStoryIndexJob,
@@ -4975,7 +4979,7 @@ export function StoryEngineProvider({
               }
             }
 
-            await queueStoryIndexJob(storyId, { trigger: "auto" });
+            await queueStoryIndexJob(storyId, { trigger: "auto", incremental: true });
           } catch {}
         })();
         return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary, appliedRelationshipDeltas };
