@@ -377,6 +377,7 @@ export function buildStoryChatContext({
       "- NEVER use *...* inside a quoted speech line. Do not write: 'He didn't even: *aside*' or 'It gets me — *thought*'. Asterisks must never appear inside quote marks.",
       "- NEVER place a colon immediately before *...* action text. Do not write 'He said: *smiles*' or 'She paused: *looks away*'.",
       "- If a character acts between sentences of dialogue, close the quotes, put the ONE-PHRASE physical action on its own line, then reopen dialogue on the next line.",
+      "- If an action interrupts dialogue mid-sentence, close with an em dash — never a colon. Write: '\"He didn't even —\"' on its own line, then the action on the next line, then continue dialogue. Never write: '\"He didn't even: *action*\"'.",
       "- Each character block must be substantial. A character's turn should contain multiple sentences of dialogue before switching speakers. Here is the correct format:",
       "",
       "Jake:",
