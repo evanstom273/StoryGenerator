@@ -607,13 +607,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     setPageError(null);
     setPageNotice(null);
     try {
-      const result = await queueStoryIndexJob(story.id, { trigger: "manual", incremental });
+      const result = await queueStoryIndexJob(story.id, { trigger: "manual", incremental, force: !incremental });
       if (result.duplicate) {
         setPageNotice("Indexing already running for this story.");
       } else if (await isAndroidNativePlatform()) {
         setPageNotice("Indexing queued on Android. You can leave the story while it runs.");
       } else {
-        setPageNotice(incremental ? "Updating index with new messages…" : "Full reindex queued in the background.");
+        setPageNotice(incremental ? "Updating index with new messages…" : "Full reindex queued — any running index was cancelled.");
       }
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to re-index.");

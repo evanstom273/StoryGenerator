@@ -258,7 +258,7 @@ interface StoryEngineContextValue {
   updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal; incremental?: boolean }) => Promise<void>;
   queueStoryIndexJob: (
     storyId: string,
-    opts?: { trigger?: "manual" | "auto"; incremental?: boolean },
+    opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean },
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
   cancelBackgroundJob: (jobId: string) => Promise<BackgroundJob | null>;
   dismissJobNotice: () => void;
@@ -1321,7 +1321,7 @@ export function StoryEngineProvider({
   );
 
   const queueStoryIndexJob = useCallback(
-    async (storyId: string, opts?: { trigger?: "manual" | "auto"; incremental?: boolean }) => {
+    async (storyId: string, opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean }) => {
       const existing = (await repository.listBackgroundJobs()).find(
         (job) =>
           job.type === "story_index" &&
@@ -1330,7 +1330,16 @@ export function StoryEngineProvider({
       );
 
       if (existing) {
-        return { job: existing, duplicate: true };
+        if (!opts?.force) return { job: existing, duplicate: true };
+        // Force: cancel the existing job so the new one can queue immediately
+        await repository.saveBackgroundJob({
+          ...existing,
+          status: "cancelled",
+          finishedAt: new Date().toISOString(),
+          error: undefined,
+        });
+        const existingController = backgroundJobControllersRef.current[existing.id];
+        existingController?.abort();
       }
 
       const job: BackgroundJob = {
@@ -1457,7 +1466,7 @@ export function StoryEngineProvider({
   );
 
   const runDeepIndexProcess = useCallback(
-    async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean }) => {
+    async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean; jobId?: string }) => {
       rebuildAbortRef.current?.abort();
       const controller = new AbortController();
       rebuildAbortRef.current = controller;
@@ -1552,6 +1561,20 @@ export function StoryEngineProvider({
                 warning: warning ?? current.warning,
               };
             });
+            // Mirror progress into the DB job record so the job card shows live status
+            if (opts?.jobId) {
+              void repository.getBackgroundJob(opts.jobId).then((liveJob) => {
+                if (!liveJob || liveJob.status !== "running") return;
+                void repository.saveBackgroundJob({
+                  ...liveJob,
+                  progress: {
+                    current: processed,
+                    total,
+                    label: message ?? `${processed}/${total} messages`,
+                  },
+                }).catch(() => {});
+              }).catch(() => {});
+            }
           },
         });
 
@@ -1804,6 +1827,7 @@ export function StoryEngineProvider({
             signal,
             trigger: job.payload?.trigger ?? "manual",
             incremental: job.payload?.incremental ?? false,
+            jobId: job.id,
           });
           const refreshed = await repository.getBackgroundJob(job.id);
           if (signal.aborted || refreshed?.status === "cancelled") {
@@ -1931,22 +1955,26 @@ export function StoryEngineProvider({
         });
         // #endregion
         if (signal.aborted || latest?.status === "cancelled") {
-          await repository.saveBackgroundJob({
-            ...runningJob,
-            status: "cancelled",
-            finishedAt: new Date().toISOString(),
-            error: undefined,
-          });
-          await hydrate(false);
+          try {
+            await repository.saveBackgroundJob({
+              ...runningJob,
+              status: "cancelled",
+              finishedAt: new Date().toISOString(),
+              error: undefined,
+            });
+          } catch {}
+          await hydrate(false).catch(() => {});
           return;
         }
-        await repository.saveBackgroundJob({
-          ...runningJob,
-          status: "failed",
-          finishedAt: new Date().toISOString(),
-          error: error instanceof Error ? error.message : "Background job failed.",
-        });
-        await hydrate(false);
+        try {
+          await repository.saveBackgroundJob({
+            ...runningJob,
+            status: "failed",
+            finishedAt: new Date().toISOString(),
+            error: error instanceof Error ? error.message : "Background job failed.",
+          });
+        } catch {}
+        await hydrate(false).catch(() => {});
         throw error;
       }
     },

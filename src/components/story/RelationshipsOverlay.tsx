@@ -595,7 +595,7 @@ export function RelationshipsOverlay(props: {
   async function handleRefresh(incremental: boolean) {
     setRefreshing(true);
     try {
-      await queueStoryIndexJob(props.storyId, { trigger: "manual", incremental });
+      await queueStoryIndexJob(props.storyId, { trigger: "manual", incremental, force: !incremental });
     } finally {
       setRefreshing(false);
     }
