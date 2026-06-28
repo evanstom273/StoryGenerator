@@ -104,6 +104,7 @@ import type {
   PlayerCharacter,
   PlayerCharacterDraft,
   RelationshipIndexEntry,
+  RelationshipTier,
   RpChangelogEntry,
   RpEventLogEntry,
   RpStats,
@@ -899,21 +900,24 @@ function applyRelationshipDeltas(
   const playerNorm = playerName.toLowerCase().trim();
   const working: RelationshipIndexEntry[] = existing.map((e) => ({ ...e }));
 
-  function findOrCreate(characterName: string): number | null {
+  const VALID_TIERS = new Set<string>(["devoted","lover","partner","best friend","confidant","close friend","friend","family","mentor","mentee","caregiver","patient","ally","colleague","professional","acquaintance","stranger","complicated","guarded","distant","estranged","rival","adversary","enemy","nemesis","threat"]);
+
+  function findOrCreate(characterName: string, tier?: string): number | null {
     const nameNorm = characterName.toLowerCase().trim();
     if (nameNorm === playerNorm) return null;
     const idx = working.findIndex(
       (r) => r.a.toLowerCase().trim() === nameNorm || r.b.toLowerCase().trim() === nameNorm,
     );
     if (idx !== -1) return idx;
-    working.push({ a: playerName, b: characterName, tier: "stranger", trust: 50, affection: 50, fear: 50, dependency: 50 });
+    const resolvedTier: RelationshipTier = (tier && VALID_TIERS.has(tier) ? tier : "stranger") as RelationshipTier;
+    working.push({ a: playerName, b: characterName, tier: resolvedTier, trust: 50, affection: 50, fear: 50, dependency: 50 });
     return working.length - 1;
   }
 
   const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
 
   for (const delta of deltas) {
-    const idx = findOrCreate(delta.characterName);
+    const idx = findOrCreate(delta.characterName, delta.tier);
     if (idx === null) continue;
     const entry = working[idx]!;
     if (delta.trust !== undefined) entry.trust = clamp((entry.trust ?? 50) + delta.trust);

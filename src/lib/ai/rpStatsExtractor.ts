@@ -15,6 +15,7 @@ export type NpcHpChange = {
 
 export type RpRelationshipDelta = {
   characterName: string;
+  tier?: string;
   trust?: number;
   affection?: number;
   fear?: number;
@@ -213,7 +214,8 @@ export async function extractRpStatChanges(
     "- Set narrative to null only if the scene had absolutely no RP-relevant content.",
     "",
     "RELATIONSHIP CHANGES:",
-    "If this turn contained a meaningful emotional shift between the player and a named character, include \"relationshipDeltas\": [{\"characterName\": \"...\", \"trust\": <±delta>, \"affection\": <±delta>, \"fear\": <±delta>, \"dependency\": <±delta>, \"reason\": \"...\"}].",
+    "If this turn contained a meaningful emotional shift between the player and a named character, include \"relationshipDeltas\": [{\"characterName\": \"...\", \"tier\": \"...\", \"trust\": <±delta>, \"affection\": <±delta>, \"fear\": <±delta>, \"dependency\": <±delta>, \"reason\": \"...\"}].",
+    "- \"tier\" is the relationship type. Always include it. Use one of: devoted, lover, partner, best friend, confidant, close friend, friend, family, mentor, mentee, caregiver, patient, ally, colleague, professional, acquaintance, stranger, complicated, guarded, distant, estranged, rival, adversary, enemy, nemesis, threat.",
     "- Only include metrics that actually changed this turn. Typical magnitude: ±3–12. Omit the field entirely if nothing meaningful shifted.",
     "- trust = reliability/honesty between characters. affection = warmth/care/closeness. fear = dread, anxiety, or power imbalance. dependency = emotional or physical reliance.",
     "- Omit the relationshipDeltas field entirely if no significant emotional shift occurred.",
@@ -337,11 +339,12 @@ export async function extractRpStatChanges(
         characterName: d.characterName.trim(),
         reason: d.reason.trim(),
       };
+      if (typeof d.tier === "string" && d.tier.trim()) rd.tier = d.tier.trim();
       if (typeof d.trust === "number" && Number.isFinite(d.trust) && d.trust !== 0) rd.trust = Math.round(d.trust);
       if (typeof d.affection === "number" && Number.isFinite(d.affection) && d.affection !== 0) rd.affection = Math.round(d.affection);
       if (typeof d.fear === "number" && Number.isFinite(d.fear) && d.fear !== 0) rd.fear = Math.round(d.fear);
       if (typeof d.dependency === "number" && Number.isFinite(d.dependency) && d.dependency !== 0) rd.dependency = Math.round(d.dependency);
-      if (rd.trust !== undefined || rd.affection !== undefined || rd.fear !== undefined || rd.dependency !== undefined) {
+      if (rd.trust !== undefined || rd.affection !== undefined || rd.fear !== undefined || rd.dependency !== undefined || rd.tier !== undefined) {
         relationshipDeltas.push(rd);
       }
     }
