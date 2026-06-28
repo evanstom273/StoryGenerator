@@ -375,6 +375,7 @@ export function buildStoryChatContext({
       "- When a character acts, write it as *...* within that character's block (immediately under their name) instead of as third-person narration.",
       "- Place actions as *...* on their own line between dialogue lines. Actions should be full sentences.",
       '- When writing dialogue, prefer quoted lines like "So what now?" on their own line.',
+      "- Never use a colon immediately before *...* italic/action content within dialogue (e.g. avoid \"It gets me: *action*\"). Use an em-dash (—) instead: \"It gets me — *action*\". Colons before asterisks look like parsing artifacts in the UI.",
     ].join("\n"),
   );
 
