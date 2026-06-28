@@ -25,6 +25,7 @@ export type RpRelationshipDelta = {
 
 export type NpcInnerLifeUpdate = {
   characterName: string;
+  tier?: string;
   emotionalState?: string;
   howTheyDescribeYou?: string;
   whatTheyWant?: string;
@@ -33,6 +34,7 @@ export type NpcInnerLifeUpdate = {
 
 export type RelationshipArcUpdate = {
   characterName: string;
+  tier?: string;
   statusPhrase?: string;
   newMilestone?: string;
   tension?: string;
@@ -229,19 +231,21 @@ export async function extractRpStatChanges(
     "Set \"characterStateSummary\" to 1-3 sentences describing the player character's current situation in present tense, third person. This replaces the previous summary — update it to reflect what just happened. Always include this field.",
     "",
     "NPC INNER LIFE:",
-    "After a meaningful interaction with a named character, you may include \"npcInnerLifeUpdates\": [{\"characterName\": \"...\", \"emotionalState\": \"...\", \"howTheyDescribeYou\": \"...\", \"whatTheyWant\": \"...\", \"whatTheyreNotSaying\": \"...\"}].",
+    "Whenever a named character appears in the scene and their inner state or feelings toward the player character are revealed — even if the player character is not physically present in the scene — include \"npcInnerLifeUpdates\": [{\"characterName\": \"...\", \"tier\": \"...\", \"emotionalState\": \"...\", \"howTheyDescribeYou\": \"...\", \"whatTheyWant\": \"...\", \"whatTheyreNotSaying\": \"...\"}].",
+    "- tier: ALWAYS include. The relationship type between this character and the player character. Use one of: devoted, lover, partner, best friend, confidant, close friend, friend, family, mentor, mentee, caregiver, patient, ally, colleague, professional, acquaintance, stranger, complicated, guarded, distant, estranged, rival, adversary, enemy, nemesis, threat.",
     "- emotionalState: 2-5 words for how this character privately feels toward the player right now (e.g. \"quietly hopeful\", \"hurt and pulling away\", \"deeply worried but hiding it\").",
     "- howTheyDescribeYou: one sentence in their internal voice describing the player (e.g. \"She means well but doesn't understand what I'm going through\").",
     "- whatTheyWant: what they privately want from this relationship right now (e.g. \"wants space to grieve\", \"craving reassurance she won't leave\").",
     "- whatTheyreNotSaying: something meaningful they are actively holding back (e.g. \"He knows the prognosis is worse than he admitted to her\").",
-    "- Only include fields the scene gives clear evidence for. Omit others. Omit the array entirely if no meaningful named-character interaction occurred.",
+    "- Only include the emotional fields the scene gives clear evidence for. Omit the array entirely if no named character appears with any discernible inner state.",
     "",
     "RELATIONSHIP ARC:",
-    "After a significant interaction with a named character, you may include \"arcUpdates\": [{\"characterName\": \"...\", \"statusPhrase\": \"...\", \"newMilestone\": \"...\", \"tension\": \"...\"}].",
-    "- statusPhrase: 3-6 evocative words capturing the current feel of this relationship (e.g. \"fragile but warming\", \"tested and holding\", \"quietly devoted\", \"at a crossroads\"). Include whenever any meaningful interaction occurred.",
+    "Whenever a named character appears in the scene meaningfully — even if the player character is not physically present — you may include \"arcUpdates\": [{\"characterName\": \"...\", \"tier\": \"...\", \"statusPhrase\": \"...\", \"newMilestone\": \"...\", \"tension\": \"...\"}].",
+    "- tier: ALWAYS include. Same values as NPC INNER LIFE tier.",
+    "- statusPhrase: 3-6 evocative words capturing the current feel of this relationship (e.g. \"fragile but warming\", \"tested and holding\", \"quietly devoted\", \"at a crossroads\"). Include whenever any named character appears.",
     "- newMilestone: ONLY on genuinely milestone-worthy events (first secret shared, betrayal revealed, crisis survived together). 3-6 words. Omit on ordinary turns.",
     "- tension: the unresolved question or conflict currently driving this relationship forward (e.g. \"Will she ever forgive him?\", \"Can trust be rebuilt after the lie?\"). Update when the tension meaningfully shifts.",
-    "- Omit the array entirely if no named character had a significant interaction this turn.",
+    "- Omit the array entirely if no named character appeared in the scene at all.",
     "",
     `Era/genre price benchmarks for ${config.currencyName} (defer to setting context and universe lore when available):`,
     `MODERN: Coffee $3–6 · Fast food $8–15 · Sit-down meal $15–35 · Bus/subway $2–4 · Rideshare short $10–20 · Rideshare long $25–60 · Haircut $20–50 · Bar drink $5–12 · Movie $12–20 · Doctor/urgent care $100–300 · Prescription $10–50 · Grocery run (small) $20–60 · Clothing item $20–80 · Min-wage shift (4–8 hrs) $50–120 · Tips $10–50`,
@@ -356,6 +360,7 @@ export async function extractRpStatChanges(
       const d = item as Record<string, unknown>;
       if (typeof d.characterName !== "string" || !d.characterName.trim()) continue;
       const u: NpcInnerLifeUpdate = { characterName: d.characterName.trim() };
+      if (typeof d.tier === "string" && d.tier.trim()) u.tier = d.tier.trim();
       if (typeof d.emotionalState === "string" && d.emotionalState.trim()) u.emotionalState = d.emotionalState.trim();
       if (typeof d.howTheyDescribeYou === "string" && d.howTheyDescribeYou.trim()) u.howTheyDescribeYou = d.howTheyDescribeYou.trim();
       if (typeof d.whatTheyWant === "string" && d.whatTheyWant.trim()) u.whatTheyWant = d.whatTheyWant.trim();
@@ -370,6 +375,7 @@ export async function extractRpStatChanges(
       const d = item as Record<string, unknown>;
       if (typeof d.characterName !== "string" || !d.characterName.trim()) continue;
       const u: RelationshipArcUpdate = { characterName: d.characterName.trim() };
+      if (typeof d.tier === "string" && d.tier.trim()) u.tier = d.tier.trim();
       if (typeof d.statusPhrase === "string" && d.statusPhrase.trim()) u.statusPhrase = d.statusPhrase.trim();
       if (typeof d.newMilestone === "string" && d.newMilestone.trim()) u.newMilestone = d.newMilestone.trim();
       if (typeof d.tension === "string" && d.tension.trim()) u.tension = d.tension.trim();

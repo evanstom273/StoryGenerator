@@ -927,7 +927,7 @@ function applyRelationshipDeltas(
   }
 
   for (const u of innerLifeUpdates ?? []) {
-    const idx = findOrCreate(u.characterName);
+    const idx = findOrCreate(u.characterName, u.tier);
     if (idx === null) continue;
     const entry = working[idx]!;
     const prev = entry.npcInnerLife ?? {};
@@ -941,7 +941,7 @@ function applyRelationshipDeltas(
   }
 
   for (const u of arcUpdates ?? []) {
-    const idx = findOrCreate(u.characterName);
+    const idx = findOrCreate(u.characterName, u.tier);
     if (idx === null) continue;
     const entry = working[idx]!;
     const prev = entry.arc ?? {};
