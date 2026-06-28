@@ -161,7 +161,7 @@ function getSpeakerTag(label: string, kind: SpeakerKind) {
     label,
     kind,
     tagClass: cn(baseTagClass, "text-accent"),
-    rowClass: cn(baseRowClass, "bg-transparent"),
+    rowClass: "rounded-2xl px-3 py-1 bg-transparent",
     contentClass: "text-ink",
   };
 }
@@ -368,7 +368,7 @@ export function StoryTranscriptView({
             <div
               id={`story-message-${message.id}`}
               className={cn(
-                "space-y-4",
+                "space-y-2",
                 highlight ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
               )}
             >
