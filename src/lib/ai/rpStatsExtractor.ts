@@ -365,7 +365,7 @@ export async function extractRpStatChanges(
       if (typeof d.howTheyDescribeYou === "string" && d.howTheyDescribeYou.trim()) u.howTheyDescribeYou = d.howTheyDescribeYou.trim();
       if (typeof d.whatTheyWant === "string" && d.whatTheyWant.trim()) u.whatTheyWant = d.whatTheyWant.trim();
       if (typeof d.whatTheyreNotSaying === "string" && d.whatTheyreNotSaying.trim()) u.whatTheyreNotSaying = d.whatTheyreNotSaying.trim();
-      if (u.emotionalState || u.howTheyDescribeYou || u.whatTheyWant || u.whatTheyreNotSaying) npcInnerLifeUpdates.push(u);
+      if (u.tier || u.emotionalState || u.howTheyDescribeYou || u.whatTheyWant || u.whatTheyreNotSaying) npcInnerLifeUpdates.push(u);
     }
 
     // Parse arc updates
@@ -379,7 +379,7 @@ export async function extractRpStatChanges(
       if (typeof d.statusPhrase === "string" && d.statusPhrase.trim()) u.statusPhrase = d.statusPhrase.trim();
       if (typeof d.newMilestone === "string" && d.newMilestone.trim()) u.newMilestone = d.newMilestone.trim();
       if (typeof d.tension === "string" && d.tension.trim()) u.tension = d.tension.trim();
-      if (u.statusPhrase || u.newMilestone || u.tension) arcUpdates.push(u);
+      if (u.tier || u.statusPhrase || u.newMilestone || u.tension) arcUpdates.push(u);
     }
 
     if (!deltas.length && !narrative && !npcHpChanges.length && pendingTransaction === undefined
