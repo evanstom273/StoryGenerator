@@ -596,7 +596,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       : null;
   const isRebuilding = rebuildInfo ? rebuildInfo.phase === "loading" || rebuildInfo.phase === "extracting" || rebuildInfo.phase === "saving" : false;
   const storyJobs = story
-    ? backgroundJobs.filter((job) => job.storyId === story.id)
+    ? backgroundJobs.filter((job) => job.storyId === story.id && job.status !== "cancelled")
     : [];
 
   async function handleReindex(incremental: boolean) {
