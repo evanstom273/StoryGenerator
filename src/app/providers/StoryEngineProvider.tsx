@@ -1989,8 +1989,26 @@ export function StoryEngineProvider({
   );
 
   useEffect(() => {
-    if (loading || errorMessage || activeBackgroundJobRef.current) {
+    if (loading || errorMessage) {
       return;
+    }
+
+    // If the tracked active job is no longer queued/running in state, the
+    // processBackgroundJob promise must have settled and updated the DB, but
+    // its .finally() cleanup hasn't fired yet (hydrate inside processBackgroundJob
+    // triggers this effect before the outer .finally() runs). Proactively clear the
+    // stale ref so the next queued job can be picked up immediately. The .finally()
+    // guard (`ref === nextJob.id`) prevents it from re-clearing a different job's ref.
+    if (activeBackgroundJobRef.current) {
+      const isStillActive = backgroundJobs.some(
+        (j) =>
+          j.id === activeBackgroundJobRef.current &&
+          (j.status === "queued" || j.status === "running"),
+      );
+      if (isStillActive) {
+        return;
+      }
+      activeBackgroundJobRef.current = null;
     }
 
     const nextJob = backgroundJobs.find(
@@ -2031,6 +2049,13 @@ export function StoryEngineProvider({
       void hydrate(false);
     });
   }, [backgroundJobs, errorMessage, hydrate, loading, processBackgroundJob]);
+
+  // Watchdog: periodic hydrate to unblock any queued jobs that the runner
+  // missed due to timing gaps (stale ref not cleared before effect fired).
+  useEffect(() => {
+    const id = setInterval(() => void hydrate(false), 15_000);
+    return () => clearInterval(id);
+  }, [hydrate]);
 
   const value = useMemo<StoryEngineContextValue>(() => {
     const storageStatus = buildStorageStatus(
