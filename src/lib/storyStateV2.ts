@@ -349,6 +349,49 @@ export function reconcileStoryIndexes(
   };
 }
 
+function mergePerTurnRelationshipFields(
+  reindexed: RelationshipIndexEntry[] | undefined,
+  previous: RelationshipIndexEntry[] | undefined,
+): RelationshipIndexEntry[] | undefined {
+  if (!reindexed?.length) return reindexed;
+  if (!previous?.length) return reindexed;
+
+  const prevByPair = new Map<string, RelationshipIndexEntry>();
+  for (const entry of previous) {
+    const keyA = normalizeKey(entry.a);
+    const keyB = normalizeKey(entry.b);
+    const pairKey = keyA <= keyB ? `${keyA}::${keyB}` : `${keyB}::${keyA}`;
+    prevByPair.set(pairKey, entry);
+  }
+
+  return reindexed.map((entry) => {
+    const keyA = normalizeKey(entry.a);
+    const keyB = normalizeKey(entry.b);
+    const pairKey = keyA <= keyB ? `${keyA}::${keyB}` : `${keyB}::${keyA}`;
+    const prev = prevByPair.get(pairKey);
+    if (!prev) return entry;
+
+    // Reindex owns: tier, summary, history, evidence (structural/analytical fields).
+    // Per-turn owns: npcInnerLife, arc, numeric metrics (accumulated during play).
+    return {
+      ...entry,
+      ...(prev.npcInnerLife && !entry.npcInnerLife ? { npcInnerLife: prev.npcInnerLife } : {}),
+      ...(prev.arc && !entry.arc ? { arc: prev.arc } : {}),
+      ...(prev.trust !== undefined && entry.trust === undefined ? { trust: prev.trust } : {}),
+      ...(prev.affection !== undefined && entry.affection === undefined ? { affection: prev.affection } : {}),
+      ...(prev.fear !== undefined && entry.fear === undefined ? { fear: prev.fear } : {}),
+      ...(prev.dependency !== undefined && entry.dependency === undefined ? { dependency: prev.dependency } : {}),
+      ...(prev.friendship !== undefined && entry.friendship === undefined ? { friendship: prev.friendship } : {}),
+      ...(prev.respect !== undefined && entry.respect === undefined ? { respect: prev.respect } : {}),
+      ...(prev.loyalty !== undefined && entry.loyalty === undefined ? { loyalty: prev.loyalty } : {}),
+      ...(prev.comfort !== undefined && entry.comfort === undefined ? { comfort: prev.comfort } : {}),
+      ...(prev.suspicion !== undefined && entry.suspicion === undefined ? { suspicion: prev.suspicion } : {}),
+      ...(prev.hostility !== undefined && entry.hostility === undefined ? { hostility: prev.hostility } : {}),
+      ...(prev.playerIntention && !entry.playerIntention ? { playerIntention: prev.playerIntention } : {}),
+    };
+  });
+}
+
 export function finalizeStoryStateForSave(params: {
   parsedState: StoryStateData;
   previousStateJson?: string;
@@ -374,7 +417,18 @@ export function finalizeStoryStateForSave(params: {
   const previousV2 = normalizeStoryStateToV2(previous);
 
   const normalized = normalizeStoryStateToV2(params.parsedState);
-  const reconciledIndexes = reconcileStoryIndexes(normalized.indexes, params.totalMessages);
+  let reconciledIndexes = reconcileStoryIndexes(normalized.indexes, params.totalMessages);
+
+  // For deep reindex, preserve per-turn data (npcInnerLife, arc, numeric metrics)
+  // accumulated in the existing relationship entries — the AI reindex only produces
+  // structural fields (tier, summary, history, evidence) and must not wipe live data.
+  if (params.mode === "deep" && reconciledIndexes?.relationships && previousV2.indexes?.relationships) {
+    const merged = mergePerTurnRelationshipFields(
+      reconciledIndexes.relationships,
+      previousV2.indexes.relationships,
+    );
+    reconciledIndexes = { ...reconciledIndexes, ...(merged ? { relationships: merged } : {}) };
+  }
 
   const base: StoryStateDataV2 = {
     ...previousV2,
