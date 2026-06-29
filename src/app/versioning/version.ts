@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.2.1";
+export const APP_VERSION = "2.2.2";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -370,6 +370,24 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
       "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
       "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
+    ],
+    knownIssues: [],
+  },
+  "2.2.2": {
+    title: "Time System Rework & Story Text Fixes",
+    added: [
+      "/time command: type /time +2h, /time +30m, /time +3d, /time +1w in any message to advance the in-story clock by an exact amount — the command is stripped before the AI sees it",
+      "Natural language time phrases in messages (e.g. \"2 hours later\", \"skip 3 days\") are now detected and applied as exact arithmetic rather than AI estimation",
+    ],
+    fixed: [
+      "Clock no longer advances from AI guesswork — only explicit player input (the /time command or a recognised natural language phrase) moves the clock",
+      "Removed the large-time-skip confirmation modal that incorrectly triggered on words like \"sleep\"",
+      "Character and universe generation failed silently on claude-sonnet-4-6 — the request was being rejected because Sonnet does not support assistant prefill; prefill removed, generation now works on all Claude models",
+      "AI provider errors now surface the real failure message instead of always showing \"The AI request failed for an unknown reason\"",
+      "Narrative colons (e.g. \"Note:\", \"Warning:\", \"Time:\") were being misread as speaker labels, causing the following text to be incorrectly formatted as dialogue or action",
+      "Numbered speaker names like \"Paramedic 1\" and \"Guard 2\" were rejected as invalid speakers, causing their lines to bleed into the previous character's block",
+      "Narrator text separated from a character block by a blank line was being appended to that character instead of starting its own paragraph",
+      "Consecutive action lines within a speaker block were being merged with \", and\" — they are now emitted as separate segments",
     ],
     knownIssues: [],
   },

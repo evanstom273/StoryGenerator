@@ -27,8 +27,12 @@ export type BackgroundJobType =
 
 export type DirectorIntent = {
   timeSkip?: { unit: "hours" | "days" | "weeks" | "months"; amount: number };
+  /** Exact minutes to advance, bypasses unit/amount conversion. Set by slash commands. */
+  exactMinutes?: number;
   sceneCut?: boolean;
   target?: string;
+  /** Absolute time-of-day set, e.g. from "It's 12pm". Sets clock to this hour:minute without advancing. */
+  absoluteTime?: { hour: number; minute: number };
 };
 
 export interface UniverseWikiSource {
@@ -75,15 +79,6 @@ export interface PlayerCharacter {
   createdAt: Timestamp;
 }
 
-export type RpCoreStats = {
-  str: number;
-  dex: number;
-  con: number;
-  int: number;
-  wis: number;
-  cha: number;
-};
-
 export type RpCalendarConfig = {
   monthNames?: string[];    // 12 names; default Gregorian
   weekdayNames?: string[];  // 7 names starting Sunday; default English
@@ -128,7 +123,6 @@ export type RpConfig = {
   currencyDecimals: boolean;
   maxHp: number;
   startingGold: number;
-  coreStats: RpCoreStats;
   allowDebt?: boolean;
   creditLimit?: number | null;
   calendarConfig?: RpCalendarConfig;
@@ -171,11 +165,13 @@ export type RpStats = {
   hp: number;
   gold: number;
   npcHp: Record<string, RpNpcHpEntry>;
-  statOverrides?: Partial<RpCoreStats>;
   changelog: RpChangelogEntry[];
   eventLog?: RpEventLogEntry[];
   timeState?: RpTimeState;
   pendingTransaction?: PendingTransaction;
+  conditions?: RpCondition[];
+  characterState?: string;
+  pendingConditionSuggestion?: string;
 };
 
 export interface Story {
@@ -286,6 +282,7 @@ export interface BackgroundJob {
   dedupeKey?: string;
   payload?: {
     trigger?: "manual" | "auto";
+    incremental?: boolean;
     content?: string;
     metaChatUserMessageId?: EntityId;
     metaChatOpenOnComplete?: boolean;
@@ -323,15 +320,49 @@ export type IndexedEntity = {
 };
 
 export type RelationshipTier =
+  // Close / warm
   | "stranger"
   | "acquaintance"
   | "friend"
+  | "close friend"
+  | "best friend"
+  | "confidant"
   | "family"
+  | "partner"
+  | "lover"
+  | "devoted"
+  | "mentor"
+  | "mentee"
+  | "caregiver"
+  | "patient"
+  // Professional / contextual
   | "ally"
+  | "colleague"
+  | "professional"
+  // Complex / difficult
+  | "complicated"
+  | "guarded"
+  | "distant"
+  | "estranged"
+  // Negative
   | "rival"
+  | "adversary"
   | "enemy"
   | "nemesis"
-  | "lover";
+  | "threat";
+
+export type NpcInnerLife = {
+  emotionalState?: string;
+  howTheyDescribeYou?: string;
+  whatTheyWant?: string;
+  whatTheyreNotSaying?: string;
+};
+
+export type RelationshipArc = {
+  statusPhrase?: string;
+  milestones?: string[];
+  tension?: string;
+};
 
 export type RelationshipHistoryEntry = {
   summary: string;
@@ -351,10 +382,20 @@ export type RelationshipIndexEntry = {
   affection?: number;
   tension?: number;
   hostility?: number;
+  dependency?: number;
   tier?: RelationshipTier;
   history?: RelationshipHistoryEntry[];
   summary?: string;
   evidence?: EvidenceRef;
+  npcInnerLife?: NpcInnerLife;
+  arc?: RelationshipArc;
+  playerIntention?: string;
+};
+
+export type RpCondition = {
+  id: string;
+  label: string;
+  addedAt: number;
 };
 
 export type StoryIndexesV2 = {

@@ -144,13 +144,32 @@ function looksLikeDialogue(value: string) {
   return false;
 }
 
+// Words that start sentences but are never character names (shared with parseSceneBlocks).
+const NOT_A_SPEAKER = new Set([
+  "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
+  "The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
+  "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
+  "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
+  "Scene", "Chapter", "Part", "First", "Next",
+]);
+
+function isLikelySpeakerLabel(label: string): boolean {
+  if (!label || label.includes(",")) return false;
+  const words = label.trim().split(/\s+/);
+  if (words.length > 4) return false;
+  // Every word must start with uppercase OR be a number ("Paramedic 1", "Guard 2")
+  if (!words.every((w) => /^[A-Z]/.test(w) || /^\d/.test(w))) return false;
+  if (words.length === 1 && NOT_A_SPEAKER.has(words[0]!)) return false;
+  return true;
+}
+
 function isSpeakerHeaderOnly(line: string) {
   const match = line.match(/^([^\n:]{1,48})(:|\s[-—])\s*$/);
   if (!match) {
     return null;
   }
   const label = match[1]?.trim();
-  if (!label || label === "Time") {
+  if (!label || !isLikelySpeakerLabel(label)) {
     return null;
   }
   return label;
@@ -163,7 +182,7 @@ function parseInlineSpeakerLine(line: string) {
   }
   const label = match[1]?.trim();
   const remainder = match[3]?.trim();
-  if (!label || !remainder || label === "Time") {
+  if (!label || !remainder || !isLikelySpeakerLabel(label)) {
     return null;
   }
   return { speakerLabel: label, text: remainder };
@@ -198,23 +217,6 @@ function wrapDialogue(value: string) {
   return `"${trimmed}"`;
 }
 
-function mergePhrases(parts: string[]) {
-  const items = parts.map((value) => value.trim()).filter(Boolean);
-  if (!items.length) {
-    return "";
-  }
-  if (items.length === 1) {
-    return items[0] ?? "";
-  }
-  if (items.length === 2) {
-    const left = (items[0] ?? "").replace(/[.]\s*$/g, "");
-    const right = items[1] ?? "";
-    return `${left}, and ${right}`.trim();
-  }
-  const leading = items.slice(0, -1);
-  const last = items[items.length - 1] ?? "";
-  return `${leading.join(", ")}, and ${last}`.trim();
-}
 
 export type StoryFormatIssue = {
   code: string;
@@ -301,21 +303,11 @@ export function standardizeAssistantStoryText(args: {
   }
 
   const stopNames = new Set([
-    "The",
-    "A",
-    "An",
-    "And",
-    "But",
-    "Or",
-    "So",
-    "Then",
-    "Now",
-    "Later",
-    "Meanwhile",
-    "Outside",
-    "Inside",
-    "Suddenly",
-    "Time",
+    "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
+    "The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
+    "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
+    "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
+    "Scene", "Chapter", "Part", "First", "Next",
   ]);
 
   let currentSpeaker: string | null = null;
@@ -408,15 +400,6 @@ export function standardizeAssistantStoryText(args: {
     if (looksLikeMultiActorAction(action)) {
       flushSpeaker();
       pushNarration(action);
-      return;
-    }
-
-    const previous = speakerSegments[speakerSegments.length - 1] ?? "";
-    const previousIsAction =
-      previous.startsWith("*") && previous.endsWith("*") && previous.length > 2;
-    if (previousIsAction) {
-      const merged = mergePhrases([stripWrappingAsterisks(previous), action]);
-      speakerSegments[speakerSegments.length - 1] = wrapAction(merged);
       return;
     }
 
@@ -518,7 +501,9 @@ export function standardizeAssistantStoryText(args: {
 
     if (!trimmed) {
       if (currentSpeaker) {
-        continue;
+        if (speakerSegments.length > 0) {
+          flushSpeaker();
+        }
       }
       if (output.length && output[output.length - 1] !== "") {
         output.push("");

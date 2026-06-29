@@ -78,9 +78,10 @@ import {
   sanitizeAssistantTranscript,
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
-import { detectDirectorIntent } from "../../lib/storyText/directorIntent";
+import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
+import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
-import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
+import { extractRpStatChanges, type NpcInnerLifeUpdate, type RelationshipArcUpdate, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
@@ -98,14 +99,17 @@ import type {
   DeveloperFeatureRequestDraft,
   DeveloperTestingNote,
   DeveloperTestingNoteDraft,
+  DirectorIntent,
   GuardedDeleteResult,
   PlayerCharacterExportBundleV1,
   PlayerCharacter,
   PlayerCharacterDraft,
   RelationshipIndexEntry,
+  RelationshipTier,
   RpChangelogEntry,
   RpEventLogEntry,
   RpStats,
+  RpTimeState,
   StorageStatus,
   Story,
   StoryAIConfig,
@@ -251,10 +255,10 @@ interface StoryEngineContextValue {
   updateRpStats: (storyId: string, rpStats: RpStats | null) => Promise<void>;
   updateRelationshipsIndex: (storyId: string, relationships: RelationshipIndexEntry[]) => Promise<void>;
   refreshStoryState: (storyId: string, opts?: { force?: boolean }) => Promise<void>;
-  updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal }) => Promise<void>;
+  updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal; incremental?: boolean }) => Promise<void>;
   queueStoryIndexJob: (
     storyId: string,
-    opts?: { trigger?: "manual" | "auto" },
+    opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean },
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
   cancelBackgroundJob: (jobId: string) => Promise<BackgroundJob | null>;
   dismissJobNotice: () => void;
@@ -297,7 +301,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
 }
@@ -887,6 +891,72 @@ interface StoryEngineProviderProps {
   repository?: StoryEngineRepository;
 }
 
+function applyRelationshipDeltas(
+  existing: RelationshipIndexEntry[],
+  deltas: RpRelationshipDelta[],
+  playerName: string,
+  innerLifeUpdates?: NpcInnerLifeUpdate[],
+  arcUpdates?: RelationshipArcUpdate[],
+): RelationshipIndexEntry[] {
+  const playerNorm = playerName.toLowerCase().trim();
+  const working: RelationshipIndexEntry[] = existing.map((e) => ({ ...e }));
+
+  const VALID_TIERS = new Set<string>(["devoted","lover","partner","best friend","confidant","close friend","friend","family","mentor","mentee","caregiver","patient","ally","colleague","professional","acquaintance","stranger","complicated","guarded","distant","estranged","rival","adversary","enemy","nemesis","threat"]);
+
+  function findOrCreate(characterName: string, tier?: string): number | null {
+    const nameNorm = characterName.toLowerCase().trim();
+    if (nameNorm === playerNorm) return null;
+    const idx = working.findIndex(
+      (r) => r.a.toLowerCase().trim() === nameNorm || r.b.toLowerCase().trim() === nameNorm,
+    );
+    if (idx !== -1) return idx;
+    const resolvedTier: RelationshipTier = (tier && VALID_TIERS.has(tier) ? tier : "stranger") as RelationshipTier;
+    working.push({ a: playerName, b: characterName, tier: resolvedTier, trust: 50, affection: 50, fear: 50, dependency: 50 });
+    return working.length - 1;
+  }
+
+  const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+
+  for (const delta of deltas) {
+    const idx = findOrCreate(delta.characterName, delta.tier);
+    if (idx === null) continue;
+    const entry = working[idx]!;
+    if (delta.trust !== undefined) entry.trust = clamp((entry.trust ?? 50) + delta.trust);
+    if (delta.affection !== undefined) entry.affection = clamp((entry.affection ?? 50) + delta.affection);
+    if (delta.fear !== undefined) entry.fear = clamp((entry.fear ?? 50) + delta.fear);
+    if (delta.dependency !== undefined) entry.dependency = clamp((entry.dependency ?? 50) + delta.dependency);
+  }
+
+  for (const u of innerLifeUpdates ?? []) {
+    const idx = findOrCreate(u.characterName, u.tier);
+    if (idx === null) continue;
+    const entry = working[idx]!;
+    const prev = entry.npcInnerLife ?? {};
+    entry.npcInnerLife = {
+      ...prev,
+      ...(u.emotionalState ? { emotionalState: u.emotionalState } : {}),
+      ...(u.howTheyDescribeYou ? { howTheyDescribeYou: u.howTheyDescribeYou } : {}),
+      ...(u.whatTheyWant ? { whatTheyWant: u.whatTheyWant } : {}),
+      ...(u.whatTheyreNotSaying ? { whatTheyreNotSaying: u.whatTheyreNotSaying } : {}),
+    };
+  }
+
+  for (const u of arcUpdates ?? []) {
+    const idx = findOrCreate(u.characterName, u.tier);
+    if (idx === null) continue;
+    const entry = working[idx]!;
+    const prev = entry.arc ?? {};
+    entry.arc = {
+      ...prev,
+      ...(u.statusPhrase ? { statusPhrase: u.statusPhrase } : {}),
+      ...(u.tension ? { tension: u.tension } : {}),
+      ...(u.newMilestone ? { milestones: [...(prev.milestones ?? []), u.newMilestone].slice(-10) } : {}),
+    };
+  }
+
+  return working;
+}
+
 export function StoryEngineProvider({
   children,
   repository = storyEngineRepository,
@@ -1251,7 +1321,7 @@ export function StoryEngineProvider({
   );
 
   const queueStoryIndexJob = useCallback(
-    async (storyId: string, opts?: { trigger?: "manual" | "auto" }) => {
+    async (storyId: string, opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean }) => {
       const existing = (await repository.listBackgroundJobs()).find(
         (job) =>
           job.type === "story_index" &&
@@ -1260,7 +1330,23 @@ export function StoryEngineProvider({
       );
 
       if (existing) {
-        return { job: existing, duplicate: true };
+        if (!opts?.force) return { job: existing, duplicate: true };
+        // Force: cancel the existing job so the new one can queue immediately
+        await repository.saveBackgroundJob({
+          ...existing,
+          status: "cancelled",
+          finishedAt: new Date().toISOString(),
+          error: undefined,
+        });
+        const existingController = backgroundJobControllersRef.current[existing.id];
+        existingController?.abort();
+        // Clear the active ref immediately so the new job can be picked up without
+        // waiting for the old job's async cleanup to settle (which can take up to
+        // REBUILD_REQUEST_TIMEOUT_MS if the abort signal lands mid-AI-call).
+        // The finally block guards against clearing a different job's ref.
+        if (activeBackgroundJobRef.current === existing.id) {
+          activeBackgroundJobRef.current = null;
+        }
       }
 
       const job: BackgroundJob = {
@@ -1272,6 +1358,7 @@ export function StoryEngineProvider({
         dedupeKey: `story_index:${storyId}`,
         payload: {
           trigger: opts?.trigger ?? "manual",
+          incremental: opts?.incremental ?? false,
         },
       };
 
@@ -1386,7 +1473,7 @@ export function StoryEngineProvider({
   );
 
   const runDeepIndexProcess = useCallback(
-    async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto" }) => {
+    async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean; jobId?: string }) => {
       rebuildAbortRef.current?.abort();
       const controller = new AbortController();
       rebuildAbortRef.current = controller;
@@ -1451,6 +1538,7 @@ export function StoryEngineProvider({
           apiKey,
           model,
           signal,
+          incremental: opts?.incremental ?? false,
           onProgress: ({ processed, total, message, warning }) => {
             // #region debug-point job-cancel-timeout:deep-index-progress
             reportJobDebug({
@@ -1480,6 +1568,20 @@ export function StoryEngineProvider({
                 warning: warning ?? current.warning,
               };
             });
+            // Mirror progress into the DB job record so the job card shows live status
+            if (opts?.jobId) {
+              void repository.getBackgroundJob(opts.jobId).then((liveJob) => {
+                if (!liveJob || liveJob.status !== "running") return;
+                void repository.saveBackgroundJob({
+                  ...liveJob,
+                  progress: {
+                    current: processed,
+                    total,
+                    label: message ?? `${processed}/${total} messages`,
+                  },
+                }).catch(() => {});
+              }).catch(() => {});
+            }
           },
         });
 
@@ -1731,6 +1833,8 @@ export function StoryEngineProvider({
           const summaryLine = await runDeepIndexProcess(job.storyId ?? "", {
             signal,
             trigger: job.payload?.trigger ?? "manual",
+            incremental: job.payload?.incremental ?? false,
+            jobId: job.id,
           });
           const refreshed = await repository.getBackgroundJob(job.id);
           if (signal.aborted || refreshed?.status === "cancelled") {
@@ -1858,22 +1962,26 @@ export function StoryEngineProvider({
         });
         // #endregion
         if (signal.aborted || latest?.status === "cancelled") {
-          await repository.saveBackgroundJob({
-            ...runningJob,
-            status: "cancelled",
-            finishedAt: new Date().toISOString(),
-            error: undefined,
-          });
-          await hydrate(false);
+          try {
+            await repository.saveBackgroundJob({
+              ...runningJob,
+              status: "cancelled",
+              finishedAt: new Date().toISOString(),
+              error: undefined,
+            });
+          } catch {}
+          await hydrate(false).catch(() => {});
           return;
         }
-        await repository.saveBackgroundJob({
-          ...runningJob,
-          status: "failed",
-          finishedAt: new Date().toISOString(),
-          error: error instanceof Error ? error.message : "Background job failed.",
-        });
-        await hydrate(false);
+        try {
+          await repository.saveBackgroundJob({
+            ...runningJob,
+            status: "failed",
+            finishedAt: new Date().toISOString(),
+            error: error instanceof Error ? error.message : "Background job failed.",
+          });
+        } catch {}
+        await hydrate(false).catch(() => {});
         throw error;
       }
     },
@@ -1881,8 +1989,26 @@ export function StoryEngineProvider({
   );
 
   useEffect(() => {
-    if (loading || errorMessage || activeBackgroundJobRef.current) {
+    if (loading || errorMessage) {
       return;
+    }
+
+    // If the tracked active job is no longer queued/running in state, the
+    // processBackgroundJob promise must have settled and updated the DB, but
+    // its .finally() cleanup hasn't fired yet (hydrate inside processBackgroundJob
+    // triggers this effect before the outer .finally() runs). Proactively clear the
+    // stale ref so the next queued job can be picked up immediately. The .finally()
+    // guard (`ref === nextJob.id`) prevents it from re-clearing a different job's ref.
+    if (activeBackgroundJobRef.current) {
+      const isStillActive = backgroundJobs.some(
+        (j) =>
+          j.id === activeBackgroundJobRef.current &&
+          (j.status === "queued" || j.status === "running"),
+      );
+      if (isStillActive) {
+        return;
+      }
+      activeBackgroundJobRef.current = null;
     }
 
     const nextJob = backgroundJobs.find(
@@ -1915,10 +2041,21 @@ export function StoryEngineProvider({
 
     void processBackgroundJob(nextJob, controller.signal).finally(() => {
       delete backgroundJobControllersRef.current[nextJob.id];
-      activeBackgroundJobRef.current = null;
+      // Only clear the ref if it still points to this job.
+      // A force-cancel path may have already cleared it and set a new job's ref.
+      if (activeBackgroundJobRef.current === nextJob.id) {
+        activeBackgroundJobRef.current = null;
+      }
       void hydrate(false);
     });
   }, [backgroundJobs, errorMessage, hydrate, loading, processBackgroundJob]);
+
+  // Watchdog: periodic hydrate to unblock any queued jobs that the runner
+  // missed due to timing gaps (stale ref not cleared before effect fired).
+  useEffect(() => {
+    const id = setInterval(() => void hydrate(false), 15_000);
+    return () => clearInterval(id);
+  }, [hydrate]);
 
   const value = useMemo<StoryEngineContextValue>(() => {
     const storageStatus = buildStorageStatus(
@@ -3301,6 +3438,7 @@ export function StoryEngineProvider({
         await runDeepIndexProcess(storyId, {
           signal: opts?.signal,
           trigger: "manual",
+          incremental: opts?.incremental ?? false,
         });
       },
       queueStoryIndexJob,
@@ -3559,6 +3697,9 @@ export function StoryEngineProvider({
               { role: "system", content: systemPrompt },
               { role: "user", content: "Generate the JSON now." },
             ],
+            maxTokens: 1200,
+            temperature: 0,
+            jsonMode: true,
           });
         } catch (error) {
           rethrowUserFacingGenerationError(error, providerType);
@@ -3637,7 +3778,7 @@ export function StoryEngineProvider({
 
         const prefix = extractSpeakerPrefix(trimmed);
         const strippedUserContent = (prefix?.strippedContent ?? trimmed).trim();
-        const detectedDirectorIntent = detectDirectorIntent(strippedUserContent);
+        const detectedDirectorIntent = opts?.directorIntentOverride ?? detectDirectorIntent(strippedUserContent);
         const detectedChapterBoundary = detectChapterBoundary(strippedUserContent);
         const chapterBoundary =
           detectedChapterBoundary.detected && detectedChapterBoundary.kind && detectedChapterBoundary.label
@@ -3854,6 +3995,7 @@ export function StoryEngineProvider({
         let appliedRpChanges: RpChangelogEntry[] | null = null;
         let pendingCoreStatChanges: RpStatDelta[] | null = null;
         let rpEventSummary: string | null = null;
+        let appliedRelationshipDeltas: RpRelationshipDelta[] | null = null;
         let updatedMessages: StoryMessage[] = [];
 
         if (!shouldSkipAssistantReply) {
@@ -4434,6 +4576,35 @@ export function StoryEngineProvider({
 
           if (story.rpMode && story.rpConfig && currentRpStats) {
             try {
+              // Load existing relationships before extraction so we can pass tiers to the extractor
+              const preExtractState = await repository.getStoryState(storyId);
+              const preExtractParsed = preExtractState?.stateJson
+                ? (() => { try { return JSON.parse(preExtractState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
+                : {} as Record<string, unknown>;
+              const preExtractRelationships: RelationshipIndexEntry[] = (() => {
+                try {
+                  const idx = (preExtractParsed as any)?.indexes?.relationships;
+                  return Array.isArray(idx) ? idx : [];
+                } catch { return []; }
+              })();
+
+              // Parse which named characters spoke in this scene (exclude player and Narrator)
+              const playerNameNorm = playerCharacter.name.toLowerCase().trim();
+              const speakerNamesInScene = [
+                ...new Set(
+                  parseSceneBlocks(finalSanitizedText)
+                    .map((b) => b.speakerLabel?.trim())
+                    .filter((l): l is string => !!l && l !== "Narrator" && l.toLowerCase() !== playerNameNorm),
+                ),
+              ];
+              const charactersInScene = speakerNamesInScene.map((name) => {
+                const nameNorm = name.toLowerCase();
+                const existing = preExtractRelationships.find(
+                  (r) => r.a.toLowerCase() === nameNorm || r.b.toLowerCase() === nameNorm,
+                );
+                return existing ? { name, tier: existing.tier as string } : { name };
+              });
+
               const extracted = await extractRpStatChanges(
                 finalSanitizedText,
                 currentRpStats,
@@ -4446,13 +4617,11 @@ export function StoryEngineProvider({
                   universeLore: effectiveUniverse.description ?? undefined,
                   playerMessage: trimmed,
                   pendingTransaction: currentRpStats.pendingTransaction,
+                  charactersInScene: charactersInScene.length ? charactersInScene : undefined,
                 },
               );
               if (extracted) {
-                const { deltas, narrative, npcHpChanges, timeAdvanceMinutes, pendingTransaction: extractedPendingTx } = extracted;
-                const CORE_STAT_FIELDS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
-                const autoDeltas = deltas.filter((d) => !CORE_STAT_FIELDS.has(d.field));
-                const coreDeltas = deltas.filter((d) => CORE_STAT_FIELDS.has(d.field));
+                const { deltas: autoDeltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx, relationshipDeltas, npcInnerLifeUpdates, arcUpdates, suggestedCondition, characterStateSummary } = extracted;
 
                 let nextStats = currentRpStats;
                 const applied: RpChangelogEntry[] = [];
@@ -4488,11 +4657,12 @@ export function StoryEngineProvider({
                   nextStats = { ...nextStats, npcHp: updatedNpcHp };
                 }
 
-                // Apply time advance
+                // Apply time advance — player-declared only, exact minutes
                 let timeSummaryPart: string | null = null;
-                if (timeAdvanceMinutes && timeAdvanceMinutes > 0 && nextStats.timeState) {
+                const playerMinutes = userMessage.directorIntent ? resolveExactMinutes(userMessage.directorIntent) : null;
+                if (playerMinutes && playerMinutes > 0 && nextStats.timeState) {
                   const prevTime = nextStats.timeState;
-                  const newTime = advanceTime(prevTime, timeAdvanceMinutes);
+                  const newTime = advanceTime(prevTime, playerMinutes);
                   // Check and apply recurring events
                   const { triggered, updated } = checkRecurringEvents(prevTime, newTime, story.rpConfig.recurringEvents ?? []);
                   if (triggered.length) {
@@ -4530,14 +4700,55 @@ export function StoryEngineProvider({
                   timeSummaryPart = (timeSummaryPart ? `${timeSummaryPart} · ` : "") + `Time → ${timeLabel}`;
                 }
 
+                // Apply absolute time set — e.g. "It's 12pm" in player message
+                const absoluteTime = userMessage.directorIntent?.absoluteTime;
+                if (absoluteTime && !playerMinutes) {
+                  if (nextStats.timeState) {
+                    const newTime = { ...nextStats.timeState, hour: absoluteTime.hour, minute: absoluteTime.minute };
+                    nextStats = { ...nextStats, timeState: newTime };
+                    const timeLabel = formatTimeShort(newTime, story.rpConfig);
+                    timeSummaryPart = `Time → ${timeLabel}`;
+                  } else {
+                    const now = new Date();
+                    const newTime: RpTimeState = {
+                      year: now.getFullYear(),
+                      month: now.getMonth() + 1,
+                      day: now.getDate(),
+                      hour: absoluteTime.hour,
+                      minute: absoluteTime.minute,
+                      storyDay: 1,
+                    };
+                    nextStats = { ...nextStats, timeState: newTime };
+                    const timeLabel = formatTimeShort(newTime, story.rpConfig);
+                    timeSummaryPart = `Time → ${timeLabel}`;
+                  }
+                }
+
                 // Apply pending transaction state change
                 if (extractedPendingTx !== undefined) {
                   nextStats = { ...nextStats, pendingTransaction: extractedPendingTx ?? undefined };
                 }
 
+                // Apply character state summary
+                if (characterStateSummary) {
+                  nextStats = { ...nextStats, characterState: characterStateSummary };
+                }
+
+                // Apply condition suggestion
+                if (suggestedCondition && !nextStats.pendingConditionSuggestion) {
+                  nextStats = { ...nextStats, pendingConditionSuggestion: suggestedCondition };
+                }
+
                 const playerSummary = applied.length ? buildRpEventSummary(applied, story.rpConfig) : null;
                 const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" · ") : null;
                 const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" · ") || narrative || null;
+
+                // Compute updated relationships if any relationship data was returned
+                let updatedRelationships: RelationshipIndexEntry[] | null = null;
+                if (relationshipDeltas?.length || npcInnerLifeUpdates?.length || arcUpdates?.length) {
+                  updatedRelationships = applyRelationshipDeltas(preExtractRelationships, relationshipDeltas ?? [], playerCharacter.name, npcInnerLifeUpdates, arcUpdates);
+                  if (relationshipDeltas?.length) appliedRelationshipDeltas = relationshipDeltas;
+                }
 
                 if (summary) {
                   const eventEntry: RpEventLogEntry = { ts: Date.now(), summary };
@@ -4546,31 +4757,34 @@ export function StoryEngineProvider({
 
                   const latestState = await repository.getStoryState(storyId);
                   const latestParsed = latestState?.stateJson
-                    ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()
-                    : {};
+                    ? (() => { try { return JSON.parse(latestState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
+                    : {} as Record<string, unknown>;
+                  const mergedState = updatedRelationships
+                    ? { ...latestParsed, rpStats: nextStats, indexes: { ...(latestParsed.indexes as object | undefined ?? {}), relationships: updatedRelationships } }
+                    : { ...latestParsed, rpStats: nextStats };
                   await repository.saveStoryState({
                     id: `story-state:${storyId}`,
                     storyId,
-                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
+                    stateJson: JSON.stringify(mergedState),
                     updatedAt: new Date().toISOString(),
                   });
                   appliedRpChanges = applied;
                   rpEventSummary = summary;
-                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState || extractedPendingTx !== undefined) {
-                  // NPC-only, time-only, or pending-transaction-only changes still need to be saved
+                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState || extractedPendingTx !== undefined || characterStateSummary || suggestedCondition || updatedRelationships) {
+                  // NPC-only, time-only, pending-transaction, character-state, condition, or relationship-only changes still need to be saved
                   const latestState = await repository.getStoryState(storyId);
                   const latestParsed = latestState?.stateJson
-                    ? (() => { try { return JSON.parse(latestState.stateJson); } catch { return {}; } })()
-                    : {};
+                    ? (() => { try { return JSON.parse(latestState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
+                    : {} as Record<string, unknown>;
+                  const mergedState = updatedRelationships
+                    ? { ...latestParsed, rpStats: nextStats, indexes: { ...(latestParsed.indexes as object | undefined ?? {}), relationships: updatedRelationships } }
+                    : { ...latestParsed, rpStats: nextStats };
                   await repository.saveStoryState({
                     id: `story-state:${storyId}`,
                     storyId,
-                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
+                    stateJson: JSON.stringify(mergedState),
                     updatedAt: new Date().toISOString(),
                   });
-                }
-                if (coreDeltas.length) {
-                  pendingCoreStatChanges = coreDeltas;
                 }
               }
             } catch {}
@@ -4829,10 +5043,10 @@ export function StoryEngineProvider({
               }
             }
 
-            await queueStoryIndexJob(storyId, { trigger: "auto" });
+            await queueStoryIndexJob(storyId, { trigger: "auto", incremental: true });
           } catch {}
         })();
-        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary };
+        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary, appliedRelationshipDeltas };
       },
     };
   }, [

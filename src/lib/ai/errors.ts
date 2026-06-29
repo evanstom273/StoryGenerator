@@ -421,13 +421,21 @@ export function classifyAIGenerationError(error: unknown): ClassifiedAIGeneratio
         diagnostic,
         message: "The AI provider returned a temporary error.",
       };
-    default:
+    default: {
+      // For invalid_api_key and other codes that don't have a dedicated kind,
+      // show the actual provider error message rather than a generic string.
+      const fallbackMessage = normalized.code === "invalid_api_key"
+        ? normalized.message
+        : normalized.message && normalized.message !== "Unknown AI error."
+          ? normalized.message
+          : "The AI request failed for an unknown reason.";
       return {
         kind: "unknown",
         retryable: normalized.retryable,
         diagnostic,
-        message: "The AI request failed for an unknown reason.",
+        message: fallbackMessage,
       };
+    }
   }
 }
 

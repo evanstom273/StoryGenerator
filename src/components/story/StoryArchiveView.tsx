@@ -114,11 +114,11 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
     };
   }, [fetchStoryState, storyId]);
 
-  async function handleReindex() {
+  async function handleReindex(incremental: boolean) {
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      await updateIndexesDeep(storyId);
+      await updateIndexesDeep(storyId, { incremental });
       const updated = await fetchStoryState(storyId);
       setStoryStateJson(updated?.stateJson ?? "");
       if (await isAndroidNativePlatform()) {
@@ -204,7 +204,7 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
     return (
       <Panel variant="flat" padding="lg" className="space-y-4">
         <div className="text-sm text-ink-muted">No indexed state available yet.</div>
-        <Button variant="secondary" onClick={() => void handleReindex()} disabled={isRebuilding}>
+        <Button variant="secondary" onClick={() => void handleReindex(false)} disabled={isRebuilding}>
           {isRebuilding ? "Re-indexing..." : "Re-index"}
         </Button>
       </Panel>
@@ -242,14 +242,24 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
             Archive
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => void handleReindex()}
-            disabled={isRebuilding}
-          >
-            {isRebuilding ? "Re-indexing..." : "Re-index"}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleReindex(true)}
+              disabled={isRebuilding}
+            >
+              {isRebuilding ? "Re-indexing..." : "Update index"}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleReindex(false)}
+              disabled={isRebuilding}
+            >
+              Full reindex
+            </Button>
+          </div>
         </div>
 
         {rebuildInfo ? (

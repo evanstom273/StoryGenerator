@@ -21,8 +21,9 @@ import { createAIProvider } from "../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../lib/ai/models";
 import { selectDiceStat } from "../lib/ai/diceStatSelector";
 import { DiceRollModal, type DiceRollResult } from "../components/story/DiceRollModal";
-import { DEFAULT_DICE_MODIFIERS, applyStatChange as applyRpStatChange } from "../lib/rpStats";
+import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
+import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
@@ -32,7 +33,7 @@ import type {
   StoryMessageRole,
   StoryMessageSpeakerType,
 } from "../types/models";
-import type { RpStatDelta } from "../lib/ai/rpStatsExtractor";
+
 
 const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
 const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
@@ -164,13 +165,11 @@ export function StoryWorkspacePage() {
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
   const [relationshipsOpen, setRelationshipsOpen] = useState(false);
 
-  const [pendingCoreStatChanges, setPendingCoreStatChanges] = useState<RpStatDelta[] | null>(null);
   const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
   const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
+  const [relationshipsRefreshKey, setRelationshipsRefreshKey] = useState(0);
   const [taskbarGold, setTaskbarGold] = useState<number | null>(null);
   const [taskbarTime, setTaskbarTime] = useState<RpTimeState | null>(null);
-  const [showLargeSkipModal, setShowLargeSkipModal] = useState(false);
-  const skipTimeCheckRef = useRef(false);
   const [showZeroHpModal, setShowZeroHpModal] = useState(false);
   const [zeroHpConsequenceChoice, setZeroHpConsequenceChoice] = useState<string>("");
   const [zeroHpCustom, setZeroHpCustom] = useState("");
@@ -219,7 +218,6 @@ export function StoryWorkspacePage() {
     setIsAssistantEditSaving(false);
     setRpSheetOpen(false);
     setRelationshipsOpen(false);
-    setPendingCoreStatChanges(null);
     setRpToasts([]);
     setShowZeroHpModal(false);
     setZeroHpConsequenceChoice("");
@@ -321,7 +319,6 @@ export function StoryWorkspacePage() {
   const activeUniverse = universe;
   const activePlayerCharacter = playerCharacter;
 
-  const LARGE_TIME_SKIP_RE = /\b(sleep|slept|nap|napped|rest overnight|overnight|wake up|woke up|next morning|next day|tomorrow|next week|next month|days? later|weeks? later|months? later|skip to|fast forward|travel(?:l?ed)? to|long journey|hospital|recover(?:y|ing)?|unconscious)\b/i;
   const ROLL_TAG_RE = /\[roll(?:\s+(str|dex|con|int|wis|cha))?\]/i;
 
   async function handleSendChat() {
@@ -368,14 +365,11 @@ export function StoryWorkspacePage() {
       }
     }
 
-    // Warn before potentially large time skips (8+ hours)
-    if (!skipTimeCheckRef.current && activeStory?.rpMode && taskbarTime && LARGE_TIME_SKIP_RE.test(chatInput)) {
-      setShowLargeSkipModal(true);
-      return;
-    }
-    skipTimeCheckRef.current = false;
+    // Parse /time slash command and strip it from the message
+    const slashTime = parseSlashTimeCommand(chatInput);
+    const content = slashTime ? slashTime.strippedText || "." : chatInput;
+    const directorIntentOverride = slashTime?.intent;
 
-    const content = chatInput;
     setIsGenerating(true);
     setChatError(null);
     setLastChatContent(content);
@@ -384,7 +378,11 @@ export function StoryWorkspacePage() {
     try {
       const consequence = pendingZeroHpConsequence;
       if (consequence) setPendingZeroHpConsequence(null);
-      const result = await sendChatMessage(activeStory.id, content, consequence ? { zeroHpConsequence: consequence } : undefined);
+      const result = await sendChatMessage(
+        activeStory.id,
+        content,
+        { ...(consequence ? { zeroHpConsequence: consequence } : {}), ...(directorIntentOverride ? { directorIntentOverride } : {}) },
+      );
       if (result.appliedRpChanges?.length) {
         const hpZero = result.appliedRpChanges.some((c) => c.field === "hp" && c.to === 0);
         if (hpZero) {
@@ -393,7 +391,6 @@ export function StoryWorkspacePage() {
           setShowZeroHpModal(true);
         }
       }
-      if (result.pendingCoreStatChanges?.length) setPendingCoreStatChanges(result.pendingCoreStatChanges);
       if (result.rpEventSummary) {
         const id = `${Date.now()}-${Math.random()}`;
         setRpToasts((prev) => [{ id, summary: result.rpEventSummary! }, ...prev]);
@@ -404,6 +401,7 @@ export function StoryWorkspacePage() {
         const lastGoldChange = allGoldChanges?.at(-1);
         if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
+        if (result.appliedRelationshipDeltas?.length) setRelationshipsRefreshKey((k) => k + 1);
       }
     } catch (error) {
       reportWorkspaceUiAudit({
@@ -435,7 +433,7 @@ export function StoryWorkspacePage() {
     if (!diceRollPending) return;
     const statLabel = result.stat.toUpperCase();
     const modLabel = result.modifier > 0 ? `+${result.modifier}` : result.modifier < 0 ? `${result.modifier}` : "±0";
-    const resultTag = `[${statLabel} ${modLabel} | d12: ${result.die} | Total: ${result.total} — ${result.outcome}]`;
+    const resultTag = `[${statLabel} ${modLabel} | 2d6: ${result.dice[0]}+${result.dice[1]} | Total: ${result.total} — ${result.outcome}]`;
     const substituted = diceRollPending.resolvedMessage.replace(ROLL_TAG_RE, resultTag);
 
     // Toast
@@ -466,12 +464,6 @@ export function StoryWorkspacePage() {
   }
 
   async function sendChatMessageWithContent(content: string) {
-    if (!skipTimeCheckRef.current && activeStory?.rpMode && taskbarTime && LARGE_TIME_SKIP_RE.test(content)) {
-      setShowLargeSkipModal(true);
-      return;
-    }
-    skipTimeCheckRef.current = false;
-
     setIsGenerating(true);
     setChatError(null);
     setLastChatContent(content);
@@ -489,7 +481,6 @@ export function StoryWorkspacePage() {
           setShowZeroHpModal(true);
         }
       }
-      if (result.pendingCoreStatChanges?.length) setPendingCoreStatChanges(result.pendingCoreStatChanges);
       if (result.rpEventSummary) {
         const id = `${Date.now()}-${Math.random()}`;
         setRpToasts((prev) => [{ id, summary: result.rpEventSummary! }, ...prev]);
@@ -500,6 +491,7 @@ export function StoryWorkspacePage() {
         const lastGoldChange = allGoldChanges?.at(-1);
         if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
+        if (result.appliedRelationshipDeltas?.length) setRelationshipsRefreshKey((k) => k + 1);
       }
 
       // Write dice roll to eventLog after extractor has already saved rpStats
@@ -705,23 +697,6 @@ export function StoryWorkspacePage() {
     } finally {
       setIsGeneratingAssist(false);
     }
-  }
-
-  async function handleAcceptCoreStatChanges() {
-    if (!pendingCoreStatChanges?.length || !storyId || !activeStory.rpConfig) return;
-    const state = await fetchStoryState(storyId);
-    if (!state) return;
-    try {
-      const base = JSON.parse(state.stateJson) as Record<string, unknown>;
-      let next = (base.rpStats as any) ?? {};
-      for (const d of pendingCoreStatChanges) {
-        const from = (next.statOverrides?.[d.field] ?? activeStory.rpConfig.coreStats[d.field as keyof typeof activeStory.rpConfig.coreStats]) ?? 10;
-        const to = Math.min(30, Math.max(1, from + d.delta));
-        next = applyRpStatChange(next, { field: d.field, from, to, reason: d.reason });
-      }
-      await updateRpStats(storyId, next);
-      setPendingCoreStatChanges(null);
-    } catch {}
   }
 
   function applyComposerPreset(role: StoryMessageRole, speakerType?: StoryMessageSpeakerType) {
@@ -1135,29 +1110,6 @@ export function StoryWorkspacePage() {
       {readerMode || archiveMode ? null : (
         latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
           <Panel variant="flat" className="mt-4" padding="sm">
-            {activeStory.rpMode && pendingCoreStatChanges?.length ? (
-              <div className="mb-3 rounded-[9px] border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
-                <div className="mb-2 flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-amber-300">Stat change implied by narrative</p>
-                    <p className="mt-0.5 text-xs text-ink-muted">
-                      {pendingCoreStatChanges.map((d) => {
-                        const sign = d.delta > 0 ? "+" : "";
-                        return `${d.field.toUpperCase()} ${sign}${d.delta} — ${d.reason}`;
-                      }).join(" · ")}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="primary" size="sm" onClick={() => void handleAcceptCoreStatChanges()} disabled={isGenerating || isRegenerating}>
-                    Accept
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => setPendingCoreStatChanges(null)} disabled={isGenerating || isRegenerating}>
-                    Dismiss
-                  </Button>
-                </div>
-              </div>
-            ) : null}
             {latestDirectorIntentMessage?.directorIntent ? (
               <div className="mb-3 flex flex-col gap-3 rounded-[9px] border border-divider/[0.4] bg-panel-muted/50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-ink-muted">
@@ -1414,33 +1366,6 @@ export function StoryWorkspacePage() {
         />
       ) : null}
 
-      {/* Large time-skip confirmation modal */}
-      {showLargeSkipModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-sm rounded-2xl border border-divider bg-panel px-6 py-5 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-ink">Large time skip detected</h3>
-            <p className="text-sm text-ink-muted">Your message may advance story time by several hours or more (e.g. sleep, travel, recovery). The story clock will advance accordingly.</p>
-            <div className="flex gap-3">
-              <button
-                className="flex-1 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent/80"
-                onClick={() => {
-                  setShowLargeSkipModal(false);
-                  skipTimeCheckRef.current = true;
-                  void handleSendChat();
-                }}
-              >
-                Continue
-              </button>
-              <button
-                className="flex-1 rounded-xl border border-divider px-4 py-2 text-sm font-semibold text-ink-muted transition hover:text-ink"
-                onClick={() => setShowLargeSkipModal(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {diceRollPending && (
         <DiceRollModal
           stat={diceRollPending.stat}
@@ -1457,6 +1382,7 @@ export function StoryWorkspacePage() {
           storyId={storyId}
           playerName={activePlayerCharacter?.name}
           onClose={() => setRelationshipsOpen(false)}
+          refreshKey={relationshipsRefreshKey}
         />
       ) : null}
 

@@ -161,7 +161,7 @@ function getSpeakerTag(label: string, kind: SpeakerKind) {
     label,
     kind,
     tagClass: cn(baseTagClass, "text-accent"),
-    rowClass: cn(baseRowClass, "bg-transparent"),
+    rowClass: "rounded-2xl px-3 py-1 bg-transparent",
     contentClass: "text-ink",
   };
 }
@@ -302,7 +302,7 @@ export function StoryTranscriptView({
                 )}
               >
                 <div className="flex items-start gap-3 text-sm leading-7">
-                  <div className={tag.tagClass}>{tag.label}:</div>
+                  <div className={tag.tagClass}>{tag.label}</div>
                   <div className={cn("min-w-0 flex-1 whitespace-pre-wrap break-words", tag.contentClass)}>
                     {message.content}
                   </div>
@@ -332,7 +332,7 @@ export function StoryTranscriptView({
                 )}
               >
                 <div className="flex items-start gap-3 text-sm leading-7">
-                  <div className={tag.tagClass}>{tag.label}:</div>
+                  <div className={tag.tagClass}>{tag.label}</div>
                   <div className={cn("min-w-0 flex-1 space-y-2", tag.contentClass)}>
                     {lines.map((line, index) => (
                       <div key={index}>{renderLine(line, { forceItalic: false })}</div>
@@ -368,7 +368,7 @@ export function StoryTranscriptView({
             <div
               id={`story-message-${message.id}`}
               className={cn(
-                "space-y-4",
+                "space-y-2",
                 highlight ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
               )}
             >
@@ -378,16 +378,23 @@ export function StoryTranscriptView({
                 const tag = isNarration
                   ? getSpeakerTag("Narrator", "narrator")
                   : getSpeakerTag(block.speakerLabel?.trim() || "Unknown", "npc");
+                if (isNarration) {
+                  return (
+                    <div key={blockIndex} className={tag.rowClass}>
+                      <div className={cn("min-w-0 text-sm leading-7 whitespace-pre-wrap break-words", tag.contentClass)}>
+                        {lines.map((line, index) => (
+                          <div key={index}>{renderLine(line, { forceItalic: true })}</div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <div key={blockIndex} className={tag.rowClass}>
                     <div className="flex items-start gap-3 text-sm leading-7">
                       <div className={tag.tagClass}>{tag.label}:</div>
                       <div className={cn("min-w-0 flex-1 space-y-2 whitespace-pre-wrap break-words", tag.contentClass)}>
-                        {isNarration
-                          ? lines.map((line, index) => (
-                              <div key={index}>{renderLine(line, { forceItalic: true })}</div>
-                            ))
-                          : renderInlineContent(lines.join(" ").replace(/\s+/g, " "))}
+                        {renderInlineContent(lines.join(" ").replace(/\s+/g, " "))}
                       </div>
                     </div>
                   </div>

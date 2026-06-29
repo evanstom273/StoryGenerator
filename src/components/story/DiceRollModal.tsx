@@ -3,9 +3,9 @@ import { useState } from "react";
 export type DiceRollResult = {
   stat: string;
   modifier: number;
-  die: number;
+  dice: [number, number];
   total: number;
-  outcome: "CRITICAL SUCCESS" | "SUCCESS" | "FAILURE";
+  outcome: "CRITICAL SUCCESS" | "SUCCESS" | "FAILURE" | "CRITICAL FAILURE";
 };
 
 interface Props {
@@ -30,15 +30,20 @@ export function DiceRollModal({ stat, modifier, actionText, onConfirm, onCancel 
   const [rolled, setRolled] = useState<DiceRollResult | null>(null);
 
   function roll() {
-    const die = Math.floor(Math.random() * 12) + 1;
-    const total = die + modifier;
-    const isCrit = die === 12;
-    const outcome: DiceRollResult["outcome"] = isCrit
+    const die1 = Math.floor(Math.random() * 6) + 1;
+    const die2 = Math.floor(Math.random() * 6) + 1;
+    const naturalTotal = die1 + die2;
+    const total = naturalTotal + modifier;
+    const isCritSuccess = die1 === 6 && die2 === 6;
+    const isCritFailure = die1 === 1 && die2 === 1;
+    const outcome: DiceRollResult["outcome"] = isCritSuccess
       ? "CRITICAL SUCCESS"
+      : isCritFailure
+      ? "CRITICAL FAILURE"
       : total >= 7
       ? "SUCCESS"
       : "FAILURE";
-    setRolled({ stat, modifier, die, total, outcome });
+    setRolled({ stat, modifier, dice: [die1, die2], total, outcome });
   }
 
   const statLabel = STAT_LABELS[stat] ?? stat.toUpperCase();
@@ -49,6 +54,8 @@ export function DiceRollModal({ stat, modifier, actionText, onConfirm, onCancel 
       ? "text-yellow-400"
       : rolled?.outcome === "SUCCESS"
       ? "text-green-400"
+      : rolled?.outcome === "CRITICAL FAILURE"
+      ? "text-red-600"
       : "text-red-400";
 
   const outcomeBorder =
@@ -56,6 +63,8 @@ export function DiceRollModal({ stat, modifier, actionText, onConfirm, onCancel 
       ? "border-yellow-400"
       : rolled?.outcome === "SUCCESS"
       ? "border-green-400"
+      : rolled?.outcome === "CRITICAL FAILURE"
+      ? "border-red-600"
       : rolled
       ? "border-red-400"
       : "border-white/20";
@@ -74,8 +83,10 @@ export function DiceRollModal({ stat, modifier, actionText, onConfirm, onCancel 
 
           {rolled ? (
             <div className="text-center flex-1 mx-4">
-              <div className="text-5xl font-bold text-white">{rolled.die}</div>
-              <div className="text-xs text-zinc-400 mt-1">d12 roll</div>
+              <div className="text-4xl font-bold text-white">
+                {rolled.dice[0]} + {rolled.dice[1]}
+              </div>
+              <div className="text-xs text-zinc-400 mt-1">2d6 roll</div>
             </div>
           ) : (
             <div className="flex-1 mx-4 flex items-center justify-center">
@@ -107,7 +118,7 @@ export function DiceRollModal({ stat, modifier, actionText, onConfirm, onCancel 
             onClick={roll}
             className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold py-3 transition-colors"
           >
-            Roll d12
+            Roll 2d6
           </button>
         ) : (
           <div className="flex gap-3">

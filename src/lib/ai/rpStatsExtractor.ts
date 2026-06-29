@@ -1,6 +1,6 @@
 import type { PendingTransaction, RpConfig, RpStats } from "../../types/models";
 import type { AIProvider } from "./types";
-import { clampStat, effectiveCoreStats, getStatValue, isValidStatField } from "../rpStats";
+import { clampStat, getStatValue, isValidStatField } from "../rpStats";
 import { formatTime } from "../rpTime";
 
 export type RpStatDelta = { field: string; delta: number; reason: string };
@@ -13,13 +13,44 @@ export type NpcHpChange = {
   reason: string;
 };
 
+export type RpRelationshipDelta = {
+  characterName: string;
+  tier?: string;
+  trust?: number;
+  affection?: number;
+  fear?: number;
+  dependency?: number;
+  reason: string;
+};
+
+export type NpcInnerLifeUpdate = {
+  characterName: string;
+  tier?: string;
+  emotionalState?: string;
+  howTheyDescribeYou?: string;
+  whatTheyWant?: string;
+  whatTheyreNotSaying?: string;
+};
+
+export type RelationshipArcUpdate = {
+  characterName: string;
+  tier?: string;
+  statusPhrase?: string;
+  newMilestone?: string;
+  tension?: string;
+};
+
 export type RpExtractorResult = {
   deltas: RpStatDelta[];
   narrative?: string;
   npcHpChanges?: NpcHpChange[];
-  timeAdvanceMinutes?: number;
   /** undefined = no change; null = clear pending; object = set/update pending */
   pendingTransaction?: PendingTransaction | null;
+  relationshipDeltas?: RpRelationshipDelta[];
+  npcInnerLifeUpdates?: NpcInnerLifeUpdate[];
+  arcUpdates?: RelationshipArcUpdate[];
+  suggestedCondition?: string;
+  characterStateSummary?: string;
 };
 
 export type RpExtractorContext = {
@@ -27,9 +58,22 @@ export type RpExtractorContext = {
   universeLore?: string;
   playerMessage?: string;
   pendingTransaction?: PendingTransaction;
+  charactersInScene?: Array<{ name: string; tier?: string }>;
 };
 
-function safeParseExtractorResponse(text: string): { deltas: unknown[]; narrative?: string; npcHpChanges?: unknown[]; timeAdvanceMinutes?: number; pendingTransaction?: unknown } | null {
+type ParsedExtractorResponse = {
+  deltas: unknown[];
+  narrative?: string;
+  npcHpChanges?: unknown[];
+  pendingTransaction?: unknown;
+  relationshipDeltas?: unknown[];
+  npcInnerLifeUpdates?: unknown[];
+  arcUpdates?: unknown[];
+  suggestedCondition?: string;
+  characterStateSummary?: string;
+};
+
+function safeParseExtractorResponse(text: string): ParsedExtractorResponse | null {
   const trimmed = text.trim();
 
   const objStart = trimmed.indexOf("{");
@@ -39,17 +83,18 @@ function safeParseExtractorResponse(text: string): { deltas: unknown[]; narrativ
       try {
         const parsed = JSON.parse(trimmed.slice(objStart, objEnd + 1)) as unknown;
         if (parsed && typeof parsed === "object" && "deltas" in parsed) {
-          const obj = parsed as { deltas: unknown; narrative?: unknown; npcHpChanges?: unknown; timeAdvanceMinutes?: unknown; pendingTransaction?: unknown };
+          const obj = parsed as Record<string, unknown>;
           const hasPendingField = "pendingTransaction" in obj;
           return {
             deltas: Array.isArray(obj.deltas) ? obj.deltas : [],
             narrative: typeof obj.narrative === "string" && obj.narrative.trim() ? obj.narrative.trim() : undefined,
             npcHpChanges: Array.isArray(obj.npcHpChanges) ? obj.npcHpChanges : undefined,
-            timeAdvanceMinutes: typeof obj.timeAdvanceMinutes === "number" && obj.timeAdvanceMinutes > 0
-              ? Math.round(obj.timeAdvanceMinutes)
-              : undefined,
-            // Only include the key when it was actually present in the response
             ...(hasPendingField ? { pendingTransaction: obj.pendingTransaction } : {}),
+            relationshipDeltas: Array.isArray(obj.relationshipDeltas) ? obj.relationshipDeltas : undefined,
+            npcInnerLifeUpdates: Array.isArray(obj.npcInnerLifeUpdates) ? obj.npcInnerLifeUpdates : undefined,
+            arcUpdates: Array.isArray(obj.arcUpdates) ? obj.arcUpdates : undefined,
+            suggestedCondition: typeof obj.suggestedCondition === "string" && obj.suggestedCondition.trim() ? obj.suggestedCondition.trim() : undefined,
+            characterStateSummary: typeof obj.characterStateSummary === "string" && obj.characterStateSummary.trim() ? obj.characterStateSummary.trim() : undefined,
           };
         }
       } catch {}
@@ -78,8 +123,6 @@ export async function extractRpStatChanges(
   model: string,
   context?: RpExtractorContext,
 ): Promise<RpExtractorResult | null> {
-  const core = effectiveCoreStats(rpStats, config);
-
   const goldFloor = config.allowDebt
     ? (config.creditLimit != null && config.creditLimit > 0 ? -config.creditLimit : null)
     : 0;
@@ -107,34 +150,35 @@ export async function extractRpStatChanges(
   const prompt = [
     "Analyze the story scene below and identify stat changes for the PLAYER CHARACTER, any NPC health events, and time elapsed.",
     "",
-    `Current player stats: HP ${rpStats.hp}/${config.maxHp}, ${config.currencyName} ${rpStats.gold}, STR ${core.str} DEX ${core.dex} CON ${core.con} INT ${core.int} WIS ${core.wis} CHA ${core.cha}`,
+    `Current player stats: HP ${rpStats.hp}/${config.maxHp}, ${config.currencyName} ${rpStats.gold}`,
     goldFloorNote,
     pendingTxContext,
     `Current NPC HP: ${npcHpContext}`,
     settingContext,
     "",
-    "Valid player fields: hp, gold, str, dex, con, int, wis, cha",
+    "Valid player fields: hp, gold",
     "",
     "PRICE RULE: When an NPC states a price verbatim (e.g. 'eight-fifty' = 8.50, 'five eighty-seven' = 5.87, 'twelve fifty' = 12.50), use EXACTLY that number for pendingTransaction.amount. Benchmarks are a fallback ONLY when no price is stated — they must NEVER override a spoken price.",
     "AMOUNT LOCK: Once pendingTransaction.amount is set from a stated price, do NOT change it for inferred extras (bag fees, taxes, tips). Only update if an NPC explicitly states a new total (e.g. 'With the bag that's $8.75').",
     "",
     "IMPORTANT: Return ONLY a JSON object. Always use this exact format:",
-    '{"deltas":[{"field":"hp","delta":-15,"reason":"Arrow wound"}],"narrative":"Short one-line summary","npcHpChanges":[],"timeAdvanceMinutes":10}',
+    '{"deltas":[{"field":"hp","delta":-15,"reason":"Arrow wound"}],"narrative":"Short one-line summary","npcHpChanges":[],"npcInnerLifeUpdates":[{"characterName":"Amy","tier":"family","emotionalState":"worried but loving","howTheyDescribeYou":"She\'s my daughter and I\'ll do anything for her.","whatTheyWant":"to feel close again","whatTheyreNotSaying":"She\'s scared of pushing too hard"}],"arcUpdates":[{"characterName":"Amy","tier":"family","statusPhrase":"close but quietly strained","tension":"Can they reconnect before she drifts away?"}],"characterStateSummary":"Player is at home dealing with family tension."}',
+    "All six top-level keys (deltas, narrative, npcHpChanges, npcInnerLifeUpdates, arcUpdates, characterStateSummary) must appear in every response.",
     "",
     "Format examples (pendingTransaction shown where relevant):",
-    '- Nothing RP-relevant:   {"deltas":[],"narrative":null,"npcHpChanges":[],"timeAdvanceMinutes":5}',
-    `- Blocked purchase:      {"deltas":[],"narrative":"Purchase blocked — ${config.currencyName} ${rpStats.gold} available, cost exceeded balance","npcHpChanges":[],"timeAdvanceMinutes":5}`,
-    '- Spoken price (pending):{"deltas":[],"narrative":"Cashier says eight-fifty for snacks","npcHpChanges":[],"timeAdvanceMinutes":1,"pendingTransaction":{"description":"snacks","amount":8.50}}',
-    '- Price stated (pending):{"deltas":[],"narrative":"Cashier rings up $5.87 for snacks","npcHpChanges":[],"timeAdvanceMinutes":2,"pendingTransaction":{"description":"snacks","amount":5.87}}',
-    '- Awaiting payment:      {"deltas":[],"narrative":"Awaiting $5.87 payment","npcHpChanges":[],"timeAdvanceMinutes":1,"pendingTransaction":{"description":"snacks","amount":5.87}}',
-    '- Payment completed:     {"deltas":[{"field":"gold","delta":-5.87,"reason":"snacks"}],"narrative":"Paid $5.87 for snacks","npcHpChanges":[],"timeAdvanceMinutes":2,"pendingTransaction":null}',
-    '- Transaction cancelled: {"deltas":[],"narrative":"Left without buying","npcHpChanges":[],"timeAdvanceMinutes":1,"pendingTransaction":null}',
-    '- Gold spent (no prior pending, inferred): {"deltas":[{"field":"gold","delta":-5,"reason":"coffee"}],"narrative":"Spent ~$5 on coffee","npcHpChanges":[],"timeAdvanceMinutes":3}',
-    '- Wages earned:          {"deltas":[{"field":"gold","delta":85,"reason":"4-hour shift at grocery store"}],"narrative":"Earned $85 after shift","npcHpChanges":[],"timeAdvanceMinutes":240}',
-    '- HP damage:             {"deltas":[{"field":"hp","delta":-10,"reason":"Fell off ledge"}],"narrative":"HP -10 from falling","npcHpChanges":[],"timeAdvanceMinutes":5}',
-    '- HP healing:            {"deltas":[{"field":"hp","delta":8,"reason":"Ibuprofen relieved headache"}],"narrative":"HP +8 from painkillers","npcHpChanges":[],"timeAdvanceMinutes":30}',
-    '- NPC health event:      {"deltas":[],"narrative":"Gladys collapsed with a cardiac event","npcHpChanges":[{"npcKey":"gladys","name":"Gladys","delta":-50,"maxHp":75,"reason":"cardiac seizure"}],"timeAdvanceMinutes":15}',
-    '- Sleep / rest:        {"deltas":[{"field":"hp","delta":20,"reason":"Full night sleep"}],"narrative":"Slept through the night, feeling better","npcHpChanges":[],"timeAdvanceMinutes":480}',
+    '- Nothing RP-relevant:   {"deltas":[],"narrative":null,"npcHpChanges":[]}',
+    `- Blocked purchase:      {"deltas":[],"narrative":"Purchase blocked — ${config.currencyName} ${rpStats.gold} available, cost exceeded balance","npcHpChanges":[]}`,
+    '- Spoken price (pending):{"deltas":[],"narrative":"Cashier says eight-fifty for snacks","npcHpChanges":[],"pendingTransaction":{"description":"snacks","amount":8.50}}',
+    '- Price stated (pending):{"deltas":[],"narrative":"Cashier rings up $5.87 for snacks","npcHpChanges":[],"pendingTransaction":{"description":"snacks","amount":5.87}}',
+    '- Awaiting payment:      {"deltas":[],"narrative":"Awaiting $5.87 payment","npcHpChanges":[],"pendingTransaction":{"description":"snacks","amount":5.87}}',
+    '- Payment completed:     {"deltas":[{"field":"gold","delta":-5.87,"reason":"snacks"}],"narrative":"Paid $5.87 for snacks","npcHpChanges":[],"pendingTransaction":null}',
+    '- Transaction cancelled: {"deltas":[],"narrative":"Left without buying","npcHpChanges":[],"pendingTransaction":null}',
+    '- Gold spent (no prior pending, inferred): {"deltas":[{"field":"gold","delta":-5,"reason":"coffee"}],"narrative":"Spent ~$5 on coffee","npcHpChanges":[]}',
+    '- Wages earned:          {"deltas":[{"field":"gold","delta":85,"reason":"4-hour shift at grocery store"}],"narrative":"Earned $85 after shift","npcHpChanges":[]}',
+    '- HP damage:             {"deltas":[{"field":"hp","delta":-10,"reason":"Fell off ledge"}],"narrative":"HP -10 from falling","npcHpChanges":[]}',
+    '- HP healing:            {"deltas":[{"field":"hp","delta":8,"reason":"Ibuprofen relieved headache"}],"narrative":"HP +8 from painkillers","npcHpChanges":[]}',
+    '- NPC health event:      {"deltas":[],"narrative":"Gladys collapsed with a cardiac event","npcHpChanges":[{"npcKey":"gladys","name":"Gladys","delta":-50,"maxHp":75,"reason":"cardiac seizure"}]}',
+    '- Sleep / rest:          {"deltas":[{"field":"hp","delta":20,"reason":"Full night sleep"}],"narrative":"Slept through the night, feeling better","npcHpChanges":[]}',
     "",
     "Rules for pendingTransaction:",
     "- Use pendingTransaction to track a purchase that has been started but not yet paid.",
@@ -154,7 +198,6 @@ export async function extractRpStatChanges(
     "- If clearly gifted, comped, paid by someone else, or if the character did not participate in the transaction: do NOT apply a delta.",
     "- If a purchase was attempted but blocked due to insufficient funds, do NOT deduct gold — just set narrative.",
     "- HP can increase (healing). Apply a positive hp delta when the player takes medication and explicitly feels better (e.g. painkillers reducing a headache → +5 to +10 HP), receives direct medical treatment (+10 to +25 HP), or significantly rests/sleeps (+15 to +30 HP). Be conservative — over-the-counter pain relief is +5 to +10 HP max.",
-    "- Core stats (str, dex, con, int, wis, cha) should ONLY change for significant, persistent events — long-term training, major illness, lasting injury, profound personal growth. A single scene or ordinary activity almost never warrants a core stat change.",
     "",
     "Rules for npcHpChanges:",
     "- Track named NPCs who suffer or recover from significant PHYSICAL health events in this scene only.",
@@ -165,28 +208,48 @@ export async function extractRpStatChanges(
     "- Do NOT track NPCs for emotional distress, arguments, or non-physical events.",
     "- Do NOT invent NPC health changes — only include clearly implied physical harm or recovery.",
     "",
-    "Rules for timeAdvanceMinutes:",
-    "- Estimate in-story minutes elapsed during this scene. Be realistic — most single exchanges take only a few minutes.",
-    "- Single line of dialogue / instant action (one remark, a glance, a quick decision): 1–3 min",
-    "- Brief exchange at a counter, vending machine, or register: 2–5 min",
-    "- Short conversation (a few back-and-forth lines): 5–10 min",
-    "- Walking a short distance (same block, same building): 5–15 min",
-    "- Short task (quick errand, self-checkout, buying a ticket): 5–15 min",
-    "- Meal, studying, light shopping, social visit: 30–120 min",
-    "- Short journey within a city / neighbourhood: 20–60 min",
-    "- Long journey (city to city, road trip, train/plane): 120–480 min",
-    "- Work shift (4–8 hrs): 240–480 min",
-    "- Sleep / overnight rest: 360–540 min",
-    "- Recovery, medical stay: 480–1440 min or more",
-    "- Explicit multi-day skip (next week, three months later): calculate as days × 1440",
-    "- PLAYER TIME SKIP OVERRIDE: If the player's message explicitly states that time has passed (e.g. 'a few days go by', 'it's now Thursday', 'three weeks later', 'skip to the next morning'), calculate timeAdvanceMinutes from THAT stated duration — do not estimate from the narrator's scene length. 'A few days' = 2–4 days × 1440. 'Next morning' after evening = ~480–600 min. 'A week later' = 7 × 1440.",
-    "- Set to 0 or null if time is indeterminate or the scene is instantaneous.",
-    "",
     "Rules for narrative:",
     "- Write a short one-line summary whenever something RP-relevant happened, even if deltas is [].",
     `- RP-relevant means: any currency transaction (successful or blocked), HP damage or healing, a stat consequence, an NPC health event, or a resource interaction.`,
     `- For blocked purchases always write a narrative even though deltas is [].`,
     "- Set narrative to null only if the scene had absolutely no RP-relevant content.",
+    "",
+    "RELATIONSHIP CHANGES:",
+    "If this turn contained a meaningful emotional shift between the player and a named character, include \"relationshipDeltas\": [{\"characterName\": \"...\", \"tier\": \"...\", \"trust\": <±delta>, \"affection\": <±delta>, \"fear\": <±delta>, \"dependency\": <±delta>, \"reason\": \"...\"}].",
+    "- \"tier\" is the relationship type. Always include it. Use one of: devoted, lover, partner, best friend, confidant, close friend, friend, family, mentor, mentee, caregiver, patient, ally, colleague, professional, acquaintance, stranger, complicated, guarded, distant, estranged, rival, adversary, enemy, nemesis, threat.",
+    "- Only include metrics that actually changed this turn. Typical magnitude: ±3–12. Omit the field entirely if nothing meaningful shifted.",
+    "- trust = reliability/honesty between characters. affection = warmth/care/closeness. fear = dread, anxiety, or power imbalance. dependency = emotional or physical reliance.",
+    "- Omit the relationshipDeltas field entirely if no significant emotional shift occurred.",
+    "",
+    "CONDITIONS:",
+    "If a significant status-changing event occurred in this scene (hospital admission, surgery, diagnosis, arrest, major injury, treatment started), set \"suggestedCondition\" to a short label (e.g. \"Active Chemotherapy\", \"Post-Surgery\", \"Cardiac Arrest Survivor\").",
+    "- Only suggest on clear, dramatic events. Do NOT suggest for minor events or ordinary scenes.",
+    "- Omit suggestedCondition entirely if nothing significant happened.",
+    "",
+    "CHARACTER STATE:",
+    "Set \"characterStateSummary\" to 1-3 sentences describing the player character's current situation in present tense, third person. This replaces the previous summary — update it to reflect what just happened. Always include this field.",
+    "",
+    "NPC INNER LIFE:",
+    "For every named character who appears in the scene, include an entry in \"npcInnerLifeUpdates\". Include this even when the player character is not present. You must always write emotionalState and howTheyDescribeYou — these are not optional.",
+    "Fields: characterName (string), tier (string), emotionalState (string, 2-5 words), howTheyDescribeYou (string, one sentence), whatTheyWant (string, optional), whatTheyreNotSaying (string, optional).",
+    "tier must be one of: devoted, lover, partner, best friend, confidant, close friend, friend, family, mentor, mentee, caregiver, patient, ally, colleague, professional, acquaintance, stranger, complicated, guarded, distant, estranged, rival, adversary, enemy, nemesis, threat.",
+    "emotionalState: how this character privately feels about the player character right now. Infer from tone, subtext, and context. Never leave blank.",
+    "howTheyDescribeYou: one sentence in their internal voice. Infer from how they talk about or act toward the player character. Never leave blank.",
+    "Example: {\"characterName\": \"Jake\", \"tier\": \"family\", \"emotionalState\": \"proud but quietly anxious\", \"howTheyDescribeYou\": \"He's my kid and I need to get this right for him.\", \"whatTheyWant\": \"to help without overstepping\", \"whatTheyreNotSaying\": \"He's scared Jamie is already pulling away\"}",
+    "Omit the npcInnerLifeUpdates array only if zero named characters appeared in the scene at all.",
+    ...(context?.charactersInScene?.length ? [
+      "",
+      `Characters who appeared in this scene: ${context.charactersInScene.map((c) => c.tier ? `${c.name} (${c.tier})` : c.name).join(", ")}.`,
+      "You MUST include an entry for EVERY character listed above in both npcInnerLifeUpdates and arcUpdates — no exceptions.",
+    ] : []),
+    "",
+    "RELATIONSHIP ARC:",
+    "For every named character who appears in the scene, include an entry in \"arcUpdates\". You must always write statusPhrase — it is not optional.",
+    "Fields: characterName (string), tier (string, same values as above), statusPhrase (string, 3-6 words), tension (string, optional), newMilestone (string, optional).",
+    "statusPhrase: evocative words for the current feel of this relationship. Infer from the scene. Never leave blank.",
+    "tension: the unresolved question driving this relationship. Write it if there is any open dynamic.",
+    "Example: {\"characterName\": \"Jake\", \"tier\": \"family\", \"statusPhrase\": \"loving and quietly worried\", \"tension\": \"Can they reach Jamie before he stops letting them in?\"}",
+    "Omit the arcUpdates array only if zero named characters appeared in the scene at all.",
     "",
     `Era/genre price benchmarks for ${config.currencyName} (defer to setting context and universe lore when available):`,
     `MODERN: Coffee $3–6 · Fast food $8–15 · Sit-down meal $15–35 · Bus/subway $2–4 · Rideshare short $10–20 · Rideshare long $25–60 · Haircut $20–50 · Bar drink $5–12 · Movie $12–20 · Doctor/urgent care $100–300 · Prescription $10–50 · Grocery run (small) $20–60 · Clothing item $20–80 · Min-wage shift (4–8 hrs) $50–120 · Tips $10–50`,
@@ -257,7 +320,6 @@ export async function extractRpStatChanges(
       : undefined;
 
     const narrative = parsed.narrative ?? blockedNarrative;
-    const timeAdvanceMinutes = parsed.timeAdvanceMinutes;
 
     // Parse pendingTransaction: undefined = field absent (no change), null = clear, object = set
     let pendingTransaction: PendingTransaction | null | undefined = undefined;
@@ -274,13 +336,69 @@ export async function extractRpStatChanges(
       }
     }
 
-    if (!deltas.length && !narrative && !npcHpChanges.length && !timeAdvanceMinutes && pendingTransaction === undefined) return null;
+    // Parse relationship deltas
+    const relationshipDeltas: RpRelationshipDelta[] = [];
+    for (const item of parsed.relationshipDeltas ?? []) {
+      if (!item || typeof item !== "object") continue;
+      const d = item as Record<string, unknown>;
+      if (typeof d.characterName !== "string" || !d.characterName.trim()) continue;
+      if (typeof d.reason !== "string") continue;
+      const rd: RpRelationshipDelta = {
+        characterName: d.characterName.trim(),
+        reason: d.reason.trim(),
+      };
+      if (typeof d.tier === "string" && d.tier.trim()) rd.tier = d.tier.trim();
+      if (typeof d.trust === "number" && Number.isFinite(d.trust) && d.trust !== 0) rd.trust = Math.round(d.trust);
+      if (typeof d.affection === "number" && Number.isFinite(d.affection) && d.affection !== 0) rd.affection = Math.round(d.affection);
+      if (typeof d.fear === "number" && Number.isFinite(d.fear) && d.fear !== 0) rd.fear = Math.round(d.fear);
+      if (typeof d.dependency === "number" && Number.isFinite(d.dependency) && d.dependency !== 0) rd.dependency = Math.round(d.dependency);
+      if (rd.trust !== undefined || rd.affection !== undefined || rd.fear !== undefined || rd.dependency !== undefined || rd.tier !== undefined) {
+        relationshipDeltas.push(rd);
+      }
+    }
+
+    // Parse NPC inner life updates
+    const npcInnerLifeUpdates: NpcInnerLifeUpdate[] = [];
+    for (const item of parsed.npcInnerLifeUpdates ?? []) {
+      if (!item || typeof item !== "object") continue;
+      const d = item as Record<string, unknown>;
+      if (typeof d.characterName !== "string" || !d.characterName.trim()) continue;
+      const u: NpcInnerLifeUpdate = { characterName: d.characterName.trim() };
+      if (typeof d.tier === "string" && d.tier.trim()) u.tier = d.tier.trim();
+      if (typeof d.emotionalState === "string" && d.emotionalState.trim()) u.emotionalState = d.emotionalState.trim();
+      if (typeof d.howTheyDescribeYou === "string" && d.howTheyDescribeYou.trim()) u.howTheyDescribeYou = d.howTheyDescribeYou.trim();
+      if (typeof d.whatTheyWant === "string" && d.whatTheyWant.trim()) u.whatTheyWant = d.whatTheyWant.trim();
+      if (typeof d.whatTheyreNotSaying === "string" && d.whatTheyreNotSaying.trim()) u.whatTheyreNotSaying = d.whatTheyreNotSaying.trim();
+      if (u.tier || u.emotionalState || u.howTheyDescribeYou || u.whatTheyWant || u.whatTheyreNotSaying) npcInnerLifeUpdates.push(u);
+    }
+
+    // Parse arc updates
+    const arcUpdates: RelationshipArcUpdate[] = [];
+    for (const item of parsed.arcUpdates ?? []) {
+      if (!item || typeof item !== "object") continue;
+      const d = item as Record<string, unknown>;
+      if (typeof d.characterName !== "string" || !d.characterName.trim()) continue;
+      const u: RelationshipArcUpdate = { characterName: d.characterName.trim() };
+      if (typeof d.tier === "string" && d.tier.trim()) u.tier = d.tier.trim();
+      if (typeof d.statusPhrase === "string" && d.statusPhrase.trim()) u.statusPhrase = d.statusPhrase.trim();
+      if (typeof d.newMilestone === "string" && d.newMilestone.trim()) u.newMilestone = d.newMilestone.trim();
+      if (typeof d.tension === "string" && d.tension.trim()) u.tension = d.tension.trim();
+      if (u.tier || u.statusPhrase || u.newMilestone || u.tension) arcUpdates.push(u);
+    }
+
+    if (!deltas.length && !narrative && !npcHpChanges.length && pendingTransaction === undefined
+        && !relationshipDeltas.length && !npcInnerLifeUpdates.length && !arcUpdates.length
+        && !parsed.suggestedCondition && !parsed.characterStateSummary) return null;
     return {
       deltas,
       narrative,
       npcHpChanges: npcHpChanges.length ? npcHpChanges : undefined,
-      timeAdvanceMinutes,
       ...(pendingTransaction !== undefined ? { pendingTransaction } : {}),
+      ...(relationshipDeltas.length ? { relationshipDeltas } : {}),
+      ...(npcInnerLifeUpdates.length ? { npcInnerLifeUpdates } : {}),
+      ...(arcUpdates.length ? { arcUpdates } : {}),
+      ...(parsed.suggestedCondition ? { suggestedCondition: parsed.suggestedCondition } : {}),
+      ...(parsed.characterStateSummary ? { characterStateSummary: parsed.characterStateSummary } : {}),
     };
   } catch {
     return null;

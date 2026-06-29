@@ -221,10 +221,6 @@ export function buildStoryChatContext({
 
   const rpStatsBlock = (() => {
     if (!story.rpMode || !rpStats || !rpConfig) return "";
-    const { str, dex, con, int: INT, wis, cha } = {
-      ...rpConfig.coreStats,
-      ...rpStats.statOverrides,
-    };
     const hpPct = rpConfig.maxHp > 0 ? rpStats.hp / rpConfig.maxHp : 0;
     const hpState =
       rpStats.hp <= 0 ? "Incapacitated"
@@ -241,8 +237,6 @@ export function buildStoryChatContext({
       [
         `HP: ${rpStats.hp} / ${rpConfig.maxHp} — ${hpState}`,
         `${rpConfig.currencyName}: ${goldFormatted}`,
-        `STR ${str}  DEX ${dex}  CON ${con}  INT ${INT}  WIS ${wis}  CHA ${cha}`,
-        "",
         "HP represents physical condition. Writing tone should reflect the current state:",
         "Healthy: acts freely and without obvious impairment.",
         "Injured: may show strain, wince, or move with care.",
@@ -253,15 +247,13 @@ export function buildStoryChatContext({
         `The character's ${rpConfig.currencyName} balance represents their total financial position — savings, income, and assets — not just pocket money. Treat it as meaningful characterisation: a teenager may have only a little, a working adult considerably more.`,
         `Currency rule: if the player attempts a purchase they cannot afford, reflect this naturally in the scene (declined card, putting items back, asking for credit, etc.). Do not let a purchase silently succeed if the character lacks funds.${debtLine ? `\n${debtLine}` : ""}`,
         "",
-        "Core stats are narrative guidance. They shape plausibility and colour consequences — they never gate an attempt. Higher scores suggest ease and competence; lower scores suggest difficulty, awkwardness, or risk of failure.",
-        "",
-        "Do not narrate or reference stat values directly. Stat tracking happens separately.",
         ...(rpConfig.diceRollsEnabled ? [
           "",
-          "Dice roll rule: when the player's message contains a result tag like [CHA +1 | d12: 9 | Total: 10 — SUCCESS] or [STR -1 | d12: 3 | Total: 2 — FAILURE], treat that outcome as a binding narrative fact. Interpret each result as follows:",
+          "Dice roll rule: when the player's message contains a result tag like [CHA +1 | 2d6: 4+3 | Total: 8 — SUCCESS] or [STR -1 | 2d6: 1+2 | Total: 2 — FAILURE], treat that outcome as a binding narrative fact. Interpret each result as follows:",
           "- SUCCESS (total ≥ 7): the character's approach is effective, or circumstances become more favourable. This does not automatically resolve the entire situation — narrate the process and the feel of the success unfolding rather than jumping straight to a final outcome. Unless the action would reasonably conclude the situation on its own, leave threads open.",
-          "- CRITICAL SUCCESS (natural 12 on the die): the approach lands especially well. Go a step further than a standard success — an unexpected benefit, a warmer-than-expected response, something that earns the character a small advantage or moment of grace.",
+          "- CRITICAL SUCCESS (both dice show 6): the approach lands exceptionally well. Go a step further than a standard success — an unexpected benefit, a warmer-than-expected response, something that earns the character a meaningful advantage or moment of grace.",
           "- FAILURE (total < 7): the attempt introduces a complication, setback, or obstacle. The character is not made incapable and the worst-case outcome is not automatic — instead, something goes wrong in a way that creates pressure, costs time or goodwill, or makes the next step harder.",
+          "- CRITICAL FAILURE (both dice show 1): the attempt backfires in a real, active way — not just a setback but a genuine negative consequence. Something is lost, broken, or made worse. The character may face embarrassment, danger, or an unexpected cost. This should sting.",
           "Do not ignore or quietly override the roll result. Narrate the scene so the outcome feels earned and real.",
         ] : []),
         ...(rpConfig.birthdayMonth != null && rpConfig.birthdayDay != null ? [
@@ -272,6 +264,27 @@ export function buildStoryChatContext({
             return `Player character birthday: ${rpConfig.birthdayDay} ${mName}. When the in-story date reaches this each year, the character has turned a year older.`;
           })(),
         ] : []),
+        ...(rpStats.characterState ? [
+          "",
+          `Current player situation: ${rpStats.characterState}`,
+        ] : []),
+        ...(rpStats.conditions?.length ? [
+          "",
+          `Active conditions: ${rpStats.conditions.map((c) => c.label).join(", ")}`,
+        ] : []),
+        ...(() => {
+          const parsed = safeParseStoryStateData(storyState?.stateJson ?? "");
+          const rels = parsed?.indexes?.relationships ?? [];
+          const playerNorm = playerCharacter.name.toLowerCase().trim();
+          const intentions = rels
+            .filter((r) => r.playerIntention?.trim())
+            .map((r) => {
+              const npc = r.a.toLowerCase().trim() === playerNorm ? r.b : r.a;
+              return `${npc}: ${r.playerIntention}`;
+            });
+          if (!intentions.length) return [];
+          return ["", "Player's relationship intentions:", ...intentions.map((i) => `- ${i}`)];
+        })(),
         ...(rpStats.timeState ? [
           "",
           `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,
@@ -339,7 +352,7 @@ export function buildStoryChatContext({
       "Do not generate suggested player lines or options unless explicitly asked via Player Assist. Focus on canon characters, NPCs, and narration.",
       "Drive the story forward with complications, discoveries, and tension, but never remove player agency.",
       "Never move, speak for, think for, feel for, or act on behalf of the player character.",
-      "Never introduce the player character into the scene unless the transcript/story state or the player's latest message established them there. Do not narrate the player character arriving, acting, speaking, thinking, or reacting.",
+      "Never introduce the player character into the scene unless the transcript/story state or the player's latest message established them there. Do not narrate the player character arriving, acting, speaking, thinking, or reacting. Do not imply the player character is physically present through ambient details (sounds, shadows, movements) if the player has established they are elsewhere.",
       "When the player character is present, other characters may address them, but always wait for the player's response.",
       "Asterisks are reserved exclusively for actions. Never use asterisks for emphasis, sarcasm, or formatting.",
       "Actions should read like prose, not stage directions. Avoid repetitive filler actions (nods/looks/shrugs) unless truly warranted.",
@@ -348,11 +361,30 @@ export function buildStoryChatContext({
       "Canon characters should appear only if already present, introduced by the player, or logically located in the scene.",
       "Do not introduce major characters into a scene unless their presence has been established, their arrival is logically explained by the narrative, or the player has explicitly invited, contacted, or sought them out. Do not introduce characters solely to solve problems or remove consequences.",
       "Output format guidance:",
-      "- Use speaker headers like 'Jake:' and 'Amy:' on their own line when switching speakers.",
-      "- Use 'Narrator:' only for pure scene-setting/environment narration. Do not use Narrator lines to describe character actions when a character is the actor.",
-      "- When a character acts, write it as *...* within that character's block (immediately under their name) instead of as third-person narration.",
-      "- Place actions as *...* on their own line between dialogue lines. Actions should be full sentences.",
-      '- When writing dialogue, prefer quoted lines like "So what now?" on their own line.',
+      "- Use speaker headers like 'Jake:' and 'Amy:' on their own line when switching speakers. The colon after the name is REQUIRED — never write 'Jake' alone on a line. Always write 'Jake:'. Without the colon the parser cannot identify the speaker and the text will be misattributed.",
+      "- In dialogue, use an em dash (—) for casual speech transitions and filler, not a colon. Write: 'Like — I've been watching him his whole life.' NOT 'Like: I've been watching him.' Colons in dialogue are only appropriate when directly introducing a specific statement or answer: 'He said it plain: no.' or 'went: no.'",
+      "- EVERY line of prose narration must start with 'Narrator:'. Never write prose narration as orphaned/unattributed text between character blocks — it will be incorrectly attributed to the previous speaker. If you need to describe the environment, atmosphere, or ambient action between two character lines, start a new 'Narrator:' block.",
+      "- Use 'Narrator:' for scene-setting, ambient sounds, atmosphere, time passing, and any prose that is not a character speaking or acting.",
+      "- Asterisks (*...*) are ONLY for brief physical actions — a gesture, a movement, an expression. Examples: *leans back*, *sets down her mug*, *glances toward the door*. They must be short, physical, and contain no colons or complex punctuation.",
+      "- NEVER use *...* for internal thoughts, emotional asides, or extended narration. Do not write *and the probably is not worry, not exactly: it's just the honest version of yes* — that is a narrative aside, not a physical action. Put that kind of content in the Narrator block instead.",
+      "- NEVER use *...* inside a quoted speech line. Do not write: 'He didn't even: *aside*' or 'It gets me — *thought*'. Asterisks must never appear inside quote marks.",
+      "- NEVER place a colon immediately before *...* action text. Do not write 'He said: *smiles*' or 'She paused: *looks away*'.",
+      "- If a character acts between sentences of dialogue, close the quotes, put the ONE-PHRASE physical action on its own line, then reopen dialogue on the next line.",
+      "- If an action interrupts dialogue mid-sentence, close with an em dash — never a colon. Write: '\"He didn't even —\"' on its own line, then the action on the next line, then continue dialogue. Never write: '\"He didn't even: *action*\"'.",
+      "- Each character block must be substantial. A character's turn should contain multiple sentences of dialogue before switching speakers. Here is the correct format:",
+      "",
+      "Jake:",
+      "*leans back in his chair*",
+      "\"Do you think he knows? That we talk about him like this? Because I keep thinking about the way he looked at us last Tuesday — like he was doing math in his head and we were the variables.\"",
+      "",
+      "Amy:",
+      "*sets down her mug carefully*",
+      "\"I think he suspects there's a conversation. I don't think he has full intelligence on the scope of it. Which is probably good, for everyone involved.\"",
+      "",
+      "Narrator:",
+      "The refrigerator hums. Neither of them reaches for their coffee.",
+      "",
+      "- That is the correct format. No colons before or inside action beats. No asterisks inside quotes. No single-line character turns.",
     ].join("\n"),
   );
 

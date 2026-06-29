@@ -60,8 +60,9 @@ export async function rebuildStoryMemoryAndIndexes(params: {
   model: string;
   onProgress?: (p: { processed: number; total: number; message?: string; warning?: string }) => void;
   signal?: AbortSignal;
+  incremental?: boolean;
 }): Promise<{ stateJson: string; summaryText?: string }> {
-  const { storyId, repository, provider, apiKey, model, onProgress, signal } = params;
+  const { storyId, repository, provider, apiKey, model, onProgress, signal, incremental = false } = params;
 
   const story = await repository.getStory(storyId);
   if (!story) {
@@ -85,16 +86,31 @@ export async function rebuildStoryMemoryAndIndexes(params: {
   let currentState: StoryStateDataV2 = normalizeStoryStateToV2(baseParsed);
   currentState = { ...currentState, memoryArchitectureVersion: "2.0" };
 
+  // In incremental mode, only process messages added since the last index run.
+  const lastIndexedCount = incremental ? (baseParsed?.indexes?.messageCount ?? 0) : 0;
+  const newMessages = messages.slice(lastIndexedCount);
+
+  if (incremental && newMessages.length === 0) {
+    onProgress?.({ processed: total, total, message: "Index is already up to date." });
+    return {
+      stateJson: storyState?.stateJson ?? JSON.stringify(currentState),
+      summaryText: currentState.summaries?.worldSummary?.trim() || undefined,
+    };
+  }
+
   const chunkSize = 40;
-  const chunks = chunkMessages(messages, chunkSize);
+  const chunks = chunkMessages(newMessages, chunkSize);
   const totalChunks = chunks.length;
 
-  let processed = 0;
+  // processed tracks absolute message position (1-indexed offset used for prompt numbering)
+  let processed = lastIndexedCount;
   onProgress?.({
     processed,
     total,
-    message: total === 0
+    message: newMessages.length === 0
       ? "No messages to index."
+      : incremental
+      ? `Indexing ${newMessages.length} new message${newMessages.length === 1 ? "" : "s"}…`
       : `Loading ${total} message${total === 1 ? "" : "s"}…`,
   });
 

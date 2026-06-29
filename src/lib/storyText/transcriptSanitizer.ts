@@ -520,6 +520,75 @@ function removeEchoBlocks(text: string, latestUserMessage: string | null | undef
   return { text: kept.join("\n\n"), removed };
 }
 
+// Names that should never be treated as speaker headers
+const NOT_A_NAME_BARE = new Set([
+  "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
+  "The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
+  "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
+  "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
+  "Scene", "Chapter", "Part", "First", "Next", "Narrator",
+]);
+
+// Add colon to bare name lines (e.g. "Jake\n*action*" → "Jake:\n*action*")
+function fixBareNameHeaders(text: string): string {
+  const lines = normalizeNewlines(text).split("\n");
+  const result: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const trimmed = line.trim();
+
+    // A bare name: 1-4 capitalised words, no colon, no punctuation
+    const nameMatch = trimmed.match(/^([A-Z][a-zA-Z']{1,30}(?:\s+[A-Z][a-zA-Z']{1,30}){0,3})$/);
+    if (nameMatch) {
+      const firstName = trimmed.split(/\s+/)[0] ?? "";
+      if (!NOT_A_NAME_BARE.has(firstName) && !NOT_A_NAME_BARE.has(trimmed)) {
+        // Look ahead: is the next non-empty line action or dialogue?
+        let nextIdx = i + 1;
+        while (nextIdx < lines.length && !(lines[nextIdx] ?? "").trim()) nextIdx++;
+        const nextLine = (lines[nextIdx] ?? "").trim();
+        if (nextLine.startsWith("*") || nextLine.startsWith('"') || nextLine.startsWith("“")) {
+          result.push(trimmed + ":");
+          continue;
+        }
+      }
+    }
+
+    result.push(line);
+  }
+
+  return result.join("\n");
+}
+
+// Casual speech-transition colons → em dash, and colon-before-action → em dash
+const FILLER_COLON_RE = /\b(like|i mean|you know|and like|but like|so like|i guess|anyway|honestly|seriously|genuinely|basically|literally):\s+/gi;
+
+function fixDialogueColons(text: string): string {
+  const lines = normalizeNewlines(text).split("\n");
+  return lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return line;
+
+    // Skip pure action lines — they can legitimately contain colons
+    if (trimmed.startsWith("*") && trimmed.endsWith("*")) return line;
+
+    let result = line;
+
+    // Colon immediately before an action beat → em dash (": *action*" → " — *action*")
+    result = result.replace(/:\s*(\*[^*\n]+\*)/g, " — $1");
+
+    // Casual filler words using colon as a transition
+    result = result.replace(FILLER_COLON_RE, (_, word: string) => `${word} — `);
+
+    return result;
+  }).join("\n");
+}
+
+// Ensure action beats end with a period
+function ensureActionPeriods(text: string): string {
+  return text.replace(/\*([^*\n]+[^.!?,*\n])\*/g, "*$1.*");
+}
+
 function normalizeTranscriptWhitespace(text: string) {
   const normalized = normalizeNewlines(text)
     .replace(/[ \t]+\n/g, "\n")
@@ -569,7 +638,10 @@ export function sanitizeAssistantTranscript(args: {
   const echoed = removeEchoBlocks(preambleStripped, args.latestUserMessage);
   const narratorStripped = stripNarratorHeaders(echoed.text);
   const markdownStripped = stripMarkdownArtifacts(narratorStripped.text);
-  const normalizedActions = normalizeThirdPersonActions(markdownStripped.text, args.playerName);
+  const bareNamesFixed = fixBareNameHeaders(markdownStripped.text);
+  const dialogueColonsFixed = fixDialogueColons(bareNamesFixed);
+  const actionPeriodsFixed = ensureActionPeriods(dialogueColonsFixed);
+  const normalizedActions = normalizeThirdPersonActions(actionPeriodsFixed, args.playerName);
   const emphasisStripped = stripInlineAsteriskEmphasis(normalizedActions);
   const standardized = standardizeAssistantStoryText({
     text: emphasisStripped,
