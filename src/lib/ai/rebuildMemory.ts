@@ -220,6 +220,14 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     const wasRepaired = !directParse;
 
     const normalized = normalizeStoryStateToV2(parsed);
+
+    // Merge relationships across chunks — each chunk only sees its own messages
+    // in the transcript, so without accumulation, earlier chunks' relationship
+    // data would be overwritten and lost.
+    const previousRelationships = currentState.indexes?.relationships ?? [];
+    const newRelationships = normalized.indexes?.relationships ?? [];
+    const mergedRelationships = [...previousRelationships, ...newRelationships];
+
     currentState = {
       ...normalized,
       memoryArchitectureVersion: "2.0",
@@ -227,6 +235,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
         ...(normalized.indexes ?? {}),
         messageCount: total,
         messageNumberingVersion: "1.0",
+        ...(mergedRelationships.length ? { relationships: mergedRelationships } : {}),
       },
     };
 
