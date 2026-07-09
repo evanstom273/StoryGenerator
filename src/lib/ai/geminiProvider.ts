@@ -149,7 +149,7 @@ async function callGenerateContent(
   const safeKey = apiKey.replace(/[^\x00-\xFF]/g, "");
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(
         model,
       )}:generateContent`,
       {
