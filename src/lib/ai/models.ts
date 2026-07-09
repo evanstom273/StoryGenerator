@@ -59,3 +59,10 @@ export function getProviderModels(providerType: AIProviderType) {
 export function getProviderDefaultModel(providerType: AIProviderType) {
   return DEFAULT_MODEL[providerType];
 }
+
+export function getValidModel(providerType: AIProviderType, savedModel: string | undefined): string {
+  if (savedModel && PROVIDER_MODELS[providerType].some((m) => m.id === savedModel)) {
+    return savedModel;
+  }
+  return DEFAULT_MODEL[providerType];
+}

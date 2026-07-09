@@ -13,7 +13,7 @@ import { APP_NAME, APP_VERSION } from "../app/versioning/version";
 import { buildThemeCssVariables, useTheme } from "../app/theming/ThemeContext";
 import { themes, type ThemeKey } from "../app/theming/themes";
 import type { AIProviderType } from "../types/models";
-import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
+import { getProviderDefaultModel, getProviderModels, getValidModel } from "../lib/ai/models";
 import { downloadFile } from "../lib/download";
 import { serializeStoryExport } from "../lib/storyExport";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
@@ -78,7 +78,7 @@ export function SettingsPage() {
     aiSettings?.defaultModels?.openai ?? getProviderDefaultModel("openai"),
   );
   const [geminiModel, setGeminiModel] = useState(
-    aiSettings?.defaultModels?.gemini ?? getProviderDefaultModel("gemini"),
+    getValidModel("gemini", aiSettings?.defaultModels?.gemini),
   );
   const [openrouterModel, setOpenrouterModel] = useState(
     aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
@@ -136,9 +136,7 @@ export function SettingsPage() {
     setOpenaiModel(
       aiSettings?.defaultModels?.openai ?? getProviderDefaultModel("openai"),
     );
-    setGeminiModel(
-      aiSettings?.defaultModels?.gemini ?? getProviderDefaultModel("gemini"),
-    );
+    setGeminiModel(getValidModel("gemini", aiSettings?.defaultModels?.gemini));
     setOpenrouterModel(
       aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
     );
