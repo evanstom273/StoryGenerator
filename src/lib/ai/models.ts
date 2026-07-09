@@ -13,8 +13,9 @@ const PROVIDER_MODELS: Record<AIProviderType, ProviderModelOption[]> = {
     { id: "gpt-4o", label: "GPT-4o" },
   ],
   gemini: [
-    { id: "gemini-2.5-flash", label: "gemini-2.5-flash" },
-    { id: "gemini-2.5-pro", label: "gemini-2.5-pro" },
+    { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+    { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+    { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
   ],
   anthropic: [
     { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
