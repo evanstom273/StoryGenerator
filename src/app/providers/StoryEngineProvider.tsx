@@ -23,7 +23,7 @@ import {
   buildStoryChatContext,
   buildStorySummaryContext,
 } from "../../lib/ai/contextBuilder";
-import { getProviderDefaultModel } from "../../lib/ai/models";
+import { getValidModel } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
 import { buildPlayerAssistContext } from "../../lib/ai/playerAssistContext";
 import {
@@ -1267,8 +1267,7 @@ export function StoryEngineProvider({
 
       const resolvedModel =
         storyModelOverride?.trim() ||
-        settings.defaultModels?.[providerType]?.trim() ||
-        getProviderDefaultModel(providerType);
+        getValidModel(providerType, settings.defaultModels?.[providerType]?.trim());
 
       if (!resolvedModel) {
         throw new Error("Set a model in Settings before generating scenes.");
