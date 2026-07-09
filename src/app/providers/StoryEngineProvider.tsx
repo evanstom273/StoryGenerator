@@ -1265,9 +1265,8 @@ export function StoryEngineProvider({
         }
       }
 
-      const resolvedModel =
-        storyModelOverride?.trim() ||
-        getValidModel(providerType, settings.defaultModels?.[providerType]?.trim());
+      const savedModel = storyModelOverride?.trim() || settings.defaultModels?.[providerType]?.trim();
+      const resolvedModel = getValidModel(providerType, savedModel);
 
       if (!resolvedModel) {
         throw new Error("Set a model in Settings before generating scenes.");
