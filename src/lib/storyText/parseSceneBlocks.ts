@@ -13,6 +13,9 @@ const NOT_A_NAME = new Set([
   "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
   "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
   "Scene", "Chapter", "Part", "First", "Next",
+  // Narrative transition/preposition words that can precede a name but are not names themselves
+  "As", "With", "After", "Before", "While", "When", "Once", "Until",
+  "From", "Into", "Through", "Against", "Between", "Without",
 ]);
 
 function isValidSpeakerLabel(label: string): boolean {
@@ -24,8 +27,8 @@ function isValidSpeakerLabel(label: string): boolean {
   if (words.length > 4) return false;
   // Every word must start with uppercase or be a number ("Paramedic 1", "Guard 2")
   if (!words.every((w) => /^[A-Z]/.test(w) || /^\d/.test(w))) return false;
-  // Single common words are narrative markers, not names
-  if (words.length === 1 && NOT_A_NAME.has(words[0]!)) return false;
+  // Common words are narrative markers, not names — reject whether alone or as the first word of a multi-word label
+  if (NOT_A_NAME.has(words[0]!)) return false;
   return true;
 }
 

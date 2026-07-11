@@ -537,6 +537,8 @@ const NOT_A_NAME_BARE = new Set([
   "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
   "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
   "Scene", "Chapter", "Part", "First", "Next", "Narrator",
+  "As", "With", "After", "Before", "While", "When", "Once", "Until",
+  "From", "Into", "Through", "Against", "Between", "Without",
 ]);
 
 // Add colon to bare name lines (e.g. "Jake\n*action*" → "Jake:\n*action*")
