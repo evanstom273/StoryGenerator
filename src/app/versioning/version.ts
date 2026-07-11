@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.2.2";
+export const APP_VERSION = "2.2.3";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -370,6 +370,16 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
       "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
       "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
+    ],
+    knownIssues: [],
+  },
+  "2.2.3": {
+    title: "Gemini Formatting Fixes & Writing Quality",
+    fixed: [
+      "Trailing _ characters at the end of narrator paragraphs — Gemini wraps narrator text in _italic_ markdown; the italic-stripping regex now handles passages of any length, and any stray underscore delimiter left over is removed as a second pass",
+      "Duplicate character speech blocks — if the model emits two consecutive blocks for the same speaker separated by a blank line, they are now merged into a single bubble instead of appearing as two",
+      "Auto-indexing after chapters silently never firing — a state-save error could swallow the auto-index queue call; state-save and auto-index are now independent so the job is always queued",
+      "Fan-fiction character caricature — when writing in a referenced universe the model now treats imported lore as the authoritative voice reference and is explicitly told not to amplify or exaggerate traits, even iconic ones",
     ],
     knownIssues: [],
   },
