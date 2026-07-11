@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.2.4";
+export const APP_VERSION = "2.2.5";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -370,6 +370,13 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
       "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
       "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
+    ],
+    knownIssues: [],
+  },
+  "2.2.5": {
+    title: "Speaker Attribution Hotfix",
+    fixed: [
+      "\"As Jamie:\" and similar narrative transition phrases (\"As\", \"With\", \"After\", \"While\", etc.) were being treated as speaker labels, causing the following prose to appear under the wrong character. The parser now rejects any label whose first word is a narrative transition word, and the AI is explicitly instructed never to use \"As [Name]:\" as a speaker prefix.",
     ],
     knownIssues: [],
   },
