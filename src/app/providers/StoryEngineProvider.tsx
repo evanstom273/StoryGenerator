@@ -33,7 +33,7 @@ import {
 import {
   buildUniverseBlueprintSystemPrompt,
 } from "../../lib/ai/universeGenerator";
-import { extractFirstJsonObject, safeParseJsonObject } from "../../lib/ai/json";
+import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "../../lib/ai/json";
 import { buildMatureFictionPolicyBlock } from "../../lib/ai/matureFictionPolicy";
 import {
   analyzeStoryInputSafety,
@@ -2315,7 +2315,7 @@ export function StoryEngineProvider({
               { role: "system", content: systemPrompt },
               { role: "user", content: "Generate the JSON now." },
             ],
-            maxTokens: 1200,
+            maxTokens: 3000,
             temperature: 0,
             jsonMode: true,
           });
@@ -2323,7 +2323,10 @@ export function StoryEngineProvider({
           rethrowUserFacingGenerationError(error, providerType);
         }
 
-        const jsonText = extractFirstJsonObject(response.content) ?? response.content.trim();
+        const jsonText =
+          extractFirstJsonObject(response.content) ??
+          tryRepairTruncatedJson(response.content) ??
+          response.content.trim();
         const parsed = safeParseJsonObject<Record<string, unknown>>(jsonText);
 
         if (!parsed) {
@@ -3695,7 +3698,7 @@ export function StoryEngineProvider({
               { role: "system", content: systemPrompt },
               { role: "user", content: "Generate the JSON now." },
             ],
-            maxTokens: 1200,
+            maxTokens: 3000,
             temperature: 0,
             jsonMode: true,
           });
@@ -3703,7 +3706,10 @@ export function StoryEngineProvider({
           rethrowUserFacingGenerationError(error, providerType);
         }
 
-        const jsonText = extractFirstJsonObject(response.content) ?? response.content.trim();
+        const jsonText =
+          extractFirstJsonObject(response.content) ??
+          tryRepairTruncatedJson(response.content) ??
+          response.content.trim();
         const parsed = safeParseJsonObject<Record<string, unknown>>(jsonText);
 
         if (!parsed) {
