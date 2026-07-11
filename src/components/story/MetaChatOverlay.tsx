@@ -63,10 +63,34 @@ export function MetaChatOverlay(props: {
     [getJobsForStory, props.storyId],
   );
 
+  const failedJobs = useMemo(
+    () =>
+      getJobsForStory(props.storyId).filter(
+        (job) => job.type === "metachat_generate" && job.status === "failed",
+      ),
+    [getJobsForStory, props.storyId],
+  );
+
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isExporting, setIsExporting] = useState<MetaChatExportFormat | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retryingJobIds, setRetryingJobIds] = useState<Set<string>>(new Set());
+
+  async function handleRetry(jobId: string, content: string) {
+    setRetryingJobIds((prev) => new Set([...prev, jobId]));
+    try {
+      await queueMetaChatMessage(props.storyId, content);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to retry MetaChat message.");
+    } finally {
+      setRetryingJobIds((prev) => {
+        const next = new Set(prev);
+        next.delete(jobId);
+        return next;
+      });
+    }
+  }
 
   useEffect(() => {
     if (props.open) {
@@ -214,6 +238,26 @@ export function MetaChatOverlay(props: {
               {error}
             </div>
           ) : null}
+          {failedJobs.map((job) => (
+            <div
+              key={job.id}
+              className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200"
+            >
+              <div className="font-medium">MetaChat reply failed</div>
+              {job.error ? (
+                <div className="mt-1 text-rose-300/80">{job.error}</div>
+              ) : null}
+              {job.payload?.content ? (
+                <button
+                  className="mt-2 rounded px-2 py-1 text-xs font-medium text-rose-200 ring-1 ring-rose-400/30 hover:bg-rose-400/10 disabled:opacity-50"
+                  disabled={retryingJobIds.has(job.id)}
+                  onClick={() => void handleRetry(job.id, job.payload!.content!)}
+                >
+                  {retryingJobIds.has(job.id) ? "Retrying…" : "Retry"}
+                </button>
+              ) : null}
+            </div>
+          ))}
           {pendingJobs.length ? (
             <div className="rounded-[8px] border border-divider/[0.35] bg-app-elevated px-4 py-3 text-sm text-ink-muted">
               {pendingJobs.length === 1

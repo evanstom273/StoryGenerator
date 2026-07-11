@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.2.5";
+export const APP_VERSION = "2.2.6";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -370,6 +370,13 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
       "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
       "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
+    ],
+    knownIssues: [],
+  },
+  "2.2.6": {
+    title: "MetaChat Error Visibility",
+    fixed: [
+      "Failed MetaChat replies were invisible — if the AI call failed (API error, safety refusal, context too large), the user's message would appear but no reply or error was shown, making MetaChat appear broken. Failed jobs now surface their error message in the overlay with a Retry button.",
     ],
     knownIssues: [],
   },
