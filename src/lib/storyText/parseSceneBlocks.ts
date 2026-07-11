@@ -144,11 +144,27 @@ export function parseSceneBlocks(content: string): SceneBlock[] {
     return [{ text: content, segments: parseActionSegments(content) }];
   }
 
-  return blocks
-    .filter((block) => block.text.trim() || block.speakerLabel)
-    .map((block) => ({
-      speakerLabel: block.speakerLabel,
-      text: block.text.trimStart(),
-      segments: parseActionSegments(block.text.trimStart()),
-    }));
+  const filteredBlocks = blocks.filter((block) => block.text.trim() || block.speakerLabel);
+
+  // Merge consecutive blocks with the same named speaker so duplicate blocks from
+  // the model (two Jake: blocks separated by a blank line) render as one bubble.
+  const merged: Array<{ speakerLabel?: string; text: string }> = [];
+  for (const block of filteredBlocks) {
+    const prev = merged[merged.length - 1];
+    if (
+      prev &&
+      block.speakerLabel !== undefined &&
+      prev.speakerLabel === block.speakerLabel
+    ) {
+      prev.text += "\n\n" + block.text;
+    } else {
+      merged.push({ ...block });
+    }
+  }
+
+  return merged.map((block) => ({
+    speakerLabel: block.speakerLabel,
+    text: block.text.trimStart(),
+    segments: parseActionSegments(block.text.trimStart()),
+  }));
 }
