@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.2.3";
+export const APP_VERSION = "2.2.4";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -370,6 +370,14 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
       "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
       "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
+    ],
+    knownIssues: [],
+  },
+  "2.2.4": {
+    title: "Update Index & Narrator Attribution Fixes",
+    fixed: [
+      "Update index (incremental) was completing instantly without doing any work — the indexer was using the lightweight message counter (bumped after every AI turn) as its starting point, so it always saw 0 new messages. It now uses the actual last AI deep-index checkpoint",
+      "Third-person prose describing multiple characters (e.g. \"Jake does X while Amy does Y\") was being written as an action beat inside the first character's block. The output format instructions now explicitly require any prose that mentions another character's actions to be placed in a Narrator: block",
     ],
     knownIssues: [],
   },

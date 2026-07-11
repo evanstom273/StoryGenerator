@@ -86,8 +86,14 @@ export async function rebuildStoryMemoryAndIndexes(params: {
   let currentState: StoryStateDataV2 = normalizeStoryStateToV2(baseParsed);
   currentState = { ...currentState, memoryArchitectureVersion: "2.0" };
 
-  // In incremental mode, only process messages added since the last index run.
-  const lastIndexedCount = incremental ? (baseParsed?.indexes?.messageCount ?? 0) : 0;
+  // In incremental mode, only process messages added since the last AI deep-index run.
+  // indexes.messageCount is bumped by the lightweight counter sync after every AI turn
+  // and must NOT be used here — it would make every incremental run see 0 new messages.
+  // lastDeepIndexedMessageCount is the correct checkpoint: it is only set when an actual
+  // AI-powered deep index finishes.
+  const lastIndexedCount = incremental
+    ? (baseParsed?.lastDeepIndexedMessageCount ?? baseParsed?.lastIndexedMessageCount ?? 0)
+    : 0;
   const newMessages = messages.slice(lastIndexedCount);
 
   if (incremental && newMessages.length === 0) {
