@@ -4952,63 +4952,67 @@ export function StoryEngineProvider({
               baseState.lastAutoDeepIndexedMessageCount === undefined &&
               autoDeepBootstrapAnchor > 0;
 
-            if (
-              baseState.messagesSinceDeepIndexUpdate !== nextDeepCounter ||
-              shouldBootstrapAutoDeepAnchor
-            ) {
-              const now = new Date().toISOString();
-              const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages);
-              // Preserve rpStats from raw state when safeParseStoryStateData returns null
-              const rawRpStatsForCounter = (() => {
-                if (baseParsed) return undefined; // handled via baseState spread
-                try {
-                  const raw = JSON.parse(latestStoryState?.stateJson ?? "{}") as Record<string, unknown>;
-                  return raw?.rpStats as RpStats | undefined;
-                } catch { return undefined; }
-              })();
+            try {
+              if (
+                baseState.messagesSinceDeepIndexUpdate !== nextDeepCounter ||
+                shouldBootstrapAutoDeepAnchor
+              ) {
+                const now = new Date().toISOString();
+                const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages);
+                // Preserve rpStats from raw state when safeParseStoryStateData returns null
+                const rawRpStatsForCounter = (() => {
+                  if (baseParsed) return undefined; // handled via baseState spread
+                  try {
+                    const raw = JSON.parse(latestStoryState?.stateJson ?? "{}") as Record<string, unknown>;
+                    return raw?.rpStats as RpStats | undefined;
+                  } catch { return undefined; }
+                })();
 
-              const patched = withIndexedMetadata(
-                baseParsed
-                  ? {
-                      ...baseState,
-                      memoryArchitectureVersion: "2.0",
-                      messagesSinceDeepIndexUpdate: nextDeepCounter,
-                      ...(shouldBootstrapAutoDeepAnchor
-                        ? { lastAutoDeepIndexedMessageCount: autoDeepBootstrapAnchor }
-                        : {}),
-                      indexes: reconciledIndexes ?? {
-                        messageCount: totalMessages,
-                        messageNumberingVersion: "1.0",
+                const patched = withIndexedMetadata(
+                  baseParsed
+                    ? {
+                        ...baseState,
+                        memoryArchitectureVersion: "2.0",
+                        messagesSinceDeepIndexUpdate: nextDeepCounter,
+                        ...(shouldBootstrapAutoDeepAnchor
+                          ? { lastAutoDeepIndexedMessageCount: autoDeepBootstrapAnchor }
+                          : {}),
+                        indexes: reconciledIndexes ?? {
+                          messageCount: totalMessages,
+                          messageNumberingVersion: "1.0",
+                        },
+                      }
+                    : {
+                        ...(rawRpStatsForCounter ? { rpStats: rawRpStatsForCounter } : {}),
+                        updatedAt: now,
+                        characters: {},
+                        worldFacts: [],
+                        unresolvedThreads: [],
+                        memoryArchitectureVersion: "2.0",
+                        messagesSinceDeepIndexUpdate: nextDeepCounter,
+                        ...(shouldBootstrapAutoDeepAnchor
+                          ? { lastAutoDeepIndexedMessageCount: autoDeepBootstrapAnchor }
+                          : {}),
+                        indexes: reconciledIndexes ?? {
+                          messageCount: totalMessages,
+                          messageNumberingVersion: "1.0",
+                        },
                       },
-                    }
-                  : {
-                      ...(rawRpStatsForCounter ? { rpStats: rawRpStatsForCounter } : {}),
-                      updatedAt: now,
-                      characters: {},
-                      worldFacts: [],
-                      unresolvedThreads: [],
-                      memoryArchitectureVersion: "2.0",
-                      messagesSinceDeepIndexUpdate: nextDeepCounter,
-                      ...(shouldBootstrapAutoDeepAnchor
-                        ? { lastAutoDeepIndexedMessageCount: autoDeepBootstrapAnchor }
-                        : {}),
-                      indexes: reconciledIndexes ?? {
-                        messageCount: totalMessages,
-                        messageNumberingVersion: "1.0",
-                      },
-                    },
-                { indexedAt: now, memoryArchitectureVersion: "2.0" },
-              );
+                  { indexedAt: now, memoryArchitectureVersion: "2.0" },
+                );
 
-              await repository.saveStoryState({
-                id: `story-state:${storyId}`,
-                storyId,
-                stateJson: JSON.stringify(patched),
-                updatedAt: now,
-              });
+                await repository.saveStoryState({
+                  id: `story-state:${storyId}`,
+                  storyId,
+                  stateJson: JSON.stringify(patched),
+                  updatedAt: now,
+                });
 
-              await touchStory(storyId);
-              await hydrate(false);
+                await touchStory(storyId);
+                await hydrate(false);
+              }
+            } catch {
+              // state-save failure — auto-index runs independently below
             }
 
             const autoIndexMode =

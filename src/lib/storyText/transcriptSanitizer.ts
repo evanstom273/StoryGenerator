@@ -418,11 +418,21 @@ function stripMarkdownArtifacts(text: string) {
     }
   }
 
-  const italicPattern = /(^|[\s([{"'`])_([^\n_]{1,120})_(?=$|[\s)\]}",.'`!?])/g;
+  const italicPattern = /(^|[\s([{"'`])_([^\n_]{1,4000})_(?=$|[\s)\]}",.'`!?])/g;
   const italicUpdated = next.replace(italicPattern, "$1$2");
   if (italicUpdated !== next) {
     changed = true;
     next = italicUpdated;
+  }
+
+  // Strip orphaned underscore delimiters left over from long _italic_ passages that
+  // exceed the regex char limit — removes a bare _ at the very start or end of a line.
+  const orphanUpdated = next.replace(/(?:^_(?=[^\s_]))|(?:[^\s_]_$)/gm, (m) =>
+    m.startsWith("_") ? m.slice(1) : m.slice(0, -1),
+  );
+  if (orphanUpdated !== next) {
+    changed = true;
+    next = orphanUpdated;
   }
 
   return { text: next, changed };

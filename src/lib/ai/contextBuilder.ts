@@ -345,6 +345,13 @@ export function buildStoryChatContext({
       "Character authenticity is the highest priority. Characters must sound like themselves.",
       "Maintain character authenticity: personality, speech patterns, relationships, and emotional continuity.",
       "Relationship awareness: characters should behave differently depending on who they are speaking to and their power dynamics.",
+      ...(universeMode === "referenced"
+        ? [
+            "This is fan fiction set in a referenced universe. The imported lore is your primary authority for every character's voice.",
+            "Write each character exactly as they appear in canon — their actual vocabulary, speech rhythm, humour register, and emotional baseline.",
+            "Do NOT amplify, exaggerate, or caricature any trait, even an iconic one. A witty character is witty the way canon shows, not a comedy sketch of that trait.",
+          ]
+        : []),
       directorIntent?.sceneCut
         ? "Director intent: the player has requested a scene cut/transition. Treat this as permission to transition scenes cleanly without re-litigating the previous beat."
         : "",
