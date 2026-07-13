@@ -112,11 +112,27 @@ async function extractGeminiErrorMessage(response: Response) {
   return message;
 }
 
+function throwGeminiHttpError(response: Response, message: string) {
+  if (response.status === 401 || response.status === 403) {
+    throw new AIError("invalid_api_key", "Gemini API key is invalid.", response.status);
+  }
+  if (response.status === 429) {
+    throw new AIError("rate_limited", "Gemini rate limit exceeded.", response.status);
+  }
+  if (response.status >= 500) {
+    throw new AIError("provider_unavailable", "Gemini provider unavailable.", response.status);
+  }
+  if (looksLikeSafetyRefusal(message)) {
+    throw new AIError("safety_refusal", message, response.status, { retryable: false, kind: "safety" });
+  }
+  throw new AIError("generation_failed", message, response.status);
+}
+
 async function callGenerateContent(
   apiKey: string,
   model: string,
   messages: AIChatMessage[],
-  opts?: { timeoutMs?: number; signal?: AbortSignal; maxTokens?: number; temperature?: number; jsonMode?: boolean },
+  opts?: { timeoutMs?: number; idleTimeoutMs?: number; signal?: AbortSignal; maxTokens?: number; temperature?: number; jsonMode?: boolean; onChunk?: (chunk: string) => void },
 ) {
   const controller = new AbortController();
   const abortListener = () => controller.abort();
@@ -137,6 +153,7 @@ async function callGenerateContent(
     data: {
       model,
       timeoutMs,
+      streaming: !!opts?.onChunk,
       messageCount: messages.length,
       systemCount: messages.filter((message) => message.role === "system").length,
       lastUserPreview: clipGeminiAuditText(
@@ -147,55 +164,115 @@ async function callGenerateContent(
   // #endregion
 
   const safeKey = apiKey.replace(/[^\x00-\xFF]/g, "");
+  const requestBody = JSON.stringify(buildGeminiRequest(messages, { maxTokens: opts?.maxTokens, temperature: opts?.temperature, jsonMode: opts?.jsonMode }));
+
   try {
+    if (opts?.onChunk) {
+      // Streaming path
+      const idleTimeoutMs = opts.idleTimeoutMs ?? 30_000;
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": safeKey },
+          body: requestBody,
+          signal: controller.signal,
+        },
+      );
+
+      if (!response.ok) {
+        const message = await extractGeminiErrorMessage(response);
+        throwGeminiHttpError(response, message);
+      }
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let accumulated = "";
+      let idleTimer: number | null = null;
+
+      const resetIdleTimer = () => {
+        if (idleTimer !== null) window.clearTimeout(idleTimer);
+        idleTimer = window.setTimeout(() => controller.abort(), idleTimeoutMs);
+      };
+
+      resetIdleTimer();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          resetIdleTimer();
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim();
+            if (!raw || raw === "[DONE]") continue;
+            try {
+              const json = JSON.parse(raw) as GeminiGenerateContentResponse;
+              const text = (json.candidates?.[0]?.content?.parts ?? [])
+                .filter((part) => !part.thought)
+                .map((part) => part.text ?? "")
+                .join("");
+              if (text) {
+                opts.onChunk(text);
+                accumulated += text;
+              }
+            } catch {
+              // malformed SSE chunk — skip
+            }
+          }
+        }
+        // flush remaining buffer
+        if (buffer.startsWith("data: ")) {
+          const raw = buffer.slice(6).trim();
+          if (raw && raw !== "[DONE]") {
+            try {
+              const json = JSON.parse(raw) as GeminiGenerateContentResponse;
+              const text = (json.candidates?.[0]?.content?.parts ?? [])
+                .filter((part) => !part.thought)
+                .map((part) => part.text ?? "")
+                .join("");
+              if (text) {
+                opts.onChunk(text);
+                accumulated += text;
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+      } finally {
+        if (idleTimer !== null) window.clearTimeout(idleTimer);
+        reader.releaseLock();
+      }
+
+      return accumulated.trim();
+    }
+
+    // Non-streaming path
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-        model,
-      )}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": safeKey,
-        },
-        body: JSON.stringify(buildGeminiRequest(messages, { maxTokens: opts?.maxTokens, temperature: opts?.temperature, jsonMode: opts?.jsonMode })),
+        headers: { "Content-Type": "application/json", "x-goog-api-key": safeKey },
+        body: requestBody,
         signal: controller.signal,
       },
     );
 
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new AIError("invalid_api_key", "Gemini API key is invalid.", response.status);
-      }
-
-      if (response.status === 429) {
-        throw new AIError("rate_limited", "Gemini rate limit exceeded.", response.status);
-      }
-
-      if (response.status >= 500) {
-        throw new AIError("provider_unavailable", "Gemini provider unavailable.", response.status);
-      }
-
       const message = await extractGeminiErrorMessage(response);
       // #region debug-point A:gemini-http-error
       reportGeminiAudit({
         hypothesisId: "A",
         location: "geminiProvider.ts:callGenerateContent:http-error",
         msg: "Gemini request returned an HTTP error",
-        data: {
-          model,
-          status: response.status,
-          errorMessage: message,
-        },
+        data: { model, status: response.status, errorMessage: message },
       });
       // #endregion
-      if (looksLikeSafetyRefusal(message)) {
-        throw new AIError("safety_refusal", message, response.status, {
-          retryable: false,
-          kind: "safety",
-        });
-      }
-      throw new AIError("generation_failed", message, response.status);
+      throwGeminiHttpError(response, message);
     }
 
     const json = (await response.json()) as GeminiGenerateContentResponse;
@@ -224,10 +301,7 @@ async function callGenerateContent(
       hypothesisId: "A",
       location: "geminiProvider.ts:callGenerateContent:catch",
       msg: "Gemini request threw before returning usable content",
-      data: {
-        model,
-        errorMessage: error instanceof Error ? error.message : String(error),
-      },
+      data: { model, errorMessage: error instanceof Error ? error.message : String(error) },
     });
     // #endregion
     throw normalizeAIError(error);
@@ -252,8 +326,8 @@ export function createGeminiProvider(): AIProvider {
         throw new Error("Gemini validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages, maxTokens, temperature, jsonMode, timeoutMs, signal }) {
-      const content = await callGenerateContent(apiKey, model, messages, { timeoutMs, signal, maxTokens, temperature, jsonMode });
+    async generateResponse({ apiKey, model, messages, maxTokens, temperature, jsonMode, timeoutMs, idleTimeoutMs, signal, onChunk }) {
+      const content = await callGenerateContent(apiKey, model, messages, { timeoutMs, idleTimeoutMs, signal, maxTokens, temperature, jsonMode, onChunk });
       return { content };
     },
     async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs, signal }) {

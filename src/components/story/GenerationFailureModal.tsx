@@ -61,6 +61,15 @@ export function GenerationFailureModal(props: {
     }
   }
 
+  async function handleCopyDraft() {
+    if (!failure?.rawDraft) return;
+    try {
+      await navigator.clipboard.writeText(failure.rawDraft);
+    } catch {
+      window.prompt("Copy partial response:", failure.rawDraft);
+    }
+  }
+
   return (
     <div
       className={cn("fixed inset-0 z-[80]", props.open ? "pointer-events-auto" : "pointer-events-none")}
@@ -97,6 +106,27 @@ export function GenerationFailureModal(props: {
             <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
               {failure?.summaryMessage || "Unable to generate a response."}
             </div>
+
+            {failure?.rawDraft ? (
+              <details className="mt-6 min-h-0 rounded-2xl border border-divider bg-white/[0.02] px-4 py-4">
+                <summary className="cursor-pointer list-none text-sm font-semibold text-ink marker:content-none">
+                  Partial response
+                </summary>
+                <div className="mt-3 max-h-[30vh] overflow-y-auto pr-2">
+                  <div className="whitespace-pre-wrap text-sm leading-7 text-ink-muted">
+                    {failure.rawDraft}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => void handleCopyDraft()}
+                  >
+                    Copy partial response
+                  </Button>
+                </div>
+              </details>
+            ) : null}
 
             {failure ? (
               <details className="mt-6 min-h-0 rounded-2xl border border-divider bg-white/[0.02] px-4 py-4">

@@ -42,10 +42,38 @@ function splitSystemAndMessages(messages: AIChatMessage[]): {
   };
 }
 
+async function throwAnthropicHttpError(response: Response): Promise<never> {
+  const status = response.status;
+  let message = `Anthropic API error ${status}`;
+  try {
+    const errJson = (await response.json()) as { error?: { message?: string } };
+    if (errJson.error?.message) message = errJson.error.message;
+  } catch {
+    // ignore parse error
+  }
+  const diagnostic = `status=${status}; provider=Anthropic; raw=${message}`;
+  if (status === 401 || status === 403) {
+    throw new AIError("invalid_api_key", "Anthropic API key is invalid or unauthorized.", status, { diagnostic });
+  }
+  if (status === 429) {
+    throw new AIError("rate_limited", "Anthropic rate limit exceeded. Try again in a moment.", status, { diagnostic });
+  }
+  if (status >= 500) {
+    throw new AIError("provider_unavailable", "Anthropic service returned a server error. Try again.", status, { diagnostic, retryable: true });
+  }
+  if (status === 400) {
+    if (looksLikeSafetyRefusal(message)) {
+      throw new AIError("safety_refusal", message, status, { diagnostic });
+    }
+    throw new AIError("generation_failed", `Anthropic rejected the request: ${message}`, status, { diagnostic });
+  }
+  throw new AIError("generation_failed", message, status, { diagnostic });
+}
+
 async function callMessages(
   apiKey: string,
   payload: AnthropicMessagesRequest,
-  opts?: { timeoutMs?: number; signal?: AbortSignal },
+  opts?: { timeoutMs?: number; idleTimeoutMs?: number; signal?: AbortSignal; onChunk?: (chunk: string) => void },
 ): Promise<string> {
   const controller = new AbortController();
   const abortListener = () => controller.abort();
@@ -60,46 +88,84 @@ async function callMessages(
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   const safeKey = apiKey.replace(/[^\x00-\xFF]/g, "");
+  const headers = {
+    "x-api-key": safeKey,
+    "anthropic-version": "2023-06-01",
+    "anthropic-dangerous-direct-browser-access": "true",
+    "content-type": "application/json",
+  };
+
   try {
+    if (opts?.onChunk) {
+      // Streaming path
+      const idleTimeoutMs = opts.idleTimeoutMs ?? 30_000;
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ...payload, stream: true }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        await throwAnthropicHttpError(response);
+      }
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let accumulated = "";
+      let idleTimer: number | null = null;
+
+      const resetIdleTimer = () => {
+        if (idleTimer !== null) window.clearTimeout(idleTimer);
+        idleTimer = window.setTimeout(() => controller.abort(), idleTimeoutMs);
+      };
+
+      resetIdleTimer();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          resetIdleTimer();
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim();
+            if (!raw) continue;
+            try {
+              const json = JSON.parse(raw) as { type?: string; delta?: { type?: string; text?: string } };
+              if (json.type === "content_block_delta" && json.delta?.type === "text_delta") {
+                const text = json.delta.text ?? "";
+                if (text) {
+                  opts.onChunk(text);
+                  accumulated += text;
+                }
+              }
+            } catch {
+              // malformed SSE chunk — skip
+            }
+          }
+        }
+      } finally {
+        if (idleTimer !== null) window.clearTimeout(idleTimer);
+        reader.releaseLock();
+      }
+
+      return accumulated.trim();
+    }
+
+    // Non-streaming path
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "x-api-key": safeKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-        "content-type": "application/json",
-      },
+      headers,
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
     if (!response.ok) {
-      const status = response.status;
-      let message = `Anthropic API error ${status}`;
-      try {
-        const errJson = (await response.json()) as { error?: { message?: string } };
-        if (errJson.error?.message) message = errJson.error.message;
-      } catch {
-        // ignore parse error
-      }
-      const diagnostic = `status=${status}; provider=Anthropic; raw=${message}`;
-      if (status === 401 || status === 403) {
-        throw new AIError("invalid_api_key", "Anthropic API key is invalid or unauthorized.", status, { diagnostic });
-      }
-      if (status === 429) {
-        throw new AIError("rate_limited", "Anthropic rate limit exceeded. Try again in a moment.", status, { diagnostic });
-      }
-      if (status >= 500) {
-        throw new AIError("provider_unavailable", "Anthropic service returned a server error. Try again.", status, { diagnostic, retryable: true });
-      }
-      if (status === 400) {
-        if (looksLikeSafetyRefusal(message)) {
-          throw new AIError("safety_refusal", message, status, { diagnostic });
-        }
-        // Expose the actual Anthropic 400 message so users can see what went wrong
-        throw new AIError("generation_failed", `Anthropic rejected the request: ${message}`, status, { diagnostic });
-      }
-      throw new AIError("generation_failed", message, status, { diagnostic });
+      await throwAnthropicHttpError(response);
     }
 
     const json = (await response.json()) as AnthropicMessagesResponse;
@@ -131,7 +197,7 @@ export function createAnthropicProvider(): AIProvider {
       }
     },
 
-    async generateResponse({ apiKey, model, messages, maxTokens, temperature, timeoutMs, signal }) {
+    async generateResponse({ apiKey, model, messages, maxTokens, temperature, timeoutMs, idleTimeoutMs, signal, onChunk }) {
       const { system, messages: chatMessages } = splitSystemAndMessages(messages);
       const content = await callMessages(
         apiKey,
@@ -142,7 +208,7 @@ export function createAnthropicProvider(): AIProvider {
           system,
           messages: chatMessages,
         },
-        { timeoutMs, signal },
+        { timeoutMs, idleTimeoutMs, signal, onChunk },
       );
       return { content };
     },

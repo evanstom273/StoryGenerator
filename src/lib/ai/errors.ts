@@ -51,6 +51,7 @@ export type GenerationFailure = {
   maxAttempts: number;
   diagnostic?: string;
   requestId?: string;
+  rawDraft?: string;
   transmitSafe?: {
     originalText: string;
     transmittedText: string;
@@ -505,6 +506,7 @@ export function createGenerationFailure(error: unknown, opts: {
   maxAttempts: number;
   stage?: GenerationFailStage;
   requestId?: string;
+  rawDraft?: string;
 }): GenerationFailure {
   const classified = classifyAIGenerationError(error);
   const normalized = normalizeAIError(error);
@@ -520,6 +522,7 @@ export function createGenerationFailure(error: unknown, opts: {
     maxAttempts: opts.maxAttempts,
     diagnostic,
     requestId: opts.requestId,
+    rawDraft: opts.rawDraft,
   };
   // #region debug-point E:failure-created
   reportGenerationFailureAudit({
