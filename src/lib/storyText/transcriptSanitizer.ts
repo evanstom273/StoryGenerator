@@ -645,26 +645,11 @@ function stripReasoningPreamble(text: string): string {
   return result.length > 0 ? result : text;
 }
 
-const NOT_A_SPEAKER_REPAIR = new Set([
-  "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
-  "The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
-  "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
-  "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
-  "Scene", "Chapter", "Part", "First", "Next",
-  "As", "With", "After", "Before", "While", "When", "Once", "Until",
-  "From", "Into", "Through", "Against", "Between", "Without",
-]);
-
+// Any block whose first line starts with "X:" already has an attribution — leave it alone.
+// We intentionally do NOT filter on stop-word lists here: "She: *action*" is a valid
+// pronoun-attributed speaker line and must not be wrapped as Narrator.
 function looksLikeSpeakerPrefix(text: string): boolean {
-  const match = text.match(/^([^:\n]{1,48}):\s*/);
-  if (!match) return false;
-  const label = match[1]?.trim() ?? "";
-  if (!label || label.includes(",")) return false;
-  const words = label.split(/\s+/);
-  if (words.length > 4) return false;
-  if (!words.every((w) => /^[A-Z]/.test(w) || /^\d/.test(w))) return false;
-  if (words.length === 1 && NOT_A_SPEAKER_REPAIR.has(words[0]!)) return false;
-  return true;
+  return /^[^\n:]{1,48}:\s*\S/.test(text);
 }
 
 function looksLikeSeparator(block: string): boolean {
