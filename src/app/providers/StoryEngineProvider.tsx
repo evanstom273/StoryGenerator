@@ -23,7 +23,7 @@ import {
   buildStoryChatContext,
   buildStorySummaryContext,
 } from "../../lib/ai/contextBuilder";
-import { getValidModel } from "../../lib/ai/models";
+import { getValidModel, getModelStreamConfig } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
 import { buildPlayerAssistContext } from "../../lib/ai/playerAssistContext";
 import {
@@ -301,7 +301,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; signal?: AbortSignal; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
 }
@@ -441,6 +441,8 @@ async function generateResponseWithRetry(params: {
   jsonMode?: boolean;
   signal?: AbortSignal;
   maxAttempts?: number;
+  onChunk?: (chunk: string) => void;
+  onChunkReset?: () => void;
   debugTrace?: {
     traceId: string;
     mode: "story" | "additive" | "metachat" | "summary" | "other";
@@ -449,12 +451,17 @@ async function generateResponseWithRetry(params: {
     lastUserText?: string;
   };
 }) {
-  const maxAttempts = params.maxAttempts ?? AI_MAX_ATTEMPTS;
+  const isStreaming = !!params.onChunk;
+  const streamConfig = isStreaming ? getModelStreamConfig(params.model) : null;
+  const maxAttempts = streamConfig?.maxAttempts ?? (params.maxAttempts ?? AI_MAX_ATTEMPTS);
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     if (params.signal?.aborted) {
       throw new Error("Request aborted.");
+    }
+    if (attempt > 1) {
+      params.onChunkReset?.();
     }
     // #region debug-point A:provider-request
     reportGenerationAudit({
@@ -470,6 +477,7 @@ async function generateResponseWithRetry(params: {
         model: params.model,
         attempt,
         maxAttempts,
+        streaming: isStreaming,
         lastUserPreview: clipGenerationAuditText(params.debugTrace?.lastUserText),
         messageSummary: summarizeGenerationAuditMessages(params.messages),
       },
@@ -484,6 +492,9 @@ async function generateResponseWithRetry(params: {
         temperature: params.temperature,
         jsonMode: params.jsonMode,
         signal: params.signal,
+        timeoutMs: streamConfig?.totalTimeoutMs,
+        idleTimeoutMs: streamConfig?.idleTimeoutMs,
+        onChunk: params.onChunk,
       });
       // #region debug-point A:provider-response
       reportGenerationAudit({
@@ -4060,6 +4071,9 @@ export function StoryEngineProvider({
               apiKey,
               model,
               messages: context,
+              signal: opts?.signal,
+              onChunk: opts?.onChunk,
+              onChunkReset: opts?.onChunkReset,
               debugTrace: {
                 traceId,
                 mode: "story",

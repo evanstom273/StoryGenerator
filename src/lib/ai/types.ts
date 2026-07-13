@@ -5,6 +5,8 @@ export interface AIChatMessage {
   content: string;
 }
 
+export type OnChunkCallback = (chunk: string) => void;
+
 export interface GenerateResponseRequest {
   apiKey: string;
   model: string;
@@ -13,7 +15,9 @@ export interface GenerateResponseRequest {
   temperature?: number;
   jsonMode?: boolean;
   timeoutMs?: number;
+  idleTimeoutMs?: number;
   signal?: AbortSignal;
+  onChunk?: OnChunkCallback;
 }
 
 export interface GenerateResponseResult {

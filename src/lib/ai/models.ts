@@ -67,3 +67,26 @@ export function getValidModel(providerType: AIProviderType, savedModel: string |
   }
   return DEFAULT_MODEL[providerType];
 }
+
+export interface ModelStreamConfig {
+  idleTimeoutMs: number;
+  totalTimeoutMs: number;
+  maxAttempts: number;
+}
+
+const MODEL_STREAM_CONFIG: Partial<Record<string, ModelStreamConfig>> = {
+  "gemini-3.1-pro-preview": { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
+  "gemini-2.5-pro":         { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
+  "gemini-2.5-flash":       { idleTimeoutMs: 30_000, totalTimeoutMs: 120_000, maxAttempts: 3 },
+  "gemini-3.5-flash":       { idleTimeoutMs: 30_000, totalTimeoutMs: 120_000, maxAttempts: 3 },
+};
+
+const DEFAULT_STREAM_CONFIG: ModelStreamConfig = {
+  idleTimeoutMs: 30_000,
+  totalTimeoutMs: 120_000,
+  maxAttempts: 3,
+};
+
+export function getModelStreamConfig(model: string): ModelStreamConfig {
+  return MODEL_STREAM_CONFIG[model] ?? DEFAULT_STREAM_CONFIG;
+}

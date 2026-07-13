@@ -150,6 +150,8 @@ export function StoryWorkspacePage() {
   const [generationFailure, setGenerationFailure] = useState<GenerationFailure | null>(null);
   const [generationFailureOpen, setGenerationFailureOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [streamingDraft, setStreamingDraft] = useState<string | null>(null);
+  const streamingAbortRef = useRef<AbortController | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [lastChatContent, setLastChatContent] = useState<string | null>(null);
   const [isGeneratingAssist, setIsGeneratingAssist] = useState(false);
@@ -371,9 +373,13 @@ export function StoryWorkspacePage() {
     const directorIntentOverride = slashTime?.intent;
 
     setIsGenerating(true);
+    setStreamingDraft("");
     setChatError(null);
     setLastChatContent(content);
     setChatInput("");
+
+    const abortController = new AbortController();
+    streamingAbortRef.current = abortController;
 
     try {
       const consequence = pendingZeroHpConsequence;
@@ -381,7 +387,13 @@ export function StoryWorkspacePage() {
       const result = await sendChatMessage(
         activeStory.id,
         content,
-        { ...(consequence ? { zeroHpConsequence: consequence } : {}), ...(directorIntentOverride ? { directorIntentOverride } : {}) },
+        {
+          ...(consequence ? { zeroHpConsequence: consequence } : {}),
+          ...(directorIntentOverride ? { directorIntentOverride } : {}),
+          signal: abortController.signal,
+          onChunk: (chunk) => setStreamingDraft((prev) => (prev ?? "") + chunk),
+          onChunkReset: () => setStreamingDraft(""),
+        },
       );
       if (result.appliedRpChanges?.length) {
         const hpZero = result.appliedRpChanges.some((c) => c.field === "hp" && c.to === 0);
@@ -404,6 +416,7 @@ export function StoryWorkspacePage() {
         if (result.appliedRelationshipDeltas?.length) setRelationshipsRefreshKey((k) => k + 1);
       }
     } catch (error) {
+      const capturedDraft = streamingDraft && streamingDraft.trim() ? streamingDraft : undefined;
       reportWorkspaceUiAudit({
         msg: "Story workspace displayed generation error",
         data: {
@@ -415,7 +428,8 @@ export function StoryWorkspacePage() {
         },
       });
       if (isGenerationFailureError(error)) {
-        setGenerationFailure(error.failure);
+        const failure = capturedDraft ? { ...error.failure, rawDraft: capturedDraft } : error.failure;
+        setGenerationFailure(failure);
         setGenerationFailureOpen(true);
         setChatError(error.failure.summaryMessage);
       } else {
@@ -426,7 +440,13 @@ export function StoryWorkspacePage() {
       setChatInput(content);
     } finally {
       setIsGenerating(false);
+      setStreamingDraft(null);
+      streamingAbortRef.current = null;
     }
+  }
+
+  function handleCancelGeneration() {
+    streamingAbortRef.current?.abort();
   }
 
   function handleDiceConfirm(result: DiceRollResult) {
@@ -1107,6 +1127,20 @@ export function StoryWorkspacePage() {
         )}
       </div>
 
+      {streamingDraft !== null ? (
+        <div className="mt-2 rounded-[10px] border border-divider/[0.35] bg-app-elevated px-3 py-3 opacity-80">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+            <span className="animate-pulse text-accent">●</span>
+            Generating…
+          </div>
+          {streamingDraft ? (
+            <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
+              {streamingDraft}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {readerMode || archiveMode ? null : (
         latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
           <Panel variant="flat" className="mt-4" padding="sm">
@@ -1199,6 +1233,11 @@ export function StoryWorkspacePage() {
               <Button onClick={handleSendChat} disabled={isGenerating || diceStatLoading}>
                 {diceStatLoading ? "Selecting stat…" : isGenerating ? "Generating Scene..." : "Send"}
               </Button>
+              {isGenerating ? (
+                <Button variant="secondary" onClick={handleCancelGeneration}>
+                  Cancel
+                </Button>
+              ) : null}
               <Button
                 variant="secondary"
                 onClick={handleGeneratePlayerAssist}
