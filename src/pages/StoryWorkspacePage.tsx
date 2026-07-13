@@ -152,7 +152,6 @@ export function StoryWorkspacePage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingDraft, setStreamingDraft] = useState<string | null>(null);
   const streamingAbortRef = useRef<AbortController | null>(null);
-  const [isRegenerating, setIsRegenerating] = useState(false);
   const [lastChatContent, setLastChatContent] = useState<string | null>(null);
   const [isGeneratingAssist, setIsGeneratingAssist] = useState(false);
   const [assistError, setAssistError] = useState<string | null>(null);
@@ -207,7 +206,6 @@ export function StoryWorkspacePage() {
     setChatInput("");
     setChatError(null);
     setIsGenerating(false);
-    setIsRegenerating(false);
     setLastChatContent(null);
     setIsGeneratingAssist(false);
     setAssistError(null);
@@ -603,17 +601,33 @@ export function StoryWorkspacePage() {
       return;
     }
 
-    setIsRegenerating(true);
+    setIsGenerating(true);
+    setStreamingDraft("");
     setChatError(null);
 
     try {
-      await regenerateLastAssistantMessage(activeStory.id);
+      await regenerateLastAssistantMessage(activeStory.id, {
+        onChunk: (chunk) => setStreamingDraft((prev) => (prev ?? "") + chunk),
+        onChunkReset: () => setStreamingDraft(""),
+      });
     } catch (error) {
-      setChatError(
-        error instanceof Error ? error.message : "Unable to regenerate the last reply.",
-      );
+      if (isGenerationFailureError(error)) {
+        const capturedDraft = streamingDraft && streamingDraft.trim() ? streamingDraft : undefined;
+        const failure = capturedDraft ? { ...error.failure, rawDraft: capturedDraft } : error.failure;
+        const isCancelledWithNoDraft = failure.kind === "cancelled" && !failure.rawDraft;
+        if (!isCancelledWithNoDraft) {
+          setGenerationFailure(failure);
+          setGenerationFailureOpen(true);
+        }
+        setChatError(error.failure.summaryMessage);
+      } else {
+        setChatError(
+          error instanceof Error ? error.message : "Unable to regenerate the last reply.",
+        );
+      }
     } finally {
-      setIsRegenerating(false);
+      setIsGenerating(false);
+      setStreamingDraft(null);
     }
   }
 
@@ -1082,6 +1096,10 @@ export function StoryWorkspacePage() {
                     latestUserMessage = message.content;
                   }
 
+                  if (streamingDraft !== null && message.role === "assistant" && message.id === latestAssistantMessage?.id) {
+                    continue;
+                  }
+
                   nodes.push(
                     <StoryMessageBubble
                       key={message.id}
@@ -1159,7 +1177,7 @@ export function StoryWorkspacePage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => void handleUndoDirectorIntent()}
-                  disabled={isGenerating || isGeneratingAssist || isRegenerating}
+                  disabled={isGenerating || isGeneratingAssist}
                 >
                   Undo
                 </Button>
@@ -1171,16 +1189,16 @@ export function StoryWorkspacePage() {
                 <Button
                   variant="secondary"
                   onClick={handleOpenAssistantEdit}
-                  disabled={isGenerating || isGeneratingAssist || isRegenerating}
+                  disabled={isGenerating || isGeneratingAssist}
                 >
                   Edit
                 </Button>
                 <Button
                   variant="ghost"
                   onClick={handleRegenerateLastAssistant}
-                  disabled={isGenerating || isGeneratingAssist || isRegenerating}
+                  disabled={isGenerating || isGeneratingAssist}
                 >
-                  {isRegenerating ? "Regenerating..." : "Regenerate"}
+                  Regenerate
                 </Button>
               </div>
             </div>
