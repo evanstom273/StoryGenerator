@@ -355,6 +355,10 @@ function stripNarratorPrefixFromLine(line: string) {
   }
 
   const remainder = match[1]?.trim() ?? "";
+  // Preserve correctly-formatted Narrator: *action* blocks — only strip plain-text uses
+  if (remainder.startsWith("*")) {
+    return { changed: false, line };
+  }
   return { changed: true, line: remainder };
 }
 
@@ -641,6 +645,64 @@ function stripReasoningPreamble(text: string): string {
   return result.length > 0 ? result : text;
 }
 
+const NOT_A_SPEAKER_REPAIR = new Set([
+  "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
+  "The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
+  "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
+  "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
+  "Scene", "Chapter", "Part", "First", "Next",
+  "As", "With", "After", "Before", "While", "When", "Once", "Until",
+  "From", "Into", "Through", "Against", "Between", "Without",
+]);
+
+function looksLikeSpeakerPrefix(text: string): boolean {
+  const match = text.match(/^([^:\n]{1,48}):\s*/);
+  if (!match) return false;
+  const label = match[1]?.trim() ?? "";
+  if (!label || label.includes(",")) return false;
+  const words = label.split(/\s+/);
+  if (words.length > 4) return false;
+  if (!words.every((w) => /^[A-Z]/.test(w) || /^\d/.test(w))) return false;
+  if (words.length === 1 && NOT_A_SPEAKER_REPAIR.has(words[0]!)) return false;
+  return true;
+}
+
+function looksLikeSeparator(block: string): boolean {
+  const trimmed = block.trim();
+  return trimmed === "" || /^[-*]{3,}$/.test(trimmed) || /^(Chapter|Part|Scene)\b/i.test(trimmed);
+}
+
+function repairUnlabelledNarration(text: string): { text: string; repaired: boolean } {
+  const blocks = text.split(/\n\n+/);
+  let repaired = false;
+  const result: string[] = [];
+
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (!trimmed || looksLikeSeparator(trimmed) || looksLikeSpeakerPrefix(trimmed)) {
+      result.push(block);
+      continue;
+    }
+
+    // Strip outer * or _ delimiters (single character wrapping the whole block)
+    let content = trimmed;
+    if ((content.startsWith("*") && content.endsWith("*") && content.length > 2) ||
+        (content.startsWith("_") && content.endsWith("_") && content.length > 2)) {
+      content = content.slice(1, -1).trim();
+    }
+
+    // Add trailing period if not already ending with sentence-terminal punctuation
+    if (content && !/[.!?,]$/.test(content)) {
+      content = content + ".";
+    }
+
+    result.push(`Narrator: *${content}*`);
+    repaired = true;
+  }
+
+  return { text: result.join("\n\n"), repaired };
+}
+
 export function sanitizeAssistantTranscript(args: {
   text: string;
   latestUserMessage?: string | null;
@@ -655,8 +717,9 @@ export function sanitizeAssistantTranscript(args: {
   const actionPeriodsFixed = ensureActionPeriods(dialogueColonsFixed);
   const normalizedActions = normalizeThirdPersonActions(actionPeriodsFixed, args.playerName);
   const emphasisStripped = stripInlineAsteriskEmphasis(normalizedActions);
+  const narrationRepaired = repairUnlabelledNarration(emphasisStripped);
   const standardized = standardizeAssistantStoryText({
-    text: emphasisStripped,
+    text: narrationRepaired.text,
     playerName: args.playerName,
   });
   const normalized = normalizeTranscriptWhitespace(standardized.text);
@@ -666,6 +729,7 @@ export function sanitizeAssistantTranscript(args: {
     removedEcho: echoed.removed,
     removedNarratorLabels: narratorStripped.changed,
     removedMarkdownArtifacts: markdownStripped.changed,
+    autoRepairedNarration: narrationRepaired.repaired,
     formatValid: standardized.valid,
     formatIssues: standardized.issues,
   };
