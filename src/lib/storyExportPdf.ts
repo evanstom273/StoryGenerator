@@ -3,6 +3,7 @@ import { formatDateTime } from "./dates";
 import { safeParseStoryStateData, normalizeStoryStateToV2 } from "./storyStateV2";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
+import { cleanTextForExport } from "./storyText/exportCleaner";
 import {
   createPdfDoc,
   pdfDimensions,
@@ -74,7 +75,7 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
       y = speakerLine(doc, y, speaker, message.content, pageH);
     } else {
       const sanitized = sanitizeAssistantTranscript({
-        text: message.content,
+        text: cleanTextForExport(message.content),
         latestUserMessage,
         playerName: bundle.playerCharacter.name,
       }).text;

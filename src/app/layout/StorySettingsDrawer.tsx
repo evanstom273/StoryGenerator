@@ -193,6 +193,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   });
   const { themeKey, setThemeKey } = useTheme();
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
+  const [exportStage, setExportStage] = useState<string | null>(null);
   const [isSavingStory, setIsSavingStory] = useState(false);
   const [aiProviderType, setAiProviderType] = useState<AIProviderType>(
     aiSettings?.activeProviderType ?? "openai",
@@ -418,6 +419,18 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     showError(null);
     showNotice(null);
 
+    const stageLabels: Record<ExportFormat, string[]> = {
+      json: ["Assembling data…", "Saving…"],
+      markdown: ["Assembling data…", "Formatting…", "Saving…"],
+      txt: ["Assembling data…", "Formatting…", "Saving…"],
+      pdf: ["Assembling data…", "Rendering PDF…", "Saving…"],
+      archive_pdf: ["Refreshing archive…", "Assembling data…", "Rendering PDF…", "Saving…"],
+    };
+
+    const stages = stageLabels[format] ?? ["Exporting…"];
+    setExportStage(stages[0]);
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
     try {
       // #region debug-point archive-pdf-no-op:export-start
       reportArchivePdfDebug({
@@ -430,10 +443,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         },
       });
       // #endregion
-      if (format === "archive_pdf") {
-        showNotice("Generating PDF…");
-      }
 
+      setExportStage(stages[1] ?? stages[0]);
       const bundle = await exportStory(story.id, {
         refreshArchiveIfStale: format === "archive_pdf",
       });
@@ -454,6 +465,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         return;
       }
 
+      setExportStage(stages[2] ?? stages[1] ?? stages[0]);
       const { content, mimeType } = serializeStoryExport(bundle, format);
       // #region debug-point archive-pdf-no-op:serialized
       reportArchivePdfDebug({
@@ -473,6 +485,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         },
       });
       // #endregion
+      setExportStage(stages[stages.length - 1]);
       await downloadFile(createExportFilename(story.title, format), content, mimeType);
       // #region debug-point archive-pdf-no-op:download-ok
       reportArchivePdfDebug({
@@ -495,6 +508,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       // #endregion
       showError(error instanceof Error ? error.message : "Unable to export.");
     } finally {
+      setExportStage(null);
       showNotice(null);
     }
   }
@@ -935,10 +949,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
               <CollapsibleSection title="Export">
                 <div className="space-y-2">
+                  {exportStage && (
+                    <p className="text-xs text-muted-foreground px-1">{exportStage}</p>
+                  )}
                   <Button
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
                     onClick={() => handleExport("json")}
+                    disabled={!!exportStage || isExportingSupportBundle}
                   >
                     <DownloadIcon className="h-4 w-4" />
                     Export JSON
@@ -947,7 +965,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
                     onClick={() => void handleExportSupportBundle()}
-                    disabled={isExportingSupportBundle}
+                    disabled={isExportingSupportBundle || !!exportStage}
                   >
                     <DownloadIcon className="h-4 w-4" />
                     {isExportingSupportBundle ? "Exporting..." : "Export Support Bundle"}
@@ -956,6 +974,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
                     onClick={() => handleExport("markdown")}
+                    disabled={!!exportStage || isExportingSupportBundle}
                   >
                     <DownloadIcon className="h-4 w-4" />
                     Export Markdown
@@ -964,6 +983,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
                     onClick={() => handleExport("txt")}
+                    disabled={!!exportStage || isExportingSupportBundle}
                   >
                     <DownloadIcon className="h-4 w-4" />
                     Export TXT
@@ -972,6 +992,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
                     onClick={() => handleExport("pdf")}
+                    disabled={!!exportStage || isExportingSupportBundle}
                   >
                     <DownloadIcon className="h-4 w-4" />
                     Export PDF
@@ -980,6 +1001,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
                     onClick={() => handleExport("archive_pdf")}
+                    disabled={!!exportStage || isExportingSupportBundle}
                   >
                     <DownloadIcon className="h-4 w-4" />
                     Export Archive PDF

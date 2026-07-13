@@ -11,6 +11,7 @@ import { serializeStoryArchivePdf } from "./storyArchivePdf";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { parseActionSegments } from "./storyText/parseActionSegments";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
+import { cleanTextForExport } from "./storyText/exportCleaner";
 
 function resolveCurrentSummary(bundle: StoryExportBundle) {
   const direct = bundle.story.currentSummary?.trim();
@@ -80,7 +81,7 @@ function buildTranscriptLines(bundle: StoryExportBundle) {
     const content =
       message.role === "assistant"
         ? sanitizeAssistantTranscript({
-            text: message.content,
+            text: cleanTextForExport(message.content),
             playerName: bundle.playerCharacter.name,
           }).text
         : message.content;
@@ -124,7 +125,7 @@ function toMarkdown(bundle: StoryExportBundle) {
       }
 
       const sanitized = sanitizeAssistantTranscript({
-        text: message.content,
+        text: cleanTextForExport(message.content),
         latestUserMessage,
         playerName: bundle.playerCharacter.name,
       }).text;
