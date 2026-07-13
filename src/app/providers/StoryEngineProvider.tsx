@@ -303,7 +303,7 @@ interface StoryEngineContextValue {
   ) => Promise<Partial<PlayerCharacterDraft>>;
   sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; signal?: AbortSignal; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
-  regenerateLastAssistantMessage: (storyId: string) => Promise<StoryMessage>;
+  regenerateLastAssistantMessage: (storyId: string, opts?: { onChunk?: (chunk: string) => void; onChunkReset?: () => void; signal?: AbortSignal }) => Promise<StoryMessage>;
 }
 
 const AI_MAX_ATTEMPTS = 3;
@@ -2750,7 +2750,7 @@ export function StoryEngineProvider({
 
         return nextMessage;
       },
-      async regenerateLastAssistantMessage(storyId) {
+      async regenerateLastAssistantMessage(storyId, opts) {
         const story = await repository.getStory(storyId);
 
         if (!story) {
@@ -2871,6 +2871,9 @@ export function StoryEngineProvider({
           apiKey,
           model,
           messages: context,
+          signal: opts?.signal,
+          onChunk: opts?.onChunk,
+          onChunkReset: opts?.onChunkReset,
         });
 
         const sceneDepth = inferSceneDepth(previousMessage.content);
