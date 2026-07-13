@@ -2,6 +2,7 @@ import type { StoryExportBundle, StoryMessage } from "../types/models";
 import { formatDateTime, sortByTimestampAsc } from "./dates";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "./storyStateV2";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
+import { cleanTextForExport } from "./storyText/exportCleaner";
 import {
   createPdfDoc,
   pdfDimensions,
@@ -157,7 +158,7 @@ export function serializeStoryArchivePdf(
     const resolvedContent =
       message.role === "assistant"
         ? sanitizeAssistantTranscript({
-            text: message.content,
+            text: cleanTextForExport(message.content),
             latestUserMessage,
             playerName: bundle.playerCharacter.name,
           }).text

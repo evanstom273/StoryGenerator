@@ -128,6 +128,7 @@ export function RPCharacterSheetOverlay(props: {
   const [activeTab, setActiveTab] = useState<Tab>("profile");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState<"json" | "md" | "txt" | "pdf" | null>(null);
+  const [exportStage, setExportStage] = useState<string | null>(null);
   const [rpEnabled, setRpEnabled] = useState(props.story.rpMode ?? false);
   const [togglingRp, setTogglingRp] = useState(false);
   const [configDraft, setConfigDraft] = useState<RpConfig>(props.story.rpConfig ?? DEFAULT_RP_CONFIG);
@@ -245,6 +246,7 @@ export function RPCharacterSheetOverlay(props: {
   async function handleExport(format: "json" | "md" | "txt" | "pdf") {
     if (!rpStats) return;
     setExporting(format);
+    setExportStage("Assembling data…");
     try {
       const storyMessages = allMessages.filter(
         (m) => m.storyId === props.story.id && m.role !== "system",
@@ -258,6 +260,7 @@ export function RPCharacterSheetOverlay(props: {
         playerCharacter,
       };
       const safe = props.story.title.replace(/[^a-zA-Z0-9_-]/g, "_");
+      setExportStage("Saving…");
       if (format === "json") {
         await downloadFile(`${safe}-rp-export.json`, buildRpExportJson(exportData), "application/json");
       } else if (format === "md") {
@@ -265,11 +268,14 @@ export function RPCharacterSheetOverlay(props: {
       } else if (format === "txt") {
         await downloadFile(`${safe}-rp-export.txt`, buildRpExportText(exportData), "text/plain");
       } else {
+        setExportStage("Rendering PDF…");
         const blob = await buildRpExportPdf(exportData);
+        setExportStage("Saving…");
         await downloadFile(`${safe}-rp-export.pdf`, blob, "application/pdf");
       }
     } finally {
       setExporting(null);
+      setExportStage(null);
     }
   }
 
@@ -1170,7 +1176,7 @@ ${profileText}`;
                           disabled={exporting !== null}
                           onClick={() => void handleExport(fmt)}
                         >
-                          {exporting === fmt ? "…" : "Download"}
+                          {exporting === fmt ? (exportStage ?? "…") : "Download"}
                         </Button>
                       </div>
                     ))}
