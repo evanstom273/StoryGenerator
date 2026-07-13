@@ -34,6 +34,14 @@ describe("unlabelled narration repair", () => {
     expect(autoRepairedNarration).toBe(false);
   });
 
+  it("does not wrap pronoun-attributed action lines as Narrator", () => {
+    const input = 'She: *takes two slow, deliberate steps toward the crib.*';
+    const { text, autoRepairedNarration } = sanitizeAssistantTranscript({ text: input });
+    expect(text).not.toContain("Narrator:");
+    expect(text).toContain("She:");
+    expect(autoRepairedNarration).toBe(false);
+  });
+
   it("repairs only the unlabelled block in mixed content", () => {
     const input = [
       'Rosa: *smirks.* "Nice try."',
