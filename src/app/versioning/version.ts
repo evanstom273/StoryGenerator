@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.2.6";
+export const APP_VERSION = "2.3.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -370,6 +370,25 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
       "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
       "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
+    ],
+    knownIssues: [],
+  },
+  "2.3.0": {
+    title: "Response Variant Cycling + Streaming Improvements",
+    added: [
+      "Regenerating the last AI message now creates a new candidate instead of silently overwriting — the previous response is preserved",
+      "Response X of Y counter with Previous / Next buttons lets you cycle between all generated candidates for the current turn",
+      "Switching candidates updates the transcript immediately so context, export, archive, and indexing always reflect the selected response",
+      "Sending the next message locks the selected candidate and discards the rest — variants only exist until you continue the story",
+      "Streaming panel now reads \"Generating candidate…\" during regeneration to make it clear a new alternative is being produced",
+      "Deterministic narration repair: unlabelled italic prose blocks (_text_ or *text*) are now automatically promoted to Narrator: *text.* before format validation, reducing the number of rewrite attempts required",
+      "All four AI providers (Gemini, OpenAI, Anthropic, OpenRouter) now fall back to non-streaming when the streaming endpoint fails before any content is received — generation succeeds instead of erroring",
+      "Regenerating a scene streams in real time and clears the previous message immediately, matching the send-message experience",
+    ],
+    fixed: [
+      "Pronoun-attributed lines (She: *action*, He: *speaks*) were incorrectly being wrapped as Narrator: blocks — the repair step now skips any block that already has a colon-prefixed speaker label",
+      "Cancelling a generation no longer shows an error modal when no partial draft was produced",
+      "AI provider errors are now classified more precisely: streaming endpoint failures, cancelled requests, and unknown providers each have distinct error codes",
     ],
     knownIssues: [],
   },

@@ -166,6 +166,19 @@ export function StoryWorkspacePage() {
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
   const [relationshipsOpen, setRelationshipsOpen] = useState(false);
 
+  interface VariantCandidate {
+    id: string;
+    content: string;
+    createdAt: string;
+  }
+  interface VariantSession {
+    messageId: string;
+    candidates: VariantCandidate[];
+    selectedIndex: number;
+  }
+  const [variantSession, setVariantSession] = useState<VariantSession | null>(null);
+  const [isSwitchingVariant, setIsSwitchingVariant] = useState(false);
+
   const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
   const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
   const [relationshipsRefreshKey, setRelationshipsRefreshKey] = useState(0);
@@ -223,6 +236,7 @@ export function StoryWorkspacePage() {
     setZeroHpConsequenceChoice("");
     setZeroHpCustom("");
     setPendingZeroHpConsequence(null);
+    setVariantSession(null);
   }, [storyId]);
 
 
@@ -393,6 +407,8 @@ export function StoryWorkspacePage() {
           onChunkReset: () => setStreamingDraft(""),
         },
       );
+      // User sent a new message — lock the selected candidate, discard the rest
+      setVariantSession(null);
       if (result.appliedRpChanges?.length) {
         const hpZero = result.appliedRpChanges.some((c) => c.field === "hp" && c.to === 0);
         if (hpZero) {
@@ -596,21 +612,58 @@ export function StoryWorkspacePage() {
       return;
     }
 
-    const confirmed = window.confirm("Replace the last AI message?");
-    if (!confirmed) {
-      return;
-    }
+    // Snapshot current content and message ID before anything starts
+    const snapshotContent = latestAssistantMessage.content;
+    const snapshotMessageId = latestAssistantMessage.id;
+
+    // Seed the variant session immediately so the streaming label shows "Generating candidate…"
+    setVariantSession((prev) => {
+      if (!prev || prev.messageId !== snapshotMessageId) {
+        return {
+          messageId: snapshotMessageId,
+          candidates: [{ id: `c-0-${snapshotMessageId}`, content: snapshotContent, createdAt: new Date().toISOString() }],
+          selectedIndex: 0,
+        };
+      }
+      return prev;
+    });
 
     setIsGenerating(true);
     setStreamingDraft("");
     setChatError(null);
 
     try {
-      await regenerateLastAssistantMessage(activeStory.id, {
+      const newMessage = await regenerateLastAssistantMessage(activeStory.id, {
         onChunk: (chunk) => setStreamingDraft((prev) => (prev ?? "") + chunk),
         onChunkReset: () => setStreamingDraft(""),
       });
+
+      // Add the freshly generated candidate and select it
+      setVariantSession((prev) => {
+        const base = prev && prev.messageId === snapshotMessageId ? prev : {
+          messageId: snapshotMessageId,
+          candidates: [{ id: `c-0-${snapshotMessageId}`, content: snapshotContent, createdAt: new Date().toISOString() }],
+          selectedIndex: 0,
+        };
+        const newCandidate: VariantCandidate = {
+          id: `c-${base.candidates.length}-${Date.now()}`,
+          content: newMessage.content,
+          createdAt: new Date().toISOString(),
+        };
+        return {
+          ...base,
+          candidates: [...base.candidates, newCandidate],
+          selectedIndex: base.candidates.length,
+        };
+      });
     } catch (error) {
+      // On failure: revert variant session to just the pre-existing candidates (remove seeded empty slot)
+      setVariantSession((prev) => {
+        if (!prev || prev.messageId !== snapshotMessageId) return prev;
+        // If we only seeded one candidate (the original), tear down the session entirely
+        if (prev.candidates.length <= 1) return null;
+        return prev;
+      });
       if (isGenerationFailureError(error)) {
         const capturedDraft = streamingDraft && streamingDraft.trim() ? streamingDraft : undefined;
         const failure = capturedDraft ? { ...error.failure, rawDraft: capturedDraft } : error.failure;
@@ -628,6 +681,26 @@ export function StoryWorkspacePage() {
     } finally {
       setIsGenerating(false);
       setStreamingDraft(null);
+    }
+  }
+
+  async function handleSelectVariant(index: number) {
+    if (!variantSession || !latestAssistantMessage || isSwitchingVariant) return;
+    const candidate = variantSession.candidates[index];
+    if (!candidate || index === variantSession.selectedIndex) return;
+
+    // Optimistically update UI selection index
+    setVariantSession((prev) => prev ? { ...prev, selectedIndex: index } : null);
+
+    // Write selected candidate to DB so transcript-is-truth invariant holds
+    setIsSwitchingVariant(true);
+    try {
+      await editAssistantMessage(latestAssistantMessage.id, candidate.content);
+    } catch {
+      // Revert on failure
+      setVariantSession((prev) => prev ? { ...prev, selectedIndex: variantSession.selectedIndex } : null);
+    } finally {
+      setIsSwitchingVariant(false);
     }
   }
 
@@ -652,6 +725,7 @@ export function StoryWorkspacePage() {
     }
 
     setChatError(null);
+    setVariantSession(null);
     try {
       await setMessageDirectorIntent(latestDirectorIntentMessage.id, null);
       await regenerateLastAssistantMessage(activeStory.id);
@@ -690,6 +764,7 @@ export function StoryWorkspacePage() {
 
     try {
       await editAssistantMessage(assistantEditMessage.id, assistantEditContent);
+      setVariantSession(null);
       setAssistantEditMessage(null);
       setAssistantEditContent("");
     } catch (error) {
@@ -1152,7 +1227,7 @@ export function StoryWorkspacePage() {
         <div className="mt-2 rounded-[10px] border border-divider/[0.35] bg-app-elevated px-3 py-3 opacity-80">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
             <span className="animate-pulse text-accent">●</span>
-            Generating…
+            {variantSession ? "Generating candidate…" : "Generating…"}
           </div>
           {streamingDraft ? (
             <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
@@ -1181,6 +1256,34 @@ export function StoryWorkspacePage() {
                 >
                   Undo
                 </Button>
+              </div>
+            ) : null}
+            {variantSession && variantSession.messageId === latestAssistantMessage.id && variantSession.candidates.length > 1 ? (
+              <div className="mb-3 flex flex-col gap-3 rounded-[9px] border border-divider/[0.4] bg-panel-muted/50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-ink-muted">
+                  Response{" "}
+                  <span className="font-semibold text-ink-soft">
+                    {variantSession.selectedIndex + 1} of {variantSession.candidates.length}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void handleSelectVariant(variantSession.selectedIndex - 1)}
+                    disabled={isGenerating || isSwitchingVariant || variantSession.selectedIndex === 0}
+                  >
+                    ← Previous
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void handleSelectVariant(variantSession.selectedIndex + 1)}
+                    disabled={isGenerating || isSwitchingVariant || variantSession.selectedIndex === variantSession.candidates.length - 1}
+                  >
+                    Next →
+                  </Button>
+                </div>
               </div>
             ) : null}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
