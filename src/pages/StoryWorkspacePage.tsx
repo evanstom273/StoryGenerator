@@ -429,8 +429,11 @@ export function StoryWorkspacePage() {
       });
       if (isGenerationFailureError(error)) {
         const failure = capturedDraft ? { ...error.failure, rawDraft: capturedDraft } : error.failure;
-        setGenerationFailure(failure);
-        setGenerationFailureOpen(true);
+        const isCancelledWithNoDraft = failure.kind === "cancelled" && !failure.rawDraft;
+        if (!isCancelledWithNoDraft) {
+          setGenerationFailure(failure);
+          setGenerationFailureOpen(true);
+        }
         setChatError(error.failure.summaryMessage);
       } else {
         setChatError(

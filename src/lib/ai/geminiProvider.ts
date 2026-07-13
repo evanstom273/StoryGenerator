@@ -3,8 +3,6 @@ import { normalizeAIError, AIError, looksLikeSafetyRefusal } from "./errors";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 
 const REQUEST_TIMEOUT_MS = 45_000;
-const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
-const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
 
 interface GeminiGenerateContentRequest {
   contents: Array<{
@@ -30,37 +28,6 @@ interface GeminiGenerateContentResponse {
     };
   }>;
   promptFeedback?: unknown;
-}
-
-function clipGeminiAuditText(value: string | null | undefined, max = 400) {
-  const normalized = value?.replace(/\s+/g, " ").trim() ?? "";
-  if (!normalized) {
-    return "";
-  }
-  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
-}
-
-function reportGeminiAudit(args: {
-  hypothesisId: string;
-  location: string;
-  msg: string;
-  data?: Record<string, unknown>;
-}) {
-  // #region debug-point A:gemini-report
-  void fetch(GENERATION_AUDIT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: GENERATION_AUDIT_SESSION,
-      runId: "pre-fix",
-      hypothesisId: args.hypothesisId,
-      location: args.location,
-      msg: `[DEBUG] ${args.msg}`,
-      data: args.data,
-      ts: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 }
 
 function buildGeminiRequest(
@@ -145,113 +112,100 @@ async function callGenerateContent(
   }
   const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-  // #region debug-point A:gemini-request
-  reportGeminiAudit({
-    hypothesisId: "A",
-    location: "geminiProvider.ts:callGenerateContent:start",
-    msg: "Gemini request dispatched",
-    data: {
-      model,
-      timeoutMs,
-      streaming: !!opts?.onChunk,
-      messageCount: messages.length,
-      systemCount: messages.filter((message) => message.role === "system").length,
-      lastUserPreview: clipGeminiAuditText(
-        [...messages].reverse().find((message) => message.role === "user")?.content,
-      ),
-    },
-  });
-  // #endregion
 
   const safeKey = apiKey.replace(/[^\x00-\xFF]/g, "");
   const requestBody = JSON.stringify(buildGeminiRequest(messages, { maxTokens: opts?.maxTokens, temperature: opts?.temperature, jsonMode: opts?.jsonMode }));
 
   try {
     if (opts?.onChunk) {
-      // Streaming path
-      const idleTimeoutMs = opts.idleTimeoutMs ?? 30_000;
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-goog-api-key": safeKey },
-          body: requestBody,
-          signal: controller.signal,
-        },
-      );
-
-      if (!response.ok) {
-        const message = await extractGeminiErrorMessage(response);
-        throwGeminiHttpError(response, message);
-      }
-
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let accumulated = "";
-      let idleTimer: number | null = null;
-
-      const resetIdleTimer = () => {
-        if (idleTimer !== null) window.clearTimeout(idleTimer);
-        idleTimer = window.setTimeout(() => controller.abort(), idleTimeoutMs);
-      };
-
-      resetIdleTimer();
+      let streamAccumulated = "";
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          resetIdleTimer();
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const raw = line.slice(6).trim();
-            if (!raw || raw === "[DONE]") continue;
-            try {
-              const json = JSON.parse(raw) as GeminiGenerateContentResponse;
-              const text = (json.candidates?.[0]?.content?.parts ?? [])
-                .filter((part) => !part.thought)
-                .map((part) => part.text ?? "")
-                .join("");
-              if (text) {
-                opts.onChunk(text);
-                accumulated += text;
-              }
-            } catch {
-              // malformed SSE chunk — skip
-            }
-          }
-        }
-        // flush remaining buffer
-        if (buffer.startsWith("data: ")) {
-          const raw = buffer.slice(6).trim();
-          if (raw && raw !== "[DONE]") {
-            try {
-              const json = JSON.parse(raw) as GeminiGenerateContentResponse;
-              const text = (json.candidates?.[0]?.content?.parts ?? [])
-                .filter((part) => !part.thought)
-                .map((part) => part.text ?? "")
-                .join("");
-              if (text) {
-                opts.onChunk(text);
-                accumulated += text;
-              }
-            } catch {
-              // ignore
-            }
-          }
-        }
-      } finally {
-        if (idleTimer !== null) window.clearTimeout(idleTimer);
-        reader.releaseLock();
-      }
+        const idleTimeoutMs = opts.idleTimeoutMs ?? 30_000;
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-goog-api-key": safeKey },
+            body: requestBody,
+            signal: controller.signal,
+          },
+        );
 
-      return accumulated.trim();
+        if (!response.ok) {
+          const message = await extractGeminiErrorMessage(response);
+          throwGeminiHttpError(response, message);
+        }
+
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let idleTimer: number | null = null;
+
+        const resetIdleTimer = () => {
+          if (idleTimer !== null) window.clearTimeout(idleTimer);
+          idleTimer = window.setTimeout(() => controller.abort(), idleTimeoutMs);
+        };
+
+        resetIdleTimer();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            resetIdleTimer();
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim();
+              if (!raw || raw === "[DONE]") continue;
+              try {
+                const json = JSON.parse(raw) as GeminiGenerateContentResponse;
+                const text = (json.candidates?.[0]?.content?.parts ?? [])
+                  .filter((part) => !part.thought)
+                  .map((part) => part.text ?? "")
+                  .join("");
+                if (text) {
+                  opts.onChunk(text);
+                  streamAccumulated += text;
+                }
+              } catch {
+                // malformed SSE chunk — skip
+              }
+            }
+          }
+          // flush remaining buffer
+          if (buffer.startsWith("data: ")) {
+            const raw = buffer.slice(6).trim();
+            if (raw && raw !== "[DONE]") {
+              try {
+                const json = JSON.parse(raw) as GeminiGenerateContentResponse;
+                const text = (json.candidates?.[0]?.content?.parts ?? [])
+                  .filter((part) => !part.thought)
+                  .map((part) => part.text ?? "")
+                  .join("");
+                if (text) {
+                  opts.onChunk(text);
+                  streamAccumulated += text;
+                }
+              } catch {
+                // ignore
+              }
+            }
+          }
+        } finally {
+          if (idleTimer !== null) window.clearTimeout(idleTimer);
+          reader.releaseLock();
+        }
+
+        return streamAccumulated.trim();
+      } catch (streamErr) {
+        if (streamAccumulated !== "") throw streamErr;
+        // No chunks delivered — fall through to non-streaming path
+      }
     }
 
-    // Non-streaming path
+    // Non-streaming path (also reached as streaming fallback when no chunks were delivered)
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
@@ -264,14 +218,6 @@ async function callGenerateContent(
 
     if (!response.ok) {
       const message = await extractGeminiErrorMessage(response);
-      // #region debug-point A:gemini-http-error
-      reportGeminiAudit({
-        hypothesisId: "A",
-        location: "geminiProvider.ts:callGenerateContent:http-error",
-        msg: "Gemini request returned an HTTP error",
-        data: { model, status: response.status, errorMessage: message },
-      });
-      // #endregion
       throwGeminiHttpError(response, message);
     }
 
@@ -280,31 +226,9 @@ async function callGenerateContent(
       .filter((part) => !part.thought)
       .map((part) => part.text ?? "")
       .join("") ?? "";
-    // #region debug-point A:gemini-response
-    reportGeminiAudit({
-      hypothesisId: "A",
-      location: "geminiProvider.ts:callGenerateContent:success",
-      msg: "Gemini response received",
-      data: {
-        model,
-        finishReason: json.candidates?.[0]?.finishReason ?? null,
-        promptFeedback: json.promptFeedback ?? null,
-        safetyRatings: json.candidates?.[0]?.safetyRatings ?? null,
-        rawOutput: content,
-      },
-    });
-    // #endregion
     return content.trim();
   } catch (error) {
-    // #region debug-point A:gemini-catch
-    reportGeminiAudit({
-      hypothesisId: "A",
-      location: "geminiProvider.ts:callGenerateContent:catch",
-      msg: "Gemini request threw before returning usable content",
-      data: { model, errorMessage: error instanceof Error ? error.message : String(error) },
-    });
-    // #endregion
-    throw normalizeAIError(error);
+    throw normalizeAIError(error, { userCancelled: opts?.signal?.aborted });
   } finally {
     window.clearTimeout(timeoutId);
     opts?.signal?.removeEventListener("abort", abortListener);

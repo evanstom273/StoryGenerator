@@ -8,10 +8,14 @@ export type AIErrorCode =
   | "validation_failed"
   | "request_too_large"
   | "generation_failed"
+  | "streaming_endpoint_failed"
+  | "request_cancelled"
+  | "provider_not_found"
   | "unknown";
 
 export type AIGenerationFailureKind =
   | "timeout"
+  | "cancelled"
   | "provider"
   | "safety"
   | "parse"
@@ -26,6 +30,7 @@ export type GenerationFailKind =
   | "provider_blocked_prompt"
   | "provider_blocked_response"
   | "timeout"
+  | "cancelled"
   | "network"
   | "rate_limit"
   | "quota"
@@ -59,33 +64,6 @@ export type GenerationFailure = {
   };
 };
 
-const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
-const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
-
-function reportGenerationFailureAudit(args: {
-  hypothesisId: string;
-  location: string;
-  msg: string;
-  traceId?: string;
-  data?: Record<string, unknown>;
-}) {
-  // #region debug-point E:failure-report
-  void fetch(GENERATION_AUDIT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: GENERATION_AUDIT_SESSION,
-      runId: "pre-fix",
-      hypothesisId: args.hypothesisId,
-      traceId: args.traceId,
-      location: args.location,
-      msg: `[DEBUG] ${args.msg}`,
-      data: args.data,
-      ts: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-}
 
 export class GenerationFailureError extends Error {
   failure: GenerationFailure;
@@ -138,11 +116,14 @@ function inferKind(code: AIErrorCode): AIGenerationFailureKind {
     case "rate_limited":
       return "quota";
     case "provider_unavailable":
+    case "streaming_endpoint_failed":
       return "provider";
     case "safety_refusal":
       return "safety";
     case "timeout":
       return "timeout";
+    case "request_cancelled":
+      return "cancelled";
     case "parsing_failed":
       return "parse";
     case "validation_failed":
@@ -158,6 +139,7 @@ function inferRetryable(code: AIErrorCode) {
   switch (code) {
     case "rate_limited":
     case "provider_unavailable":
+    case "streaming_endpoint_failed":
     case "timeout":
       return true;
     default:
@@ -279,13 +261,18 @@ export async function normalizeOpenRouterError(response: Response) {
   return new AIError("generation_failed", message, status, { diagnostic });
 }
 
-export function normalizeAIError(error: unknown) {
+export function normalizeAIError(error: unknown, opts?: { userCancelled?: boolean }) {
   if (error instanceof AIError) {
     return error;
   }
 
   if (typeof DOMException !== "undefined" && error instanceof DOMException) {
     if (error.name === "AbortError") {
+      if (opts?.userCancelled) {
+        return new AIError("request_cancelled", "Generation was cancelled.", undefined, {
+          diagnostic: error.message,
+        });
+      }
       return new AIError("timeout", "The request timed out.", undefined, {
         diagnostic: error.message,
       });
@@ -294,6 +281,11 @@ export function normalizeAIError(error: unknown) {
 
   if (error instanceof Error) {
     if (error.name === "AbortError" || /\b(timeout|timed out|deadline exceeded)\b/i.test(error.message)) {
+      if (opts?.userCancelled && error.name === "AbortError") {
+        return new AIError("request_cancelled", "Generation was cancelled.", undefined, {
+          diagnostic: error.message,
+        });
+      }
       return new AIError("timeout", "The request timed out.", undefined, {
         diagnostic: error.message,
       });
@@ -415,6 +407,13 @@ export function classifyAIGenerationError(error: unknown): ClassifiedAIGeneratio
         diagnostic,
         message: "The response failed validation after generation.",
       };
+    case "cancelled":
+      return {
+        kind: "cancelled",
+        retryable: false,
+        diagnostic,
+        message: "Generation was cancelled.",
+      };
     case "provider":
       return {
         kind: "provider",
@@ -471,6 +470,8 @@ function mapGenerationKind(kind: AIGenerationFailureKind): GenerationFailKind {
   switch (kind) {
     case "timeout":
       return "timeout";
+    case "cancelled":
+      return "cancelled";
     case "provider":
       return "network";
     case "quota":
@@ -512,7 +513,7 @@ export function createGenerationFailure(error: unknown, opts: {
   const normalized = normalizeAIError(error);
   const diagnostic = normalized.diagnostic ?? normalized.message;
   const stage = opts.stage ?? mapStage(classified.kind);
-  const failure = {
+  return {
     kind: mapGenerationKind(classified.kind),
     stage,
     summaryMessage: classified.message,
@@ -524,25 +525,6 @@ export function createGenerationFailure(error: unknown, opts: {
     requestId: opts.requestId,
     rawDraft: opts.rawDraft,
   };
-  // #region debug-point E:failure-created
-  reportGenerationFailureAudit({
-    hypothesisId: "E",
-    location: "errors.ts:createGenerationFailure",
-    msg: "generation failure normalized",
-    traceId: opts.requestId,
-    data: {
-      providerName: opts.providerName,
-      model: opts.model,
-      attempts: opts.attempts,
-      maxAttempts: opts.maxAttempts,
-      kind: failure.kind,
-      stage: failure.stage,
-      diagnostic: failure.diagnostic,
-      summaryMessage: failure.summaryMessage,
-    },
-  });
-  // #endregion
-  return failure;
 }
 
 export function withTransmitSafeDiagnostics(

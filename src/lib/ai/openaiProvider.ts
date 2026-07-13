@@ -46,64 +46,68 @@ async function callChatCompletions(
   const safeKey = apiKey.replace(/[^\x00-\xFF]/g, "");
   try {
     if (opts?.onChunk) {
-      // Streaming path
-      const idleTimeoutMs = opts.idleTimeoutMs ?? 30_000;
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${safeKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, stream: true }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw await normalizeOpenAIError(response);
-      }
-
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let accumulated = "";
-      let idleTimer: number | null = null;
-
-      const resetIdleTimer = () => {
-        if (idleTimer !== null) window.clearTimeout(idleTimer);
-        idleTimer = window.setTimeout(() => controller.abort(), idleTimeoutMs);
-      };
-
-      resetIdleTimer();
+      let streamAccumulated = "";
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          resetIdleTimer();
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const raw = line.slice(6).trim();
-            if (!raw || raw === "[DONE]") continue;
-            try {
-              const json = JSON.parse(raw) as { choices?: Array<{ delta?: { content?: string } }> };
-              const text = json.choices?.[0]?.delta?.content ?? "";
-              if (text) {
-                opts.onChunk(text);
-                accumulated += text;
+        const idleTimeoutMs = opts.idleTimeoutMs ?? 30_000;
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${safeKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, stream: true }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw await normalizeOpenAIError(response);
+        }
+
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let idleTimer: number | null = null;
+
+        const resetIdleTimer = () => {
+          if (idleTimer !== null) window.clearTimeout(idleTimer);
+          idleTimer = window.setTimeout(() => controller.abort(), idleTimeoutMs);
+        };
+
+        resetIdleTimer();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            resetIdleTimer();
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim();
+              if (!raw || raw === "[DONE]") continue;
+              try {
+                const json = JSON.parse(raw) as { choices?: Array<{ delta?: { content?: string } }> };
+                const text = json.choices?.[0]?.delta?.content ?? "";
+                if (text) {
+                  opts.onChunk(text);
+                  streamAccumulated += text;
+                }
+              } catch {
+                // malformed SSE chunk — skip
               }
-            } catch {
-              // malformed SSE chunk — skip
             }
           }
+        } finally {
+          if (idleTimer !== null) window.clearTimeout(idleTimer);
+          reader.releaseLock();
         }
-      } finally {
-        if (idleTimer !== null) window.clearTimeout(idleTimer);
-        reader.releaseLock();
-      }
 
-      return accumulated.trim();
+        return streamAccumulated.trim();
+      } catch (streamErr) {
+        if (streamAccumulated !== "") throw streamErr;
+        // No chunks delivered — fall through to non-streaming path
+      }
     }
 
-    // Non-streaming path
+    // Non-streaming path (also reached as streaming fallback when no chunks were delivered)
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${safeKey}`, "Content-Type": "application/json" },
@@ -120,7 +124,7 @@ async function callChatCompletions(
 
     return content.trim();
   } catch (error) {
-    throw normalizeAIError(error);
+    throw normalizeAIError(error, { userCancelled: opts?.signal?.aborted });
   } finally {
     window.clearTimeout(timeoutId);
     opts?.signal?.removeEventListener("abort", abortListener);
