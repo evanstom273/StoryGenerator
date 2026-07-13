@@ -1,0 +1,51 @@
+import { describe, it, expect } from "vitest";
+import { sanitizeAssistantTranscript } from "../transcriptSanitizer";
+
+describe("unlabelled narration repair", () => {
+  it("repairs underscore-italic narration", () => {
+    const { text, autoRepairedNarration } = sanitizeAssistantTranscript({
+      text: "_The room goes quiet._",
+    });
+    expect(text).toMatch(/^Narrator: \*The room goes quiet\.\*$/m);
+    expect(autoRepairedNarration).toBe(true);
+  });
+
+  it("repairs asterisk-wrapped narration", () => {
+    const { text, autoRepairedNarration } = sanitizeAssistantTranscript({
+      text: "*The room goes quiet.*",
+    });
+    expect(text).toMatch(/^Narrator: \*The room goes quiet\.\*$/m);
+    expect(autoRepairedNarration).toBe(true);
+  });
+
+  it("leaves valid character lines unchanged", () => {
+    const input = 'Rosa: *smirks.* "Nice try."';
+    const { text, autoRepairedNarration } = sanitizeAssistantTranscript({ text: input });
+    expect(text).toContain("Rosa:");
+    expect(text).not.toContain("Narrator:");
+    expect(autoRepairedNarration).toBe(false);
+  });
+
+  it("leaves existing Narrator: *...* unchanged", () => {
+    const { text, autoRepairedNarration } = sanitizeAssistantTranscript({
+      text: "Narrator: *The room goes quiet.*",
+    });
+    expect(text).toMatch(/^Narrator: \*The room goes quiet\.\*$/m);
+    expect(autoRepairedNarration).toBe(false);
+  });
+
+  it("repairs only the unlabelled block in mixed content", () => {
+    const input = [
+      'Rosa: *smirks.* "Nice try."',
+      "",
+      "_The muffled giggle echoes._",
+      "",
+      'Jake: "What was that?"',
+    ].join("\n");
+    const { text, autoRepairedNarration } = sanitizeAssistantTranscript({ text: input });
+    expect(text).toContain("Rosa:");
+    expect(text).toContain("Jake:");
+    expect(text).toMatch(/Narrator: \*The muffled giggle echoes\.\*/);
+    expect(autoRepairedNarration).toBe(true);
+  });
+});

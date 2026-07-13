@@ -2927,12 +2927,13 @@ export function StoryEngineProvider({
           "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "Only resolve success or failure when the player's message leaves the outcome open as an attempt.",
           "Formatting rules (strict):",
+          "- Every paragraph must begin with either a character name followed by a colon (e.g. Rosa: *action* \"dialogue\") or 'Narrator:' followed by the narration in *...*.",
           "- Every character line must start with 'Name:'.",
           "- Actions must be wrapped as *...* (asterisks only for actions).",
           '- Dialogue must be wrapped in double quotes like \"...\"',
           "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
-          "- Never use narrator labels like 'Narrator:' anywhere.",
+          "- Narration must use the format: Narrator: *prose text.*",
+          "- Raw italic prose without a speaker label is forbidden. Never emit *...* or _..._ blocks without a Narrator: prefix.",
           "Mystery rule (strict):",
           "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
           "Information ownership rule (strict):",
@@ -3027,6 +3028,10 @@ export function StoryEngineProvider({
             latestUserMessage: previousMessage.content,
             playerName: playerNameForValidation,
           });
+
+          if (candidateSanitized.autoRepairedNarration && !lastValidationDiagnostic) {
+            lastValidationDiagnostic = `auto_repaired_unlabelled_narration; attempt=${attempt + 1}`;
+          }
 
           if (!candidateSanitized.formatValid) {
             lastValidationDiagnostic = [
@@ -4240,12 +4245,13 @@ export function StoryEngineProvider({
             "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
             "Only resolve success or failure when the player's message leaves the outcome open as an attempt.",
             "Formatting rules (strict):",
+            "- Every paragraph must begin with either a character name followed by a colon (e.g. Rosa: *action* \"dialogue\") or 'Narrator:' followed by the narration in *...*.",
             "- Every character line must start with 'Name:'.",
             "- Actions must be wrapped as *...* (asterisks only for actions).",
             '- Dialogue must be wrapped in double quotes like "..."',
             "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-            "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
-            "- Never use narrator labels like 'Narrator:' anywhere.",
+            "- Narration must use the format: Narrator: *prose text.*",
+            "- Raw italic prose without a speaker label is forbidden. Never emit *...* or _..._ blocks without a Narrator: prefix.",
             "Mystery rule (strict):",
             "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
             "Information ownership rule (strict):",
@@ -4336,6 +4342,10 @@ export function StoryEngineProvider({
               latestUserMessage: userMessage.content,
               playerName: playerNameForValidation,
             });
+
+            if (candidateSanitized.autoRepairedNarration && !lastValidationDiagnostic) {
+              lastValidationDiagnostic = `auto_repaired_unlabelled_narration; attempt=${attempt + 1}`;
+            }
 
             if (!candidateSanitized.formatValid) {
               lastValidationDiagnostic = [
