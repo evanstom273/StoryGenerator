@@ -129,6 +129,22 @@ export function StoriesPage() {
                   getPlayerCharacterById(story.playerCharacterId)?.name ?? "Unknown character"
                 }
                 to={`/stories/${story.id}`}
+                lineageLabel={
+                  story.parentStoryId
+                    ? "Sequel"
+                    : stories.some((candidate) => candidate.parentStoryId === story.id)
+                      ? "Has Sequels"
+                      : undefined
+                }
+                readOnly={story.readOnlyReason === "sequel_prequel"}
+                actions={
+                  <Link
+                    to={`/stories/new?sequelTo=${story.id}`}
+                    className={buttonClasses({ variant: "ghost", className: "h-auto px-3 py-1.5 text-xs" })}
+                  >
+                    Create Sequel
+                  </Link>
+                }
               />
             ))}
           </div>

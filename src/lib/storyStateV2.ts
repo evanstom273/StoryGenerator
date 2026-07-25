@@ -461,3 +461,65 @@ export function finalizeStoryStateForSave(params: {
 
   return JSON.stringify(stamped);
 }
+
+function trimStringArray(value: unknown, maxItems = 12): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const trimmed = value
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim())
+    .slice(0, maxItems);
+
+  return trimmed.length ? trimmed : undefined;
+}
+
+export function createSequelStoryStateData(params: {
+  sourceState: StoryStateData | null;
+  sourceSummary: string;
+  now: string;
+}): StoryStateDataV2 {
+  const source = normalizeStoryStateToV2(params.sourceState);
+  const currentSituation = trimStringArray(
+    [
+      source.summaries?.currentSituation,
+      params.sourceSummary,
+      source.scene?.sceneSummary,
+    ],
+    2,
+  )?.[0];
+
+  return {
+    ...source,
+    updatedAt: params.now,
+    indexedAt: params.now,
+    lastIndexedAt: params.now,
+    lastDeepIndexedAt: params.now,
+    memoryArchitectureVersion: "2.0",
+    worldFacts: trimStringArray(source.worldFacts, 40) ?? [],
+    unresolvedThreads:
+      trimStringArray(source.unresolvedThreads, 24) ??
+      trimStringArray(source.threads?.openThreads, 24) ??
+      [],
+    significantMemories: trimStringArray(source.significantMemories, 24) ?? [],
+    relationshipState: trimStringArray(source.relationshipState, 20) ?? [],
+    sceneState: undefined,
+    scene: undefined,
+    summaries: {
+      ...(source.summaries ?? {}),
+      ...(currentSituation ? { currentSituation } : {}),
+      recentDevelopments: trimStringArray(source.summaries?.recentDevelopments, 12),
+    },
+    threads: source.threads?.openThreads?.length
+      ? { openThreads: trimStringArray(source.threads.openThreads, 24) }
+      : undefined,
+    rpStats: source.rpStats
+      ? {
+          ...source.rpStats,
+          pendingTransaction: undefined,
+          pendingConditionSuggestion: undefined,
+        }
+      : undefined,
+  };
+}

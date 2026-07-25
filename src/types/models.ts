@@ -179,9 +179,15 @@ export interface Story {
   title: string;
   universeId: EntityId;
   playerCharacterId: EntityId;
+  parentStoryId?: EntityId;
+  rootStoryId?: EntityId;
+  lineageDepth?: number;
+  sequelSeedSourceStoryId?: EntityId;
   openingPrompt?: string;
   universePackSnapshot?: UniversePackSnapshotV1;
   isArchived?: boolean;
+  readOnlyReason?: "sequel_prequel";
+  readOnlyLockedAt?: Timestamp;
   matureFictionMode?: boolean;
   rpMode?: boolean;
   rpConfig?: RpConfig;
@@ -602,6 +608,10 @@ export interface StoryDraft {
   title: string;
   universeId: EntityId;
   playerCharacterId: EntityId;
+  parentStoryId?: EntityId;
+  rootStoryId?: EntityId;
+  lineageDepth?: number;
+  sequelSeedSourceStoryId?: EntityId;
   isArchived?: boolean;
   matureFictionMode?: boolean;
   rpMode?: boolean;

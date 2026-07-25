@@ -181,6 +181,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const story = storyId ? getStoryById(storyId) : undefined;
   const universe = story ? getUniverseById(story.universeId) : undefined;
   const playerCharacter = story ? getPlayerCharacterById(story.playerCharacterId) : undefined;
+  const isReadOnly = story?.readOnlyReason === "sequel_prequel";
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [storyFields, setStoryFields] = useState({
@@ -751,6 +752,21 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <dd className="truncate">{playerCharacter.name}</dd>
                   </div>
                 </dl>
+                {isReadOnly ? (
+                  <div className="mt-4 rounded-[10px] border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+                    This story is locked as a prequel. Open or create a sequel to continue canon.
+                  </div>
+                ) : null}
+                <Button
+                  className="mt-4 w-full"
+                  variant="secondary"
+                  onClick={() => {
+                    setStorySettingsOpen(false);
+                    navigate(`/stories/new?sequelTo=${story.id}`);
+                  }}
+                >
+                  Create Sequel
+                </Button>
               </CollapsibleSection>
 
               {(playerCharacter.scope ?? "library") === "story" ? (
@@ -762,7 +778,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     className="mt-3 w-full"
                     variant="secondary"
                     onClick={() => void handlePromoteCharacter()}
-                    disabled={isPromotingCharacter}
+                    disabled={isPromotingCharacter || isReadOnly}
                   >
                     {isPromotingCharacter ? "Saving..." : "Promote to Library"}
                   </Button>
@@ -780,6 +796,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <select
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={aiProviderType}
+                      disabled={isReadOnly}
                       onChange={(event) => {
                         const nextProvider = event.target.value as AIProviderType;
                         setAiProviderType(nextProvider);
@@ -801,6 +818,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <select
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={aiModel}
+                      disabled={isReadOnly}
                       onChange={(event) => setAiModel(event.target.value)}
                     >
                       {getProviderModels(aiProviderType).map((model) => (
@@ -811,10 +829,15 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     </select>
                   </label>
 
-                  <Button type="submit" className="w-full" disabled={isSavingAI}>
+                  <Button type="submit" className="w-full" disabled={isSavingAI || isReadOnly}>
                     {isSavingAI ? "Saving..." : "Save AI Settings"}
                   </Button>
                 </form>
+                {isReadOnly ? (
+                  <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
+                    AI settings are locked on prequel stories.
+                  </div>
+                ) : null}
               </CollapsibleSection>
 
               <CollapsibleSection title="Edit Story">
@@ -824,6 +847,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <input
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.title}
+                      disabled={isReadOnly}
                       onChange={(event) =>
                         setStoryFields((current) => ({ ...current, title: event.target.value }))
                       }
@@ -834,6 +858,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <textarea
                       className="min-h-[100px] w-full resize-y rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.currentSummary}
+                      disabled={isReadOnly}
                       onChange={(event) =>
                         setStoryFields((current) => ({
                           ...current,
@@ -843,10 +868,15 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       placeholder="Optional summary for the current state of the story."
                     />
                   </label>
-                  <Button type="submit" className="w-full" disabled={isSavingStory}>
+                  <Button type="submit" className="w-full" disabled={isSavingStory || isReadOnly}>
                     {isSavingStory ? "Saving..." : "Save Story"}
                   </Button>
                 </form>
+                {isReadOnly ? (
+                  <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
+                    Title and summary are locked on prequel stories.
+                  </div>
+                ) : null}
               </CollapsibleSection>
 
               <CollapsibleSection title="Theme">
@@ -873,6 +903,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <select
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.autoIndexMode}
+                      disabled={isReadOnly}
                       onChange={(event) =>
                         setStoryFields((current) => ({
                           ...current,
@@ -897,6 +928,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       <select
                         className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                         value={storyFields.autoIndexInterval === "disabled" ? 20 : storyFields.autoIndexInterval}
+                        disabled={isReadOnly}
                         onChange={(event) =>
                           setStoryFields((current) => ({
                             ...current,
@@ -928,6 +960,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     <select
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.matureFictionMode ? "on" : "off"}
+                      disabled={isReadOnly}
                       onChange={(event) =>
                         setStoryFields((current) => ({
                           ...current,
