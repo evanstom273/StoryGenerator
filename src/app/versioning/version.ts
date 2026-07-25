@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.3.0";
+export const APP_VERSION = "2.4.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -370,6 +370,15 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
       "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
       "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
+    ],
+    knownIssues: [],
+  },
+  "2.4.0": {
+    title: "Release Metadata Alignment",
+    added: [],
+    fixed: [
+      "Version wiring is now aligned to 2.4.0 across the app label, changelog, npm metadata, and Android build configuration",
+      "Android release metadata now uses versionCode 20400 and 2.4.0-named release artifacts",
     ],
     knownIssues: [],
   },
