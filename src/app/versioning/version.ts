@@ -374,11 +374,15 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     knownIssues: [],
   },
   "2.4.0": {
-    title: "Release Metadata Alignment",
-    added: [],
+    title: "Create Sequel + Canon Lineage",
+    added: [
+      "Stories now support a first-class Create Sequel flow that starts a fresh transcript while inheriting distilled canon from the source story",
+      "Story creation can now open in sequel mode with the source story, universe, protagonist, and prior summary preloaded for continuity",
+      "Sequels keep lineage metadata so the app can track direct predecessor relationships and seeded canon origin",
+    ],
     fixed: [
-      "Version wiring is now aligned to 2.4.0 across the app label, changelog, npm metadata, and Android build configuration",
-      "Android release metadata now uses versionCode 20400 and 2.4.0-named release artifacts",
+      "Once a sequel is created, the predecessor story is now locked as a read-only prequel so canon cannot be accidentally continued in the old thread",
+      "Sequel story state now carries forward durable summary, world facts, unresolved threads, relationships, and significant memories without copying the full transcript",
     ],
     knownIssues: [],
   },
