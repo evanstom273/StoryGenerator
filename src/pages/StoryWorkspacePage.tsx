@@ -1115,7 +1115,9 @@ export function StoryWorkspacePage() {
               </div>
               <div className="mt-4 space-y-4">
                 <TextAreaInput
-                  className="min-h-[220px] md:min-h-[280px]"
+                  defaultHeightPx={240}
+                  minHeightPx={200}
+                  maxHeightPx={520}
                   value={assistantEditContent}
                   onChange={(event) => setAssistantEditContent(event.target.value)}
                 />
@@ -1445,7 +1447,9 @@ export function StoryWorkspacePage() {
 
             <Field label="Your Message">
               <TextAreaInput
-                className="min-h-[180px] md:min-h-[240px]"
+                defaultHeightPx={220}
+                minHeightPx={180}
+                maxHeightPx={420}
                 value={chatInput}
                 onChange={(event) => setChatInput(event.target.value)}
                 disabled={isReadOnly}
@@ -1592,7 +1596,9 @@ export function StoryWorkspacePage() {
 
           <Field label="Content">
             <TextAreaInput
-              className="min-h-[220px] md:min-h-[300px]"
+              defaultHeightPx={260}
+              minHeightPx={220}
+              maxHeightPx={560}
               value={composerState.content}
               onChange={(event) =>
                 setComposerState((currentState) => ({

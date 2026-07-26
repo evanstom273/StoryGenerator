@@ -4,6 +4,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
+import { useRef } from "react";
 import { cn } from "../../utils/cn";
 
 export function Field({
@@ -53,13 +54,63 @@ export function SelectInput({
   );
 }
 
+type TextAreaInputProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  defaultHeightPx?: number;
+  minHeightPx?: number;
+  maxHeightPx?: number;
+  snapThresholdPx?: number;
+};
+
 export function TextAreaInput({
   className,
+  style,
+  defaultHeightPx = 180,
+  minHeightPx = 160,
+  maxHeightPx = 420,
+  snapThresholdPx = 28,
+  onMouseUp,
+  onTouchEnd,
   ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+}: TextAreaInputProps) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  function snapHeightIfNeeded() {
+    const element = ref.current;
+    if (!element) {
+      return;
+    }
+
+    const currentHeight = element.offsetHeight;
+    const clampedHeight = Math.max(minHeightPx, Math.min(maxHeightPx, currentHeight));
+
+    if (Math.abs(clampedHeight - defaultHeightPx) <= snapThresholdPx) {
+      element.style.height = `${defaultHeightPx}px`;
+      return;
+    }
+
+    if (clampedHeight !== currentHeight) {
+      element.style.height = `${clampedHeight}px`;
+    }
+  }
+
   return (
     <textarea
-      className={cn(inputClasses, "min-h-[180px] resize-y md:resize", className)}
+      ref={ref}
+      className={cn(inputClasses, "resize-y", className)}
+      style={{
+        ...style,
+        height: style?.height ?? `${defaultHeightPx}px`,
+        minHeight: `${minHeightPx}px`,
+        maxHeight: `${maxHeightPx}px`,
+      }}
+      onMouseUp={(event) => {
+        snapHeightIfNeeded();
+        onMouseUp?.(event);
+      }}
+      onTouchEnd={(event) => {
+        snapHeightIfNeeded();
+        onTouchEnd?.(event);
+      }}
       {...props}
     />
   );

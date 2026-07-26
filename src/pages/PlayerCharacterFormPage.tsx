@@ -370,7 +370,9 @@ export function PlayerCharacterFormPage() {
             action={renderFieldRandomizeAction(["appearance"])}
           >
             <TextAreaInput
-              className="min-h-[220px] md:min-h-[260px]"
+              defaultHeightPx={260}
+              minHeightPx={220}
+              maxHeightPx={520}
               value={formState.appearance}
               onChange={(event) =>
                 setFormState((currentState) => ({
