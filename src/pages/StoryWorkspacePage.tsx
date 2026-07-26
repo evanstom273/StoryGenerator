@@ -39,6 +39,15 @@ const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
 const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
 const STORY_END_RE = /^the end[.!?]*$/i;
 
+function isStoryEndingText(value: string) {
+  const normalized = value
+    .trim()
+    .replace(/^\*+|\*+$/g, "")
+    .replace(/^["']+|["']+$/g, "")
+    .trim();
+  return STORY_END_RE.test(normalized);
+}
+
 function reportWorkspaceUiAudit(args: {
   msg: string;
   data?: Record<string, unknown>;
@@ -166,6 +175,7 @@ export function StoryWorkspacePage() {
   const [generationFailure, setGenerationFailure] = useState<GenerationFailure | null>(null);
   const [generationFailureOpen, setGenerationFailureOpen] = useState(false);
   const [showSequelPrompt, setShowSequelPrompt] = useState(false);
+  const [dismissedSequelPromptMessageId, setDismissedSequelPromptMessageId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingDraft, setStreamingDraft] = useState<string | null>(null);
   const streamingAbortRef = useRef<AbortController | null>(null);
@@ -254,7 +264,23 @@ export function StoryWorkspacePage() {
     setZeroHpCustom("");
     setPendingZeroHpConsequence(null);
     setVariantSession(null);
+    setShowSequelPrompt(false);
+    setDismissedSequelPromptMessageId(null);
   }, [storyId]);
+
+  useEffect(() => {
+    const lastMessage = messages.at(-1);
+    if (
+      !lastMessage ||
+      lastMessage.role !== "user" ||
+      !isStoryEndingText(lastMessage.content) ||
+      lastMessage.id === dismissedSequelPromptMessageId
+    ) {
+      return;
+    }
+
+    setShowSequelPrompt(true);
+  }, [dismissedSequelPromptMessageId, messages]);
 
 
   useEffect(() => {
@@ -405,7 +431,7 @@ export function StoryWorkspacePage() {
     const slashTime = parseSlashTimeCommand(chatInput);
     const content = slashTime ? slashTime.strippedText || "." : chatInput;
     const directorIntentOverride = slashTime?.intent;
-    const isStoryEndingMarker = STORY_END_RE.test(content.trim());
+    const isStoryEndingMarker = isStoryEndingText(content);
 
     setIsGenerating(true);
     setStreamingDraft("");
@@ -1044,7 +1070,14 @@ export function StoryWorkspacePage() {
               <span className="font-medium text-ink-soft">{activeStory.title}</span>. Do you want to start a sequel now?
             </div>
             <div className="mt-5 flex items-center justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowSequelPrompt(false)}>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowSequelPrompt(false);
+                  const lastMessage = messages.at(-1);
+                  setDismissedSequelPromptMessageId(lastMessage?.id ?? null);
+                }}
+              >
                 Not Yet
               </Button>
               <Button
