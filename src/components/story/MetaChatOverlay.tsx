@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { Button } from "../ui/Button";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { downloadFile } from "../../lib/download";
-import { getMetaChatReferenceDisplay } from "../../lib/metaChatReferences";
+import {
+  getMetaChatReferenceDisplay,
+  getMetaChatReferenceSuggestions,
+  type MetaChatReferenceSuggestion,
+} from "../../lib/metaChatReferences";
 import { isGlobalMetaChatScope } from "../../lib/metaChatScope";
 import {
   createMetaChatExportFilename,
@@ -14,6 +18,29 @@ import {
 
 const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
 const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
+
+function getActiveReferenceQuery(text: string, caretIndex: number) {
+  const safeCaret = Math.max(0, Math.min(caretIndex, text.length));
+  const beforeCaret = text.slice(0, safeCaret);
+  const match = /(^|\s)@([A-Za-z0-9'’&.+-]*(?:\s+[A-Za-z0-9'’&.+-]*){0,5})$/.exec(
+    beforeCaret,
+  );
+  if (!match) {
+    return null;
+  }
+
+  const rawQuery = match[2] ?? "";
+  const mentionStart = safeCaret - rawQuery.length - 1;
+  if (mentionStart < 0) {
+    return null;
+  }
+
+  return {
+    query: rawQuery,
+    mentionStart,
+    mentionEnd: safeCaret,
+  };
+}
 
 function reportMetaChatUiAudit(args: {
   msg: string;
@@ -90,6 +117,9 @@ export function MetaChatOverlay(props: {
   const [error, setError] = useState<string | null>(null);
   const [retryingJobIds, setRetryingJobIds] = useState<Set<string>>(new Set());
   const [showReferenceHelp, setShowReferenceHelp] = useState(false);
+  const [cursorIndex, setCursorIndex] = useState(0);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const exampleStories = useMemo(() => stories.slice(0, 4).map((entry) => entry.title), [stories]);
   const exampleCharacters = useMemo(
     () =>
@@ -103,6 +133,29 @@ export function MetaChatOverlay(props: {
     () => universes.slice(0, 4).map((entry) => entry.name),
     [universes],
   );
+  const activeReferenceQuery = useMemo(
+    () => getActiveReferenceQuery(draft, cursorIndex),
+    [draft, cursorIndex],
+  );
+  const referenceSuggestions = useMemo(
+    () =>
+      activeReferenceQuery
+        ? getMetaChatReferenceSuggestions({
+            query: activeReferenceQuery.query,
+            stories,
+            characters: playerCharacters.filter(
+              (entry) => (entry.scope ?? "library") === "library",
+            ),
+            universes,
+            limit: 8,
+          })
+        : [],
+    [activeReferenceQuery, playerCharacters, stories, universes],
+  );
+
+  useEffect(() => {
+    setActiveSuggestionIndex(0);
+  }, [draft, activeReferenceQuery?.query]);
 
   async function handleRetry(jobId: string, content: string) {
     setRetryingJobIds((prev) => new Set([...prev, jobId]));
@@ -140,6 +193,24 @@ export function MetaChatOverlay(props: {
     }
   }
 
+  function applySuggestion(suggestion: MetaChatReferenceSuggestion) {
+    if (!activeReferenceQuery) {
+      return;
+    }
+
+    const nextDraft = `${draft.slice(0, activeReferenceQuery.mentionStart)}@${suggestion.label} ${draft.slice(activeReferenceQuery.mentionEnd)}`;
+    const nextCursor = activeReferenceQuery.mentionStart + suggestion.label.length + 2;
+    setDraft(nextDraft);
+    setCursorIndex(nextCursor);
+    void setMetaChatDraft(props.storyId, nextDraft);
+    setShowReferenceHelp(false);
+
+    requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
   useEffect(() => {
     if (props.open) {
       setDraft(getMetaChatDraft(props.storyId));
@@ -152,6 +223,7 @@ export function MetaChatOverlay(props: {
       setIsExporting(null);
       setError(null);
       setShowReferenceHelp(false);
+      setActiveSuggestionIndex(0);
     }
   }, [props.open]);
 
@@ -427,12 +499,40 @@ export function MetaChatOverlay(props: {
             </div>
           </div>
           <textarea
+            ref={composerRef}
             className="min-h-[84px] w-full resize-y rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
             value={draft}
             onChange={(event) => {
               const nextDraft = event.target.value;
               setDraft(nextDraft);
+              setCursorIndex(event.target.selectionStart ?? nextDraft.length);
               void setMetaChatDraft(props.storyId, nextDraft);
+            }}
+            onClick={(event) => setCursorIndex(event.currentTarget.selectionStart ?? 0)}
+            onKeyUp={(event) => setCursorIndex(event.currentTarget.selectionStart ?? 0)}
+            onSelect={(event) => setCursorIndex(event.currentTarget.selectionStart ?? 0)}
+            onKeyDown={(event) => {
+              if (!referenceSuggestions.length) {
+                return;
+              }
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setActiveSuggestionIndex((current) =>
+                  current >= referenceSuggestions.length - 1 ? 0 : current + 1,
+                );
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveSuggestionIndex((current) =>
+                  current <= 0 ? referenceSuggestions.length - 1 : current - 1,
+                );
+                return;
+              }
+              if (event.key === "Tab") {
+                event.preventDefault();
+                applySuggestion(referenceSuggestions[activeSuggestionIndex] ?? referenceSuggestions[0]!);
+              }
             }}
             placeholder={
               isGlobalScope
@@ -440,6 +540,35 @@ export function MetaChatOverlay(props: {
                 : "Brainstorm, compare references, ask questions, or use @Story, @Character, @Universe…"
             }
           />
+          {referenceSuggestions.length ? (
+            <div className="rounded-[10px] border border-divider/[0.45] bg-app-elevated p-2">
+              <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
+                Autocomplete
+              </div>
+              <div className="space-y-1">
+                {referenceSuggestions.map((suggestion, index) => (
+                  <button
+                    key={`${suggestion.kind}:${suggestion.id}`}
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      applySuggestion(suggestion);
+                    }}
+                    className={
+                      index === activeSuggestionIndex
+                        ? "flex w-full items-center justify-between rounded-[8px] border border-accent/25 bg-accent/10 px-3 py-2 text-left text-sm text-ink-soft"
+                        : "flex w-full items-center justify-between rounded-[8px] border border-transparent px-3 py-2 text-left text-sm text-ink-soft transition hover:border-divider/[0.45] hover:bg-panel-muted/40"
+                    }
+                  >
+                    <span className="truncate">{suggestion.label}</span>
+                    <span className="ml-3 shrink-0 text-[11px] uppercase tracking-[0.12em] text-ink-muted">
+                      {suggestion.kind}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <Button className="w-full" onClick={() => void handleSend()} disabled={isSending}>
             {isSending ? "Queueing..." : "Send"}
           </Button>
