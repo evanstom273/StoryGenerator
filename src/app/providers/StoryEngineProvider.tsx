@@ -1003,6 +1003,128 @@ function buildMetaChatLibraryOverview(args: {
   );
 }
 
+async function rebuildChapterArchiveSummaries(params: {
+  story: Story;
+  playerCharacter: PlayerCharacter;
+  repository: StoryEngineRepository;
+  messages: StoryMessage[];
+  chapters: StoryChapter[];
+  storyStateJson?: string;
+  providerType: string;
+  provider: AIProvider;
+  apiKey: string;
+  model: string;
+  signal?: AbortSignal;
+  incremental?: boolean;
+  previousDeepIndexedMessageCount?: number;
+  onProgress?: (args: { processed: number; total: number; label: string }) => void;
+}) {
+  const sortedChapters = [...params.chapters].sort((left, right) => left.endsAtIndex - right.endsAtIndex);
+  const chaptersToRebuild = sortedChapters.filter((chapter) => {
+    if (!params.incremental) {
+      return true;
+    }
+    if (!chapter.summary?.trim()) {
+      return true;
+    }
+    return chapter.endsAtIndex > (params.previousDeepIndexedMessageCount ?? 0);
+  });
+
+  if (!chaptersToRebuild.length) {
+    return 0;
+  }
+
+  const normalizedState = (() => {
+    const json = params.storyStateJson?.trim() ?? "";
+    if (!json) return null;
+    const parsed = safeParseStoryStateData(json);
+    return normalizeStoryStateToV2(parsed);
+  })();
+
+  for (let chapterIndex = 0; chapterIndex < chaptersToRebuild.length; chapterIndex += 1) {
+    if (params.signal?.aborted) {
+      throw new Error("Re-index aborted.");
+    }
+
+    const chapter = chaptersToRebuild[chapterIndex]!;
+    const chapterPosition = sortedChapters.findIndex((entry) => entry.id === chapter.id);
+    const previousChapter = chapterPosition > 0 ? sortedChapters[chapterPosition - 1] : null;
+    const startIndex = (previousChapter?.endsAtIndex ?? 0) + 1;
+    const endIndex = chapter.endsAtIndex;
+    const slice = params.messages.slice(Math.max(0, startIndex - 1), Math.max(0, endIndex));
+
+    if (!slice.length) {
+      continue;
+    }
+
+    params.onProgress?.({
+      processed: chapterIndex + 1,
+      total: chaptersToRebuild.length,
+      label: chapter.label,
+    });
+
+    const transcript = slice
+      .map((message, idx) => {
+        const number = startIndex + idx;
+        const label =
+          message.role === "user"
+            ? `USER (${message.speakerName?.trim() || params.playerCharacter.name})`
+            : message.speakerType === "narrator"
+              ? "NARRATOR"
+              : message.speakerName?.trim()
+                ? `CANON (${message.speakerName.trim()})`
+                : "ASSISTANT";
+        const content = (message.content ?? "").trim().replace(/\s+/g, " ");
+        return `[${number}] ${label}: ${content}`;
+      })
+      .join("\n");
+
+    const chapterPrompt = [
+      "Rebuild the archive chapter review for the following canon chapter transcript.",
+      "This output is for the story archive, not for narration. Do not write prose scenes.",
+      "Keep it compact and spoiler-aware: focus on what actually happened, key reveals, and state changes.",
+      "Output format:",
+      "- 1 short paragraph summary",
+      "- Then 3-6 bullet points of major beats",
+    ].join("\n");
+
+    const contextBlock = [
+      `Story title: ${params.story.title}`,
+      `Chapter: ${chapter.label}`,
+      normalizedState?.summaries?.premise?.trim()
+        ? `Premise: ${normalizedState.summaries.premise.trim()}`
+        : null,
+      params.story.currentSummary?.trim()
+        ? `Current summary: ${params.story.currentSummary.trim()}`
+        : null,
+    ]
+      .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+      .join("\n");
+
+    const chapterSummaryText = (
+      await generateResponseWithRetry({
+        providerType: params.providerType,
+        provider: params.provider,
+        apiKey: params.apiKey,
+        model: params.model,
+        signal: params.signal,
+        messages: [
+          { role: "system", content: chapterPrompt },
+          { role: "system", content: `Context:\n${contextBlock}` },
+          { role: "user", content: transcript.slice(0, 12000) },
+        ],
+      })
+    ).content;
+
+    await params.repository.saveStoryChapter({
+      ...chapter,
+      summary: chapterSummaryText.trim(),
+    });
+  }
+
+  return chaptersToRebuild.length;
+}
+
 const StoryEngineContext = createContext<StoryEngineContextValue | null>(null);
 
 function normalizeDuplicateKeyPart(value: string) {
@@ -1922,10 +2044,16 @@ export function StoryEngineProvider({
         const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
         const provider = createAIProvider(providerType);
 
-        const [allMessages, existingStoryState] = await Promise.all([
+        const [allMessages, existingStoryState, storedChapters, playerCharacter] = await Promise.all([
           repository.listStoryMessages(storyId),
           repository.getStoryState(storyId),
+          repository.listStoryChapters(storyId),
+          repository.getPlayerCharacter(story.playerCharacterId),
         ]);
+
+        if (!playerCharacter) {
+          throw new Error("Story references missing player character.");
+        }
 
         setRebuildStatus({
           storyId,
@@ -2046,6 +2174,49 @@ export function StoryEngineProvider({
           stateJson: nextStateJson,
           updatedAt: now,
         });
+
+        const previousDeepIndexedMessageCount =
+          safeParseStoryStateData(existingStoryState?.stateJson ?? "")?.lastDeepIndexedMessageCount ??
+          0;
+
+        if (storedChapters.length) {
+          setRebuildStatus((current) =>
+            current && current.storyId === storyId
+              ? {
+                  ...current,
+                  phase: "saving",
+                  message: "Rebuilding chapter reviews...",
+                }
+              : current,
+          );
+
+          await rebuildChapterArchiveSummaries({
+            story,
+            playerCharacter,
+            repository,
+            messages: allMessages,
+            chapters: storedChapters,
+            storyStateJson: nextStateJson,
+            providerType,
+            provider,
+            apiKey,
+            model,
+            signal,
+            incremental: opts?.incremental ?? false,
+            previousDeepIndexedMessageCount,
+            onProgress: ({ processed, total, label }) => {
+              setRebuildStatus((current) =>
+                current && current.storyId === storyId
+                  ? {
+                      ...current,
+                      phase: "saving",
+                      message: `Rebuilding chapter reviews… ${processed}/${total} (${label})`,
+                    }
+                  : current,
+              );
+            },
+          });
+        }
 
         if (!story.currentSummary?.trim() && result.summaryText?.trim()) {
           await repository.saveStory({
