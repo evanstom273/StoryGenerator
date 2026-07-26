@@ -6,9 +6,21 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.5.0";
+export const APP_VERSION = "2.5.1";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "2.5.1": {
+    title: "Ending Flow + Chapter Review Rebuild",
+    added: [
+      "Typing The End in story chat now functions as a final ending marker and offers a direct Create Sequel prompt",
+      "MetaChat @ references now support live autocomplete suggestions while typing, with tap-to-insert and partial-name matching",
+    ],
+    fixed: [
+      "Deep indexing now rebuilds chapter archive reviews from saved chapter boundaries instead of only refreshing story memory and indexes",
+      "The sequel prompt after The End is now driven from saved transcript state so it appears more reliably after the ending message is recorded",
+    ],
+    knownIssues: [],
+  },
   "2.5.0": {
     title: "Ensemble Storytelling + MetaChat Evolution",
     added: [
