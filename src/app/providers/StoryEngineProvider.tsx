@@ -3857,28 +3857,40 @@ export function StoryEngineProvider({
 
         return nextMessage;
       },
-      async sendMetaChatMessage(storyId, content) {
+      async sendMetaChatMessage(scopeId, content) {
         const trimmed = content.trim();
         if (!trimmed) {
           throw new Error("Message content is required.");
         }
+        const existingReferences =
+          storyUiStates.find((record) => record.storyId === scopeId)?.metaChatReferences ?? [];
+        const resolvedReferences = mergeMetaChatReferences(
+          existingReferences,
+          resolveInlineMetaChatReferences(trimmed),
+        );
         const userMessage: StoryMetaMessage = {
           id: createEntityId("story-meta-message"),
-          storyId,
+          storyId: scopeId,
           role: "user",
           content: trimmed,
           timestamp: new Date().toISOString(),
+          referenceSnapshot: resolvedReferences,
         };
 
         await repository.saveStoryMetaMessage(userMessage);
-        const assistantText = await generateMetaChatAssistantReply(storyId, trimmed);
+        const assistantText = await generateMetaChatAssistantReply(
+          scopeId,
+          trimmed,
+          resolvedReferences,
+        );
 
         const assistantMessage: StoryMetaMessage = {
           id: createEntityId("story-meta-message"),
-          storyId,
+          storyId: scopeId,
           role: "assistant",
           content: assistantText.trim(),
           timestamp: new Date().toISOString(),
+          referenceSnapshot: resolvedReferences,
         };
 
         await repository.saveStoryMetaMessage(assistantMessage);
@@ -3888,21 +3900,51 @@ export function StoryEngineProvider({
           location: "StoryEngineProvider.tsx:sendMetaChatMessage:save",
           msg: "MetaChat response saved",
           data: {
-            storyId,
+            storyId: scopeId,
             savedOutput: assistantMessage.content,
             savedLength: assistantMessage.content?.length ?? 0,
           },
         });
         // #endregion
+        await saveStoryUiStateRecord(scopeId, {
+          metaChatDraft: "",
+          metaChatReferences: resolvedReferences,
+        });
         await hydrate(false);
         return assistantMessage ?? userMessage;
       },
       queueMetaChatMessage,
-      async setMetaChatDraft(storyId, draft) {
-        await saveStoryUiStateRecord(storyId, { metaChatDraft: draft });
+      async setMetaChatDraft(scopeId, draft) {
+        await saveStoryUiStateRecord(scopeId, { metaChatDraft: draft });
       },
-      async clearMetaChatDraft(storyId) {
-        await saveStoryUiStateRecord(storyId, { metaChatDraft: "" });
+      async clearMetaChatDraft(scopeId) {
+        await saveStoryUiStateRecord(scopeId, { metaChatDraft: "" });
+      },
+      async setMetaChatReferences(scopeId, references) {
+        await saveStoryUiStateRecord(scopeId, {
+          metaChatReferences: mergeMetaChatReferences(references),
+        });
+      },
+      async resetMetaChatConversation(scopeId) {
+        const [scopeMessages, jobs] = await Promise.all([
+          repository.listStoryMetaMessages(scopeId),
+          repository.listBackgroundJobs(),
+        ]);
+        await Promise.all(
+          scopeMessages.map((message) => repository.deleteStoryMetaMessage(message.id)),
+        );
+        await Promise.all(
+          jobs
+            .filter(
+              (job) =>
+                job.storyId === scopeId &&
+                job.type === "metachat_generate" &&
+                (job.status === "queued" || job.status === "running"),
+            )
+            .map((job) => cancelBackgroundJob(job.id)),
+        );
+        await saveStoryUiStateRecord(scopeId, { metaChatDraft: "" });
+        await hydrate(false);
       },
       async createDeveloperBug(draft) {
         const now = new Date().toISOString();
