@@ -48,10 +48,13 @@ export function MetaChatOverlay(props: {
     getMetaChatReferences,
     getStoryById,
     getMetaMessagesForScope,
+    playerCharacters,
     queueMetaChatMessage,
     resetMetaChatConversation,
     setMetaChatDraft,
     setMetaChatReferences,
+    stories,
+    universes,
   } = useStoryEngine();
   const isGlobalScope = isGlobalMetaChatScope(props.storyId);
   const story = getStoryById(props.storyId);
@@ -86,6 +89,20 @@ export function MetaChatOverlay(props: {
   const [isExporting, setIsExporting] = useState<MetaChatExportFormat | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryingJobIds, setRetryingJobIds] = useState<Set<string>>(new Set());
+  const [showReferenceHelp, setShowReferenceHelp] = useState(false);
+  const exampleStories = useMemo(() => stories.slice(0, 4).map((entry) => entry.title), [stories]);
+  const exampleCharacters = useMemo(
+    () =>
+      playerCharacters
+        .filter((entry) => (entry.scope ?? "library") === "library")
+        .slice(0, 4)
+        .map((entry) => entry.name),
+    [playerCharacters],
+  );
+  const exampleUniverses = useMemo(
+    () => universes.slice(0, 4).map((entry) => entry.name),
+    [universes],
+  );
 
   async function handleRetry(jobId: string, content: string) {
     setRetryingJobIds((prev) => new Set([...prev, jobId]));
@@ -134,6 +151,7 @@ export function MetaChatOverlay(props: {
       setIsSending(false);
       setIsExporting(null);
       setError(null);
+      setShowReferenceHelp(false);
     }
   }, [props.open]);
 
@@ -358,14 +376,56 @@ export function MetaChatOverlay(props: {
               {isExporting === "json" ? "…" : "JSON"}
             </Button>
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => void handleResetChat()}
-            disabled={isSending}
-          >
-            Reset Chat
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleResetChat()}
+              disabled={isSending}
+            >
+              Reset Chat
+            </Button>
+            <div className="relative ml-auto">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowReferenceHelp((current) => !current)}
+              >
+                @ Help
+              </Button>
+              {showReferenceHelp ? (
+                <div className="absolute right-0 bottom-[calc(100%+8px)] z-20 w-[min(92vw,28rem)] rounded-[10px] border border-divider/[0.5] bg-app-elevated p-3 text-xs text-ink-muted shadow-hero">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-soft">
+                    Valid @ References
+                  </div>
+                  <div className="mt-2 space-y-1 leading-5">
+                    <div><span className="font-semibold text-ink-soft">@Story</span> adds another story to the context.</div>
+                    <div><span className="font-semibold text-ink-soft">@Character</span> compares or pulls in a character.</div>
+                    <div><span className="font-semibold text-ink-soft">@Universe</span> compares tone, canon fit, and world assumptions.</div>
+                    <div>Partial matches work, so you can use shorthand like <span className="font-semibold text-ink-soft">@Davies</span>, <span className="font-semibold text-ink-soft">@Jamie</span>, or <span className="font-semibold text-ink-soft">@Brooklyn</span>.</div>
+                  </div>
+                  {exampleStories.length ? (
+                    <div className="mt-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-soft">Stories</div>
+                      <div className="mt-1 leading-5">{exampleStories.map((value) => `@${value}`).join(" · ")}</div>
+                    </div>
+                  ) : null}
+                  {exampleCharacters.length ? (
+                    <div className="mt-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-soft">Characters</div>
+                      <div className="mt-1 leading-5">{exampleCharacters.map((value) => `@${value}`).join(" · ")}</div>
+                    </div>
+                  ) : null}
+                  {exampleUniverses.length ? (
+                    <div className="mt-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-soft">Universes</div>
+                      <div className="mt-1 leading-5">{exampleUniverses.map((value) => `@${value}`).join(" · ")}</div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
           <textarea
             className="min-h-[84px] w-full resize-y rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
             value={draft}
