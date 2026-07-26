@@ -15,6 +15,7 @@ const PROVIDER_MODELS: Record<AIProviderType, ProviderModelOption[]> = {
   gemini: [
     { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
     { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+    { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
     { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
   ],
   anthropic: [
@@ -76,6 +77,7 @@ export interface ModelStreamConfig {
 
 const MODEL_STREAM_CONFIG: Partial<Record<string, ModelStreamConfig>> = {
   "gemini-3.1-pro-preview": { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
+  "gemini-3.6-flash":       { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
   "gemini-2.5-pro":         { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
   "gemini-2.5-flash":       { idleTimeoutMs: 30_000, totalTimeoutMs: 120_000, maxAttempts: 3 },
   "gemini-3.5-flash":       { idleTimeoutMs: 30_000, totalTimeoutMs: 120_000, maxAttempts: 3 },
