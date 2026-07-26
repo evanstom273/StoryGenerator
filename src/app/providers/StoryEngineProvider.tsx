@@ -924,6 +924,89 @@ function buildMetaChatCanonContext(params: {
   );
 }
 
+function isGlobalMetaChatScope(scopeId: string) {
+  return scopeId === GLOBAL_META_CHAT_SCOPE_ID;
+}
+
+function buildMetaChatLibraryOverview(args: {
+  stories: Story[];
+  universes: Universe[];
+  playerCharacters: PlayerCharacter[];
+}) {
+  const universeMap = new Map(args.universes.map((universe) => [universe.id, universe]));
+  const characterMap = new Map(
+    args.playerCharacters.map((character) => [character.id, character]),
+  );
+
+  const recentStories = sortByUpdatedAtDesc(args.stories)
+    .slice(0, 16)
+    .map((story) =>
+      [
+        story.title,
+        universeMap.get(story.universeId)?.name
+          ? `Universe: ${universeMap.get(story.universeId)!.name}`
+          : null,
+        characterMap.get(story.playerCharacterId)?.name
+          ? `Player character: ${characterMap.get(story.playerCharacterId)!.name}`
+          : null,
+        story.currentSummary?.trim() ? `Summary: ${story.currentSummary.trim()}` : null,
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join(" | "),
+    );
+
+  const recentCharacters = sortByCreatedAtDesc(args.playerCharacters)
+    .filter((character) => (character.scope ?? "library") === "library")
+    .slice(0, 16)
+    .map((character) =>
+      [
+        character.name,
+        universeMap.get(character.universeId)?.name
+          ? `Universe: ${universeMap.get(character.universeId)!.name}`
+          : null,
+        character.characterConcept?.trim()
+          ? `Concept: ${character.characterConcept.trim()}`
+          : null,
+        character.goals?.trim() ? `Goals: ${character.goals.trim()}` : null,
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join(" | "),
+    );
+
+  const recentUniverses = sortByCreatedAtDesc(args.universes)
+    .slice(0, 12)
+    .map((universe) =>
+      [
+        universe.name,
+        universe.description?.trim() ? `Description: ${universe.description.trim()}` : null,
+        universe.genreTheme?.trim() ? `Genre/theme: ${universe.genreTheme.trim()}` : null,
+        universe.tone?.trim() ? `Tone: ${universe.tone.trim()}` : null,
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join(" | "),
+    );
+
+  return normalizeMetaChatWhitespace(
+    [
+      "Library Overview",
+      `Stories in library: ${args.stories.length}`,
+      `Universes in library: ${args.universes.length}`,
+      `Library characters: ${args.playerCharacters.filter((character) => (character.scope ?? "library") === "library").length}`,
+      recentStories.length
+        ? `Recent / active stories\n${recentStories.map((line) => `- ${line}`).join("\n")}`
+        : null,
+      recentCharacters.length
+        ? `Player characters\n${recentCharacters.map((line) => `- ${line}`).join("\n")}`
+        : null,
+      recentUniverses.length
+        ? `Universes\n${recentUniverses.map((line) => `- ${line}`).join("\n")}`
+        : null,
+    ]
+      .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+      .join("\n\n"),
+  );
+}
+
 const StoryEngineContext = createContext<StoryEngineContextValue | null>(null);
 
 function normalizeDuplicateKeyPart(value: string) {
@@ -1434,6 +1517,7 @@ export function StoryEngineProvider({
         id: current?.id ?? `story-ui-state:${storyId}`,
         storyId,
         metaChatDraft: current?.metaChatDraft,
+        metaChatReferences: current?.metaChatReferences ?? [],
         updatedAt: new Date().toISOString(),
         ...patch,
       };
@@ -1441,6 +1525,8 @@ export function StoryEngineProvider({
       if (!next.metaChatDraft?.trim()) {
         next.metaChatDraft = "";
       }
+
+      next.metaChatReferences = mergeMetaChatReferences(next.metaChatReferences ?? []);
 
       await repository.saveStoryUiState(next);
       setStoryUiStates((currentStates) => {
