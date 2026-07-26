@@ -1125,6 +1125,109 @@ async function rebuildChapterArchiveSummaries(params: {
   return chaptersToRebuild.length;
 }
 
+function normalizeChapterLabelKey(label: string) {
+  return label.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function resolveStoredOrDetectedChapterBoundary(message: StoryMessage) {
+  if (message.chapterBoundary?.kind && message.chapterBoundary.label?.trim()) {
+    return message.chapterBoundary;
+  }
+  const detected = detectChapterBoundary(message.content ?? "");
+  if (detected.detected && detected.kind && detected.label) {
+    return {
+      kind: detected.kind,
+      label: detected.label,
+    } satisfies StoryMessage["chapterBoundary"];
+  }
+  return null;
+}
+
+function deriveStoryChaptersFromTranscript(params: {
+  storyId: string;
+  messages: StoryMessage[];
+  existingChapters: StoryChapter[];
+}) {
+  const sortedMessages = sortByTimestampAsc(
+    params.messages.filter((message) => message.storyId === params.storyId),
+  );
+  const existingBySignature = new Map(
+    params.existingChapters.map((chapter) => [
+      `${normalizeChapterLabelKey(chapter.label)}::${chapter.endsAtMessageId}`,
+      chapter,
+    ]),
+  );
+  const chapters: StoryChapter[] = [];
+  const seenSignatures = new Set<string>();
+  let activeLabel: string | null = null;
+
+  function pushChapter(label: string, message: StoryMessage, endsAtIndex: number) {
+    const normalizedLabel = label.trim();
+    if (!normalizedLabel) {
+      return;
+    }
+    const signature = `${normalizeChapterLabelKey(normalizedLabel)}::${message.id}`;
+    if (seenSignatures.has(signature)) {
+      return;
+    }
+    seenSignatures.add(signature);
+    const existing = existingBySignature.get(signature);
+    chapters.push({
+      id: existing?.id ?? createEntityId("story-chapter"),
+      storyId: params.storyId,
+      label: normalizedLabel,
+      endsAtMessageId: message.id,
+      endsAtIndex,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      summary: existing?.summary,
+    });
+  }
+
+  for (let index = 0; index < sortedMessages.length; index += 1) {
+    const message = sortedMessages[index]!;
+    const boundary = resolveStoredOrDetectedChapterBoundary(message);
+    if (!boundary) {
+      continue;
+    }
+
+    if (boundary.kind === "start") {
+      const previousMessage = index > 0 ? sortedMessages[index - 1] : null;
+      if (activeLabel && previousMessage) {
+        pushChapter(activeLabel, previousMessage, index);
+      }
+      activeLabel = boundary.label;
+      continue;
+    }
+
+    const resolvedLabel =
+      boundary.label === "The End" ? activeLabel : boundary.label;
+    if (!resolvedLabel) {
+      continue;
+    }
+
+    pushChapter(resolvedLabel, message, index + 1);
+    activeLabel = null;
+  }
+
+  return chapters.sort((left, right) => left.endsAtIndex - right.endsAtIndex);
+}
+
+async function syncStoryChaptersFromTranscript(params: {
+  storyId: string;
+  repository: StoryEngineRepository;
+  messages: StoryMessage[];
+  existingChapters: StoryChapter[];
+}) {
+  const rebuiltChapters = deriveStoryChaptersFromTranscript(params);
+  const nextIds = new Set(rebuiltChapters.map((chapter) => chapter.id));
+  const chaptersToDelete = params.existingChapters.filter((chapter) => !nextIds.has(chapter.id));
+
+  await Promise.all(chaptersToDelete.map((chapter) => params.repository.deleteStoryChapter(chapter.id)));
+  await Promise.all(rebuiltChapters.map((chapter) => params.repository.saveStoryChapter(chapter)));
+
+  return rebuiltChapters;
+}
+
 const StoryEngineContext = createContext<StoryEngineContextValue | null>(null);
 
 function normalizeDuplicateKeyPart(value: string) {
@@ -2179,7 +2282,24 @@ export function StoryEngineProvider({
           safeParseStoryStateData(existingStoryState?.stateJson ?? "")?.lastDeepIndexedMessageCount ??
           0;
 
-        if (storedChapters.length) {
+        setRebuildStatus((current) =>
+          current && current.storyId === storyId
+            ? {
+                ...current,
+                phase: "saving",
+                message: "Rebuilding chapter boundaries...",
+              }
+            : current,
+        );
+
+        const rebuiltChapters = await syncStoryChaptersFromTranscript({
+          storyId,
+          repository,
+          messages: allMessages,
+          existingChapters: storedChapters,
+        });
+
+        if (rebuiltChapters.length) {
           setRebuildStatus((current) =>
             current && current.storyId === storyId
               ? {
@@ -2195,7 +2315,7 @@ export function StoryEngineProvider({
             playerCharacter,
             repository,
             messages: allMessages,
-            chapters: storedChapters,
+            chapters: rebuiltChapters,
             storyStateJson: nextStateJson,
             providerType,
             provider,
