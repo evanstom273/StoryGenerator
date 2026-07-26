@@ -260,7 +260,7 @@ export function createGeminiProvider(): AIProvider {
         "Write in present tense.",
         "Keep it concise but specific.",
         "Preserve three layers: core premise, current situation, and recent developments.",
-        "Keep the protagonist central: who they are, what the story is fundamentally about, and what condition/status they are in now.",
+        "Keep the player character grounded in the summary, but preserve ensemble structure when present: note who the story is fundamentally about, the active co-leads or group dynamic, and the current condition/status of the player character and other scene-critical characters.",
         "Do not introduce protagonist identity facts (age/gender/pronouns/occupation/disabilities) unless explicitly supported by the transcript or existing summary. Avoid genre-default assumptions.",
         "Include: key events, current goals, unresolved threads, and relevant character details.",
         "Explicitly track changes to: preferred names, aliases, pronouns, ranks/titles, relationships, injuries/recoveries, and major world events.",

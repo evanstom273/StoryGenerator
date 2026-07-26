@@ -72,6 +72,10 @@ import {
   sendJobCompletionNotification,
 } from "../../lib/jobNotifications";
 import {
+  mergeMetaChatReferences,
+  resolveMetaChatReferences,
+} from "../../lib/metaChatReferences";
+import {
   getPlayerCharacterAuthorshipViolation,
 } from "../../lib/storyText/playerProtection";
 import {
@@ -102,6 +106,7 @@ import type {
   DeveloperTestingNoteDraft,
   DirectorIntent,
   GuardedDeleteResult,
+  MetaChatReference,
   PlayerCharacterExportBundleV1,
   PlayerCharacter,
   PlayerCharacterDraft,
@@ -171,10 +176,13 @@ interface StoryEngineContextValue {
   getDeveloperFeatureRequestById: (id: string) => DeveloperFeatureRequest | undefined;
   getDeveloperTestingNoteById: (id: string) => DeveloperTestingNote | undefined;
   getMessagesForStory: (storyId: string) => StoryMessage[];
+  getMetaMessagesForScope: (scopeId: string) => StoryMetaMessage[];
   getMetaMessagesForStory: (storyId: string) => StoryMetaMessage[];
   getChaptersForStory: (storyId: string) => StoryChapter[];
   getJobsForStory: (storyId: string) => BackgroundJob[];
+  getMetaChatJobs: (scopeId: string) => BackgroundJob[];
   getMetaChatDraft: (storyId: string) => string;
+  getMetaChatReferences: (scopeId: string) => MetaChatReference[];
   getPlayerCharactersForUniverse: (universeId: string) => PlayerCharacter[];
   getStoriesForUniverse: (universeId: string) => Story[];
   getStoriesForPlayerCharacter: (playerCharacterId: string) => Story[];
@@ -239,6 +247,11 @@ interface StoryEngineContextValue {
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
   setMetaChatDraft: (storyId: string, draft: string) => Promise<void>;
   clearMetaChatDraft: (storyId: string) => Promise<void>;
+  setMetaChatReferences: (
+    scopeId: string,
+    references: MetaChatReference[],
+  ) => Promise<void>;
+  resetMetaChatConversation: (scopeId: string) => Promise<void>;
   createDeveloperBug: (draft: DeveloperBugDraft) => Promise<DeveloperBug>;
   updateDeveloperBug: (id: string, draft: DeveloperBugDraft) => Promise<DeveloperBug | null>;
   deleteDeveloperBug: (id: string) => Promise<void>;
@@ -324,6 +337,7 @@ interface StoryEngineContextValue {
 const AI_MAX_ATTEMPTS = 3;
 const TERMINAL_JOB_RETENTION_MS = 10 * 60_000;
 const TERMINAL_JOB_PRUNE_INTERVAL_MS = 60_000;
+export const GLOBAL_META_CHAT_SCOPE_ID = "__story_engine_global_metachat__";
 
 const JOB_DEBUG_URL = "http://127.0.0.1:7777/event";
 const JOB_DEBUG_SESSION = "job-cancel-timeout";
