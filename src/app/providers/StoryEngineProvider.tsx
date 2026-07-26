@@ -75,6 +75,7 @@ import {
   mergeMetaChatReferences,
   resolveMetaChatReferences,
 } from "../../lib/metaChatReferences";
+import { isGlobalMetaChatScope } from "../../lib/metaChatScope";
 import {
   getPlayerCharacterAuthorshipViolation,
 } from "../../lib/storyText/playerProtection";
@@ -337,7 +338,6 @@ interface StoryEngineContextValue {
 const AI_MAX_ATTEMPTS = 3;
 const TERMINAL_JOB_RETENTION_MS = 10 * 60_000;
 const TERMINAL_JOB_PRUNE_INTERVAL_MS = 60_000;
-export const GLOBAL_META_CHAT_SCOPE_ID = "__story_engine_global_metachat__";
 
 const JOB_DEBUG_URL = "http://127.0.0.1:7777/event";
 const JOB_DEBUG_SESSION = "job-cancel-timeout";
@@ -922,10 +922,6 @@ function buildMetaChatCanonContext(params: {
       .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
       .join("\n\n"),
   );
-}
-
-function isGlobalMetaChatScope(scopeId: string) {
-  return scopeId === GLOBAL_META_CHAT_SCOPE_ID;
 }
 
 function buildMetaChatLibraryOverview(args: {

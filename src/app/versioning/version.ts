@@ -6,9 +6,22 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.4.1";
+export const APP_VERSION = "2.5.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "2.5.0": {
+    title: "Ensemble Storytelling + MetaChat Evolution",
+    added: [
+      "Narration guidance now supports ensemble scenes where supporting characters can joke, disagree, plan, gossip, and react without forcing the player character to be the center of every exchange",
+      "MetaChat now supports additive @Story, @Character, and @Universe references so story conversations can compare outside canon context without replacing the active story",
+      "A new library-level MetaChat is available from the main interface for cross-story and cross-universe analysis across the writing library",
+    ],
+    fixed: [
+      "MetaChat now behaves more like a writers' room assistant, with stronger comparison, critique, brainstorming, and pattern-analysis guidance",
+      "Reset Chat now clears only the MetaChat conversation while preserving the story, indexes, summaries, memory, and saved references",
+    ],
+    knownIssues: [],
+  },
   "1.0.0": {
     title: "Initial Release",
     added: [

@@ -1,3 +1,5 @@
+import { isGlobalMetaChatScope } from "./metaChatScope";
+
 export const META_CHAT_OPEN_STORAGE_KEY = "story-engine:open-metachat";
 
 type JobNotificationArgs = {
@@ -44,7 +46,9 @@ export async function sendJobCompletionNotification(args: JobNotificationArgs) {
           }
           if (args.storyId) {
             window.focus();
-            window.location.assign(`/stories/${args.storyId}`);
+            window.location.assign(
+              isGlobalMetaChatScope(args.storyId) ? "/" : `/stories/${args.storyId}`,
+            );
           }
         } catch {}
       };

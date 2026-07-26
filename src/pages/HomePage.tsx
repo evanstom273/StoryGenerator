@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { buttonClasses } from "../components/ui/Button";
+import { GLOBAL_META_CHAT_SCOPE_ID } from "../lib/metaChatScope";
+import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { useChangelog } from "../app/versioning/ChangelogContext";
@@ -35,6 +37,13 @@ export function HomePage() {
   const { openChangelog } = useChangelog();
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
+
+  function openLibraryMetaChat() {
+    try {
+      localStorage.setItem(META_CHAT_OPEN_STORAGE_KEY, GLOBAL_META_CHAT_SCOPE_ID);
+    } catch {}
+    window.dispatchEvent(new Event("story-engine:open-global-metachat"));
+  }
 
   const visibleStories = useMemo(
     () => stories.filter((s) => (showArchivedStories ? true : !s.isArchived)),
@@ -177,6 +186,16 @@ export function HomePage() {
               className="w-full rounded-[8px] border border-divider/[0.5] bg-panel-muted py-2 pl-8 pr-3 text-[13px] text-ink outline-none transition placeholder:text-white/25 focus:border-accent/[0.35] focus:ring-2 focus:ring-accent/[0.12]"
             />
           </div>
+          <button
+            type="button"
+            onClick={openLibraryMetaChat}
+            className={cn(
+              "flex-shrink-0 rounded-[8px] border px-3 py-2 text-[11px] font-medium transition",
+              "border-accent/[0.3] bg-accent/[0.08] text-accent-soft hover:bg-accent/[0.14]",
+            )}
+          >
+            Library MetaChat
+          </button>
           <button
             type="button"
             onClick={() => setShowArchivedStories(!showArchivedStories)}

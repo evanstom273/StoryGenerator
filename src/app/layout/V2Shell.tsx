@@ -3,7 +3,10 @@ import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { BrandMark } from "../../components/BrandMark";
 import { MenuIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
+import { MetaChatOverlay } from "../../components/story/MetaChatOverlay";
 import { cn } from "../../utils/cn";
+import { META_CHAT_OPEN_STORAGE_KEY } from "../../lib/jobNotifications";
+import { GLOBAL_META_CHAT_SCOPE_ID } from "../../lib/metaChatScope";
 import {
   readStoredBoolean,
   readStoredTextSize,
@@ -22,6 +25,7 @@ export function V2Shell() {
   const navigate = useNavigate();
   const [leftOpen, setLeftOpen] = useState(false);
   const [storySettingsOpen, setStorySettingsOpen] = useState(false);
+  const [globalMetaChatOpen, setGlobalMetaChatOpen] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(() =>
     readStoredBoolean(UI_PREFS_KEYS.rightSidebarCollapsed, true),
   );
@@ -42,6 +46,30 @@ export function V2Shell() {
     setLeftOpen(false);
     setStorySettingsOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(META_CHAT_OPEN_STORAGE_KEY) === GLOBAL_META_CHAT_SCOPE_ID) {
+        localStorage.removeItem(META_CHAT_OPEN_STORAGE_KEY);
+        setGlobalMetaChatOpen(true);
+      }
+    } catch {}
+  }, [location.pathname]);
+
+  useEffect(() => {
+    function openGlobalMetaChat() {
+      try {
+        if (localStorage.getItem(META_CHAT_OPEN_STORAGE_KEY) === GLOBAL_META_CHAT_SCOPE_ID) {
+          localStorage.removeItem(META_CHAT_OPEN_STORAGE_KEY);
+        }
+      } catch {}
+      setGlobalMetaChatOpen(true);
+    }
+
+    window.addEventListener("story-engine:open-global-metachat", openGlobalMetaChat);
+    return () =>
+      window.removeEventListener("story-engine:open-global-metachat", openGlobalMetaChat);
+  }, []);
 
   const activeStoryId = useMemo(() => (storyId ? String(storyId) : undefined), [storyId]);
   const readerActive = Boolean(activeStoryId) && readerMode;
@@ -178,6 +206,19 @@ export function V2Shell() {
               </Button>
               <button
                 type="button"
+                aria-label="Open library MetaChat"
+                onClick={() => setGlobalMetaChatOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="8" width="18" height="11" rx="2" />
+                  <path d="M8 8V5" /><path d="M16 8V5" />
+                  <circle cx="9" cy="13.5" r="1" fill="currentColor" stroke="none" />
+                  <circle cx="15" cy="13.5" r="1" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+              <button
+                type="button"
                 aria-label="Global settings"
                 onClick={() => navigate("/settings")}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
@@ -251,6 +292,25 @@ export function V2Shell() {
         </div>
 
         <StorySettingsDrawer storyId={activeStoryId} />
+        <button
+          type="button"
+          aria-label="Open library MetaChat"
+          onClick={() => setGlobalMetaChatOpen(true)}
+          className="fixed right-4 bottom-4 z-40 hidden items-center gap-2 rounded-full border border-accent/25 bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground shadow-hero transition hover:bg-accent-hover lg:flex"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="8" width="18" height="11" rx="2" />
+            <path d="M8 8V5" /><path d="M16 8V5" />
+            <circle cx="9" cy="13.5" r="1" fill="currentColor" stroke="none" />
+            <circle cx="15" cy="13.5" r="1" fill="currentColor" stroke="none" />
+          </svg>
+          Library MetaChat
+        </button>
+        <MetaChatOverlay
+          open={globalMetaChatOpen}
+          storyId={GLOBAL_META_CHAT_SCOPE_ID}
+          onClose={() => setGlobalMetaChatOpen(false)}
+        />
       </div>
     </UiPrefsContext.Provider>
   );

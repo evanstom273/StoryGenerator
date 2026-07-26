@@ -4,6 +4,8 @@ import DOMPurify from "dompurify";
 import { Button } from "../ui/Button";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { downloadFile } from "../../lib/download";
+import { getMetaChatReferenceDisplay } from "../../lib/metaChatReferences";
+import { isGlobalMetaChatScope } from "../../lib/metaChatScope";
 import {
   createMetaChatExportFilename,
   serializeMetaChatExport,
@@ -41,34 +43,42 @@ export function MetaChatOverlay(props: {
 }) {
   const {
     clearMetaChatDraft,
-    getJobsForStory,
+    getMetaChatJobs,
     getMetaChatDraft,
+    getMetaChatReferences,
     getStoryById,
-    getMetaMessagesForStory,
+    getMetaMessagesForScope,
     queueMetaChatMessage,
+    resetMetaChatConversation,
     setMetaChatDraft,
+    setMetaChatReferences,
   } = useStoryEngine();
+  const isGlobalScope = isGlobalMetaChatScope(props.storyId);
   const story = getStoryById(props.storyId);
   const messages = useMemo(
-    () => getMetaMessagesForStory(props.storyId),
-    [getMetaMessagesForStory, props.storyId],
+    () => getMetaMessagesForScope(props.storyId),
+    [getMetaMessagesForScope, props.storyId],
+  );
+  const references = useMemo(
+    () => getMetaChatReferences(props.storyId),
+    [getMetaChatReferences, props.storyId],
   );
   const pendingJobs = useMemo(
     () =>
-      getJobsForStory(props.storyId).filter(
+      getMetaChatJobs(props.storyId).filter(
         (job) =>
           job.type === "metachat_generate" &&
           (job.status === "queued" || job.status === "running"),
       ),
-    [getJobsForStory, props.storyId],
+    [getMetaChatJobs, props.storyId],
   );
 
   const failedJobs = useMemo(
     () =>
-      getJobsForStory(props.storyId).filter(
+      getMetaChatJobs(props.storyId).filter(
         (job) => job.type === "metachat_generate" && job.status === "failed",
       ),
-    [getJobsForStory, props.storyId],
+    [getMetaChatJobs, props.storyId],
   );
 
   const [draft, setDraft] = useState("");
@@ -89,6 +99,27 @@ export function MetaChatOverlay(props: {
         next.delete(jobId);
         return next;
       });
+    }
+  }
+
+  async function handleResetChat() {
+    setError(null);
+    try {
+      await resetMetaChatConversation(props.storyId);
+      setDraft("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to reset MetaChat.");
+    }
+  }
+
+  async function handleRemoveReference(referenceId: string) {
+    try {
+      await setMetaChatReferences(
+        props.storyId,
+        references.filter((reference) => reference.id !== referenceId),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update references.");
     }
   }
 
@@ -151,7 +182,7 @@ export function MetaChatOverlay(props: {
   }
 
   async function handleExport(format: MetaChatExportFormat) {
-    if (!story) {
+    if (!story && !isGlobalScope) {
       setError("Story not found.");
       return;
     }
@@ -162,12 +193,19 @@ export function MetaChatOverlay(props: {
     try {
       const { content, mimeType } = serializeMetaChatExport(
         {
-          storyTitle: story.title,
+          storyTitle: isGlobalScope ? "Library MetaChat" : story!.title,
           messages,
         },
         format,
       );
-      await downloadFile(createMetaChatExportFilename(story.title, format), content, mimeType);
+      await downloadFile(
+        createMetaChatExportFilename(
+          isGlobalScope ? "library-meta-chat" : story!.title,
+          format,
+        ),
+        content,
+        mimeType,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to export MetaChat.");
     } finally {
@@ -181,10 +219,10 @@ export function MetaChatOverlay(props: {
       <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-divider/[0.3] px-5 py-3.5">
         <div className="min-w-0">
           <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-            MetaChat
+            {isGlobalScope ? "Library MetaChat" : "MetaChat"}
           </div>
           <div className="mt-0.5 truncate text-[15px] font-bold leading-tight text-ink">
-            {story?.title ?? "Story"}
+            {isGlobalScope ? "Entire Writing Library" : story?.title ?? "Story"}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -200,6 +238,25 @@ export function MetaChatOverlay(props: {
       {/* Message list */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl space-y-3 px-4 py-4">
+          {references.length ? (
+            <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated px-3 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+                Active References
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {references.map((reference) => (
+                  <button
+                    key={`${reference.kind}:${reference.id}`}
+                    type="button"
+                    onClick={() => void handleRemoveReference(reference.id)}
+                    className="rounded-full border border-accent/25 bg-accent/10 px-3 py-1 text-[11px] text-accent-soft transition hover:bg-accent/15"
+                  >
+                    {getMetaChatReferenceDisplay(reference)} x
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {messages.length ? (
             messages.map((message) => (
               <div
@@ -224,7 +281,9 @@ export function MetaChatOverlay(props: {
             ))
           ) : (
             <div className="px-2 py-16 text-center text-sm text-ink-muted">
-              No MetaChat messages yet. Ask anything about your story — brainstorm, plan arcs, or ask questions.
+              {isGlobalScope
+                ? "No library MetaChat messages yet. Compare stories, characters, universes, themes, or your writing style across the whole library."
+                : "No MetaChat messages yet. Ask anything about your story — brainstorm, plan arcs, compare references, or ask questions."}
             </div>
           )}
         </div>
@@ -299,6 +358,14 @@ export function MetaChatOverlay(props: {
               {isExporting === "json" ? "…" : "JSON"}
             </Button>
           </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void handleResetChat()}
+            disabled={isSending}
+          >
+            Reset Chat
+          </Button>
           <textarea
             className="min-h-[84px] w-full resize-y rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
             value={draft}
@@ -307,7 +374,11 @@ export function MetaChatOverlay(props: {
               setDraft(nextDraft);
               void setMetaChatDraft(props.storyId, nextDraft);
             }}
-            placeholder="Brainstorm, ask questions, plan arcs…"
+            placeholder={
+              isGlobalScope
+                ? "Compare stories, ask about recurring themes, or use @Story, @Character, @Universe…"
+                : "Brainstorm, compare references, ask questions, or use @Story, @Character, @Universe…"
+            }
           />
           <Button className="w-full" onClick={() => void handleSend()} disabled={isSending}>
             {isSending ? "Queueing..." : "Send"}
