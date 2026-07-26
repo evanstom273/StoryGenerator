@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../utils/cn";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
@@ -53,11 +53,19 @@ export function UniverseFormPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatorError, setGeneratorError] = useState<string | null>(null);
   const [pendingUniverseId, setPendingUniverseId] = useState<string | null>(null);
+  const loadedUniverseIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!existingUniverse) {
+      loadedUniverseIdRef.current = null;
       return;
     }
+
+    if (loadedUniverseIdRef.current === existingUniverse.id) {
+      return;
+    }
+
+    loadedUniverseIdRef.current = existingUniverse.id;
 
     const mode = normalizeMode(existingUniverse.mode);
     const description = existingUniverse.description ?? "";

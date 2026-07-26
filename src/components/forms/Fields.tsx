@@ -59,7 +59,7 @@ export function TextAreaInput({
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
-      className={cn(inputClasses, "min-h-[140px] resize-y", className)}
+      className={cn(inputClasses, "min-h-[180px] resize-y md:resize", className)}
       {...props}
     />
   );

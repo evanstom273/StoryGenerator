@@ -757,16 +757,28 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     This story is locked as a prequel. Open or create a sequel to continue canon.
                   </div>
                 ) : null}
-                <Button
-                  className="mt-4 w-full"
-                  variant="secondary"
-                  onClick={() => {
-                    setStorySettingsOpen(false);
-                    navigate(`/stories/new?sequelTo=${story.id}`);
-                  }}
-                >
-                  Create Sequel
-                </Button>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <Button
+                    className="w-full"
+                    variant="secondary"
+                    onClick={() => {
+                      setStorySettingsOpen(false);
+                      navigate(`/stories/new?sequelTo=${story.id}`);
+                    }}
+                  >
+                    Create Sequel
+                  </Button>
+                  <Button
+                    className="w-full"
+                    variant="ghost"
+                    onClick={() => {
+                      setStorySettingsOpen(false);
+                      navigate(`/stories/new?branchFrom=${story.id}`);
+                    }}
+                  >
+                    Branch Story
+                  </Button>
+                </div>
               </CollapsibleSection>
 
               {(playerCharacter.scope ?? "library") === "story" ? (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
@@ -46,11 +46,19 @@ export function PlayerCharacterFormPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatorError, setGeneratorError] = useState<string | null>(null);
+  const loadedCharacterIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!existingCharacter) {
+      loadedCharacterIdRef.current = null;
       return;
     }
+
+    if (loadedCharacterIdRef.current === existingCharacter.id) {
+      return;
+    }
+
+    loadedCharacterIdRef.current = existingCharacter.id;
 
     setFormState({
       name: existingCharacter.name,
@@ -354,23 +362,25 @@ export function PlayerCharacterFormPage() {
               />
             </Field>
 
-            <Field
-              label="Appearance"
-              hint={resolveFieldHint(formState.appearance)}
-              action={renderFieldRandomizeAction(["appearance"])}
-            >
-              <TextInput
-                value={formState.appearance}
-                onChange={(event) =>
-                  setFormState((currentState) => ({
-                    ...currentState,
-                    appearance: event.target.value,
-                  }))
-                }
-                placeholder="Neat, understated, observant"
-              />
-            </Field>
           </div>
+
+          <Field
+            label="Appearance"
+            hint={resolveFieldHint(formState.appearance)}
+            action={renderFieldRandomizeAction(["appearance"])}
+          >
+            <TextAreaInput
+              className="min-h-[220px] md:min-h-[260px]"
+              value={formState.appearance}
+              onChange={(event) =>
+                setFormState((currentState) => ({
+                  ...currentState,
+                  appearance: event.target.value,
+                }))
+              }
+              placeholder="Describe the character's look, body language, clothing, vibe, and any standout visual details."
+            />
+          </Field>
 
           <div className="grid gap-6 md:grid-cols-2">
             <Field

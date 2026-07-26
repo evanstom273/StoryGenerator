@@ -1115,6 +1115,7 @@ export function StoryWorkspacePage() {
               </div>
               <div className="mt-4 space-y-4">
                 <TextAreaInput
+                  className="min-h-[220px] md:min-h-[280px]"
                   value={assistantEditContent}
                   onChange={(event) => setAssistantEditContent(event.target.value)}
                 />
@@ -1147,7 +1148,7 @@ export function StoryWorkspacePage() {
           <div className="mt-3 rounded-[10px] border border-divider/[0.35] bg-panel-muted/40 px-3 py-3 text-sm text-ink-muted">
             {parentStory ? (
               <div>
-                Prequel:{" "}
+                {activeStory.lineageType === "branch" ? "Branched from: " : "Prequel: "}
                 <Link to={`/stories/${parentStory.id}`} className="font-semibold text-ink-soft hover:text-accent">
                   {parentStory.title}
                 </Link>
@@ -1155,13 +1156,16 @@ export function StoryWorkspacePage() {
             ) : null}
             {childStories.length ? (
               <div className={parentStory ? "mt-2" : ""}>
-                Sequels:{" "}
+                Follow-ups:{" "}
                 {childStories.map((childStory, index) => (
                   <span key={childStory.id}>
                     {index > 0 ? " · " : ""}
                     <Link to={`/stories/${childStory.id}`} className="font-semibold text-ink-soft hover:text-accent">
                       {childStory.title}
                     </Link>
+                    <span className="text-[11px] text-ink-muted">
+                      {childStory.lineageType === "branch" ? " (branch)" : " (sequel)"}
+                    </span>
                   </span>
                 ))}
               </div>
@@ -1441,6 +1445,7 @@ export function StoryWorkspacePage() {
 
             <Field label="Your Message">
               <TextAreaInput
+                className="min-h-[180px] md:min-h-[240px]"
                 value={chatInput}
                 onChange={(event) => setChatInput(event.target.value)}
                 disabled={isReadOnly}
@@ -1587,6 +1592,7 @@ export function StoryWorkspacePage() {
 
           <Field label="Content">
             <TextAreaInput
+              className="min-h-[220px] md:min-h-[300px]"
               value={composerState.content}
               onChange={(event) =>
                 setComposerState((currentState) => ({

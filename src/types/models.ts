@@ -182,6 +182,7 @@ export interface Story {
   parentStoryId?: EntityId;
   rootStoryId?: EntityId;
   lineageDepth?: number;
+  lineageType?: "sequel" | "branch";
   sequelSeedSourceStoryId?: EntityId;
   openingPrompt?: string;
   universePackSnapshot?: UniversePackSnapshotV1;
@@ -611,6 +612,7 @@ export interface StoryDraft {
   parentStoryId?: EntityId;
   rootStoryId?: EntityId;
   lineageDepth?: number;
+  lineageType?: "sequel" | "branch";
   sequelSeedSourceStoryId?: EntityId;
   isArchived?: boolean;
   matureFictionMode?: boolean;

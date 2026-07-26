@@ -6,7 +6,7 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.4.0";
+export const APP_VERSION = "2.4.1";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "1.0.0": {
@@ -370,6 +370,18 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Double charge: the extractor was independently evaluating each narrator turn, causing the same purchase to be deducted when a price was announced and again when payment was confirmed",
       "Time over-estimate: quick counter/register interactions were bucketed into 15–30 min; added finer brackets so a bodega scan advances 2–5 min instead",
       "Gold not deducted: extractor only received narrator text, missing explicit prices stated by the player in their message",
+    ],
+    knownIssues: [],
+  },
+  "2.4.1": {
+    title: "Branch Story + Editor Stability",
+    added: [
+      "Story settings now include a Branch Story action that forks the current transcript, context, index, summaries, and AI configuration into an editable alternate timeline",
+      "Branch creation opens a dedicated flow that keeps the original story editable while preserving parent/child lineage between the source and the new branch",
+    ],
+    fixed: [
+      "Universe and player character editors no longer repopulate local form text during autosave refreshes, which could occasionally overwrite or erase text while you were typing",
+      "Text areas in universe creation, character creation, and story workspace editing are now larger and easier to resize, and the character appearance field has been expanded into a full-sized description box",
     ],
     knownIssues: [],
   },

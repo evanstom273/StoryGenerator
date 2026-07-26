@@ -131,19 +131,29 @@ export function StoriesPage() {
                 to={`/stories/${story.id}`}
                 lineageLabel={
                   story.parentStoryId
-                    ? "Sequel"
+                    ? story.lineageType === "branch"
+                      ? "Branch"
+                      : "Sequel"
                     : stories.some((candidate) => candidate.parentStoryId === story.id)
-                      ? "Has Sequels"
+                      ? "Has Follow-ups"
                       : undefined
                 }
                 readOnly={story.readOnlyReason === "sequel_prequel"}
                 actions={
-                  <Link
-                    to={`/stories/new?sequelTo=${story.id}`}
-                    className={buttonClasses({ variant: "ghost", className: "h-auto px-3 py-1.5 text-xs" })}
-                  >
-                    Create Sequel
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={`/stories/new?sequelTo=${story.id}`}
+                      className={buttonClasses({ variant: "ghost", className: "h-auto px-3 py-1.5 text-xs" })}
+                    >
+                      Sequel
+                    </Link>
+                    <Link
+                      to={`/stories/new?branchFrom=${story.id}`}
+                      className={buttonClasses({ variant: "ghost", className: "h-auto px-3 py-1.5 text-xs" })}
+                    >
+                      Branch
+                    </Link>
+                  </div>
                 }
               />
             ))}

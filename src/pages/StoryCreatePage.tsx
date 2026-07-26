@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
@@ -37,6 +37,7 @@ export function StoryCreatePage() {
   const [searchParams] = useSearchParams();
   const {
     aiSettings,
+    createBranch,
     createPlayerCharacter,
     createSequel,
     createStory,
@@ -51,6 +52,7 @@ export function StoryCreatePage() {
     updatePlayerCharacter,
   } = useStoryEngine();
   const sequelToId = searchParams.get("sequelTo")?.trim() ?? "";
+  const branchFromId = searchParams.get("branchFrom")?.trim() ?? "";
   const [formState, setFormState] = useState(initialFormState);
   const [protagonistMode, setProtagonistMode] = useState<
     "existing" | "newPermanent" | "quick"
@@ -69,16 +71,18 @@ export function StoryCreatePage() {
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const sequelSourceStory = sequelToId ? getStoryById(sequelToId) : undefined;
-  const sequelSourceUniverse = sequelSourceStory
-    ? getUniverseById(sequelSourceStory.universeId)
+  const sourceMode = branchFromId ? "branch" : sequelToId ? "sequel" : null;
+  const sourceStory = sourceMode
+    ? getStoryById(sourceMode === "branch" ? branchFromId : sequelToId)
     : undefined;
-  const sequelSourceCharacter = sequelSourceStory
-    ? getPlayerCharacterById(sequelSourceStory.playerCharacterId)
+  const sourceUniverse = sourceStory ? getUniverseById(sourceStory.universeId) : undefined;
+  const sourceCharacter = sourceStory
+    ? getPlayerCharacterById(sourceStory.playerCharacterId)
     : undefined;
-  const isSequelMode = Boolean(
-    sequelSourceStory && sequelSourceUniverse && sequelSourceCharacter,
-  );
+  const seededSourceKeyRef = useRef<string | null>(null);
+  const isSequelMode = sourceMode === "sequel" && Boolean(sourceStory && sourceUniverse && sourceCharacter);
+  const isBranchMode = sourceMode === "branch" && Boolean(sourceStory && sourceUniverse && sourceCharacter);
+  const isDerivedMode = isSequelMode || isBranchMode;
 
   const availableCharacters = useMemo(
     () =>
@@ -89,14 +93,14 @@ export function StoryCreatePage() {
   );
 
   const selectableCharacters = useMemo(() => {
-    if (!isSequelMode || !sequelSourceCharacter) {
+    if (!isDerivedMode || !sourceCharacter) {
       return availableCharacters;
     }
 
-    return availableCharacters.some((character) => character.id === sequelSourceCharacter.id)
+    return availableCharacters.some((character) => character.id === sourceCharacter.id)
       ? availableCharacters
-      : [sequelSourceCharacter, ...availableCharacters];
-  }, [availableCharacters, isSequelMode, sequelSourceCharacter]);
+      : [sourceCharacter, ...availableCharacters];
+  }, [availableCharacters, isDerivedMode, sourceCharacter]);
 
   useEffect(() => {
     setQuickCharacterState((current) => ({
@@ -107,26 +111,38 @@ export function StoryCreatePage() {
   }, [formState.universeId]);
 
   useEffect(() => {
-    if (!isSequelMode || !sequelSourceStory || !sequelSourceUniverse || !sequelSourceCharacter) {
+    if (!isDerivedMode || !sourceStory || !sourceUniverse || !sourceCharacter) {
       return;
     }
 
+    const nextSeedKey = `${sourceMode}:${sourceStory.id}`;
+    if (seededSourceKeyRef.current === nextSeedKey) {
+      return;
+    }
+
+    seededSourceKeyRef.current = nextSeedKey;
     setProtagonistMode("existing");
-    setFormState((current) => ({
-      ...current,
-      title: current.title || `${sequelSourceStory.title} II`,
-      universeId: sequelSourceUniverse.id,
-      playerCharacterId: current.playerCharacterId || sequelSourceCharacter.id,
-    }));
-  }, [isSequelMode, sequelSourceCharacter, sequelSourceStory, sequelSourceUniverse]);
+    setFormState((current) => {
+      const nextTitle = isBranchMode
+        ? `${sourceStory.title} (Branch)`
+        : `${sourceStory.title} II`;
+      return {
+        ...current,
+        title: current.title || nextTitle,
+        universeId: sourceUniverse.id,
+        playerCharacterId: current.playerCharacterId || sourceCharacter.id,
+        currentSummary: isBranchMode ? sourceStory.currentSummary : current.currentSummary,
+      };
+    });
+  }, [isBranchMode, isDerivedMode, sourceCharacter, sourceMode, sourceStory, sourceUniverse]);
 
   useEffect(() => {
-    if (!isSequelMode || !sequelSourceStory) {
+    if (!isDerivedMode || !sourceStory) {
       return;
     }
 
     let cancelled = false;
-    void getStoryAIConfig(sequelSourceStory.id)
+    void getStoryAIConfig(sourceStory.id)
       .then((config) => {
         if (cancelled || !config) {
           return;
@@ -141,7 +157,7 @@ export function StoryCreatePage() {
     return () => {
       cancelled = true;
     };
-  }, [getStoryAIConfig, isSequelMode, sequelSourceStory]);
+  }, [getStoryAIConfig, isDerivedMode, sourceStory]);
 
   if (!universes.length) {
     return (
@@ -209,9 +225,14 @@ export function StoryCreatePage() {
         resolvedPlayerCharacterId = createdCharacter.id;
       }
 
-      const story = isSequelMode && sequelSourceStory
+      const story = isBranchMode && sourceStory
+        ? await createBranch({
+            sourceStoryId: sourceStory.id,
+            title: formState.title,
+          })
+        : isSequelMode && sourceStory
         ? await createSequel({
-            sourceStoryId: sequelSourceStory.id,
+            sourceStoryId: sourceStory.id,
             title: formState.title,
             playerCharacterId: resolvedPlayerCharacterId,
             openingNote: formState.currentSummary.trim() || undefined,
@@ -222,7 +243,7 @@ export function StoryCreatePage() {
             currentSummary: formState.currentSummary.trim(),
           });
 
-      if (!isSequelMode && protagonistMode === "quick") {
+      if (!isDerivedMode && protagonistMode === "quick") {
         await updatePlayerCharacter(resolvedPlayerCharacterId, {
           ...quickCharacterState,
           universeId: formState.universeId,
@@ -293,34 +314,46 @@ export function StoryCreatePage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow={isSequelMode ? "Create Sequel" : "Create Story"}
+        eyebrow={isBranchMode ? "Branch Story" : isSequelMode ? "Create Sequel" : "Create Story"}
         title={
-          isSequelMode
+          isBranchMode
+            ? "Fork the current story into an editable branch"
+            : isSequelMode
             ? "Start a new sequel from an existing story"
             : "Create a story from a universe and a player character"
         }
         description={
-          isSequelMode
+          isBranchMode
+            ? "The branch copies the current transcript, context, index, and story state so you can continue from the same point without locking the original."
+            : isSequelMode
             ? "The predecessor stays canon and becomes read-only. The sequel starts fresh at message 1 while inheriting distilled story state."
             : "Choose the fictional universe, select the player character, then set a title and optional summary."
         }
       />
 
-      {isSequelMode && sequelSourceStory && sequelSourceUniverse && sequelSourceCharacter ? (
+      {isDerivedMode && sourceStory && sourceUniverse && sourceCharacter ? (
         <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]" padding="lg">
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-            Sequel Source
+            {isBranchMode ? "Branch Source" : "Sequel Source"}
           </div>
-          <div className="mt-3 text-lg font-semibold text-ink">{sequelSourceStory.title}</div>
+          <div className="mt-3 text-lg font-semibold text-ink">{sourceStory.title}</div>
           <p className="mt-2 text-sm leading-7 text-ink-muted">
-            Universe: {sequelSourceUniverse.name} · Default protagonist: {sequelSourceCharacter.name}
+            Universe: {sourceUniverse.name} · Default protagonist: {sourceCharacter.name}
           </p>
           <p className="mt-3 text-sm leading-7 text-ink-muted">
-            This new story inherits the predecessor&apos;s distilled canon state, relationships, and world facts. The old story becomes a locked prequel and the new transcript begins with <span className="font-semibold text-ink-soft">Chapter I.</span>
+            {isBranchMode ? (
+              <>
+                This branch keeps the current transcript, context, index, and canon state intact so you can split the story into an alternate path without locking the source story.
+              </>
+            ) : (
+              <>
+                This new story inherits the predecessor&apos;s distilled canon state, relationships, and world facts. The old story becomes a locked prequel and the new transcript begins with <span className="font-semibold text-ink-soft">Chapter I.</span>
+              </>
+            )}
           </p>
-          {sequelSourceStory.currentSummary.trim() ? (
+          {sourceStory.currentSummary.trim() ? (
             <div className="mt-4 rounded-[10px] border border-divider/[0.45] bg-app-elevated px-4 py-3 text-sm leading-7 text-ink-soft">
-              {sequelSourceStory.currentSummary}
+              {sourceStory.currentSummary}
             </div>
           ) : null}
         </Panel>
@@ -328,9 +361,9 @@ export function StoryCreatePage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         {[
-          ["Step 1", isSequelMode ? "Confirm Source" : "Select Universe"],
+          ["Step 1", isDerivedMode ? "Confirm Source" : "Select Universe"],
           ["Step 2", "Select Player Character"],
-          ["Step 3", isSequelMode ? "Sequel Details" : "Story Details"],
+          ["Step 3", isBranchMode ? "Branch Details" : isSequelMode ? "Sequel Details" : "Story Details"],
         ].map(([step, title]) => (
           <Panel variant="flat" key={step}>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
@@ -347,7 +380,7 @@ export function StoryCreatePage() {
             <Field label="Universe" hint="Required">
               <SelectInput
                 value={formState.universeId}
-                disabled={isSequelMode}
+                disabled={isDerivedMode}
                 onChange={(event) =>
                   setFormState((currentState) => ({
                     ...currentState,
@@ -369,9 +402,11 @@ export function StoryCreatePage() {
             </Field>
 
             <Field label="Protagonist" hint="Required">
-              {isSequelMode ? (
+              {isDerivedMode ? (
                 <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/50 px-4 py-3 text-sm text-ink-muted">
-                  The sequel stays in the same universe. You can keep the same protagonist or switch to another character from this universe.
+                  {isBranchMode
+                    ? "A branch keeps the same universe and protagonist as the source story so the transcript and indexed state stay consistent."
+                    : "The sequel stays in the same universe. You can keep the same protagonist or switch to another character from this universe."}
                 </div>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-3">
@@ -414,7 +449,7 @@ export function StoryCreatePage() {
                     playerCharacterId: event.target.value,
                   }))
                 }
-                disabled={!formState.universeId || !selectableCharacters.length}
+                disabled={isBranchMode || !formState.universeId || !selectableCharacters.length}
               >
                 <option value="">
                   {formState.universeId
@@ -432,7 +467,7 @@ export function StoryCreatePage() {
             </Field>
           ) : null}
 
-          {!isSequelMode && protagonistMode === "newPermanent" ? (
+          {!isDerivedMode && protagonistMode === "newPermanent" ? (
             <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]">
               <h2 className="text-lg font-semibold text-ink">Create a permanent player character</h2>
               <p className="mt-2 text-sm leading-7 text-ink-muted">
@@ -447,7 +482,7 @@ export function StoryCreatePage() {
             </Panel>
           ) : null}
 
-          {!isSequelMode && protagonistMode === "quick" ? (
+          {!isDerivedMode && protagonistMode === "quick" ? (
             <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]" padding="lg">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 Quick Story Character
@@ -666,7 +701,7 @@ export function StoryCreatePage() {
             </p>
           </Panel>
 
-          {formState.universeId && !selectableCharacters.length && protagonistMode === "existing" && !isSequelMode ? (
+          {formState.universeId && !selectableCharacters.length && protagonistMode === "existing" && !isDerivedMode ? (
             <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]">
               <h2 className="text-lg font-semibold text-ink">
                 This universe needs a player character
@@ -695,32 +730,36 @@ export function StoryCreatePage() {
                   }))
                 }
                 placeholder={
-                  isSequelMode
+                  isBranchMode
+                    ? "Example: Davies Chronicles (Branch)"
+                    : isSequelMode
                     ? "Example: Davies Chronicles II"
                     : "Example: Brooklyn Nine-Nine: Jamie Mercer"
                 }
               />
             </Field>
 
-            <Field
-              label={isSequelMode ? "Sequel Setup Note" : "Current Summary"}
-              hint="Optional"
-            >
-              <TextAreaInput
-                value={formState.currentSummary}
-                onChange={(event) =>
-                  setFormState((currentState) => ({
-                    ...currentState,
-                    currentSummary: event.target.value,
-                  }))
-                }
-                placeholder={
-                  isSequelMode
-                    ? "Optional extra setup to add on top of the inherited canon state."
-                    : "Leave blank for now or add a short story overview."
-                }
-              />
-            </Field>
+            {isBranchMode ? null : (
+              <Field
+                label={isSequelMode ? "Sequel Setup Note" : "Current Summary"}
+                hint="Optional"
+              >
+                <TextAreaInput
+                  value={formState.currentSummary}
+                  onChange={(event) =>
+                    setFormState((currentState) => ({
+                      ...currentState,
+                      currentSummary: event.target.value,
+                    }))
+                  }
+                  placeholder={
+                    isSequelMode
+                      ? "Optional extra setup to add on top of the inherited canon state."
+                      : "Leave blank for now or add a short story overview."
+                  }
+                />
+              </Field>
+            )}
           </div>
 
           {errorMessage ? (
@@ -732,10 +771,14 @@ export function StoryCreatePage() {
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button type="submit" size="lg" disabled={isSubmitting}>
               {isSubmitting
-                ? isSequelMode
+                ? isBranchMode
+                  ? "Creating Branch..."
+                  : isSequelMode
                   ? "Creating Sequel..."
                   : "Creating Story..."
-                : isSequelMode
+                : isBranchMode
+                  ? "Create Branch"
+                  : isSequelMode
                   ? "Create Sequel"
                   : "Create Story"}
             </Button>

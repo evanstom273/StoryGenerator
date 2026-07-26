@@ -213,6 +213,10 @@ interface StoryEngineContextValue {
     playerCharacterId: string;
     openingNote?: string;
   }) => Promise<Story>;
+  createBranch: (input: {
+    sourceStoryId: string;
+    title: string;
+  }) => Promise<Story>;
   updateStory: (id: string, patch: Partial<StoryDraft>) => Promise<Story | null>;
   deleteStory: (id: string) => Promise<void>;
   deleteAllStories: () => Promise<void>;
@@ -470,6 +474,20 @@ function buildSequelSummaryText(args: {
       ? ["", "Sequel setup note:", args.openingNote.trim()]
       : []),
   ].join("\n");
+}
+
+function buildUniversePackSnapshot(
+  universePack: UniverseExportBundleV1 | null | undefined,
+): UniversePackSnapshotV1 | undefined {
+  return universePack
+    ? {
+        snapshotVersion: 1,
+        exportedAt: universePack.exportedAt,
+        packVersion: universePack.packVersion ?? 1,
+        universe: universePack.universe,
+        universeImports: universePack.universeImports,
+      }
+    : undefined;
 }
 
 function reportGenerationAudit(args: {
@@ -2724,6 +2742,7 @@ export function StoryEngineProvider({
           parentStoryId: draft.parentStoryId,
           rootStoryId: draft.rootStoryId ?? storyId,
           lineageDepth: draft.lineageDepth ?? 0,
+          lineageType: draft.lineageType,
           sequelSeedSourceStoryId: draft.sequelSeedSourceStoryId,
           universePackSnapshot,
           isArchived: draft.isArchived,
@@ -2789,15 +2808,7 @@ export function StoryEngineProvider({
           sourceSummary: sequelSummary,
           now,
         });
-        const universePackSnapshot: UniversePackSnapshotV1 | undefined = universePack
-          ? {
-              snapshotVersion: 1,
-              exportedAt: universePack.exportedAt,
-              packVersion: universePack.packVersion ?? 1,
-              universe: universePack.universe,
-              universeImports: universePack.universeImports,
-            }
-          : undefined;
+        const universePackSnapshot = buildUniversePackSnapshot(universePack);
         const nextStory: Story = {
           id: storyId,
           title: input.title.trim(),
@@ -2806,6 +2817,7 @@ export function StoryEngineProvider({
           parentStoryId: sourceStory.id,
           rootStoryId: sourceStory.rootStoryId ?? sourceStory.id,
           lineageDepth: (sourceStory.lineageDepth ?? 0) + 1,
+          lineageType: "sequel",
           sequelSeedSourceStoryId: sourceStory.id,
           universePackSnapshot,
           isArchived: false,
@@ -2844,6 +2856,123 @@ export function StoryEngineProvider({
           readOnlyLockedAt: sourceStory.readOnlyLockedAt ?? now,
           updatedAt: now,
         });
+
+        if (sourceAiConfig) {
+          await repository.saveStoryAIConfig({
+            ...sourceAiConfig,
+            id: createEntityId("story-ai-config"),
+            storyId,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        await hydrate(false);
+        return nextStory;
+      },
+      async createBranch(input) {
+        const now = new Date().toISOString();
+        const sourceStory = await repository.getStory(input.sourceStoryId);
+
+        if (!sourceStory) {
+          throw new Error("Source story not found.");
+        }
+
+        const [
+          universePack,
+          sourceMessages,
+          sourceMetaMessages,
+          sourceChapters,
+          sourceSummaries,
+          sourceStateRecord,
+          sourceAiConfig,
+        ] = await Promise.all([
+          repository.getUniverseExportBundle(sourceStory.universeId),
+          repository.listStoryMessages(sourceStory.id),
+          repository.listStoryMetaMessages(sourceStory.id),
+          repository.listStoryChapters(sourceStory.id),
+          repository.listStorySummaries(sourceStory.id),
+          repository.getStoryState(sourceStory.id),
+          repository.getStoryAIConfig(sourceStory.id),
+        ]);
+
+        const storyId = createEntityId("story");
+        const nextStory: Story = {
+          ...sourceStory,
+          id: storyId,
+          title: input.title.trim(),
+          parentStoryId: sourceStory.id,
+          rootStoryId: sourceStory.rootStoryId ?? sourceStory.id,
+          lineageDepth: (sourceStory.lineageDepth ?? 0) + 1,
+          lineageType: "branch",
+          sequelSeedSourceStoryId: undefined,
+          universePackSnapshot: buildUniversePackSnapshot(universePack),
+          readOnlyReason: undefined,
+          readOnlyLockedAt: undefined,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        const messageIdMap = new Map<string, string>();
+        const clonedMessages = sourceMessages.map((message) => {
+          const nextId = createEntityId("story-message");
+          messageIdMap.set(message.id, nextId);
+          return {
+            ...message,
+            id: nextId,
+            storyId,
+          };
+        });
+        const clonedMetaMessages = sourceMetaMessages.map((message) => ({
+          ...message,
+          id: createEntityId("story-meta-message"),
+          storyId,
+        }));
+        const clonedChapters = sourceChapters.map((chapter) => ({
+          ...chapter,
+          id: createEntityId("story-chapter"),
+          storyId,
+          endsAtMessageId: messageIdMap.get(chapter.endsAtMessageId) ?? chapter.endsAtMessageId,
+        }));
+        const clonedSummaries = sourceSummaries.map((summary) => ({
+          ...summary,
+          id: createEntityId("story-summary"),
+          storyId,
+        }));
+        const clonedState = (() => {
+          if (!sourceStateRecord) {
+            return null;
+          }
+
+          let stateJson = sourceStateRecord.stateJson;
+          try {
+            const parsed = JSON.parse(sourceStateRecord.stateJson) as Record<string, unknown>;
+            stateJson = JSON.stringify({
+              ...parsed,
+              updatedAt: now,
+            });
+          } catch {}
+
+          return {
+            ...sourceStateRecord,
+            id: `story-state:${storyId}`,
+            storyId,
+            stateJson,
+            updatedAt: now,
+          };
+        })();
+
+        await repository.saveStory(nextStory);
+        await Promise.all(clonedMessages.map((message) => repository.saveStoryMessage(message)));
+        await Promise.all(
+          clonedMetaMessages.map((message) => repository.saveStoryMetaMessage(message)),
+        );
+        await Promise.all(clonedChapters.map((chapter) => repository.saveStoryChapter(chapter)));
+        await Promise.all(clonedSummaries.map((summary) => repository.saveStorySummary(summary)));
+
+        if (clonedState) {
+          await repository.saveStoryState(clonedState);
+        }
 
         if (sourceAiConfig) {
           await repository.saveStoryAIConfig({
