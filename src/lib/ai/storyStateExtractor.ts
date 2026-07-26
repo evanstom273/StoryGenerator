@@ -125,10 +125,10 @@ export function buildStoryStateExtractionPrompt({
       "- Always include the player character as an entry in characters (canonicalName = the player name). If the transcript uses nicknames/short forms for the player, add them to aliases and update displayName if the nickname becomes the primary address.",
       "- Include relationship changes and rank/title changes when they occur.",
       "- Preserve three summary layers inside summaries: premise, currentSituation, and recentDevelopments.",
-      "- premise should capture what the story is fundamentally about and who it is about. It should change slowly unless the story truly transforms.",
+      "- premise should capture what the story is fundamentally about, who the player character is within it, and any stable ensemble dynamic or co-lead structure if present. It should change slowly unless the story truly transforms.",
       "- currentSituation should capture what is happening now, who is in immediate trouble, and what the active pressure is.",
       "- recentDevelopments should capture only the most important recent turning points, not every small beat.",
-      "- protagonistSummary should keep extra focus on the player character: who they are, what matters to them, and their current condition.",
+      "- protagonistSummary should keep focus on the player character, but in ensemble stories it should also note the most important co-leads, group role, and shared pressures shaping the scene.",
       "- If characters shift from formal titles to first names (or vice versa), capture the current preferred displayName and titleOrRank.",
       "- Include major injuries/recoveries and major world events.",
       "- Character entries and indexes.characters descriptions should answer 'who are they now?' not just who they were at the start.",
@@ -457,7 +457,7 @@ export function formatStoryLongTermMemoryForPrompt(
     }
     if (typeof protagonistSummary === "string" && protagonistSummary.trim()) {
       lines.push("");
-      lines.push("Protagonist Focus:");
+      lines.push("Player Character Focus:");
       lines.push(`- ${protagonistSummary.trim()}`);
     }
     if (typeof currentSituation === "string" && currentSituation.trim()) {

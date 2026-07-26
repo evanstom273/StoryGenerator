@@ -24,6 +24,8 @@ export type BackgroundJobType =
   | "metachat_generate"
   | "story_export"
   | "story_archive_export";
+export type MetaChatScopeKind = "story" | "global";
+export type MetaChatReferenceKind = "story" | "character" | "universe";
 
 export type DirectorIntent = {
   timeSkip?: { unit: "hours" | "days" | "weeks" | "months"; amount: number };
@@ -225,6 +227,13 @@ export interface StoryMetaMessage {
   content: string;
   timestamp: Timestamp;
   jobId?: EntityId;
+  referenceSnapshot?: MetaChatReference[];
+}
+
+export interface MetaChatReference {
+  id: EntityId;
+  kind: MetaChatReferenceKind;
+  label: string;
 }
 
 export interface StoryChapter {
@@ -269,6 +278,7 @@ export interface StoryUiState {
   id: EntityId;
   storyId: EntityId;
   metaChatDraft?: string;
+  metaChatReferences?: MetaChatReference[];
   updatedAt: Timestamp;
 }
 
@@ -293,6 +303,7 @@ export interface BackgroundJob {
     content?: string;
     metaChatUserMessageId?: EntityId;
     metaChatOpenOnComplete?: boolean;
+    metaChatReferences?: MetaChatReference[];
     exportFormat?: ExportFormat;
   };
   result?: {
