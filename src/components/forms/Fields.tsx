@@ -1,10 +1,11 @@
 import type {
   InputHTMLAttributes,
+  PointerEvent as ReactPointerEvent,
   ReactNode,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "../../utils/cn";
 
 export function Field({
@@ -73,6 +74,25 @@ export function TextAreaInput({
   ...props
 }: TextAreaInputProps) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  const [height, setHeight] = useState(defaultHeightPx);
+  const dragStateRef = useRef<{
+    pointerId: number;
+    startY: number;
+    startHeight: number;
+  } | null>(null);
+
+  useEffect(() => {
+    setHeight((current) =>
+      Math.max(minHeightPx, Math.min(maxHeightPx, current || defaultHeightPx)),
+    );
+  }, [defaultHeightPx, minHeightPx, maxHeightPx]);
+
+  function resolveHeight(nextHeight: number) {
+    const clampedHeight = Math.max(minHeightPx, Math.min(maxHeightPx, nextHeight));
+    return Math.abs(clampedHeight - defaultHeightPx) <= snapThresholdPx
+      ? defaultHeightPx
+      : clampedHeight;
+  }
 
   function snapHeightIfNeeded() {
     const element = ref.current;
@@ -80,38 +100,76 @@ export function TextAreaInput({
       return;
     }
 
-    const currentHeight = element.offsetHeight;
-    const clampedHeight = Math.max(minHeightPx, Math.min(maxHeightPx, currentHeight));
+    setHeight(resolveHeight(element.offsetHeight));
+  }
 
-    if (Math.abs(clampedHeight - defaultHeightPx) <= snapThresholdPx) {
-      element.style.height = `${defaultHeightPx}px`;
+  function endDrag() {
+    dragStateRef.current = null;
+    snapHeightIfNeeded();
+  }
+
+  function handleResizePointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startHeight: height,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function handleResizePointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) {
       return;
     }
 
-    if (clampedHeight !== currentHeight) {
-      element.style.height = `${clampedHeight}px`;
+    const delta = event.clientY - dragState.startY;
+    setHeight(resolveHeight(dragState.startHeight + delta));
+  }
+
+  function handleResizePointerUp(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (dragStateRef.current?.pointerId !== event.pointerId) {
+      return;
     }
+
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    endDrag();
   }
 
   return (
-    <textarea
-      ref={ref}
-      className={cn(inputClasses, "resize-y", className)}
-      style={{
-        ...style,
-        height: style?.height ?? `${defaultHeightPx}px`,
-        minHeight: `${minHeightPx}px`,
-        maxHeight: `${maxHeightPx}px`,
-      }}
-      onMouseUp={(event) => {
-        snapHeightIfNeeded();
-        onMouseUp?.(event);
-      }}
-      onTouchEnd={(event) => {
-        snapHeightIfNeeded();
-        onTouchEnd?.(event);
-      }}
-      {...props}
-    />
+    <div className="space-y-2">
+      <textarea
+        ref={ref}
+        className={cn(inputClasses, "resize-none overflow-y-auto", className)}
+        style={{
+          ...style,
+          height: `${height}px`,
+          minHeight: `${minHeightPx}px`,
+          maxHeight: `${maxHeightPx}px`,
+        }}
+        onMouseUp={(event) => {
+          onMouseUp?.(event);
+        }}
+        onTouchEnd={(event) => {
+          onTouchEnd?.(event);
+        }}
+        {...props}
+      />
+      <button
+        type="button"
+        aria-label="Resize text area"
+        disabled={props.disabled || props.readOnly}
+        className="group flex w-full touch-none items-center justify-center rounded-[8px] border border-divider/[0.45] bg-panel-muted/40 px-3 py-2 text-[11px] font-medium text-ink-muted transition hover:border-accent/[0.35] hover:text-ink-soft disabled:cursor-not-allowed disabled:opacity-45"
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerUp}
+        onPointerCancel={endDrag}
+      >
+        <span className="mr-3 h-1.5 w-10 rounded-full bg-divider/80 transition group-hover:bg-accent/50" />
+        Drag to resize
+        <span className="ml-3 h-1.5 w-10 rounded-full bg-divider/80 transition group-hover:bg-accent/50" />
+      </button>
+    </div>
   );
 }
