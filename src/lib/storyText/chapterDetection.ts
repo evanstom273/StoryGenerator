@@ -23,6 +23,14 @@ export function detectChapterBoundary(text: string): ChapterDetection {
   const trimmed = normalizeChapterBoundaryText(text);
   if (!trimmed) return { detected: false };
 
+  if (/^the end[.!?]*$/i.test(trimmed)) {
+    return {
+      detected: true,
+      kind: "end",
+      label: "The End",
+    };
+  }
+
   const startOf = trimmed.match(/\bstart\s+of\s+chapter\s+(.+?)(?:[.!?]|$)/i);
   if (startOf?.[1]) {
     return {

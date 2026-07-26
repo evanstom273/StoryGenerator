@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
@@ -37,6 +37,7 @@ import type {
 
 const GENERATION_AUDIT_URL = "http://127.0.0.1:7777/event";
 const GENERATION_AUDIT_SESSION = "generation-pipeline-audit";
+const STORY_END_RE = /^the end[.!?]*$/i;
 
 function reportWorkspaceUiAudit(args: {
   msg: string;
@@ -106,6 +107,7 @@ const initialComposerState: MessageComposerState = {
 
 export function StoryWorkspacePage() {
   const { storyId } = useParams();
+  const navigate = useNavigate();
   const {
     readerMode,
     setReaderMode,
@@ -163,6 +165,7 @@ export function StoryWorkspacePage() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [generationFailure, setGenerationFailure] = useState<GenerationFailure | null>(null);
   const [generationFailureOpen, setGenerationFailureOpen] = useState(false);
+  const [showSequelPrompt, setShowSequelPrompt] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingDraft, setStreamingDraft] = useState<string | null>(null);
   const streamingAbortRef = useRef<AbortController | null>(null);
@@ -402,6 +405,7 @@ export function StoryWorkspacePage() {
     const slashTime = parseSlashTimeCommand(chatInput);
     const content = slashTime ? slashTime.strippedText || "." : chatInput;
     const directorIntentOverride = slashTime?.intent;
+    const isStoryEndingMarker = STORY_END_RE.test(content.trim());
 
     setIsGenerating(true);
     setStreamingDraft("");
@@ -421,6 +425,7 @@ export function StoryWorkspacePage() {
         {
           ...(consequence ? { zeroHpConsequence: consequence } : {}),
           ...(directorIntentOverride ? { directorIntentOverride } : {}),
+          ...(isStoryEndingMarker ? { skipAssistantResponse: true } : {}),
           signal: abortController.signal,
           onChunk: (chunk) => setStreamingDraft((prev) => (prev ?? "") + chunk),
           onChunkReset: () => setStreamingDraft(""),
@@ -447,6 +452,9 @@ export function StoryWorkspacePage() {
         if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
         if (result.appliedRelationshipDeltas?.length) setRelationshipsRefreshKey((k) => k + 1);
+      }
+      if (isStoryEndingMarker) {
+        setShowSequelPrompt(true);
       }
     } catch (error) {
       const capturedDraft = streamingDraft && streamingDraft.trim() ? streamingDraft : undefined;
@@ -1023,6 +1031,34 @@ export function StoryWorkspacePage() {
           void handleRetryChat();
         }}
       />
+
+      {showSequelPrompt && activeStory ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-[18px] border border-divider bg-app px-5 py-5 shadow-hero">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent-soft">
+              Story Complete
+            </div>
+            <div className="mt-2 text-xl font-semibold text-ink">Create a sequel?</div>
+            <div className="mt-2 text-sm leading-6 text-ink-muted">
+              <span className="font-medium text-ink-soft">The End</span> has been saved as a final chapter break for{" "}
+              <span className="font-medium text-ink-soft">{activeStory.title}</span>. Do you want to start a sequel now?
+            </div>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowSequelPrompt(false)}>
+                Not Yet
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowSequelPrompt(false);
+                  navigate(`/stories/new?sequelTo=${activeStory.id}`);
+                }}
+              >
+                Create Sequel
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showZeroHpModal && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">

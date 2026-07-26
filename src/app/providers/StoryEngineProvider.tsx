@@ -330,7 +330,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; signal?: AbortSignal; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string, opts?: { onChunk?: (chunk: string) => void; onChunkReset?: () => void; signal?: AbortSignal }) => Promise<StoryMessage>;
 }
@@ -4558,20 +4558,24 @@ export function StoryEngineProvider({
         const userMessageNumber = userMessageIndex + 1;
 
         const previousActiveChapterLabel =
-          chapterBoundary?.kind === "start"
+          chapterBoundary?.kind === "start" || chapterBoundary?.label === "The End"
             ? getExistingActiveChapterLabel(storyId, existingMessages, storedChapters)
             : null;
         const previousStoryMessage =
           userMessageIndex > 0 ? sortedForNumbering[userMessageIndex - 1] : null;
         const createdChapter = (() => {
           if (chapterBoundary?.kind === "end") {
+            const resolvedChapterLabel =
+              chapterBoundary.label === "The End"
+                ? previousActiveChapterLabel ?? "Chapter I"
+                : chapterBoundary.label;
             if (storedChapters.some((chapter) => chapter.endsAtMessageId === userMessage.id)) {
               return null;
             }
             return {
               id: createEntityId("story-chapter"),
               storyId,
-              label: chapterBoundary.label,
+              label: resolvedChapterLabel,
               endsAtMessageId: userMessage.id,
               endsAtIndex: userMessageNumber,
               createdAt: new Date().toISOString(),
@@ -4603,6 +4607,18 @@ export function StoryEngineProvider({
 
         if (createdChapter) {
           await repository.saveStoryChapter(createdChapter);
+        }
+
+        if (opts?.skipAssistantResponse) {
+          await touchStory(storyId);
+          await hydrate(false);
+          return {
+            message: userMessage,
+            appliedRpChanges: null,
+            pendingCoreStatChanges: null,
+            rpEventSummary: null,
+            appliedRelationshipDeltas: null,
+          };
         }
 
         const settings = await getNormalizedAISettings();
