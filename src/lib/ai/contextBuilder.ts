@@ -23,6 +23,7 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
+import { isDirectorMessage } from "../storyText/directorMode";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
@@ -44,6 +45,13 @@ function formatTimelineMessage(
   }
 
   if (message.role === "user") {
+    if (isDirectorMessage(message)) {
+      return {
+        role: "user",
+        content: normalizeWhitespace(`Director: ${message.content}`),
+      };
+    }
+
     return {
       role: "user",
       content: normalizeWhitespace(`Player (${playerCharacterName}): ${message.content}`),
@@ -77,6 +85,7 @@ export interface BuildStoryChatContextInput {
   storyState?: StoryState | null;
   recentMessages: StoryMessage[];
   latestUserMessage: string;
+  latestUserMessageSpeakerType?: StoryMessage["speakerType"];
   directorIntent?: DirectorIntent | null;
   rpStats?: RpStats | null;
   rpConfig?: RpConfig | null;
@@ -92,11 +101,13 @@ export function buildStoryChatContext({
   storyState,
   recentMessages,
   latestUserMessage,
+  latestUserMessageSpeakerType,
   directorIntent,
   rpStats,
   rpConfig,
   playerStateHintOverride,
 }: BuildStoryChatContextInput): AIChatMessage[] {
+  const latestMessageIsDirectorNote = latestUserMessageSpeakerType === "director";
   const sceneDepth = inferSceneDepth(latestUserMessage);
   const wordTarget = getSceneWordTarget(sceneDepth);
   const mostRecentImport = imports[0];
@@ -312,6 +323,7 @@ export function buildStoryChatContext({
       matureFictionPolicy,
       matureFictionModeNote,
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
+      "Director notes may appear in the transcript as out-of-character production guidance. They are visible in the transcript but are not themselves spoken dialogue or automatic canon facts. Canon comes from what actually happens in the generated scene that follows.",
       "The player character sheet is authoritative canon for identity facts (name, age, gender, pronouns, species, role/occupation, disabilities/limitations). Do not contradict it with genre assumptions or defaults.",
       "Stay anchored in the story's premise, player character, and current situation. In ensemble scenes, also track the active group dynamic, shared objective, and who currently holds the conversational or dramatic focus. Recent beats matter, but they should not erase what the story is fundamentally about.",
       "Do not automatically introduce cases, missions, mysteries, assignments, emergencies, villains, or conflicts simply because the story has started.",
@@ -364,9 +376,15 @@ export function buildStoryChatContext({
       "Avoid generic AI phrasing; match each character's cadence, vocabulary, humor/formality, and emotional baseline.",
       "Do not generate suggested player lines or options unless explicitly asked via Player Assist. Focus on canon characters, NPCs, and narration.",
       "Drive the story forward with complications, discoveries, and tension, but never remove player agency.",
-      "Never move, speak for, think for, feel for, or act on behalf of the player character.",
-      "Never introduce the player character into the scene unless the transcript/story state or the player's latest message established them there. Do not narrate the player character arriving, acting, speaking, thinking, or reacting. Do not imply the player character is physically present through ambient details (sounds, shadows, movements) if the player has established they are elsewhere.",
-      "When the player character is present, other characters may address them, but always wait for the player's response.",
+      latestMessageIsDirectorNote
+        ? "Latest-turn rule: the newest user message is a Director note, not protagonist dialogue. Treat it as staging guidance for this reply only. You may temporarily control all characters, including the player character, when needed to realize the directed scene. The resulting scene becomes canon; the Director note itself does not."
+        : "Never move, speak for, think for, feel for, or act on behalf of the player character.",
+      latestMessageIsDirectorNote
+        ? "When following a Director note, keep the player character's behavior consistent with canon, current scene state, and established relationships even if you temporarily control them for the directed scene."
+        : "Never introduce the player character into the scene unless the transcript/story state or the player's latest message established them there. Do not narrate the player character arriving, acting, speaking, thinking, or reacting. Do not imply the player character is physically present through ambient details (sounds, shadows, movements) if the player has established they are elsewhere.",
+      latestMessageIsDirectorNote
+        ? "Once this directed reply is complete, normal player control resumes on the next user turn."
+        : "When the player character is present, other characters may address them, but always wait for the player's response.",
       "Asterisks are reserved exclusively for actions. Never use asterisks for emphasis, sarcasm, or formatting.",
       "Actions should read like prose, not stage directions. Avoid repetitive filler actions (nods/looks/shrugs) unless truly warranted.",
       "Interpret any *...* text in the conversation as an action and react to it naturally.",
@@ -437,7 +455,9 @@ export function buildStoryChatContext({
     ...chatHistory,
     {
       role: "user",
-      content: normalizeWhitespace(`Player (${playerCharacter.name}) turn:\n${latestUserMessage}`),
+      content: latestMessageIsDirectorNote
+        ? normalizeWhitespace(`Director note for the next scene only:\n${latestUserMessage}`)
+        : normalizeWhitespace(`Player (${playerCharacter.name}) turn:\n${latestUserMessage}`),
     },
   ];
 }
@@ -455,5 +475,17 @@ export function buildStorySummaryContext({
     .slice(-MAX_RECENT_MESSAGES)
     .map((message) => formatTimelineMessage(message, playerCharacterName));
 
-  return [{ role: "system", content: `Conversation transcript for "${storyTitle}".` }, ...chatHistory];
+  return [
+    {
+      role: "system",
+      content: normalizeWhitespace(
+        [
+          `Conversation transcript for "${storyTitle}".`,
+          "Director lines are out-of-character staging notes kept in the transcript for reference.",
+          "Treat the actual generated scene outcomes as canon. Do not summarize the Director note itself as if it were an in-universe event.",
+        ].join("\n"),
+      ),
+    },
+    ...chatHistory,
+  ];
 }

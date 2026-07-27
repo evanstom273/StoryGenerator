@@ -4,6 +4,7 @@ import { safeParseStoryStateData, normalizeStoryStateToV2 } from "./storyStateV2
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
+import { isDirectorMessage } from "./storyText/directorMode";
 import {
   createPdfDoc,
   pdfDimensions,
@@ -18,6 +19,7 @@ import {
 
 function resolveSpeakerLabel(message: StoryMessage, playerCharacter: PlayerCharacter): string {
   if (message.role === "user") {
+    if (isDirectorMessage(message)) return "Director";
     return message.speakerName?.trim() || playerCharacter.name;
   }
   if (message.speakerName?.trim()) return message.speakerName.trim();

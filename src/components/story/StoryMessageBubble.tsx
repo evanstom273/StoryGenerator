@@ -3,6 +3,7 @@ import { formatDateTime } from "../../lib/dates";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
+import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
 
@@ -25,6 +26,10 @@ function resolveSpeakerLabel(
   playerCharacterName: string,
 ) {
   if (role === "user") {
+    if (speakerType === "director" || isDirectorMessage({ role, speakerType, speakerName })) {
+      return "Director";
+    }
+
     return speakerName?.trim() || playerCharacterName;
   }
 
@@ -49,6 +54,10 @@ function resolveSpeakerTagClass(
   speakerName: string | undefined,
 ) {
   if (role === "user") {
+    if (speakerType === "director" || isDirectorMessage({ role, speakerType, speakerName })) {
+      return "text-violet-200";
+    }
+
     return "text-accent";
   }
 
@@ -95,6 +104,10 @@ function hashString(value: string) {
 }
 
 function resolveAvatarClass(label: string, speakerType: StoryMessageSpeakerType | undefined) {
+  if (speakerType === "director") {
+    return "border-violet-300/25 bg-violet-400/12 text-violet-100";
+  }
+
   if (speakerType === "narrator") {
     return "border-white/10 bg-white/[0.04] text-ink-soft";
   }
@@ -138,6 +151,8 @@ export function StoryMessageBubble({
   const rowClassName =
     message.role === "system"
       ? "border-amber-300/12 bg-amber-300/5"
+      : message.speakerType === "director"
+        ? "border-violet-300/18 bg-violet-400/[0.06]"
       : message.speakerType === "narrator"
         ? "border-white/8 bg-white/[0.02]"
         : "border-transparent bg-transparent";

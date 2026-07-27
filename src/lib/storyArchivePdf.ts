@@ -3,6 +3,7 @@ import { formatDateTime, sortByTimestampAsc } from "./dates";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "./storyStateV2";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
+import { isDirectorMessage } from "./storyText/directorMode";
 import {
   createPdfDoc,
   pdfDimensions,
@@ -44,6 +45,7 @@ function formatEvidence(numbers: number[]): string {
 
 function resolveTranscriptSpeaker(message: StoryMessage, playerName: string): string {
   if (message.role === "user") {
+    if (isDirectorMessage(message)) return "Director";
     return message.speakerName?.trim() || playerName;
   }
   if (message.role === "system" || message.speakerType === "system") return "System";

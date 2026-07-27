@@ -5,6 +5,7 @@ import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
+import { isDirectorMessage } from "../../lib/storyText/directorMode";
 
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
@@ -15,7 +16,7 @@ type StoryTranscriptViewProps = {
   rpConfig?: RpConfig;
 };
 
-type SpeakerKind = "player" | "narrator" | "npc" | "system";
+type SpeakerKind = "player" | "director" | "narrator" | "npc" | "system";
 
 const NUMBER_WORDS = [
   "Zero",
@@ -134,6 +135,16 @@ function getSpeakerTag(label: string, kind: SpeakerKind) {
       tagClass: cn(baseTagClass, "text-accent"),
       rowClass: cn(baseRowClass, "ml-3 border-l-2 border-accent/35 bg-accent/10"),
       contentClass: "text-ink",
+    };
+  }
+
+  if (kind === "director") {
+    return {
+      label,
+      kind,
+      tagClass: cn(baseTagClass, "text-violet-200"),
+      rowClass: cn(baseRowClass, "ml-3 border-l-2 border-violet-400/35 bg-violet-400/10"),
+      contentClass: "text-ink-soft italic",
     };
   }
 
@@ -315,8 +326,11 @@ export function StoryTranscriptView({
         if (message.role === "user") {
           latestUserMessage = message.content;
           const lines = message.content.split("\n");
-          const label = message.speakerName?.trim() || playerCharacterName || "Player";
-          const tag = getSpeakerTag(label, "player");
+          const isDirector = isDirectorMessage(message);
+          const label = isDirector
+            ? "Director"
+            : message.speakerName?.trim() || playerCharacterName || "Player";
+          const tag = getSpeakerTag(label, isDirector ? "director" : "player");
           return (
             <Fragment key={message.id}>
               {chapterStartLabel ? (

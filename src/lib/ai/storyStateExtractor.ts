@@ -7,6 +7,7 @@ import type {
 import type { AIChatMessage } from "./types";
 import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "./json";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
+import { isDirectorMessage } from "../storyText/directorMode";
 
 const MAX_RECENT_MESSAGES = 40;
 
@@ -36,7 +37,9 @@ function formatRecentMessages(
     .map((message, index) => {
       const prefix =
         message.role === "user"
-          ? `user (${playerName})`
+          ? isDirectorMessage(message)
+            ? "director"
+            : `user (${playerName})`
           : message.speakerType === "canon"
             ? `canon (${message.speakerName?.trim() || "Unknown"})`
             : message.speakerType === "narrator"
@@ -160,6 +163,7 @@ export function buildStoryStateExtractionPrompt({
       "- Preserve Open Threads quality. Track the questions/tensions a reader would still care about.",
       "- If nothing changed, return the previous state with a refreshed updatedAt.",
       "- Never generate dialogue or actions for the player character; this is metadata only.",
+      "- Director lines may appear in the transcript. They are out-of-character staging notes, not in-universe events. Use them to understand why the following scene happened, but index only the realized story outcomes, not the note itself.",
     ].join("\n"),
   );
 

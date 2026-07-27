@@ -12,6 +12,7 @@ import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { parseActionSegments } from "./storyText/parseActionSegments";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
+import { isDirectorMessage } from "./storyText/directorMode";
 
 function resolveCurrentSummary(bundle: StoryExportBundle) {
   const direct = bundle.story.currentSummary?.trim();
@@ -56,6 +57,10 @@ function resolveSpeakerLabel(
   playerCharacter: PlayerCharacter,
 ) {
   if (message.role === "user") {
+    if (isDirectorMessage(message)) {
+      return "Director";
+    }
+
     return message.speakerName?.trim() || playerCharacter.name;
   }
 

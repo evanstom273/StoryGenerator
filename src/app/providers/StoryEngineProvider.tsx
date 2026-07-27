@@ -85,6 +85,11 @@ import {
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
+import {
+  isDirectorMessage,
+  resolveUserSpeakerName,
+  resolveUserSpeakerType,
+} from "../../lib/storyText/directorMode";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type NpcInnerLifeUpdate, type RelationshipArcUpdate, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
@@ -809,6 +814,10 @@ function formatMetaChatCanonMessage(message: StoryMessage, playerCharacterName: 
   }
 
   if (message.role === "user") {
+    if (isDirectorMessage(message)) {
+      return `Director: ${content}`;
+    }
+
     return `Player (${message.speakerName?.trim() || playerCharacterName}): ${content}`;
   }
 
@@ -825,6 +834,27 @@ function formatMetaChatCanonMessage(message: StoryMessage, playerCharacterName: 
   }
 
   return `Assistant: ${content}`;
+}
+
+function formatTranscriptSpeakerForIndexing(
+  message: StoryMessage,
+  playerCharacterName: string,
+) {
+  if (message.role === "user") {
+    return isDirectorMessage(message)
+      ? "DIRECTOR"
+      : `USER (${message.speakerName?.trim() || playerCharacterName})`;
+  }
+
+  if (message.speakerType === "narrator") {
+    return "NARRATOR";
+  }
+
+  if (message.speakerName?.trim()) {
+    return `CANON (${message.speakerName.trim()})`;
+  }
+
+  return "ASSISTANT";
 }
 
 function buildMetaChatCanonContext(params: {
@@ -1066,14 +1096,10 @@ async function rebuildChapterArchiveSummaries(params: {
     const transcript = slice
       .map((message, idx) => {
         const number = startIndex + idx;
-        const label =
-          message.role === "user"
-            ? `USER (${message.speakerName?.trim() || params.playerCharacter.name})`
-            : message.speakerType === "narrator"
-              ? "NARRATOR"
-              : message.speakerName?.trim()
-                ? `CANON (${message.speakerName.trim()})`
-                : "ASSISTANT";
+        const label = formatTranscriptSpeakerForIndexing(
+          message,
+          params.playerCharacter.name,
+        );
         const content = (message.content ?? "").trim().replace(/\s+/g, " ");
         return `[${number}] ${label}: ${content}`;
       })
@@ -1081,6 +1107,7 @@ async function rebuildChapterArchiveSummaries(params: {
 
     const chapterPrompt = [
       "Rebuild the archive chapter review for the following canon chapter transcript.",
+      "Director lines are staging notes preserved in the transcript. Use them as context, but summarize what actually happens in the scene, not the note itself.",
       "This output is for the story archive, not for narration. Do not write prose scenes.",
       "Keep it compact and spoiler-aware: focus on what actually happened, key reveals, and state changes.",
       "Output format:",
@@ -3625,9 +3652,22 @@ export function StoryEngineProvider({
           role: draft.role,
           content: (prefix?.strippedContent ?? draft.content).trim(),
           timestamp: new Date().toISOString(),
-          speakerName: draft.speakerName?.trim() || prefix?.speakerLabel || undefined,
-          speakerType: draft.speakerType,
-          directorIntent: draft.directorIntent,
+          speakerName:
+            draft.role === "user"
+              ? resolveUserSpeakerName(
+                  prefix?.speakerLabel,
+                  draft.speakerName,
+                  draft.speakerType,
+                )
+              : draft.speakerName?.trim() || prefix?.speakerLabel || undefined,
+          speakerType:
+            draft.role === "user"
+              ? resolveUserSpeakerType(prefix?.speakerLabel, draft.speakerType)
+              : draft.speakerType,
+          directorIntent:
+            draft.role === "user"
+              ? draft.directorIntent ?? detectDirectorIntent((prefix?.strippedContent ?? draft.content).trim()) ?? undefined
+              : draft.directorIntent,
           editedAt: draft.editedAt,
           regeneratedAt: draft.regeneratedAt,
           revision: draft.revision,
@@ -3653,9 +3693,24 @@ export function StoryEngineProvider({
           ...currentMessage,
           role: draft.role,
           content: (prefix?.strippedContent ?? draft.content).trim(),
-          speakerName: draft.speakerName?.trim() || prefix?.speakerLabel || undefined,
-          speakerType: draft.speakerType,
-          directorIntent: draft.directorIntent ?? currentMessage.directorIntent,
+          speakerName:
+            draft.role === "user"
+              ? resolveUserSpeakerName(
+                  prefix?.speakerLabel,
+                  draft.speakerName,
+                  draft.speakerType ?? currentMessage.speakerType,
+                )
+              : draft.speakerName?.trim() || prefix?.speakerLabel || undefined,
+          speakerType:
+            draft.role === "user"
+              ? resolveUserSpeakerType(prefix?.speakerLabel, draft.speakerType)
+              : draft.speakerType,
+          directorIntent:
+            draft.role === "user"
+              ? draft.directorIntent ??
+                detectDirectorIntent((prefix?.strippedContent ?? draft.content).trim()) ??
+                undefined
+              : draft.directorIntent ?? currentMessage.directorIntent,
           editedAt: draft.editedAt ?? currentMessage.editedAt,
           regeneratedAt: draft.regeneratedAt ?? currentMessage.regeneratedAt,
           revision: draft.revision ?? currentMessage.revision,
@@ -3859,10 +3914,13 @@ export function StoryEngineProvider({
             ).content
           : assistantContent.content;
 
+        const allowDirectedPlayerControl = isDirectorMessage(previousMessage);
         const formatRewritePrompt = [
           "Rewrite the following story scene into the required Story Engine transcript grammar.",
           "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
-          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          allowDirectedPlayerControl
+            ? "Do not repeat the latest Director note verbatim. Realize it as scene content and continue from the next beat."
+            : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
           "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "Only resolve success or failure when the player's message leaves the outcome open as an attempt.",
           "Formatting rules (strict):",
@@ -3878,14 +3936,22 @@ export function StoryEngineProvider({
           "Information ownership rule (strict):",
           "- Do not invent facts that could only have been communicated by the player character off-screen.",
           "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
-          "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
+          allowDirectedPlayerControl
+            ? "- Never write lines that pretend the Director note was spoken aloud in-scene."
+            : "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
           "Ownership rules (strict):",
           `- The player character is: ${playerCharacter.name}`,
           `- Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
-          "- Never write dialogue/actions/thoughts/decisions for the player character.",
-          "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
+          allowDirectedPlayerControl
+            ? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewrite when required by the direction."
+            : "- Never write dialogue/actions/thoughts/decisions for the player character.",
+          allowDirectedPlayerControl
+            ? "- Do not treat the Director note itself as in-world dialogue."
+            : "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
           "Sanitization rules:",
-          "- Never repeat the latest player message.",
+          allowDirectedPlayerControl
+            ? "- Never repeat the latest Director note."
+            : "- Never repeat the latest player message.",
           "- Never use asterisks for emphasis.",
         ].join("\n");
 
@@ -3912,19 +3978,27 @@ export function StoryEngineProvider({
           "Information ownership rule:",
           "- Do not invent facts that could only have been communicated by the player character off-screen.",
           "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
-          "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
+          allowDirectedPlayerControl
+            ? "- Never write lines that pretend the Director note was spoken aloud in-scene."
+            : "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
         ].join("\n");
 
         const hiddenDialogueInferencePattern =
           /\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
         const hiddenDialogueRewritePrompt = [
           "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
-          `The latest player message is:\n${previousMessage.content}`,
+          allowDirectedPlayerControl
+            ? `The latest Director note is:\n${previousMessage.content}`
+            : `The latest player message is:\n${previousMessage.content}`,
           `The player character is: ${playerCharacter.name}.`,
           `Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
-          "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          allowDirectedPlayerControl
+            ? "Do not repeat the Director note as dialogue. Realize it as scene content and continue naturally."
+            : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
           "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
-          "Do not attribute extra details to what the player said.",
+          allowDirectedPlayerControl
+            ? "Do not attribute the Director note to what the player character said."
+            : "Do not attribute extra details to what the player said.",
           "If NPCs need details, have them ask clarifying questions.",
           "Do not invent diagnoses, causes, or specifics unless already established in prior story events/state or explicitly present in the latest player message.",
           "Formatting rules:",
@@ -3938,8 +4012,12 @@ export function StoryEngineProvider({
         ].join("\n");
 
         const sceneStateRewritePrompt = [
-          "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
-          `The latest player message is canon scene state:\n${previousMessage.content}`,
+          allowDirectedPlayerControl
+            ? "Rewrite the following scene to remove any re-narration of the latest Director note."
+            : "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
+          allowDirectedPlayerControl
+            ? `The latest Director note is staging guidance, not spoken dialogue:\n${previousMessage.content}`
+            : `The latest player message is canon scene state:\n${previousMessage.content}`,
           "Do not restate those facts in new words. Continue from the current moment and show consequences and NPC/world reactions.",
           "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "If a character enters/arrives or a reveal is already stated by the player, start after that moment (reactions, responses, new beats).",
@@ -3954,7 +4032,9 @@ export function StoryEngineProvider({
           "Ownership rules:",
           `- The player character is: ${playerCharacter.name}`,
           `- Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
-          "- Never write dialogue/actions/thoughts/decisions for the player character.",
+          allowDirectedPlayerControl
+            ? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewritten scene when required by the direction."
+            : "- Never write dialogue/actions/thoughts/decisions for the player character.",
         ].join("\n");
 
         let candidateAssistantText = finalAssistantText;
@@ -3995,10 +4075,12 @@ export function StoryEngineProvider({
             continue;
           }
 
-          const violation = getPlayerCharacterAuthorshipViolation({
-            playerName: playerNameForValidation,
-            text: candidateSanitized.text,
-          });
+          const violation = allowDirectedPlayerControl
+            ? null
+            : getPlayerCharacterAuthorshipViolation({
+                playerName: playerNameForValidation,
+                text: candidateSanitized.text,
+              });
 
           if (violation) {
             lastValidationDiagnostic = [
@@ -4772,14 +4854,21 @@ export function StoryEngineProvider({
 
         const existingMessages = await repository.listStoryMessages(storyId);
         const lastMessage = existingMessages[existingMessages.length - 1];
+        const prefix = extractSpeakerPrefix(trimmed);
+        const strippedUserContent = (prefix?.strippedContent ?? trimmed).trim();
+        const expectedUserSpeakerType = resolveUserSpeakerType(prefix?.speakerLabel, "player");
+        const expectedUserSpeakerName = resolveUserSpeakerName(
+          prefix?.speakerLabel,
+          undefined,
+          expectedUserSpeakerType,
+        );
 
         const shouldReuseLastUserMessage =
           lastMessage?.role === "user" &&
-          lastMessage.content.trim() === trimmed &&
+          lastMessage.content.trim() === strippedUserContent &&
+          (lastMessage.speakerType ?? "player") === expectedUserSpeakerType &&
+          (lastMessage.speakerName?.trim() || undefined) === expectedUserSpeakerName &&
           lastMessage.storyId === storyId;
-
-        const prefix = extractSpeakerPrefix(trimmed);
-        const strippedUserContent = (prefix?.strippedContent ?? trimmed).trim();
         const detectedDirectorIntent = opts?.directorIntentOverride ?? detectDirectorIntent(strippedUserContent);
         const detectedChapterBoundary = detectChapterBoundary(strippedUserContent);
         const chapterBoundary =
@@ -4797,8 +4886,8 @@ export function StoryEngineProvider({
               role: "user",
               content: strippedUserContent,
               timestamp: new Date().toISOString(),
-              speakerName: prefix?.speakerLabel,
-              speakerType: "player",
+              speakerName: expectedUserSpeakerName,
+              speakerType: expectedUserSpeakerType,
               ...(detectedDirectorIntent ? { directorIntent: detectedDirectorIntent } : {}),
               ...(chapterBoundary ? { chapterBoundary } : {}),
             };
@@ -4806,11 +4895,15 @@ export function StoryEngineProvider({
         if (!shouldReuseLastUserMessage) {
           await repository.saveStoryMessage(userMessage);
         } else if (
+          (lastMessage.speakerName?.trim() || undefined) !== expectedUserSpeakerName ||
+          (lastMessage.speakerType ?? "player") !== expectedUserSpeakerType ||
           JSON.stringify(lastMessage.directorIntent ?? null) !== JSON.stringify(detectedDirectorIntent ?? null) ||
           JSON.stringify(lastMessage.chapterBoundary ?? null) !== JSON.stringify(chapterBoundary ?? null)
         ) {
           await repository.saveStoryMessage({
             ...lastMessage,
+            speakerName: expectedUserSpeakerName,
+            speakerType: expectedUserSpeakerType,
             ...(detectedDirectorIntent ? { directorIntent: detectedDirectorIntent } : {}),
             ...(chapterBoundary ? { chapterBoundary } : {}),
           });
@@ -5039,6 +5132,7 @@ export function StoryEngineProvider({
             storyState,
             recentMessages: sanitizedHistoryMessages,
             latestUserMessage: userMessage.content,
+            latestUserMessageSpeakerType: userMessage.speakerType,
             directorIntent: userMessage.directorIntent ?? null,
             rpStats: currentRpStats,
             rpConfig: story.rpConfig ?? null,
@@ -5121,6 +5215,7 @@ export function StoryEngineProvider({
                   storyState,
                   recentMessages: sanitizedHistoryMessages,
                   latestUserMessage: transmitSafe.transmitText,
+                  latestUserMessageSpeakerType: userMessage.speakerType,
                   directorIntent: userMessage.directorIntent ?? null,
                 });
                 const note = buildTransmitSafeSystemNote(transmitSafe);
@@ -5233,10 +5328,13 @@ export function StoryEngineProvider({
               ).content
             : assistantContent.content;
 
+          const allowDirectedPlayerControl = isDirectorMessage(userMessage);
           const formatRewritePrompt = [
             "Rewrite the following story scene into the required Story Engine transcript grammar.",
             "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
-            "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+            allowDirectedPlayerControl
+              ? "Do not repeat the latest Director note verbatim. Realize it as scene content and continue from the next beat."
+              : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
             "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
             "Only resolve success or failure when the player's message leaves the outcome open as an attempt.",
             "Formatting rules (strict):",
@@ -5252,25 +5350,43 @@ export function StoryEngineProvider({
             "Information ownership rule (strict):",
             "- Do not invent facts that could only have been communicated by the player character off-screen.",
             "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
-            "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
+            allowDirectedPlayerControl
+              ? "- Never write lines that pretend the Director note was spoken aloud in-scene."
+              : "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
             "Ownership rules (strict):",
             `- The player character is: ${playerCharacter.name}`,
-            "- Never write dialogue/actions/thoughts/decisions for the player character.",
-            "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
+            allowDirectedPlayerControl
+              ? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewrite when required by the direction."
+              : "- Never write dialogue/actions/thoughts/decisions for the player character.",
+            allowDirectedPlayerControl
+              ? "- Do not treat the Director note itself as in-world dialogue."
+              : "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
             "Sanitization rules:",
-            "- Never repeat the latest player message.",
+            allowDirectedPlayerControl
+              ? "- Never repeat the latest Director note."
+              : "- Never repeat the latest player message.",
             "- Never use asterisks for emphasis.",
           ].join("\n");
 
           const ownershipRewritePrompt = [
-            "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
+            allowDirectedPlayerControl
+              ? "Rewrite the following story scene to preserve the directed scene while removing any formatting or continuity problems."
+              : "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
             `The player character is: ${playerCharacter.name}.`,
-            "Never include a speaker header for the player character.",
-            "Never narrate actions/thoughts for the player character.",
-            "Remove any repetition of the latest player message.",
+            allowDirectedPlayerControl
+              ? "The latest user message was a Director note, not protagonist dialogue."
+              : "Never include a speaker header for the player character.",
+            allowDirectedPlayerControl
+              ? "It is valid for this one rewritten scene to temporarily include player-character dialogue/actions if the directed scene requires it."
+              : "Never narrate actions/thoughts for the player character.",
+            allowDirectedPlayerControl
+              ? "Do not treat the Director note itself as dialogue spoken by the player character."
+              : "Remove any repetition of the latest player message.",
             "Never use narrator labels like 'Narrator:' anywhere in the output.",
             "Keep continuity, character voice, and natural pacing.",
-            "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+            allowDirectedPlayerControl
+              ? "Do not repeat the Director note verbatim. Realize it as scene content and continue from the next beat."
+              : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
             "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
             "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
             "Formatting rules:",
@@ -5284,18 +5400,26 @@ export function StoryEngineProvider({
             "Information ownership rule:",
             "- Do not invent facts that could only have been communicated by the player character off-screen.",
             "- If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
-            "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
+            allowDirectedPlayerControl
+              ? "- Never write lines that pretend the Director note was spoken aloud in-scene."
+              : "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
           ].join("\n");
 
           const hiddenDialogueInferencePattern =
             /\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
           const hiddenDialogueRewritePrompt = [
             "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
-            `The latest player message is:\n${userMessage.content}`,
+            allowDirectedPlayerControl
+              ? `The latest Director note is:\n${userMessage.content}`
+              : `The latest player message is:\n${userMessage.content}`,
             `The player character is: ${playerCharacter.name}.`,
-            "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+            allowDirectedPlayerControl
+              ? "Do not repeat the Director note as dialogue. Realize it as scene content and continue naturally."
+              : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
             "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
-            "Do not attribute extra details to what the player said.",
+            allowDirectedPlayerControl
+              ? "Do not attribute the Director note to what the player character said."
+              : "Do not attribute extra details to what the player said.",
             "If NPCs need details, have them ask clarifying questions.",
             "Do not invent diagnoses, causes, or specifics unless already established in prior story events/state or explicitly present in the latest player message.",
             "Formatting rules:",
@@ -5309,8 +5433,12 @@ export function StoryEngineProvider({
           ].join("\n");
 
           const sceneStateRewritePrompt = [
-            "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
-            `The latest player message is canon scene state:\n${userMessage.content}`,
+            allowDirectedPlayerControl
+              ? "Rewrite the following scene to remove any re-narration of the latest Director note."
+              : "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
+            allowDirectedPlayerControl
+              ? `The latest Director note is staging guidance, not spoken dialogue:\n${userMessage.content}`
+              : `The latest player message is canon scene state:\n${userMessage.content}`,
             "Do not restate those facts in new words. Continue from the current moment and show consequences and NPC/world reactions.",
             "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
             "If a character enters/arrives or a reveal is already stated by the player, start after that moment (reactions, responses, new beats).",
@@ -5324,7 +5452,9 @@ export function StoryEngineProvider({
             "Never use asterisks for emphasis.",
             "Ownership rules:",
             `- The player character is: ${playerCharacter.name}`,
-            "- Never write dialogue/actions/thoughts/decisions for the player character.",
+            allowDirectedPlayerControl
+              ? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewritten scene when required by the direction."
+              : "- Never write dialogue/actions/thoughts/decisions for the player character.",
           ].join("\n");
 
           let candidateAssistantText = finalAssistantText;
@@ -5388,10 +5518,12 @@ export function StoryEngineProvider({
               continue;
             }
 
-            const violation = getPlayerCharacterAuthorshipViolation({
-              playerName: playerNameForValidation,
-              text: candidateSanitized.text,
-            });
+            const violation = allowDirectedPlayerControl
+              ? null
+              : getPlayerCharacterAuthorshipViolation({
+                  playerName: playerNameForValidation,
+                  text: candidateSanitized.text,
+                });
 
             if (violation) {
               lastValidationDiagnostic = [
@@ -5889,14 +6021,10 @@ export function StoryEngineProvider({
               const transcript = slice
                 .map((message, idx) => {
                   const number = startIndex + idx;
-                  const label =
-                    message.role === "user"
-                      ? `USER (${message.speakerName?.trim() || playerCharacter.name})`
-                      : message.speakerType === "narrator"
-                        ? "NARRATOR"
-                        : message.speakerName?.trim()
-                          ? `CANON (${message.speakerName.trim()})`
-                          : "ASSISTANT";
+                  const label = formatTranscriptSpeakerForIndexing(
+                    message,
+                    playerCharacter.name,
+                  );
                   const content = (message.content ?? "").trim().replace(/\s+/g, " ");
                   return `[${number}] ${label}: ${content}`;
                 })
@@ -5911,6 +6039,7 @@ export function StoryEngineProvider({
 
               const chapterPrompt = [
                 "Write a chapter summary for the following canon chapter transcript.",
+                "Director lines are staging notes preserved in the transcript. Use them as context, but summarize what actually happens in the scene, not the note itself.",
                 "This summary is for the archive, not for narration. Do not write prose scenes.",
                 "Keep it compact and spoiler-aware: focus on what actually happened, key reveals, and state changes.",
                 "Output format:",

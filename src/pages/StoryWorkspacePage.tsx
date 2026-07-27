@@ -985,7 +985,7 @@ export function StoryWorkspacePage() {
           role: composerState.role,
           speakerType:
             composerState.role === "user"
-              ? "player"
+              ? composerState.speakerType
               : composerState.role === "system"
                 ? "system"
                 : composerState.speakerType,
@@ -1002,7 +1002,7 @@ export function StoryWorkspacePage() {
           role: composerState.role,
           speakerType:
             composerState.role === "user"
-              ? "player"
+              ? composerState.speakerType
               : composerState.role === "system"
                 ? "system"
                 : composerState.speakerType,
@@ -1603,10 +1603,13 @@ export function StoryWorkspacePage() {
                     role,
                     speakerType:
                       role === "user"
-                        ? "player"
+                        ? currentState.speakerType === "director"
+                          ? "director"
+                          : "player"
                         : role === "system"
                           ? "system"
                           : currentState.speakerType === "player" ||
+                              currentState.speakerType === "director" ||
                               currentState.speakerType === "system"
                             ? "canon"
                             : currentState.speakerType,
@@ -1641,7 +1644,10 @@ export function StoryWorkspacePage() {
                 ) : composerState.role === "system" ? (
                   <option value="system">system</option>
                 ) : (
-                  <option value="player">player</option>
+                  <>
+                    <option value="player">player</option>
+                    <option value="director">director</option>
+                  </>
                 )}
               </SelectInput>
             </Field>
