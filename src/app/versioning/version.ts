@@ -10,13 +10,19 @@ export const APP_VERSION = "2.6.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "2.6.0": {
-    title: "Continue Control + Directed Follow-Through",
+    title: "Transcript Command System",
     added: [
-      "Stories now support a Continue control turn that lets the AI keep the current scene unfolding naturally without requiring fresh player dialogue or placeholder actions",
-      "Continue can now inherit temporary player-character control when it immediately follows a Director turn, allowing directed scenes to keep playing out smoothly across multiple replies",
+      "Director: can now be written directly in the transcript as an out-of-character scene-direction command, letting the AI stage and play out a scene while temporarily controlling all characters, including the player character, for that reply only",
+      "Continue and Continue. now work as transcript control commands, with or without surrounding asterisks, telling the AI to keep the current scene unfolding naturally without requiring fresh player dialogue or placeholder actions",
+      "Continue now inherits temporary player-character control when it immediately follows a Director turn, allowing a directed scene to keep playing out smoothly across multiple replies before normal control returns",
+      "Canon: now acts as an explicit author declaration that establishes or corrects permanent story truth with the highest continuity priority",
+      "Secret: now records information that is objectively true in the story but intentionally concealed from characters and/or the audience until later",
+      "Reveal: now authorises previously hidden secrets to begin entering the narrative naturally, so they can surface, be discussed, or resolve in later scenes",
+      "Retcon: now functions as an explicit author correction that replaces conflicting earlier canon from that point onward without requiring old scenes to be rewritten",
     ],
     fixed: [
       "Continue control messages are no longer shown in the story reading/chat surfaces, so pacing commands do not interrupt the visible prose flow",
+      "Director, Continue, Canon, Secret, Reveal, and Retcon are all treated as transcript commands rather than ordinary spoken dialogue, so indexing, summaries, memory, and exports handle them more consistently",
       "Version wiring is now aligned to 2.6.0 across the app label, changelog, npm metadata, and Android release metadata",
     ],
     knownIssues: [],
