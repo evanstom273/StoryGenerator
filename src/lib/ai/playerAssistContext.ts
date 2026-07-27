@@ -12,6 +12,7 @@ import { buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { formatUniverseWikiSources } from "../universeSources";
 import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
+import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
@@ -37,6 +38,13 @@ function formatTimelineMessage(message: StoryMessage, playerCharacterName: strin
         content: normalizeWhitespace(
           `${message.speakerName?.trim() || "Author"}: ${message.content}`,
         ),
+      };
+    }
+
+    if (isContinueMessage(message)) {
+      return {
+        role: "user",
+        content: normalizeWhitespace(`Continue: ${message.content}`),
       };
     }
 

@@ -12,6 +12,7 @@ import {
   formatAuthorDirectiveStateForPrompt,
   isAuthorDirectiveMessage,
 } from "../storyText/authorDirectives";
+import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
 
 const MAX_RECENT_MESSAGES = 40;
@@ -44,6 +45,8 @@ function formatRecentMessages(
         message.role === "user"
           ? isAuthorDirectiveMessage(message)
             ? message.authorDirective?.kind ?? "author"
+            : isContinueMessage(message)
+              ? "continue"
             : isDirectorMessage(message)
               ? "director"
               : `user (${playerName})`
@@ -171,6 +174,7 @@ export function buildStoryStateExtractionPrompt({
       "- Preserve Open Threads quality. Track the questions/tensions a reader would still care about.",
       "- If nothing changed, return the previous state with a refreshed updatedAt.",
       "- Never generate dialogue or actions for the player character; this is metadata only.",
+      "- Continue lines may appear in the transcript. They are out-of-character continuation notes, not in-universe events. Use them to understand that the following assistant scene should keep unfolding, but index only the realized story outcomes, not the note itself.",
       "- Director lines may appear in the transcript. They are out-of-character staging notes, not in-universe events. Use them to understand why the following scene happened, but index only the realized story outcomes, not the note itself.",
       "- Canon lines are explicit author declarations and should be treated as permanent truth with the highest confidence.",
       "- Secret lines are true but intentionally hidden. Track them internally without exposing them as openly known story facts unless Reveal authority exists.",

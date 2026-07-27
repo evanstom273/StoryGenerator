@@ -11,6 +11,7 @@ import { serializeStoryArchivePdf } from "./storyArchivePdf";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { parseActionSegments } from "./storyText/parseActionSegments";
 import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
+import { isContinueMessage } from "./storyText/continueMode";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
 import { isDirectorMessage } from "./storyText/directorMode";
@@ -60,6 +61,10 @@ function resolveSpeakerLabel(
   if (message.role === "user") {
     if (isAuthorDirectiveMessage(message)) {
       return message.speakerName?.trim() || "Author";
+    }
+
+    if (isContinueMessage(message)) {
+      return "Continue";
     }
 
     if (isDirectorMessage(message)) {

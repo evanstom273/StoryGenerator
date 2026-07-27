@@ -27,7 +27,9 @@ import {
   formatAuthorDirectiveStateForPrompt,
   isAuthorDirectiveMessage,
 } from "../storyText/authorDirectives";
+import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
+import type { SceneDepth } from "./sceneSizing";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
@@ -55,6 +57,13 @@ function formatTimelineMessage(
         content: normalizeWhitespace(
           `${message.speakerName?.trim() || "Author"}: ${message.content}`,
         ),
+      };
+    }
+
+    if (isContinueMessage(message)) {
+      return {
+        role: "user",
+        content: normalizeWhitespace(`Continue: ${message.content}`),
       };
     }
 
@@ -121,7 +130,10 @@ export function buildStoryChatContext({
   playerStateHintOverride,
 }: BuildStoryChatContextInput): AIChatMessage[] {
   const latestMessageIsDirectorNote = latestUserMessageSpeakerType === "director";
-  const sceneDepth = inferSceneDepth(latestUserMessage);
+  const latestMessageIsContinueNote = latestUserMessageSpeakerType === "continue";
+  const sceneDepth: SceneDepth = latestMessageIsContinueNote
+    ? "standard"
+    : inferSceneDepth(latestUserMessage);
   const wordTarget = getSceneWordTarget(sceneDepth);
   const mostRecentImport = imports[0];
   const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
@@ -341,6 +353,7 @@ export function buildStoryChatContext({
       matureFictionPolicy,
       matureFictionModeNote,
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
+      "Continue notes may appear in the transcript as out-of-character instructions to keep the current scene moving without requiring a fresh player action. They are visible in the transcript but are not themselves spoken dialogue or canon events.",
       "Director notes may appear in the transcript as out-of-character production guidance. They are visible in the transcript but are not themselves spoken dialogue or automatic canon facts. Canon comes from what actually happens in the generated scene that follows.",
       "The player character sheet is authoritative canon for identity facts (name, age, gender, pronouns, species, role/occupation, disabilities/limitations). Do not contradict it with genre assumptions or defaults.",
       "Stay anchored in the story's premise, player character, and current situation. In ensemble scenes, also track the active group dynamic, shared objective, and who currently holds the conversational or dramatic focus. Recent beats matter, but they should not erase what the story is fundamentally about.",
@@ -394,6 +407,15 @@ export function buildStoryChatContext({
       "Avoid generic AI phrasing; match each character's cadence, vocabulary, humor/formality, and emotional baseline.",
       "Do not generate suggested player lines or options unless explicitly asked via Player Assist. Focus on canon characters, NPCs, and narration.",
       "Drive the story forward with complications, discoveries, and tension, but never remove player agency.",
+      latestMessageIsContinueNote
+        ? "Latest-turn rule: the newest user message is a Continue note, not protagonist dialogue. Continue the current scene from the immediate next beat instead of waiting for a fresh player action."
+        : "",
+      latestMessageIsContinueNote
+        ? "Let ongoing conversations, action, emotional aftermath, travel, or ambient scene business keep unfolding naturally until a meaningful pause is reached."
+        : "",
+      latestMessageIsContinueNote
+        ? "Do not reset the scene, summarize what just happened, or demand placeholder input. Extend the moment organically."
+        : "",
       latestMessageIsDirectorNote
         ? "Latest-turn rule: the newest user message is a Director note, not protagonist dialogue. Treat it as staging guidance for this reply only. You may temporarily control all characters, including the player character, when needed to realize the directed scene. The resulting scene becomes canon; the Director note itself does not."
         : "Never move, speak for, think for, feel for, or act on behalf of the player character.",
@@ -478,7 +500,16 @@ export function buildStoryChatContext({
       role: "user",
       content: latestMessageIsDirectorNote
         ? normalizeWhitespace(`Director note for the next scene only:\n${latestUserMessage}`)
-        : normalizeWhitespace(`Player (${playerCharacter.name}) turn:\n${latestUserMessage}`),
+        : latestMessageIsContinueNote
+          ? normalizeWhitespace(
+              [
+                "Continue note for the current scene only:",
+                "Continue the scene naturally from the immediate next beat.",
+                "Do not require fresh player dialogue or action before advancing.",
+                "Let the moment breathe until a natural pause is reached.",
+              ].join("\n"),
+            )
+          : normalizeWhitespace(`Player (${playerCharacter.name}) turn:\n${latestUserMessage}`),
     },
   ];
 }
@@ -502,6 +533,8 @@ export function buildStorySummaryContext({
       content: normalizeWhitespace(
         [
           `Conversation transcript for "${storyTitle}".`,
+          "Continue lines are out-of-character continuation notes kept in the transcript for reference.",
+          "They tell the model to keep the current scene moving, but they are not themselves in-universe events to summarize.",
           "Director lines are out-of-character staging notes kept in the transcript for reference.",
           "Treat the actual generated scene outcomes as canon. Do not summarize the Director note itself as if it were an in-universe event.",
           "Canon/Secret/Reveal/Retcon lines are explicit author declarations. Use them as authoritative continuity constraints rather than spoken dialogue.",

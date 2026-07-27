@@ -1605,13 +1605,16 @@ export function StoryWorkspacePage() {
                       role === "user"
                         ? currentState.speakerType === "author"
                           ? "author"
+                          : currentState.speakerType === "continue"
+                            ? "continue"
                           : currentState.speakerType === "director"
-                          ? "director"
-                          : "player"
+                            ? "director"
+                            : "player"
                         : role === "system"
                           ? "system"
                           : currentState.speakerType === "player" ||
                             currentState.speakerType === "author" ||
+                              currentState.speakerType === "continue" ||
                               currentState.speakerType === "director" ||
                               currentState.speakerType === "system"
                             ? "canon"
@@ -1649,6 +1652,7 @@ export function StoryWorkspacePage() {
                 ) : (
                   <>
                     <option value="player">player</option>
+                    <option value="continue">continue</option>
                     <option value="director">director</option>
                     <option value="author">author</option>
                   </>

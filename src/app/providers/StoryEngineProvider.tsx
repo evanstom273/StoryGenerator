@@ -97,6 +97,13 @@ import {
   resolveUserSpeakerName,
   resolveUserSpeakerType,
 } from "../../lib/storyText/directorMode";
+import {
+  isContinueInstructionText,
+  isContinueMessage,
+  isContinueSpeakerLabel,
+  resolveUserSpeakerNameForContinue,
+  resolveUserSpeakerTypeForContinue,
+} from "../../lib/storyText/continueMode";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type NpcInnerLifeUpdate, type RelationshipArcUpdate, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
@@ -825,6 +832,10 @@ function formatMetaChatCanonMessage(message: StoryMessage, playerCharacterName: 
       return `${message.speakerName?.trim() || "Author"}: ${content}`;
     }
 
+    if (isContinueMessage(message)) {
+      return `Continue: ${content}`;
+    }
+
     if (isDirectorMessage(message)) {
       return `Director: ${content}`;
     }
@@ -854,6 +865,10 @@ function formatTranscriptSpeakerForIndexing(
   if (message.role === "user") {
     if (isAuthorDirectiveMessage(message)) {
       return message.speakerName?.trim()?.toUpperCase() || "AUTHOR";
+    }
+
+    if (isContinueMessage(message)) {
+      return "CONTINUE";
     }
 
     return isDirectorMessage(message)
@@ -1122,6 +1137,7 @@ async function rebuildChapterArchiveSummaries(params: {
 
     const chapterPrompt = [
       "Rebuild the archive chapter review for the following canon chapter transcript.",
+      "Continue lines are continuation notes preserved in the transcript. They are not on-screen beats; use them only to understand that the scene was intentionally allowed to keep unfolding.",
       "Director lines are staging notes preserved in the transcript. Use them as context, but summarize what actually happens in the scene, not the note itself.",
       "Canon/Secret/Reveal/Retcon lines are author declarations preserved in the transcript. Treat them as authoritative continuity constraints, secrecy rules, or retcons, but do not summarize the declaration itself as if it were an on-screen beat.",
       "This output is for the story archive, not for narration. Do not write prose scenes.",
@@ -3728,25 +3744,36 @@ export function StoryEngineProvider({
       async createMessage(draft) {
         await assertStoryWritable(draft.storyId);
         const prefix = draft.role === "user" ? extractSpeakerPrefix(draft.content) : null;
+        const rawUserContent = draft.content.trim();
+        const isContinueInstruction =
+          draft.role === "user" &&
+          (draft.speakerType === "continue" ||
+            (!prefix && isContinueInstructionText(rawUserContent)));
         const authorDirective =
           draft.role === "user"
             ? resolveAuthorDirective(prefix?.speakerLabel, draft.authorDirective)
             : undefined;
         const resolvedUserSpeakerType =
           draft.role === "user"
-            ? resolveUserSpeakerTypeForAuthorDirective(
-                authorDirective,
-                resolveUserSpeakerType(prefix?.speakerLabel, draft.speakerType),
+            ? resolveUserSpeakerTypeForContinue(
+                isContinueInstruction,
+                resolveUserSpeakerTypeForAuthorDirective(
+                  authorDirective,
+                  resolveUserSpeakerType(prefix?.speakerLabel, draft.speakerType),
+                ),
               )
             : draft.speakerType;
         const resolvedUserSpeakerName =
           draft.role === "user"
-            ? resolveUserSpeakerNameForAuthorDirective(
-                authorDirective,
-                resolveUserSpeakerName(
-                  prefix?.speakerLabel,
-                  draft.speakerName,
-                  draft.speakerType,
+            ? resolveUserSpeakerNameForContinue(
+                isContinueInstruction,
+                resolveUserSpeakerNameForAuthorDirective(
+                  authorDirective,
+                  resolveUserSpeakerName(
+                    prefix?.speakerLabel,
+                    draft.speakerName,
+                    draft.speakerType,
+                  ),
                 ),
               )
             : draft.speakerName?.trim() || prefix?.speakerLabel || undefined;
@@ -3760,7 +3787,7 @@ export function StoryEngineProvider({
           speakerType: resolvedUserSpeakerType,
           directorIntent:
             draft.role === "user"
-              ? authorDirective
+              ? authorDirective || isContinueInstruction
                 ? undefined
                 : draft.directorIntent ??
                   detectDirectorIntent((prefix?.strippedContent ?? draft.content).trim()) ??
@@ -3792,6 +3819,11 @@ export function StoryEngineProvider({
         await assertStoryWritable(currentMessage.storyId);
 
         const prefix = draft.role === "user" ? extractSpeakerPrefix(draft.content) : null;
+        const rawUserContent = draft.content.trim();
+        const isContinueInstruction =
+          draft.role === "user" &&
+          ((draft.speakerType ?? currentMessage.speakerType) === "continue" ||
+            (!prefix && isContinueInstructionText(rawUserContent)));
         const authorDirective =
           draft.role === "user"
             ? resolveAuthorDirective(
@@ -3801,19 +3833,28 @@ export function StoryEngineProvider({
             : undefined;
         const resolvedUserSpeakerType =
           draft.role === "user"
-            ? resolveUserSpeakerTypeForAuthorDirective(
-                authorDirective,
-                resolveUserSpeakerType(prefix?.speakerLabel, draft.speakerType ?? currentMessage.speakerType),
+            ? resolveUserSpeakerTypeForContinue(
+                isContinueInstruction,
+                resolveUserSpeakerTypeForAuthorDirective(
+                  authorDirective,
+                  resolveUserSpeakerType(
+                    prefix?.speakerLabel,
+                    draft.speakerType ?? currentMessage.speakerType,
+                  ),
+                ),
               )
             : draft.speakerType;
         const resolvedUserSpeakerName =
           draft.role === "user"
-            ? resolveUserSpeakerNameForAuthorDirective(
-                authorDirective,
-                resolveUserSpeakerName(
-                  prefix?.speakerLabel,
-                  draft.speakerName,
-                  draft.speakerType ?? currentMessage.speakerType,
+            ? resolveUserSpeakerNameForContinue(
+                isContinueInstruction,
+                resolveUserSpeakerNameForAuthorDirective(
+                  authorDirective,
+                  resolveUserSpeakerName(
+                    prefix?.speakerLabel,
+                    draft.speakerName,
+                    draft.speakerType ?? currentMessage.speakerType,
+                  ),
                 ),
               )
             : draft.speakerName?.trim() || prefix?.speakerLabel || undefined;
@@ -3825,7 +3866,7 @@ export function StoryEngineProvider({
           speakerType: resolvedUserSpeakerType,
           directorIntent:
             draft.role === "user"
-              ? authorDirective
+              ? authorDirective || isContinueInstruction
                 ? undefined
                 : draft.directorIntent ??
                   detectDirectorIntent((prefix?.strippedContent ?? draft.content).trim()) ??
@@ -4981,14 +5022,22 @@ export function StoryEngineProvider({
         const lastMessage = existingMessages[existingMessages.length - 1];
         const prefix = extractSpeakerPrefix(trimmed);
         const strippedUserContent = (prefix?.strippedContent ?? trimmed).trim();
+        const isContinueInstruction =
+          !prefix ? isContinueInstructionText(trimmed) : isContinueSpeakerLabel(prefix.speakerLabel);
         const authorDirective = resolveAuthorDirective(prefix?.speakerLabel);
-        const expectedUserSpeakerType = resolveUserSpeakerTypeForAuthorDirective(
-          authorDirective,
-          resolveUserSpeakerType(prefix?.speakerLabel, "player"),
+        const expectedUserSpeakerType = resolveUserSpeakerTypeForContinue(
+          isContinueInstruction,
+          resolveUserSpeakerTypeForAuthorDirective(
+            authorDirective,
+            resolveUserSpeakerType(prefix?.speakerLabel, "player"),
+          ),
         );
-        const expectedUserSpeakerName = resolveUserSpeakerNameForAuthorDirective(
-          authorDirective,
-          resolveUserSpeakerName(prefix?.speakerLabel, undefined, expectedUserSpeakerType),
+        const expectedUserSpeakerName = resolveUserSpeakerNameForContinue(
+          isContinueInstruction,
+          resolveUserSpeakerNameForAuthorDirective(
+            authorDirective,
+            resolveUserSpeakerName(prefix?.speakerLabel, undefined, expectedUserSpeakerType),
+          ),
         );
 
         const shouldReuseLastUserMessage =
@@ -4998,10 +5047,10 @@ export function StoryEngineProvider({
           (lastMessage.speakerName?.trim() || undefined) === expectedUserSpeakerName &&
           JSON.stringify(lastMessage.authorDirective ?? null) === JSON.stringify(authorDirective ?? null) &&
           lastMessage.storyId === storyId;
-        const detectedDirectorIntent = authorDirective
+        const detectedDirectorIntent = authorDirective || isContinueInstruction
           ? undefined
           : opts?.directorIntentOverride ?? detectDirectorIntent(strippedUserContent);
-        const detectedChapterBoundary = authorDirective
+        const detectedChapterBoundary = authorDirective || isContinueInstruction
           ? { detected: false as const }
           : detectChapterBoundary(strippedUserContent);
         const chapterBoundary =
@@ -6180,6 +6229,7 @@ export function StoryEngineProvider({
 
               const chapterPrompt = [
                 "Write a chapter summary for the following canon chapter transcript.",
+                "Continue lines are continuation notes preserved in the transcript. They are not on-screen beats; use them only to understand that the scene was intentionally allowed to keep unfolding.",
                 "Director lines are staging notes preserved in the transcript. Use them as context, but summarize what actually happens in the scene, not the note itself.",
                 "Canon/Secret/Reveal/Retcon lines are author declarations preserved in the transcript. Treat them as authoritative continuity constraints, secrecy rules, or retcons, but do not summarize the declaration itself as if it were an on-screen beat.",
                 "This summary is for the archive, not for narration. Do not write prose scenes.",

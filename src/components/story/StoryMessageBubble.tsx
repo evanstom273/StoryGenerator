@@ -3,6 +3,7 @@ import { formatDateTime } from "../../lib/dates";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
+import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { cn } from "../../utils/cn";
@@ -29,6 +30,10 @@ function resolveSpeakerLabel(
   if (role === "user") {
     if (speakerType === "author" || isAuthorDirectiveMessage({ role, speakerType, speakerName })) {
       return speakerName?.trim() || "Author";
+    }
+
+    if (speakerType === "continue" || isContinueMessage({ role, speakerType, speakerName, content: "" })) {
+      return "Continue";
     }
 
     if (speakerType === "director" || isDirectorMessage({ role, speakerType, speakerName })) {
@@ -61,6 +66,10 @@ function resolveSpeakerTagClass(
   if (role === "user") {
     if (speakerType === "author" || isAuthorDirectiveMessage({ role, speakerType, speakerName })) {
       return "text-amber-100";
+    }
+
+    if (speakerType === "continue" || isContinueMessage({ role, speakerType, speakerName, content: "" })) {
+      return "text-sky-100";
     }
 
     if (speakerType === "director" || isDirectorMessage({ role, speakerType, speakerName })) {
@@ -117,6 +126,10 @@ function resolveAvatarClass(label: string, speakerType: StoryMessageSpeakerType 
     return "border-amber-300/25 bg-amber-400/12 text-amber-100";
   }
 
+  if (speakerType === "continue") {
+    return "border-sky-300/25 bg-sky-400/12 text-sky-100";
+  }
+
   if (speakerType === "director") {
     return "border-violet-300/25 bg-violet-400/12 text-violet-100";
   }
@@ -166,6 +179,8 @@ export function StoryMessageBubble({
       ? "border-amber-300/12 bg-amber-300/5"
       : message.speakerType === "author"
         ? "border-amber-300/18 bg-amber-400/[0.06]"
+      : message.speakerType === "continue"
+        ? "border-sky-300/18 bg-sky-400/[0.06]"
       : message.speakerType === "director"
         ? "border-violet-300/18 bg-violet-400/[0.06]"
       : message.speakerType === "narrator"

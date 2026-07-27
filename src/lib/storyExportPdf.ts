@@ -3,6 +3,7 @@ import { formatDateTime } from "./dates";
 import { safeParseStoryStateData, normalizeStoryStateToV2 } from "./storyStateV2";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
+import { isContinueMessage } from "./storyText/continueMode";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
 import { isDirectorMessage } from "./storyText/directorMode";
@@ -21,6 +22,7 @@ import {
 function resolveSpeakerLabel(message: StoryMessage, playerCharacter: PlayerCharacter): string {
   if (message.role === "user") {
     if (isAuthorDirectiveMessage(message)) return message.speakerName?.trim() || "Author";
+    if (isContinueMessage(message)) return "Continue";
     if (isDirectorMessage(message)) return "Director";
     return message.speakerName?.trim() || playerCharacter.name;
   }

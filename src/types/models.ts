@@ -4,6 +4,7 @@ export type Timestamp = string;
 export type StoryMessageRole = "user" | "assistant" | "system";
 export type StoryMessageSpeakerType =
   | "player"
+  | "continue"
   | "director"
   | "author"
   | "canon"
