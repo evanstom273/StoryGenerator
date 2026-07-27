@@ -160,6 +160,10 @@ export function StoryMessageBubble({
   onDelete,
   highlighted,
 }: StoryMessageBubbleProps) {
+  if (isContinueMessage(message)) {
+    return null;
+  }
+
   const speakerLabel = resolveSpeakerLabel(
     message.role,
     message.speakerType,

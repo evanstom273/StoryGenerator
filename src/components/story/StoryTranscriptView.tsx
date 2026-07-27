@@ -358,10 +358,17 @@ export function StoryTranscriptView({
           const isAuthorDirective = isAuthorDirectiveMessage(message);
           const isContinue = isContinueMessage(message);
           const isDirector = isDirectorMessage(message);
+          if (isContinue) {
+            return chapterStartLabel ? (
+              <Fragment key={message.id}>
+                <div className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  {chapterStartLabel}
+                </div>
+              </Fragment>
+            ) : null;
+          }
           const label = isAuthorDirective
             ? message.speakerName?.trim() || "Author"
-            : isContinue
-            ? "Continue"
             : isDirector
             ? "Director"
             : message.speakerName?.trim() || playerCharacterName || "Player";
@@ -369,9 +376,7 @@ export function StoryTranscriptView({
             label,
             isAuthorDirective
               ? "author"
-              : isContinue
-                ? "continue"
-                : isDirector
+              : isDirector
                   ? "director"
                   : "player",
           );

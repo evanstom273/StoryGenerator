@@ -4048,6 +4048,11 @@ export function StoryEngineProvider({
 
         const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
         const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
+        const latestPriorUserMessage = getLatestPriorUserMessage(sanitizedHistoryMessages);
+        const allowDirectedPlayerControl = shouldAllowDirectedPlayerControlForUserTurn(
+          previousMessage,
+          latestPriorUserMessage,
+        );
 
         const context = buildStoryChatContext({
           universe: effectiveUniverse,
@@ -4058,6 +4063,8 @@ export function StoryEngineProvider({
           storyState,
           recentMessages: sanitizedHistoryMessages,
           latestUserMessage: previousMessage.content,
+          latestUserMessageSpeakerType: previousMessage.speakerType,
+          allowDirectedPlayerControl,
           directorIntent: previousMessage.directorIntent ?? null,
         });
 
@@ -4116,7 +4123,6 @@ export function StoryEngineProvider({
             ).content
           : assistantContent.content;
 
-        const allowDirectedPlayerControl = isDirectorMessage(previousMessage);
         const formatRewritePrompt = [
           "Rewrite the following story scene into the required Story Engine transcript grammar.",
           "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
@@ -5328,6 +5334,11 @@ export function StoryEngineProvider({
         const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
         const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
         const shouldSkipAssistantReply = Boolean(chapterBoundary);
+        const latestPriorUserMessage = getLatestPriorUserMessage(historyMessages);
+        const allowDirectedPlayerControl = shouldAllowDirectedPlayerControlForUserTurn(
+          userMessage,
+          latestPriorUserMessage,
+        );
         let assistantMessage: StoryMessage | null = null;
         let appliedRpChanges: RpChangelogEntry[] | null = null;
         let pendingCoreStatChanges: RpStatDelta[] | null = null;
@@ -5359,6 +5370,7 @@ export function StoryEngineProvider({
             recentMessages: sanitizedHistoryMessages,
             latestUserMessage: userMessage.content,
             latestUserMessageSpeakerType: userMessage.speakerType,
+            allowDirectedPlayerControl,
             directorIntent: userMessage.directorIntent ?? null,
             rpStats: currentRpStats,
             rpConfig: story.rpConfig ?? null,
@@ -5442,6 +5454,7 @@ export function StoryEngineProvider({
                   recentMessages: sanitizedHistoryMessages,
                   latestUserMessage: transmitSafe.transmitText,
                   latestUserMessageSpeakerType: userMessage.speakerType,
+                  allowDirectedPlayerControl,
                   directorIntent: userMessage.directorIntent ?? null,
                 });
                 const note = buildTransmitSafeSystemNote(transmitSafe);
@@ -5554,7 +5567,6 @@ export function StoryEngineProvider({
               ).content
             : assistantContent.content;
 
-          const allowDirectedPlayerControl = isDirectorMessage(userMessage);
           const formatRewritePrompt = [
             "Rewrite the following story scene into the required Story Engine transcript grammar.",
             "Do not add new story beats. Rewrite only for format, clarity, and compliance.",

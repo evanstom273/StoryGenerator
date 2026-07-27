@@ -108,6 +108,7 @@ export interface BuildStoryChatContextInput {
   recentMessages: StoryMessage[];
   latestUserMessage: string;
   latestUserMessageSpeakerType?: StoryMessage["speakerType"];
+  allowDirectedPlayerControl?: boolean;
   directorIntent?: DirectorIntent | null;
   rpStats?: RpStats | null;
   rpConfig?: RpConfig | null;
@@ -124,6 +125,7 @@ export function buildStoryChatContext({
   recentMessages,
   latestUserMessage,
   latestUserMessageSpeakerType,
+  allowDirectedPlayerControl = false,
   directorIntent,
   rpStats,
   rpConfig,
@@ -416,13 +418,19 @@ export function buildStoryChatContext({
       latestMessageIsContinueNote
         ? "Do not reset the scene, summarize what just happened, or demand placeholder input. Extend the moment organically."
         : "",
+      latestMessageIsContinueNote && allowDirectedPlayerControl
+        ? "Latest-turn rule: the newest user message is a Continue note following a Director note. Keep extending the current directed scene, and you may temporarily continue controlling all characters, including the player character, for this reply only."
+        : "",
+      latestMessageIsContinueNote && allowDirectedPlayerControl
+        ? "Treat the earlier Director note as still active for this one continuation reply. The Continue note itself is not dialogue, but it does authorize the directed scene to keep playing out naturally."
+        : "",
       latestMessageIsDirectorNote
         ? "Latest-turn rule: the newest user message is a Director note, not protagonist dialogue. Treat it as staging guidance for this reply only. You may temporarily control all characters, including the player character, when needed to realize the directed scene. The resulting scene becomes canon; the Director note itself does not."
         : "Never move, speak for, think for, feel for, or act on behalf of the player character.",
-      latestMessageIsDirectorNote
+      latestMessageIsDirectorNote || (latestMessageIsContinueNote && allowDirectedPlayerControl)
         ? "When following a Director note, keep the player character's behavior consistent with canon, current scene state, and established relationships even if you temporarily control them for the directed scene."
         : "Never introduce the player character into the scene unless the transcript/story state or the player's latest message established them there. Do not narrate the player character arriving, acting, speaking, thinking, or reacting. Do not imply the player character is physically present through ambient details (sounds, shadows, movements) if the player has established they are elsewhere.",
-      latestMessageIsDirectorNote
+      latestMessageIsDirectorNote || (latestMessageIsContinueNote && allowDirectedPlayerControl)
         ? "Once this directed reply is complete, normal player control resumes on the next user turn."
         : "When the player character is present, other characters may address them, but always wait for the player's response.",
       "Asterisks are reserved exclusively for actions. Never use asterisks for emphasis, sarcasm, or formatting.",

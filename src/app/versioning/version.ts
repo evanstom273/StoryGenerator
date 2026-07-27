@@ -6,9 +6,21 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.5.1";
+export const APP_VERSION = "2.6.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "2.6.0": {
+    title: "Continue Control + Directed Follow-Through",
+    added: [
+      "Stories now support a Continue control turn that lets the AI keep the current scene unfolding naturally without requiring fresh player dialogue or placeholder actions",
+      "Continue can now inherit temporary player-character control when it immediately follows a Director turn, allowing directed scenes to keep playing out smoothly across multiple replies",
+    ],
+    fixed: [
+      "Continue control messages are no longer shown in the story reading/chat surfaces, so pacing commands do not interrupt the visible prose flow",
+      "Version wiring is now aligned to 2.6.0 across the app label, changelog, npm metadata, and Android release metadata",
+    ],
+    knownIssues: [],
+  },
   "2.5.1": {
     title: "Ending Flow + Chapter Review Rebuild",
     added: [
