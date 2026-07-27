@@ -1,5 +1,6 @@
 import type {
   PlayerCharacter,
+  StoryAuthorDirectiveState,
   StoryMessage,
   StoryStateData,
   StoryStateDataV2,
@@ -7,6 +8,10 @@ import type {
 import type { AIChatMessage } from "./types";
 import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "./json";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
+import {
+  formatAuthorDirectiveStateForPrompt,
+  isAuthorDirectiveMessage,
+} from "../storyText/authorDirectives";
 import { isDirectorMessage } from "../storyText/directorMode";
 
 const MAX_RECENT_MESSAGES = 40;
@@ -37,9 +42,11 @@ function formatRecentMessages(
     .map((message, index) => {
       const prefix =
         message.role === "user"
-          ? isDirectorMessage(message)
-            ? "director"
-            : `user (${playerName})`
+          ? isAuthorDirectiveMessage(message)
+            ? message.authorDirective?.kind ?? "author"
+            : isDirectorMessage(message)
+              ? "director"
+              : `user (${playerName})`
           : message.speakerType === "canon"
             ? `canon (${message.speakerName?.trim() || "Unknown"})`
             : message.speakerType === "narrator"
@@ -109,6 +116,7 @@ export function buildStoryStateExtractionPrompt({
       '  "npcs"?: { "<name>": { "description"?: string, "role"?: string, "firstSeen"?: string, "lastSeen"?: string, "significance"?: "minor"|"recurring"|"major", "memories"?: string[] } },',
       '  "locations"?: { "<name>": { "description"?: string, "tags"?: string[], "notes"?: string[], "lastSeen"?: string } },',
       '  "summaries"?: { "premise"?: string, "protagonistSummary"?: string, "currentSituation"?: string, "recentDevelopments"?: string[], "characterSummaries"?: { "<name>": string }, "relationshipSummary"?: string, "worldSummary"?: string },',
+      '  "authorDirectives"?: { "canon"?: string[], "retcons"?: string[], "hiddenSecrets"?: string[], "revealedSecrets"?: string[], "revealDirectives"?: string[] },',
       '  "indexes"?: {',
       '    "messageCount"?: number,',
       '    "messageNumberingVersion"?: "1.0",',
@@ -164,6 +172,10 @@ export function buildStoryStateExtractionPrompt({
       "- If nothing changed, return the previous state with a refreshed updatedAt.",
       "- Never generate dialogue or actions for the player character; this is metadata only.",
       "- Director lines may appear in the transcript. They are out-of-character staging notes, not in-universe events. Use them to understand why the following scene happened, but index only the realized story outcomes, not the note itself.",
+      "- Canon lines are explicit author declarations and should be treated as permanent truth with the highest confidence.",
+      "- Secret lines are true but intentionally hidden. Track them internally without exposing them as openly known story facts unless Reveal authority exists.",
+      "- Reveal lines authorize hidden truths to begin entering the narrative naturally. After a reveal, the associated secret may move into ordinary story knowledge and resolution.",
+      "- Retcon lines intentionally replace earlier canon. From that point onward, prefer the retconned understanding over conflicting prior material.",
     ].join("\n"),
   );
 
@@ -410,6 +422,14 @@ export function parseStoryStateData(text: string): StoryStateData | null {
     delete (parsed as any).summaries;
   }
 
+  if (
+    (parsed as any).authorDirectives &&
+    (typeof (parsed as any).authorDirectives !== "object" ||
+      Array.isArray((parsed as any).authorDirectives))
+  ) {
+    delete (parsed as any).authorDirectives;
+  }
+
   if ((parsed as any).indexes) {
     const sanitized = sanitizeIndexes((parsed as any).indexes);
     if (sanitized) {
@@ -446,6 +466,16 @@ export function formatStoryLongTermMemoryForPrompt(
   opts?: { playerName?: string | null },
 ) {
   const lines: string[] = [];
+  const authorDirectiveBlock = formatAuthorDirectiveStateForPrompt(
+    (storyStateData as StoryStateData & { authorDirectives?: StoryAuthorDirectiveState })
+      .authorDirectives,
+  );
+
+  if (authorDirectiveBlock) {
+    lines.push("Author Declarations:");
+    lines.push(authorDirectiveBlock);
+    lines.push("");
+  }
 
   if (storyStateData.summaries && typeof storyStateData.summaries === "object") {
     const premise = (storyStateData.summaries as any).premise;

@@ -1,6 +1,7 @@
 import type { StoryExportBundle, StoryMessage } from "../types/models";
 import { formatDateTime, sortByTimestampAsc } from "./dates";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "./storyStateV2";
+import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
 import { isDirectorMessage } from "./storyText/directorMode";
@@ -45,6 +46,7 @@ function formatEvidence(numbers: number[]): string {
 
 function resolveTranscriptSpeaker(message: StoryMessage, playerName: string): string {
   if (message.role === "user") {
+    if (isAuthorDirectiveMessage(message)) return message.speakerName?.trim() || "Author";
     if (isDirectorMessage(message)) return "Director";
     return message.speakerName?.trim() || playerName;
   }

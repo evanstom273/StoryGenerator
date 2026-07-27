@@ -5,9 +5,11 @@ export type StoryMessageRole = "user" | "assistant" | "system";
 export type StoryMessageSpeakerType =
   | "player"
   | "director"
+  | "author"
   | "canon"
   | "narrator"
   | "system";
+export type StoryAuthorDirectiveKind = "canon" | "secret" | "reveal" | "retcon";
 export type ExportFormat = "json" | "markdown" | "txt" | "pdf" | "archive_pdf";
 export type AIProviderType = "openai" | "gemini" | "openrouter" | "anthropic";
 export type DeveloperBugStatus = "open" | "in-progress" | "resolved" | "closed";
@@ -36,6 +38,18 @@ export type DirectorIntent = {
   target?: string;
   /** Absolute time-of-day set, e.g. from "It's 12pm". Sets clock to this hour:minute without advancing. */
   absoluteTime?: { hour: number; minute: number };
+};
+
+export type StoryAuthorDirective = {
+  kind: StoryAuthorDirectiveKind;
+};
+
+export type StoryAuthorDirectiveState = {
+  canon: string[];
+  retcons: string[];
+  hiddenSecrets: string[];
+  revealedSecrets: string[];
+  revealDirectives: string[];
 };
 
 export interface UniverseWikiSource {
@@ -211,6 +225,7 @@ export interface StoryMessage {
   speakerName?: string;
   speakerType?: StoryMessageSpeakerType;
   directorIntent?: DirectorIntent;
+  authorDirective?: StoryAuthorDirective;
   chapterBoundary?: {
     kind: "start" | "end";
     label: string;
@@ -526,6 +541,7 @@ export type StoryStateData = {
     relationshipSummary?: string;
     worldSummary?: string;
   };
+  authorDirectives?: StoryAuthorDirectiveState;
   memoryArchitectureVersion?: MemoryArchitectureVersion;
   indexedAt?: Timestamp;
   lastIndexedAt?: Timestamp;
@@ -642,6 +658,7 @@ export interface StoryMessageDraft {
   speakerName?: string;
   speakerType?: StoryMessageSpeakerType;
   directorIntent?: DirectorIntent;
+  authorDirective?: StoryAuthorDirective;
   editedAt?: Timestamp;
   regeneratedAt?: Timestamp;
   revision?: number;

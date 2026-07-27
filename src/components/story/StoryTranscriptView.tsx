@@ -4,6 +4,7 @@ import { formatTimeShort, timesDiffer } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
+import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 
@@ -16,7 +17,7 @@ type StoryTranscriptViewProps = {
   rpConfig?: RpConfig;
 };
 
-type SpeakerKind = "player" | "director" | "narrator" | "npc" | "system";
+type SpeakerKind = "player" | "author" | "director" | "narrator" | "npc" | "system";
 
 const NUMBER_WORDS = [
   "Zero",
@@ -144,6 +145,16 @@ function getSpeakerTag(label: string, kind: SpeakerKind) {
       kind,
       tagClass: cn(baseTagClass, "text-violet-200"),
       rowClass: cn(baseRowClass, "ml-3 border-l-2 border-violet-400/35 bg-violet-400/10"),
+      contentClass: "text-ink-soft italic",
+    };
+  }
+
+  if (kind === "author") {
+    return {
+      label,
+      kind,
+      tagClass: cn(baseTagClass, "text-amber-100"),
+      rowClass: cn(baseRowClass, "ml-3 border-l-2 border-amber-400/35 bg-amber-400/10"),
       contentClass: "text-ink-soft italic",
     };
   }
@@ -326,11 +337,17 @@ export function StoryTranscriptView({
         if (message.role === "user") {
           latestUserMessage = message.content;
           const lines = message.content.split("\n");
+          const isAuthorDirective = isAuthorDirectiveMessage(message);
           const isDirector = isDirectorMessage(message);
-          const label = isDirector
+          const label = isAuthorDirective
+            ? message.speakerName?.trim() || "Author"
+            : isDirector
             ? "Director"
             : message.speakerName?.trim() || playerCharacterName || "Player";
-          const tag = getSpeakerTag(label, isDirector ? "director" : "player");
+          const tag = getSpeakerTag(
+            label,
+            isAuthorDirective ? "author" : isDirector ? "director" : "player",
+          );
           return (
             <Fragment key={message.id}>
               {chapterStartLabel ? (

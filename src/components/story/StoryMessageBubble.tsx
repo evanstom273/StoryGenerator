@@ -2,6 +2,7 @@ import type { StoryMessage, StoryMessageSpeakerType } from "../../types/models";
 import { formatDateTime } from "../../lib/dates";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
+import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { cn } from "../../utils/cn";
@@ -26,6 +27,10 @@ function resolveSpeakerLabel(
   playerCharacterName: string,
 ) {
   if (role === "user") {
+    if (speakerType === "author" || isAuthorDirectiveMessage({ role, speakerType, speakerName })) {
+      return speakerName?.trim() || "Author";
+    }
+
     if (speakerType === "director" || isDirectorMessage({ role, speakerType, speakerName })) {
       return "Director";
     }
@@ -54,6 +59,10 @@ function resolveSpeakerTagClass(
   speakerName: string | undefined,
 ) {
   if (role === "user") {
+    if (speakerType === "author" || isAuthorDirectiveMessage({ role, speakerType, speakerName })) {
+      return "text-amber-100";
+    }
+
     if (speakerType === "director" || isDirectorMessage({ role, speakerType, speakerName })) {
       return "text-violet-200";
     }
@@ -104,6 +113,10 @@ function hashString(value: string) {
 }
 
 function resolveAvatarClass(label: string, speakerType: StoryMessageSpeakerType | undefined) {
+  if (speakerType === "author") {
+    return "border-amber-300/25 bg-amber-400/12 text-amber-100";
+  }
+
   if (speakerType === "director") {
     return "border-violet-300/25 bg-violet-400/12 text-violet-100";
   }
@@ -151,6 +164,8 @@ export function StoryMessageBubble({
   const rowClassName =
     message.role === "system"
       ? "border-amber-300/12 bg-amber-300/5"
+      : message.speakerType === "author"
+        ? "border-amber-300/18 bg-amber-400/[0.06]"
       : message.speakerType === "director"
         ? "border-violet-300/18 bg-violet-400/[0.06]"
       : message.speakerType === "narrator"

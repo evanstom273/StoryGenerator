@@ -1603,12 +1603,15 @@ export function StoryWorkspacePage() {
                     role,
                     speakerType:
                       role === "user"
-                        ? currentState.speakerType === "director"
+                        ? currentState.speakerType === "author"
+                          ? "author"
+                          : currentState.speakerType === "director"
                           ? "director"
                           : "player"
                         : role === "system"
                           ? "system"
                           : currentState.speakerType === "player" ||
+                            currentState.speakerType === "author" ||
                               currentState.speakerType === "director" ||
                               currentState.speakerType === "system"
                             ? "canon"
@@ -1647,6 +1650,7 @@ export function StoryWorkspacePage() {
                   <>
                     <option value="player">player</option>
                     <option value="director">director</option>
+                    <option value="author">author</option>
                   </>
                 )}
               </SelectInput>

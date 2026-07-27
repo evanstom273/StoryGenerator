@@ -11,6 +11,7 @@ import { sortByTimestampAsc } from "../dates";
 import { buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "./playerAssist";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { formatUniverseWikiSources } from "../universeSources";
+import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
 import { isDirectorMessage } from "../storyText/directorMode";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
@@ -30,6 +31,15 @@ function formatTimelineMessage(message: StoryMessage, playerCharacterName: strin
   }
 
   if (message.role === "user") {
+    if (isAuthorDirectiveMessage(message)) {
+      return {
+        role: "user",
+        content: normalizeWhitespace(
+          `${message.speakerName?.trim() || "Author"}: ${message.content}`,
+        ),
+      };
+    }
+
     if (isDirectorMessage(message)) {
       return {
         role: "user",

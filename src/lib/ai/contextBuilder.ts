@@ -23,6 +23,10 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
+import {
+  formatAuthorDirectiveStateForPrompt,
+  isAuthorDirectiveMessage,
+} from "../storyText/authorDirectives";
 import { isDirectorMessage } from "../storyText/directorMode";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
@@ -45,6 +49,15 @@ function formatTimelineMessage(
   }
 
   if (message.role === "user") {
+    if (isAuthorDirectiveMessage(message)) {
+      return {
+        role: "user",
+        content: normalizeWhitespace(
+          `${message.speakerName?.trim() || "Author"}: ${message.content}`,
+        ),
+      };
+    }
+
     if (isDirectorMessage(message)) {
       return {
         role: "user",
@@ -197,6 +210,11 @@ export function buildStoryChatContext({
       scene: formatStorySceneStateForPrompt(parsed),
     };
   })();
+  const authorDirectiveBlock = formatAuthorDirectiveStateForPrompt(
+    storyState?.stateJson?.trim()
+      ? safeParseStoryStateData(storyState.stateJson)?.authorDirectives
+      : undefined,
+  );
 
   const directorIntentBlock = (() => {
     if (!directorIntent) return "";
@@ -439,6 +457,9 @@ export function buildStoryChatContext({
     ...(storyStateBlock.scene
       ? [{ role: "system" as const, content: `Current Scene State\n\n${storyStateBlock.scene}` }]
       : []),
+    ...(authorDirectiveBlock
+      ? [{ role: "system" as const, content: `Author Declarations\n\n${authorDirectiveBlock}` }]
+      : []),
     ...(directorIntentBlock
       ? [{ role: "system" as const, content: `Director Intent\n\n${directorIntentBlock}` }]
       : []),
@@ -483,6 +504,7 @@ export function buildStorySummaryContext({
           `Conversation transcript for "${storyTitle}".`,
           "Director lines are out-of-character staging notes kept in the transcript for reference.",
           "Treat the actual generated scene outcomes as canon. Do not summarize the Director note itself as if it were an in-universe event.",
+          "Canon/Secret/Reveal/Retcon lines are explicit author declarations. Use them as authoritative continuity constraints rather than spoken dialogue.",
         ].join("\n"),
       ),
     },

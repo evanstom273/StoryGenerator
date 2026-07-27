@@ -86,6 +86,13 @@ import {
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
 import {
+  applyAuthorDirectivesToStoryState,
+  isAuthorDirectiveMessage,
+  resolveAuthorDirective,
+  resolveUserSpeakerNameForAuthorDirective,
+  resolveUserSpeakerTypeForAuthorDirective,
+} from "../../lib/storyText/authorDirectives";
+import {
   isDirectorMessage,
   resolveUserSpeakerName,
   resolveUserSpeakerType,
@@ -814,6 +821,10 @@ function formatMetaChatCanonMessage(message: StoryMessage, playerCharacterName: 
   }
 
   if (message.role === "user") {
+    if (isAuthorDirectiveMessage(message)) {
+      return `${message.speakerName?.trim() || "Author"}: ${content}`;
+    }
+
     if (isDirectorMessage(message)) {
       return `Director: ${content}`;
     }
@@ -841,6 +852,10 @@ function formatTranscriptSpeakerForIndexing(
   playerCharacterName: string,
 ) {
   if (message.role === "user") {
+    if (isAuthorDirectiveMessage(message)) {
+      return message.speakerName?.trim()?.toUpperCase() || "AUTHOR";
+    }
+
     return isDirectorMessage(message)
       ? "DIRECTOR"
       : `USER (${message.speakerName?.trim() || playerCharacterName})`;
@@ -1108,6 +1123,7 @@ async function rebuildChapterArchiveSummaries(params: {
     const chapterPrompt = [
       "Rebuild the archive chapter review for the following canon chapter transcript.",
       "Director lines are staging notes preserved in the transcript. Use them as context, but summarize what actually happens in the scene, not the note itself.",
+      "Canon/Secret/Reveal/Retcon lines are author declarations preserved in the transcript. Treat them as authoritative continuity constraints, secrecy rules, or retcons, but do not summarize the declaration itself as if it were an on-screen beat.",
       "This output is for the story archive, not for narration. Do not write prose scenes.",
       "Keep it compact and spoiler-aware: focus on what actually happened, key reveals, and state changes.",
       "Output format:",
@@ -2279,14 +2295,29 @@ export function StoryEngineProvider({
                 const rawNew = JSON.parse(result.stateJson) as Record<string, unknown>;
                 if (!rawNew.rpStats && existingStoryState?.stateJson) {
                   const rawPrev = JSON.parse(existingStoryState.stateJson) as Record<string, unknown>;
-                  const prevRpStats = rawPrev?.rpStats ?? (safeParseStoryStateData(existingStoryState.stateJson))?.rpStats;
-                  if (prevRpStats) return JSON.stringify({ ...rawNew, rpStats: prevRpStats });
+                  const prevRpStats =
+                    (rawPrev?.rpStats as StoryStateData["rpStats"] | undefined) ??
+                    (safeParseStoryStateData(existingStoryState.stateJson))?.rpStats;
+                  if (prevRpStats) {
+                    return JSON.stringify(
+                      applyAuthorDirectivesToStoryState(
+                        { ...rawNew, rpStats: prevRpStats },
+                        allMessages,
+                      ),
+                    );
+                  }
                 }
               } catch {}
-              return result.stateJson;
+              return JSON.stringify(
+                applyAuthorDirectivesToStoryState(
+                  safeParseStoryStateData(result.stateJson),
+                  allMessages,
+                ),
+              );
             }
+            const withAuthorDirectives = applyAuthorDirectivesToStoryState(parsed, allMessages);
             return finalizeStoryStateForSave({
-              parsedState: parsed,
+              parsedState: withAuthorDirectives as StoryStateData,
               previousStateJson: existingStoryState?.stateJson,
               totalMessages: allMessages.length,
               now,
@@ -2294,7 +2325,12 @@ export function StoryEngineProvider({
               deepIndexTrigger: opts?.trigger ?? "manual",
             });
           } catch {
-            return result.stateJson;
+            return JSON.stringify(
+              applyAuthorDirectivesToStoryState(
+                safeParseStoryStateData(result.stateJson),
+                allMessages,
+              ),
+            );
           }
         })();
 
@@ -2844,22 +2880,46 @@ export function StoryEngineProvider({
               const rawNew = JSON.parse(rebuilt.stateJson) as Record<string, unknown>;
               if (!rawNew.rpStats && storyState?.stateJson) {
                 const rawPrev = JSON.parse(storyState.stateJson) as Record<string, unknown>;
-                const prevRpStats = rawPrev?.rpStats ?? (safeParseStoryStateData(storyState.stateJson))?.rpStats;
-                if (prevRpStats) return JSON.stringify({ ...rawNew, rpStats: prevRpStats });
+                const prevRpStats =
+                  (rawPrev?.rpStats as StoryStateData["rpStats"] | undefined) ??
+                  (safeParseStoryStateData(storyState.stateJson))?.rpStats;
+                if (prevRpStats) {
+                  return JSON.stringify(
+                    applyAuthorDirectivesToStoryState(
+                      { ...rawNew, rpStats: prevRpStats },
+                      refreshedMessages,
+                    ),
+                  );
+                }
               }
             } catch {}
-            return rebuilt.stateJson;
+            return JSON.stringify(
+              applyAuthorDirectivesToStoryState(
+                safeParseStoryStateData(rebuilt.stateJson),
+                refreshedMessages,
+              ),
+            );
           }
 
+          const withAuthorDirectives = applyAuthorDirectivesToStoryState(
+            parsed,
+            refreshedMessages,
+          );
+
           return finalizeStoryStateForSave({
-            parsedState: parsed,
+            parsedState: withAuthorDirectives as StoryStateData,
             previousStateJson: storyState?.stateJson,
             totalMessages: refreshedMessages.length,
             now,
             mode: "deep",
           });
         } catch {
-          return rebuilt.stateJson;
+          return JSON.stringify(
+            applyAuthorDirectivesToStoryState(
+              safeParseStoryStateData(rebuilt.stateJson),
+              refreshedMessages,
+            ),
+          );
         }
       })();
 
@@ -2877,6 +2937,28 @@ export function StoryEngineProvider({
           updatedAt: new Date().toISOString(),
         });
       }
+    };
+
+    const syncAuthorDirectiveStateForStory = async (storyId: string) => {
+      const [existingState, storyMessages] = await Promise.all([
+        repository.getStoryState(storyId),
+        repository.listStoryMessages(storyId),
+      ]);
+
+      const now = new Date().toISOString();
+      const nextStateJson = JSON.stringify(
+        applyAuthorDirectivesToStoryState(
+          safeParseStoryStateData(existingState?.stateJson ?? ""),
+          storyMessages,
+        ),
+      );
+
+      await repository.saveStoryState({
+        id: existingState?.id ?? `story-state:${storyId}`,
+        storyId,
+        stateJson: nextStateJson,
+        updatedAt: now,
+      });
     };
 
     return {
@@ -3646,34 +3728,55 @@ export function StoryEngineProvider({
       async createMessage(draft) {
         await assertStoryWritable(draft.storyId);
         const prefix = draft.role === "user" ? extractSpeakerPrefix(draft.content) : null;
+        const authorDirective =
+          draft.role === "user"
+            ? resolveAuthorDirective(prefix?.speakerLabel, draft.authorDirective)
+            : undefined;
+        const resolvedUserSpeakerType =
+          draft.role === "user"
+            ? resolveUserSpeakerTypeForAuthorDirective(
+                authorDirective,
+                resolveUserSpeakerType(prefix?.speakerLabel, draft.speakerType),
+              )
+            : draft.speakerType;
+        const resolvedUserSpeakerName =
+          draft.role === "user"
+            ? resolveUserSpeakerNameForAuthorDirective(
+                authorDirective,
+                resolveUserSpeakerName(
+                  prefix?.speakerLabel,
+                  draft.speakerName,
+                  draft.speakerType,
+                ),
+              )
+            : draft.speakerName?.trim() || prefix?.speakerLabel || undefined;
         const nextMessage: StoryMessage = {
           id: createEntityId("story-message"),
           storyId: draft.storyId,
           role: draft.role,
           content: (prefix?.strippedContent ?? draft.content).trim(),
           timestamp: new Date().toISOString(),
-          speakerName:
-            draft.role === "user"
-              ? resolveUserSpeakerName(
-                  prefix?.speakerLabel,
-                  draft.speakerName,
-                  draft.speakerType,
-                )
-              : draft.speakerName?.trim() || prefix?.speakerLabel || undefined,
-          speakerType:
-            draft.role === "user"
-              ? resolveUserSpeakerType(prefix?.speakerLabel, draft.speakerType)
-              : draft.speakerType,
+          speakerName: resolvedUserSpeakerName,
+          speakerType: resolvedUserSpeakerType,
           directorIntent:
             draft.role === "user"
-              ? draft.directorIntent ?? detectDirectorIntent((prefix?.strippedContent ?? draft.content).trim()) ?? undefined
+              ? authorDirective
+                ? undefined
+                : draft.directorIntent ??
+                  detectDirectorIntent((prefix?.strippedContent ?? draft.content).trim()) ??
+                  undefined
               : draft.directorIntent,
+          authorDirective,
           editedAt: draft.editedAt,
           regeneratedAt: draft.regeneratedAt,
           revision: draft.revision,
         };
 
         await repository.saveStoryMessage(nextMessage);
+        if (authorDirective) {
+          await syncAuthorDirectiveStateForStory(draft.storyId);
+          void runDeepIndexProcess(draft.storyId, { trigger: "auto" }).catch(() => undefined);
+        }
         await touchStory(draft.storyId);
         await hydrate(false);
 
@@ -3689,34 +3792,56 @@ export function StoryEngineProvider({
         await assertStoryWritable(currentMessage.storyId);
 
         const prefix = draft.role === "user" ? extractSpeakerPrefix(draft.content) : null;
+        const authorDirective =
+          draft.role === "user"
+            ? resolveAuthorDirective(
+                prefix?.speakerLabel,
+                draft.authorDirective ?? currentMessage.authorDirective,
+              )
+            : undefined;
+        const resolvedUserSpeakerType =
+          draft.role === "user"
+            ? resolveUserSpeakerTypeForAuthorDirective(
+                authorDirective,
+                resolveUserSpeakerType(prefix?.speakerLabel, draft.speakerType ?? currentMessage.speakerType),
+              )
+            : draft.speakerType;
+        const resolvedUserSpeakerName =
+          draft.role === "user"
+            ? resolveUserSpeakerNameForAuthorDirective(
+                authorDirective,
+                resolveUserSpeakerName(
+                  prefix?.speakerLabel,
+                  draft.speakerName,
+                  draft.speakerType ?? currentMessage.speakerType,
+                ),
+              )
+            : draft.speakerName?.trim() || prefix?.speakerLabel || undefined;
         const nextMessage: StoryMessage = {
           ...currentMessage,
           role: draft.role,
           content: (prefix?.strippedContent ?? draft.content).trim(),
-          speakerName:
-            draft.role === "user"
-              ? resolveUserSpeakerName(
-                  prefix?.speakerLabel,
-                  draft.speakerName,
-                  draft.speakerType ?? currentMessage.speakerType,
-                )
-              : draft.speakerName?.trim() || prefix?.speakerLabel || undefined,
-          speakerType:
-            draft.role === "user"
-              ? resolveUserSpeakerType(prefix?.speakerLabel, draft.speakerType)
-              : draft.speakerType,
+          speakerName: resolvedUserSpeakerName,
+          speakerType: resolvedUserSpeakerType,
           directorIntent:
             draft.role === "user"
-              ? draft.directorIntent ??
-                detectDirectorIntent((prefix?.strippedContent ?? draft.content).trim()) ??
-                undefined
+              ? authorDirective
+                ? undefined
+                : draft.directorIntent ??
+                  detectDirectorIntent((prefix?.strippedContent ?? draft.content).trim()) ??
+                  undefined
               : draft.directorIntent ?? currentMessage.directorIntent,
+          authorDirective,
           editedAt: draft.editedAt ?? currentMessage.editedAt,
           regeneratedAt: draft.regeneratedAt ?? currentMessage.regeneratedAt,
           revision: draft.revision ?? currentMessage.revision,
         };
 
         await repository.saveStoryMessage(nextMessage);
+        if (authorDirective || currentMessage.authorDirective) {
+          await syncAuthorDirectiveStateForStory(currentMessage.storyId);
+          void runDeepIndexProcess(currentMessage.storyId, { trigger: "auto" }).catch(() => undefined);
+        }
         await touchStory(currentMessage.storyId);
         await hydrate(false);
 
@@ -4856,11 +4981,14 @@ export function StoryEngineProvider({
         const lastMessage = existingMessages[existingMessages.length - 1];
         const prefix = extractSpeakerPrefix(trimmed);
         const strippedUserContent = (prefix?.strippedContent ?? trimmed).trim();
-        const expectedUserSpeakerType = resolveUserSpeakerType(prefix?.speakerLabel, "player");
-        const expectedUserSpeakerName = resolveUserSpeakerName(
-          prefix?.speakerLabel,
-          undefined,
-          expectedUserSpeakerType,
+        const authorDirective = resolveAuthorDirective(prefix?.speakerLabel);
+        const expectedUserSpeakerType = resolveUserSpeakerTypeForAuthorDirective(
+          authorDirective,
+          resolveUserSpeakerType(prefix?.speakerLabel, "player"),
+        );
+        const expectedUserSpeakerName = resolveUserSpeakerNameForAuthorDirective(
+          authorDirective,
+          resolveUserSpeakerName(prefix?.speakerLabel, undefined, expectedUserSpeakerType),
         );
 
         const shouldReuseLastUserMessage =
@@ -4868,9 +4996,14 @@ export function StoryEngineProvider({
           lastMessage.content.trim() === strippedUserContent &&
           (lastMessage.speakerType ?? "player") === expectedUserSpeakerType &&
           (lastMessage.speakerName?.trim() || undefined) === expectedUserSpeakerName &&
+          JSON.stringify(lastMessage.authorDirective ?? null) === JSON.stringify(authorDirective ?? null) &&
           lastMessage.storyId === storyId;
-        const detectedDirectorIntent = opts?.directorIntentOverride ?? detectDirectorIntent(strippedUserContent);
-        const detectedChapterBoundary = detectChapterBoundary(strippedUserContent);
+        const detectedDirectorIntent = authorDirective
+          ? undefined
+          : opts?.directorIntentOverride ?? detectDirectorIntent(strippedUserContent);
+        const detectedChapterBoundary = authorDirective
+          ? { detected: false as const }
+          : detectChapterBoundary(strippedUserContent);
         const chapterBoundary =
           detectedChapterBoundary.detected && detectedChapterBoundary.kind && detectedChapterBoundary.label
             ? {
@@ -4888,6 +5021,7 @@ export function StoryEngineProvider({
               timestamp: new Date().toISOString(),
               speakerName: expectedUserSpeakerName,
               speakerType: expectedUserSpeakerType,
+              ...(authorDirective ? { authorDirective } : {}),
               ...(detectedDirectorIntent ? { directorIntent: detectedDirectorIntent } : {}),
               ...(chapterBoundary ? { chapterBoundary } : {}),
             };
@@ -4897,6 +5031,7 @@ export function StoryEngineProvider({
         } else if (
           (lastMessage.speakerName?.trim() || undefined) !== expectedUserSpeakerName ||
           (lastMessage.speakerType ?? "player") !== expectedUserSpeakerType ||
+          JSON.stringify(lastMessage.authorDirective ?? null) !== JSON.stringify(authorDirective ?? null) ||
           JSON.stringify(lastMessage.directorIntent ?? null) !== JSON.stringify(detectedDirectorIntent ?? null) ||
           JSON.stringify(lastMessage.chapterBoundary ?? null) !== JSON.stringify(chapterBoundary ?? null)
         ) {
@@ -4904,8 +5039,9 @@ export function StoryEngineProvider({
             ...lastMessage,
             speakerName: expectedUserSpeakerName,
             speakerType: expectedUserSpeakerType,
-            ...(detectedDirectorIntent ? { directorIntent: detectedDirectorIntent } : {}),
-            ...(chapterBoundary ? { chapterBoundary } : {}),
+            authorDirective,
+            directorIntent: detectedDirectorIntent ?? undefined,
+            chapterBoundary,
           });
         }
 
@@ -4993,7 +5129,12 @@ export function StoryEngineProvider({
           await repository.saveStoryChapter(createdChapter);
         }
 
-        if (opts?.skipAssistantResponse) {
+        const shouldSkipAssistantResponse = Boolean(opts?.skipAssistantResponse || authorDirective);
+        if (shouldSkipAssistantResponse) {
+          if (authorDirective) {
+            await syncAuthorDirectiveStateForStory(storyId);
+            void runDeepIndexProcess(storyId, { trigger: "auto" }).catch(() => undefined);
+          }
           await touchStory(storyId);
           await hydrate(false);
           return {
@@ -6040,6 +6181,7 @@ export function StoryEngineProvider({
               const chapterPrompt = [
                 "Write a chapter summary for the following canon chapter transcript.",
                 "Director lines are staging notes preserved in the transcript. Use them as context, but summarize what actually happens in the scene, not the note itself.",
+                "Canon/Secret/Reveal/Retcon lines are author declarations preserved in the transcript. Treat them as authoritative continuity constraints, secrecy rules, or retcons, but do not summarize the declaration itself as if it were an on-screen beat.",
                 "This summary is for the archive, not for narration. Do not write prose scenes.",
                 "Keep it compact and spoiler-aware: focus on what actually happened, key reveals, and state changes.",
                 "Output format:",

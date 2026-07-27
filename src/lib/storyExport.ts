@@ -10,6 +10,7 @@ import { serializeStoryExportPdf } from "./storyExportPdf";
 import { serializeStoryArchivePdf } from "./storyArchivePdf";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { parseActionSegments } from "./storyText/parseActionSegments";
+import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
 import { isDirectorMessage } from "./storyText/directorMode";
@@ -57,6 +58,10 @@ function resolveSpeakerLabel(
   playerCharacter: PlayerCharacter,
 ) {
   if (message.role === "user") {
+    if (isAuthorDirectiveMessage(message)) {
+      return message.speakerName?.trim() || "Author";
+    }
+
     if (isDirectorMessage(message)) {
       return "Director";
     }
