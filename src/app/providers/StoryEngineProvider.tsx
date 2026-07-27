@@ -887,6 +887,42 @@ function formatTranscriptSpeakerForIndexing(
   return "ASSISTANT";
 }
 
+function getLatestPriorUserMessage(
+  messages: StoryMessage[],
+  currentUserMessageId?: string,
+) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "user") {
+      continue;
+    }
+    if (currentUserMessageId && message.id === currentUserMessageId) {
+      continue;
+    }
+    return message;
+  }
+  return null;
+}
+
+function shouldAllowDirectedPlayerControlForUserTurn(
+  message: StoryMessage | null | undefined,
+  latestPriorUserMessage?: StoryMessage | null,
+) {
+  if (!message || message.role !== "user") {
+    return false;
+  }
+
+  if (isDirectorMessage(message)) {
+    return true;
+  }
+
+  return Boolean(
+    isContinueMessage(message) &&
+      latestPriorUserMessage &&
+      isDirectorMessage(latestPriorUserMessage),
+  );
+}
+
 function buildMetaChatCanonContext(params: {
   story: Story;
   universe: Universe;
