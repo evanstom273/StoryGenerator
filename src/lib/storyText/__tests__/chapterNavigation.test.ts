@@ -115,14 +115,20 @@ describe("chapterNavigation", () => {
     expect(getLatestChapterStartMessage(messages, chapters)?.id).toBe("m3");
   });
 
-  it("prefers chapter header ids over message ids for scroll targets", () => {
-    document.body.innerHTML = `
-      <div id="story-chapter-start-m1">Chapter Two</div>
-      <div id="story-message-m1">Body</div>
-    `;
+  it("prefers inferred latest chapter over an older explicit start marker", () => {
+    const messages = [
+      makeMessage("m1", 0),
+      makeMessage("m2", 1),
+      makeMessage("m3", 2, { kind: "start", label: "Chapter Two" }),
+      makeMessage("m4", 3),
+      makeMessage("m5", 4),
+      makeMessage("m6", 5),
+    ];
+    const chapters = [
+      makeChapter("Chapter One", "m2", 2),
+      makeChapter("Chapter Two", "m4", 4),
+    ];
 
-    const header = resolveChapterHeaderElement("m1");
-    expect(header?.id).toBe("story-chapter-start-m1");
-    expect(header?.textContent).toBe("Chapter Two");
+    expect(getLatestChapterStartMessage(messages, chapters)?.id).toBe("m5");
   });
 });
