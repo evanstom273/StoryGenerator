@@ -492,7 +492,7 @@ export function StoryWorkspacePage() {
     jumpChapterScrollRef.current = true;
 
     window.setTimeout(() => {
-      scrollToChapterHeader(targetMessage.id, "smooth", {
+      scrollToChapterHeader(targetMessage.id, transcriptScrollRef.current, "smooth", {
         allowMessageFallback: showChrome,
       });
       window.setTimeout(() => {

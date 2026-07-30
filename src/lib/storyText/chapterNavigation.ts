@@ -248,47 +248,67 @@ export function resolveChapterHeaderElement(messageId: string): HTMLElement | nu
 
 export const CHAPTER_HEADER_SCROLL_GAP_PX = 40;
 
-function getScrollableAncestors(element: HTMLElement): HTMLElement[] {
-  const scrollables: HTMLElement[] = [];
-  let parent = element.parentElement;
+/** Sticky mobile app header sits above the transcript; desktop has no top chrome. */
+export function getChapterHeaderScrollInset(): number {
+  let inset = CHAPTER_HEADER_SCROLL_GAP_PX;
 
-  while (parent) {
-    const style = window.getComputedStyle(parent);
-    const overflowY = style.overflowY;
-    if (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") {
-      if (parent.scrollHeight > parent.clientHeight + 1) {
-        scrollables.push(parent);
-      }
+  if (typeof window.matchMedia !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
+    const mobileHeader = document.querySelector("header.sticky.top-0");
+    if (mobileHeader instanceof HTMLElement) {
+      inset = Math.max(inset, mobileHeader.offsetHeight + CHAPTER_HEADER_SCROLL_GAP_PX);
     }
-    parent = parent.parentElement;
   }
 
-  return scrollables;
+  return inset;
 }
 
-function scrollElementToVisibleTop(
+function isMeaningfullyScrollable(element: HTMLElement | null): boolean {
+  if (!element) {
+    return false;
+  }
+  return element.scrollHeight - element.clientHeight > 8;
+}
+
+function scrollWithinContainer(
   element: HTMLElement,
-  gap: number,
+  container: HTMLElement,
+  inset: number,
   behavior: ScrollBehavior,
 ): void {
-  for (const scrollable of getScrollableAncestors(element)) {
-    const containerRect = scrollable.getBoundingClientRect();
-    const elementRect = element.getBoundingClientRect();
-    const offset = elementRect.top - containerRect.top + scrollable.scrollTop - gap;
-    scrollable.scrollTo({ top: Math.max(0, offset), behavior });
+  const elementRect = element.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+  const offset = elementRect.top - containerRect.top + container.scrollTop - inset;
+  container.scrollTo({ top: Math.max(0, offset), behavior });
+}
+
+function scrollWithinWindow(element: HTMLElement, inset: number, behavior: ScrollBehavior): void {
+  const elementRect = element.getBoundingClientRect();
+  const offset = elementRect.top + window.scrollY - inset;
+  window.scrollTo({ top: Math.max(0, offset), behavior });
+}
+
+function scrollChapterHeaderIntoView(
+  header: HTMLElement,
+  transcriptContainer: HTMLElement | null,
+  behavior: ScrollBehavior,
+): void {
+  const inset = getChapterHeaderScrollInset();
+
+  if (isMeaningfullyScrollable(transcriptContainer)) {
+    scrollWithinContainer(header, transcriptContainer!, inset, behavior);
+    return;
   }
 
-  const elementRect = element.getBoundingClientRect();
-  const windowOffset = elementRect.top + window.scrollY - gap;
-  window.scrollTo({ top: Math.max(0, windowOffset), behavior });
+  scrollWithinWindow(header, inset, behavior);
 }
 
 /**
- * Scroll so the chapter header banner sits near the top of the viewport.
- * Scrolls every scrollable ancestor plus the window (mobile often scrolls the page, not the panel).
+ * Scroll so the chapter header banner sits below sticky top chrome with a small gap.
+ * Uses the transcript panel when it is the scroll container; otherwise scrolls the page (mobile).
  */
 export function scrollToChapterHeader(
   messageId: string,
+  transcriptContainer: HTMLElement | null,
   behavior: ScrollBehavior = "smooth",
   options?: { allowMessageFallback?: boolean },
 ): boolean {
@@ -299,7 +319,7 @@ export function scrollToChapterHeader(
   function tryScroll() {
     const header = resolveChapterHeaderElement(messageId);
     if (header) {
-      scrollElementToVisibleTop(header, CHAPTER_HEADER_SCROLL_GAP_PX, behavior);
+      scrollChapterHeaderIntoView(header, transcriptContainer, behavior);
       return;
     }
 
@@ -315,7 +335,12 @@ export function scrollToChapterHeader(
 
     const message = document.getElementById(`story-message-${messageId}`);
     if (message) {
-      scrollElementToVisibleTop(message, CHAPTER_HEADER_SCROLL_GAP_PX, behavior);
+      const inset = getChapterHeaderScrollInset();
+      if (isMeaningfullyScrollable(transcriptContainer)) {
+        scrollWithinContainer(message, transcriptContainer!, inset, behavior);
+      } else {
+        scrollWithinWindow(message, inset, behavior);
+      }
     }
   }
 

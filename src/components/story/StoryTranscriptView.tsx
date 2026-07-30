@@ -272,7 +272,7 @@ function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
 
 function chapterStartBannerClasses(highlighted: boolean) {
   return cn(
-    "scroll-mt-10 rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft",
+    "max-lg:scroll-mt-[6.5rem] lg:scroll-mt-10 rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft",
     highlighted ? "ring-2 ring-accent/35" : "",
   );
 }
