@@ -133,13 +133,13 @@ export function StoryWorkspacePage() {
   } = useUiPrefs();
   const {
     aiSettings,
+    chapters: engineChapters,
     createMessage,
     deleteMessage,
     fetchStoryState,
     getChildStories,
     getMessagesForStory,
     getParentStory,
-    getChaptersForStory,
     getPlayerCharacterById,
     getStoryById,
     getUniverseById,
@@ -173,8 +173,13 @@ export function StoryWorkspacePage() {
     [getMessagesForStory, story],
   );
   const storyChapters = useMemo(
-    () => (story ? getChaptersForStory(story.id) : []),
-    [getChaptersForStory, messages, story],
+    () =>
+      story
+        ? [...engineChapters]
+            .filter((chapter) => chapter.storyId === story.id)
+            .sort((left, right) => left.endsAtIndex - right.endsAtIndex)
+        : [],
+    [engineChapters, story],
   );
   const [composerState, setComposerState] = useState(initialComposerState);
   const [editingMessage, setEditingMessage] = useState<StoryMessage | null>(null);
@@ -1497,7 +1502,7 @@ export function StoryWorkspacePage() {
             <StoryTranscriptView
               messages={messages}
               playerCharacterName={activePlayerCharacter.name}
-              chapters={getChaptersForStory(activeStory.id)}
+              chapters={storyChapters}
               highlightedMessageId={highlightedMessageId}
               rpConfig={activeStory.rpMode && activeStory.rpConfig ? activeStory.rpConfig : undefined}
               className={[
