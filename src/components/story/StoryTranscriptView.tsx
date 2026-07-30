@@ -270,6 +270,13 @@ function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
   );
 }
 
+function chapterStartBannerClasses(highlighted: boolean) {
+  return cn(
+    "scroll-mt-10 rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft",
+    highlighted ? "ring-2 ring-accent/35" : "",
+  );
+}
+
 export function StoryTranscriptView({
   messages,
   playerCharacterName,
@@ -321,7 +328,7 @@ export function StoryTranscriptView({
             <div
               key={message.id}
               id={`story-chapter-marker-${message.id}`}
-              className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
+              className={chapterStartBannerClasses(highlight)}
             >
               {chapterBoundary.label}
             </div>
@@ -335,7 +342,7 @@ export function StoryTranscriptView({
               {chapterStartLabel ? (
                 <div
                   id={`story-chapter-start-${message.id}`}
-                  className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
+                  className={chapterStartBannerClasses(highlight)}
                 >
                   {chapterStartLabel}
                 </div>
@@ -369,7 +376,7 @@ export function StoryTranscriptView({
               <Fragment key={message.id}>
                 <div
                   id={`story-chapter-start-${message.id}`}
-                  className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
+                  className={chapterStartBannerClasses(highlight)}
                 >
                   {chapterStartLabel}
                 </div>
@@ -394,7 +401,7 @@ export function StoryTranscriptView({
               {chapterStartLabel ? (
                 <div
                   id={`story-chapter-start-${message.id}`}
-                  className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
+                  className={chapterStartBannerClasses(highlight)}
                 >
                   {chapterStartLabel}
                 </div>
@@ -433,7 +440,7 @@ export function StoryTranscriptView({
             {chapterStartLabel ? (
               <div
                 id={`story-chapter-start-${message.id}`}
-                className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
+                className={chapterStartBannerClasses(highlight)}
               >
                 {chapterStartLabel}
               </div>
