@@ -351,7 +351,7 @@ export function StoryTranscriptView({
                 id={`story-message-${message.id}`}
                 className={cn(
                   tag.rowClass,
-                  highlight ? "border-accent/60 bg-accent/10 ring-2 ring-accent/35" : "",
+                  highlight && !chapterStartLabel ? "border-accent/60 bg-accent/10 ring-2 ring-accent/35" : "",
                 )}
               >
                 <div className="flex items-start gap-3 text-sm leading-7">
@@ -410,7 +410,7 @@ export function StoryTranscriptView({
                 id={`story-message-${message.id}`}
                 className={cn(
                   tag.rowClass,
-                  highlight ? "ring-2 ring-accent/35" : "",
+                  highlight && !chapterStartLabel ? "ring-2 ring-accent/35" : "",
                 )}
               >
                 <div className="flex items-start gap-3 text-sm leading-7">
@@ -454,7 +454,7 @@ export function StoryTranscriptView({
               id={`story-message-${message.id}`}
               className={cn(
                 "space-y-2",
-                highlight ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
+                highlight && !chapterStartLabel ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
               )}
             >
               {blocks.map((block, blockIndex) => {

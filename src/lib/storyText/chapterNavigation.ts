@@ -154,21 +154,33 @@ function getLatestChapterStartMessageFromDb(
 }
 
 /**
- * Returns the first transcript message of the latest generated chapter.
- * Prefers the last chapter-start marker in the transcript; falls back to
- * chapter records when markers live only in stored chapter metadata.
+ * Returns the anchor message for the latest chapter header.
+ * Prefers chapter-record boundaries (inferred "Chapter N" banners) when they
+ * are later than the last explicit start marker in the transcript.
  */
 export function getLatestChapterStartMessage(
   messages: StoryMessage[],
   chapters: StoryChapter[],
 ): StoryMessage | null {
   const sortedMessages = sortMessages(messages);
+  const fromDb = getLatestChapterStartMessageFromDb(messages, chapters);
   const lastStartIndex = findLastChapterStartIndex(sortedMessages);
-  if (lastStartIndex !== null) {
-    return sortedMessages[lastStartIndex] ?? null;
+
+  if (lastStartIndex === null) {
+    return fromDb;
   }
 
-  return getLatestChapterStartMessageFromDb(messages, chapters);
+  const explicitStartMessage = sortedMessages[lastStartIndex] ?? null;
+  if (!fromDb || !explicitStartMessage) {
+    return fromDb ?? explicitStartMessage;
+  }
+
+  const fromDbIndex = sortedMessages.findIndex((message) => message.id === fromDb.id);
+  if (fromDbIndex >= 0 && fromDbIndex >= lastStartIndex) {
+    return fromDb;
+  }
+
+  return explicitStartMessage;
 }
 
 export function resolveChapterHeaderElement(messageId: string): HTMLElement | null {
@@ -217,12 +229,12 @@ export function scrollChapterHeaderIntoView(
   }
 
   if (transcriptContainer?.contains(element)) {
-    scrollElementWithinContainer(
-      element,
-      transcriptContainer,
-      behavior,
-      CHAPTER_HEADER_SCROLL_GAP_PX,
-    );
+    const containerRect = transcriptContainer.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    const offset =
+      elementRect.top - containerRect.top + transcriptContainer.scrollTop - CHAPTER_HEADER_SCROLL_GAP_PX;
+    transcriptContainer.scrollTo({ top: Math.max(0, offset), behavior });
+    return true;
   }
 
   element.scrollIntoView({ block: "start", behavior });
