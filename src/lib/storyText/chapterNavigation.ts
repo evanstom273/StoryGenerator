@@ -193,29 +193,60 @@ export function resolveChapterHeaderElement(messageId: string): HTMLElement | nu
 export const CHAPTER_HEADER_SCROLL_GAP_PX = 40;
 
 /**
- * Scroll to the chapter header banner for a message id, with a small gap above.
- * Falls back to the message row if no header element exists (e.g. bubble view).
+ * Scroll the chapter header banner to the top of the transcript with a gap.
+ * Does not use scrollIntoView on the header (that pins it to the bottom on mobile).
+ */
+export function scrollToChapterHeader(
+  messageId: string,
+  transcriptContainer: HTMLElement | null,
+  behavior: ScrollBehavior = "smooth",
+): boolean {
+  const header = resolveChapterHeaderElement(messageId);
+  if (!header) {
+    return false;
+  }
+
+  if (transcriptContainer?.contains(header)) {
+    const containerRect = transcriptContainer.getBoundingClientRect();
+    const elementRect = header.getBoundingClientRect();
+    const offset =
+      elementRect.top - containerRect.top + transcriptContainer.scrollTop - CHAPTER_HEADER_SCROLL_GAP_PX;
+    transcriptContainer.scrollTo({ top: Math.max(0, offset), behavior });
+    transcriptContainer.scrollIntoView({ block: "nearest", behavior });
+    return true;
+  }
+
+  header.scrollIntoView({ block: "start", behavior });
+  return true;
+}
+
+/**
+ * Scroll to the chapter header, or the message row if no header exists (bubble view).
  */
 export function scrollToLatestChapterAnchor(
   messageId: string,
   transcriptContainer: HTMLElement | null,
   behavior: ScrollBehavior = "smooth",
 ): boolean {
-  const header = resolveChapterHeaderElement(messageId);
-  const element = header ?? document.getElementById(`story-message-${messageId}`);
-  if (!element) {
+  if (scrollToChapterHeader(messageId, transcriptContainer, behavior)) {
+    return true;
+  }
+
+  const message = document.getElementById(`story-message-${messageId}`);
+  if (!message) {
     return false;
   }
 
-  if (transcriptContainer?.contains(element)) {
+  if (transcriptContainer?.contains(message)) {
     const containerRect = transcriptContainer.getBoundingClientRect();
-    const elementRect = element.getBoundingClientRect();
+    const elementRect = message.getBoundingClientRect();
     const offset =
       elementRect.top - containerRect.top + transcriptContainer.scrollTop - CHAPTER_HEADER_SCROLL_GAP_PX;
     transcriptContainer.scrollTo({ top: Math.max(0, offset), behavior });
+    transcriptContainer.scrollIntoView({ block: "nearest", behavior });
+    return true;
   }
 
-  // nearest + scroll-mt on banners: scroll without slamming the header to the viewport edge
-  element.scrollIntoView({ block: "nearest", behavior });
+  message.scrollIntoView({ block: "start", behavior });
   return true;
 }
