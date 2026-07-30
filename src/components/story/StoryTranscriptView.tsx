@@ -307,6 +307,7 @@ export function StoryTranscriptView({
           return (
             <div
               key={message.id}
+              id={`story-chapter-marker-${message.id}`}
               className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-ink-muted"
             >
               Chapter End · {chapterBoundary.label}
@@ -318,6 +319,7 @@ export function StoryTranscriptView({
           return (
             <div
               key={message.id}
+              id={`story-chapter-marker-${message.id}`}
               className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
             >
               {chapterBoundary.label}
@@ -330,7 +332,10 @@ export function StoryTranscriptView({
           return (
             <Fragment key={message.id}>
               {chapterStartLabel ? (
-                <div className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div
+                  id={`story-chapter-start-${message.id}`}
+                  className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
+                >
                   {chapterStartLabel}
                 </div>
               ) : null}
@@ -361,7 +366,10 @@ export function StoryTranscriptView({
           if (isContinue) {
             return chapterStartLabel ? (
               <Fragment key={message.id}>
-                <div className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div
+                  id={`story-chapter-start-${message.id}`}
+                  className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
+                >
                   {chapterStartLabel}
                 </div>
               </Fragment>
@@ -383,7 +391,10 @@ export function StoryTranscriptView({
           return (
             <Fragment key={message.id}>
               {chapterStartLabel ? (
-                <div className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                <div
+                  id={`story-chapter-start-${message.id}`}
+                  className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
+                >
                   {chapterStartLabel}
                 </div>
               ) : null}
@@ -419,7 +430,10 @@ export function StoryTranscriptView({
         return (
           <Fragment key={message.id}>
             {chapterStartLabel ? (
-              <div className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+              <div
+                id={`story-chapter-start-${message.id}`}
+                className="rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft"
+              >
                 {chapterStartLabel}
               </div>
             ) : null}
