@@ -7,10 +7,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { themes, type ThemeDefinition, type ThemeKey } from "./themes";
+import { themes, type ThemeDefinition, type ThemeKey, type AccentThemeKey, isAccentThemeKey } from "./themes";
 
 const STORAGE_KEY = "story-engine:theme";
 const CUSTOM_ACCENT_KEY = "story-engine:theme:customAccent";
+
+export type StoryThemeOverride = {
+  themeKey: AccentThemeKey;
+  customAccent?: string;
+};
 
 type ThemeContextValue = {
   themeKey: ThemeKey;
@@ -28,6 +33,9 @@ type ThemeContextValue = {
   customAccent: string;
   setThemeKey: (next: ThemeKey) => void;
   setCustomAccent: (next: string) => boolean;
+  storyThemeOverride: StoryThemeOverride | null;
+  setStoryThemeOverride: (override: StoryThemeOverride | null) => void;
+  effectiveThemeKey: ThemeKey;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -38,6 +46,51 @@ function clampByte(value: number) {
 
 function isValidHexColor(hex: string) {
   return /^#?[0-9a-fA-F]{6}$/.test(hex.trim());
+}
+
+export function getAccentContrastHint(accentHex: string): "good" | "fair" | "poor" {
+  const accentRgb = hexToRgbTriplet(accentHex);
+  if (!accentRgb) {
+    return "poor";
+  }
+
+  const accentLum = relativeLuminance(accentRgb);
+  const onWhite = contrastRatio(accentLum, 1);
+  const onDark = contrastRatio(accentLum, relativeLuminance({ r: 10, g: 10, b: 10 }));
+  const minRatio = Math.min(onWhite, onDark);
+
+  if (minRatio >= 4.5) {
+    return "good";
+  }
+  if (minRatio >= 3) {
+    return "fair";
+  }
+  return "poor";
+}
+
+function resolveEffectiveTheme(
+  globalThemeKey: ThemeKey,
+  globalCustomAccent: string,
+  storyOverride: StoryThemeOverride | null,
+) {
+  if (!storyOverride || !isAccentThemeKey(storyOverride.themeKey)) {
+    return {
+      themeKey: globalThemeKey,
+      customAccent: globalCustomAccent,
+    };
+  }
+
+  if (storyOverride.themeKey === "custom") {
+    return {
+      themeKey: "custom" as ThemeKey,
+      customAccent: storyOverride.customAccent?.trim() || globalCustomAccent,
+    };
+  }
+
+  return {
+    themeKey: storyOverride.themeKey,
+    customAccent: globalCustomAccent,
+  };
 }
 
 function normalizeHexColor(hex: string) {
@@ -216,9 +269,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return readStoredCustomAccent() ?? themes.custom.accent;
   });
 
+  const [storyThemeOverride, setStoryThemeOverrideState] = useState<StoryThemeOverride | null>(null);
+
+  const effectiveTheme = useMemo(
+    () => resolveEffectiveTheme(themeKey, customAccent, storyThemeOverride),
+    [customAccent, storyThemeOverride, themeKey],
+  );
+
   const theme = useMemo(() => {
-    const base = themes[themeKey];
-    const accent = themeKey === "custom" ? customAccent : base.accent;
+    const base = themes[effectiveTheme.themeKey];
+    const accent =
+      effectiveTheme.themeKey === "custom" ? effectiveTheme.customAccent : base.accent;
     const accentRgb = hexToRgbTriplet(accent) ?? { r: 124, g: 58, b: 237 };
     const derived = deriveAccentVariants(accentRgb);
 
@@ -235,11 +296,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       accentGradientStart: derived.accentGradientStart,
       accentGradientEnd: derived.accentGradientEnd,
     };
-  }, [customAccent, themeKey]);
+  }, [effectiveTheme.customAccent, effectiveTheme.themeKey]);
 
   useEffect(() => {
     const root = document.documentElement;
-    const cssVars = buildThemeCssVariables({ themeKey, customAccent });
+    const cssVars = buildThemeCssVariables({
+      themeKey: effectiveTheme.themeKey,
+      customAccent: effectiveTheme.customAccent,
+    });
     Object.entries(cssVars).forEach(([key, value]) => {
       root.style.setProperty(key, value);
     });
@@ -247,7 +311,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(STORAGE_KEY, themeKey);
     } catch {}
-  }, [customAccent, themeKey]);
+  }, [customAccent, effectiveTheme.customAccent, effectiveTheme.themeKey, themeKey]);
 
   const setThemeKey = useCallback((next: ThemeKey) => {
     setThemeKeyState(next);
@@ -266,6 +330,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
+  const setStoryThemeOverride = useCallback((override: StoryThemeOverride | null) => {
+    setStoryThemeOverrideState(override);
+  }, []);
+
   const value = useMemo(
     () => ({
       themeKey,
@@ -273,8 +341,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       customAccent,
       setThemeKey,
       setCustomAccent,
+      storyThemeOverride,
+      setStoryThemeOverride,
+      effectiveThemeKey: effectiveTheme.themeKey,
     }),
-    [customAccent, setCustomAccent, setThemeKey, theme, themeKey],
+    [
+      customAccent,
+      effectiveTheme.themeKey,
+      setCustomAccent,
+      setStoryThemeOverride,
+      setThemeKey,
+      storyThemeOverride,
+      theme,
+      themeKey,
+    ],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

@@ -3499,6 +3499,8 @@ export function StoryEngineProvider({
           rpConfig: draft.rpConfig,
           autoIndexMode: draft.autoIndexMode,
           autoIndexInterval: draft.autoIndexInterval ?? 20,
+          accentThemeKey: draft.accentThemeKey,
+          accentThemeCustom: draft.accentThemeCustom,
           currentSummary: draft.currentSummary.trim(),
           createdAt: now,
           updatedAt: now,
@@ -3572,6 +3574,8 @@ export function StoryEngineProvider({
           rpConfig: sourceStory.rpConfig,
           autoIndexMode: sourceStory.autoIndexMode,
           autoIndexInterval: sourceStory.autoIndexInterval ?? 20,
+          accentThemeKey: sourceStory.accentThemeKey,
+          accentThemeCustom: sourceStory.accentThemeCustom,
           currentSummary: sequelSummary.trim(),
           createdAt: now,
           updatedAt: now,
@@ -3755,6 +3759,23 @@ export function StoryEngineProvider({
           autoIndexInterval: patch.autoIndexInterval ?? currentStory.autoIndexInterval,
           updatedAt: new Date().toISOString(),
         };
+
+        if ("accentThemeKey" in patch) {
+          if (patch.accentThemeKey) {
+            nextStory.accentThemeKey = patch.accentThemeKey;
+          } else {
+            delete nextStory.accentThemeKey;
+            delete nextStory.accentThemeCustom;
+          }
+        }
+
+        if ("accentThemeCustom" in patch) {
+          if (patch.accentThemeCustom?.trim()) {
+            nextStory.accentThemeCustom = patch.accentThemeCustom.trim();
+          } else {
+            delete nextStory.accentThemeCustom;
+          }
+        }
 
         await repository.saveStory(nextStory);
         await hydrate(false);

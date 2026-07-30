@@ -15,7 +15,8 @@ import type { AIProviderType, AutoIndexInterval, AutoIndexMode, ExportFormat } f
 import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useTheme } from "../theming/ThemeContext";
-import { themes } from "../theming/themes";
+import { themes, type AccentThemeKey, isAccentThemeKey } from "../theming/themes";
+import { ThemePicker } from "../../components/settings/ThemePicker";
 import { useUiPrefs } from "../ui/UiPrefsContext";
 
 const ARCHIVE_PDF_DEBUG_URL = "http://127.0.0.1:7777/event";
@@ -191,8 +192,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     autoIndexMode: (story?.autoIndexMode ??
       (story?.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode,
     autoIndexInterval: (story?.autoIndexInterval ?? 20) as AutoIndexInterval,
+    accentThemeKey: (story?.accentThemeKey ?? null) as AccentThemeKey | null,
+    accentThemeCustom: story?.accentThemeCustom ?? themes.custom.accent,
   });
-  const { themeKey, setThemeKey } = useTheme();
+  const { themeKey } = useTheme();
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
   const [exportStage, setExportStage] = useState<string | null>(null);
   const [isSavingStory, setIsSavingStory] = useState(false);
@@ -268,6 +271,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       autoIndexMode: (story.autoIndexMode ??
         (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode,
       autoIndexInterval: (story.autoIndexInterval ?? 20) as AutoIndexInterval,
+      accentThemeKey: (story.accentThemeKey ?? null) as AccentThemeKey | null,
+      accentThemeCustom: story.accentThemeCustom ?? themes.custom.accent,
     });
   }, [story]);
 
@@ -320,7 +325,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         storyFields.autoIndexMode ===
           ((story.autoIndexMode ??
             (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode) &&
-        storyFields.autoIndexInterval === (story.autoIndexInterval ?? 20)
+        storyFields.autoIndexInterval === (story.autoIndexInterval ?? 20) &&
+        storyFields.accentThemeKey === ((story.accentThemeKey ?? null) as AccentThemeKey | null) &&
+        storyFields.accentThemeCustom === (story.accentThemeCustom ?? themes.custom.accent)
       ) {
         return;
       }
@@ -329,7 +336,16 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         return;
       }
 
-      void updateStory(story.id, storyFields).catch(() => {});
+      void updateStory(story.id, {
+        title: storyFields.title,
+        currentSummary: storyFields.currentSummary,
+        matureFictionMode: storyFields.matureFictionMode,
+        autoIndexMode: storyFields.autoIndexMode,
+        autoIndexInterval: storyFields.autoIndexInterval,
+        accentThemeKey: storyFields.accentThemeKey ?? undefined,
+        accentThemeCustom:
+          storyFields.accentThemeKey === "custom" ? storyFields.accentThemeCustom : undefined,
+      }).catch(() => {});
     },
     800,
     [
@@ -339,6 +355,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       storyFields.matureFictionMode,
       storyFields.autoIndexMode,
       storyFields.autoIndexInterval,
+      storyFields.accentThemeKey,
+      storyFields.accentThemeCustom,
     ],
   );
 
@@ -558,7 +576,16 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     setPageError(null);
 
     try {
-      await updateStory(story.id, storyFields);
+      await updateStory(story.id, {
+        title: storyFields.title,
+        currentSummary: storyFields.currentSummary,
+        matureFictionMode: storyFields.matureFictionMode,
+        autoIndexMode: storyFields.autoIndexMode,
+        autoIndexInterval: storyFields.autoIndexInterval,
+        accentThemeKey: storyFields.accentThemeKey ?? undefined,
+        accentThemeCustom:
+          storyFields.accentThemeKey === "custom" ? storyFields.accentThemeCustom : undefined,
+      });
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to save story details.");
     } finally {
@@ -891,21 +918,43 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 ) : null}
               </CollapsibleSection>
 
-              <CollapsibleSection title="Theme">
-                <label className="block space-y-2">
-                  <div className="text-xs text-ink-muted">Theme</div>
-                  <select
-                    className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
-                    value={themeKey}
-                    onChange={(event) => setThemeKey(event.target.value as any)}
-                  >
-                    {Object.keys(themes).map((key) => (
-                      <option key={key} value={key}>
-                        {key}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <CollapsibleSection title="Story accent">
+                <div className="space-y-3">
+                  <div className="text-xs text-ink-muted">
+                    Override the app accent while this story is open, or use app default to match
+                    Settings → Theme.
+                  </div>
+                  <ThemePicker
+                    accentOnly
+                    allowAppDefault
+                    appDefaultSelected={!storyFields.accentThemeKey}
+                    selectedKey={storyFields.accentThemeKey ?? themeKey}
+                    customAccent={storyFields.accentThemeCustom}
+                    onSelectAppDefault={() =>
+                      setStoryFields((current) => ({
+                        ...current,
+                        accentThemeKey: null,
+                        accentThemeCustom: themes.custom.accent,
+                      }))
+                    }
+                    onSelectKey={(key) => {
+                      if (!isAccentThemeKey(key)) {
+                        return;
+                      }
+                      setStoryFields((current) => ({
+                        ...current,
+                        accentThemeKey: key,
+                      }));
+                    }}
+                    onCustomAccentChange={(value) =>
+                      setStoryFields((current) => ({
+                        ...current,
+                        accentThemeCustom: value,
+                        accentThemeKey: current.accentThemeKey ?? "custom",
+                      }))
+                    }
+                  />
+                </div>
               </CollapsibleSection>
 
               <CollapsibleSection title="Automatic Indexing">
