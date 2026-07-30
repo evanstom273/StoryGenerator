@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "../ui/Button";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
-import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData } from "../../lib/storyStateV2";
-import { makeRelationshipPairKey } from "../../lib/relationshipIndex";
 import type { NpcInnerLife, RelationshipArc, RelationshipHistoryEntry, RelationshipIndexEntry, RelationshipTier } from "../../types/models";
+import { makeRelationshipPairKey } from "../../lib/relationshipIndex";
 import { cn } from "../../utils/cn";
 
 // ── Tier metadata ─────────────────────────────────────────────────────────────
@@ -517,8 +516,9 @@ export function RelationshipsOverlay(props: {
   universeImportedCharacters?: string[];
   onClose: () => void;
   refreshKey?: number;
+  onRelationshipsChange?: () => void;
 }) {
-  const { fetchStoryState, updateRelationshipsIndex, queueStoryIndexJob } = useStoryEngine();
+  const { loadStoryRelationships, updateRelationshipsIndex, queueStoryIndexJob } = useStoryEngine();
   const [relationships, setRelationships] = useState<RelationshipIndexEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -531,28 +531,12 @@ export function RelationshipsOverlay(props: {
   useEffect(() => {
     if (!props.open) return;
     setLoading(true);
-    fetchStoryState(props.storyId).then(async (state) => {
-      if (!state) { setLoading(false); return; }
-      const parsed = normalizeStoryStateToV2(safeParseStoryStateData(state.stateJson));
-      const rels = parsed?.indexes?.relationships ?? [];
-      const messageCount =
-        typeof parsed?.indexes?.messageCount === "number" && Number.isFinite(parsed.indexes.messageCount)
-          ? Math.trunc(parsed.indexes.messageCount)
-          : rels.length;
-      const reconciled = reconcileStoryIndexes(parsed?.indexes, messageCount, {
-        playerName: props.playerName,
-        universeImportedCharacters: props.universeImportedCharacters,
-      });
-      const cleaned = reconciled?.relationships ?? rels;
-      if (cleaned.length !== rels.length) {
-        await updateRelationshipsIndex(props.storyId, cleaned);
-      }
-      setRelationships(cleaned);
-      // Keep selectedEntry in sync if it exists
+    void loadStoryRelationships(props.storyId).then((rels) => {
+      setRelationships(rels);
       setSelectedEntry((prev) => {
         if (!prev) return null;
         const key = makeRelationshipPairKey(prev.a, prev.b);
-        return cleaned.find((r) => makeRelationshipPairKey(r.a, r.b) === key) ?? null;
+        return rels.find((r) => makeRelationshipPairKey(r.a, r.b) === key) ?? null;
       });
       setLoading(false);
     });
@@ -573,6 +557,7 @@ export function RelationshipsOverlay(props: {
     setSaving(true);
     try {
       await updateRelationshipsIndex(props.storyId, next);
+      props.onRelationshipsChange?.();
     } finally {
       setSaving(false);
     }

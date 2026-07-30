@@ -113,6 +113,9 @@ import {
   canTrackRelationshipParticipant,
   findPlayerNpcRelationshipIndex,
 } from "../../lib/relationshipIndex";
+import {
+  reconcileRelationshipsFromStateJson,
+} from "../../lib/storyRelationshipLoad";
 import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
@@ -307,6 +310,7 @@ interface StoryEngineContextValue {
   fetchStoryState: (storyId: string) => Promise<StoryState | null>;
   updateRpStats: (storyId: string, rpStats: RpStats | null) => Promise<void>;
   updateRelationshipsIndex: (storyId: string, relationships: RelationshipIndexEntry[]) => Promise<void>;
+  loadStoryRelationships: (storyId: string) => Promise<RelationshipIndexEntry[]>;
   refreshStoryState: (storyId: string, opts?: { force?: boolean }) => Promise<void>;
   updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal; incremental?: boolean }) => Promise<void>;
   queueStoryIndexJob: (
@@ -4690,6 +4694,54 @@ export function StoryEngineProvider({
           stateJson: JSON.stringify(next),
           updatedAt: new Date().toISOString(),
         });
+      },
+      async loadStoryRelationships(storyId) {
+        const story = await repository.getStory(storyId);
+        if (!story) return [];
+
+        const [playerCharacter, storyState, messages] = await Promise.all([
+          repository.getPlayerCharacter(story.playerCharacterId),
+          repository.getStoryState(storyId),
+          repository.listStoryMessages(storyId),
+        ]);
+
+        const stateJson = storyState?.stateJson ?? "";
+        const universeImportedCharacters =
+          story.universePackSnapshot?.universe?.importedCharacters ?? [];
+
+        const { relationships, changed } = reconcileRelationshipsFromStateJson(stateJson, {
+          playerName: playerCharacter?.name,
+          universeImportedCharacters,
+          messageCount: messages.length,
+        });
+
+        if (changed && storyState) {
+          const parsed = stateJson
+            ? (() => { try { return JSON.parse(stateJson) as Record<string, unknown>; } catch { return {}; } })()
+            : {};
+          const reconciledIndexes = reconcileStoryIndexes(
+            {
+              ...((parsed.indexes as StoryIndexesV2 | undefined) ?? {}),
+              relationships,
+            },
+            messages.length,
+            {
+              playerName: playerCharacter?.name,
+              universeImportedCharacters,
+            },
+          );
+          await repository.saveStoryState({
+            id: `story-state:${storyId}`,
+            storyId,
+            stateJson: JSON.stringify({
+              ...parsed,
+              indexes: reconciledIndexes ?? { relationships },
+            }),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+
+        return relationships;
       },
       async updateRpStats(storyId, rpStats) {
         const existing = await repository.getStoryState(storyId);

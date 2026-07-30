@@ -2,9 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
+import type { RelationshipIndexEntry } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
+
+import { RelationshipOverviewList } from "./RelationshipOverviewList";
+import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
 
 function trimStringList(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) {
@@ -39,33 +43,19 @@ async function isAndroidNativePlatform() {
   }
 }
 
-function getRelationshipMetricChips(entry: any) {
-  const chips: Array<{ label: string; value: number }> = [];
-  const push = (label: string, value: unknown) => {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      return;
-    }
-    chips.push({ label, value: Math.round(value) });
-  };
-
-  push("Trust", entry?.trust);
-  push("Respect", entry?.respect);
-  push("Loyalty", entry?.loyalty);
-  push("Friendship", entry?.friendship);
-  push("Comfort", entry?.comfort);
-  push("Suspicion", entry?.suspicion);
-  push("Fear", entry?.fear);
-  push("Affection", entry?.affection);
-  push("Tension", entry?.tension);
-  push("Hostility", entry?.hostility);
-
-  return chips;
-}
-
-export function StoryArchiveView({ storyId }: { storyId: string }) {
-  const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, updateIndexesDeep } =
+export function StoryArchiveView({
+  storyId,
+  playerName,
+  relationshipsRefreshKey = 0,
+}: {
+  storyId: string;
+  playerName?: string;
+  relationshipsRefreshKey?: number;
+}) {
+  const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, updateIndexesDeep, loadStoryRelationships } =
     useStoryEngine();
   const [storyStateJson, setStoryStateJson] = useState<string>("");
+  const [archiveRelationships, setArchiveRelationships] = useState<RelationshipIndexEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -113,6 +103,16 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
       cancelled = true;
     };
   }, [fetchStoryState, storyId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadStoryRelationships(storyId).then((relationships) => {
+      if (!cancelled) setArchiveRelationships(relationships);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadStoryRelationships, storyId, relationshipsRefreshKey]);
 
   async function handleReindex(incremental: boolean) {
     setErrorMessage(null);
@@ -221,7 +221,6 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
   const characters = storyStateData.indexes?.characters ? Object.values(storyStateData.indexes.characters) : [];
   const characterStates = Object.entries(storyStateData.characters ?? {});
   const locations = storyStateData.indexes?.locations ? Object.values(storyStateData.indexes.locations) : [];
-  const relationships = storyStateData.indexes?.relationships ?? [];
   const significantMemories = (storyStateData.indexes as any)?.significantMemories ?? [];
   const premise = storyStateData.summaries?.premise?.trim() ?? "";
   const protagonistSummary = storyStateData.summaries?.protagonistSummary?.trim() ?? "";
@@ -490,42 +489,19 @@ export function StoryArchiveView({ storyId }: { storyId: string }) {
           </Panel>
         ) : null}
 
-        {relationships.length ? (
+        {archiveRelationships.length ? (
           <Panel variant="flat" padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Relationships
             </div>
-            <div className="mt-3 space-y-3">
-              {relationships.map((entry, index) => (
-                <div
-                  key={`${entry.a}-${entry.b}-${index}`}
-                  className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
-                >
-                  <div className="font-semibold text-ink-soft">
-                    {entry.a} ↔ {entry.b}
-                  </div>
-                  {entry.summary ? (
-                    <div className="mt-1 text-xs text-ink-muted">{entry.summary}</div>
-                  ) : null}
-                  {(() => {
-                    const chips = getRelationshipMetricChips(entry);
-                    if (!chips.length) return null;
-                    return (
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-ink-muted">
-                        {chips.map((chip) => (
-                          <span
-                            key={chip.label}
-                            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1"
-                          >
-                            {chip.label}: {chip.value}
-                          </span>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                  {renderEvidencePills(entry.evidence?.messageNumbers, `rel-${index}`)}
-                </div>
-              ))}
+            <p className="mt-1 text-[11px] text-ink-muted">
+              Overview from the story relationship index. Open the Relationships panel in the workspace for full detail and editing.
+            </p>
+            <div className="mt-3">
+              <RelationshipOverviewList
+                relationships={filterPlayerRelationships(archiveRelationships, playerName)}
+                playerName={playerName}
+              />
             </div>
           </Panel>
         ) : null}

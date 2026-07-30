@@ -1487,7 +1487,11 @@ export function StoryWorkspacePage() {
 
       <div ref={transcriptScrollRef} className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
         {archiveMode ? (
-          <StoryArchiveView storyId={activeStory.id} />
+          <StoryArchiveView
+            storyId={activeStory.id}
+            playerName={activePlayerCharacter?.name}
+            relationshipsRefreshKey={relationshipsRefreshKey}
+          />
         ) : messages.length ? (
           showChrome && !readerMode ? (
             <div className="space-y-1">
@@ -1905,6 +1909,7 @@ export function StoryWorkspacePage() {
           universeImportedCharacters={activeStory?.universePackSnapshot?.universe?.importedCharacters}
           onClose={() => setRelationshipsOpen(false)}
           refreshKey={relationshipsRefreshKey}
+          onRelationshipsChange={() => setRelationshipsRefreshKey((key) => key + 1)}
         />
       ) : null}
 
