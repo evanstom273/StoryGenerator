@@ -190,40 +190,19 @@ export function resolveChapterHeaderElement(messageId: string): HTMLElement | nu
   );
 }
 
-export function resolveChapterScrollElement(messageId: string): HTMLElement | null {
-  return (
-    resolveChapterHeaderElement(messageId) ??
-    document.getElementById(`story-message-${messageId}`)
-  );
-}
-
 export const CHAPTER_HEADER_SCROLL_GAP_PX = 40;
 
-export function scrollElementWithinContainer(
-  element: HTMLElement,
-  container: HTMLElement | null,
-  behavior: ScrollBehavior = "smooth",
-  topGapPx = CHAPTER_HEADER_SCROLL_GAP_PX,
-): void {
-  if (!container) {
-    element.scrollIntoView({ block: "start", behavior });
-    return;
-  }
-
-  const containerRect = container.getBoundingClientRect();
-  const elementRect = element.getBoundingClientRect();
-  const offset = elementRect.top - containerRect.top + container.scrollTop - topGapPx;
-
-  container.scrollTo({ top: Math.max(0, offset), behavior });
-}
-
-/** Scroll the chapter header banner (not the first message body) into view. */
-export function scrollChapterHeaderIntoView(
+/**
+ * Scroll to the chapter header banner for a message id, with a small gap above.
+ * Falls back to the message row if no header element exists (e.g. bubble view).
+ */
+export function scrollToLatestChapterAnchor(
   messageId: string,
   transcriptContainer: HTMLElement | null,
   behavior: ScrollBehavior = "smooth",
 ): boolean {
-  const element = resolveChapterHeaderElement(messageId);
+  const header = resolveChapterHeaderElement(messageId);
+  const element = header ?? document.getElementById(`story-message-${messageId}`);
   if (!element) {
     return false;
   }
@@ -234,32 +213,9 @@ export function scrollChapterHeaderIntoView(
     const offset =
       elementRect.top - containerRect.top + transcriptContainer.scrollTop - CHAPTER_HEADER_SCROLL_GAP_PX;
     transcriptContainer.scrollTo({ top: Math.max(0, offset), behavior });
-    return true;
   }
 
-  element.scrollIntoView({ block: "start", behavior });
-  return true;
-}
-
-/** Scroll a chapter target into view inside the transcript and the page shell. */
-export function scrollChapterTargetIntoView(
-  messageId: string,
-  transcriptContainer: HTMLElement | null,
-  behavior: ScrollBehavior = "smooth",
-): boolean {
-  if (scrollChapterHeaderIntoView(messageId, transcriptContainer, behavior)) {
-    return true;
-  }
-
-  const element = document.getElementById(`story-message-${messageId}`);
-  if (!element) {
-    return false;
-  }
-
-  if (transcriptContainer?.contains(element)) {
-    scrollElementWithinContainer(element, transcriptContainer, behavior);
-  }
-
-  element.scrollIntoView({ block: "start", behavior });
+  // nearest + scroll-mt on banners: scroll without slamming the header to the viewport edge
+  element.scrollIntoView({ block: "nearest", behavior });
   return true;
 }
