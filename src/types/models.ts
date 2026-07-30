@@ -212,6 +212,8 @@ export interface Story {
   rpConfig?: RpConfig;
   autoIndexMode?: AutoIndexMode;
   autoIndexInterval?: AutoIndexInterval;
+  accentThemeKey?: string;
+  accentThemeCustom?: string;
   currentSummary: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -649,6 +651,8 @@ export interface StoryDraft {
   rpConfig?: RpConfig;
   autoIndexMode?: AutoIndexMode;
   autoIndexInterval?: AutoIndexInterval;
+  accentThemeKey?: string;
+  accentThemeCustom?: string;
   currentSummary: string;
 }
 

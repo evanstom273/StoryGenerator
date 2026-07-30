@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cn } from "../utils/cn";
 import { PageHeader } from "../components/PageHeader";
@@ -11,14 +11,14 @@ import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { UI_PREFS_KEYS, readStoredTextSize, writeStoredTextSize } from "../app/ui/UiPrefsContext";
 import { useChangelog } from "../app/versioning/ChangelogContext";
 import { APP_NAME, APP_VERSION } from "../app/versioning/version";
-import { buildThemeCssVariables, useTheme } from "../app/theming/ThemeContext";
-import { themes, type ThemeKey } from "../app/theming/themes";
+import { useTheme } from "../app/theming/ThemeContext";
 import type { AIProviderType } from "../types/models";
 import { getProviderDefaultModel, getProviderModels, getValidModel } from "../lib/ai/models";
 import { downloadFile } from "../lib/download";
 import { serializeStoryExport } from "../lib/storyExport";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 import { TutorialSettingsTab } from "../components/settings/TutorialSettingsTab";
+import { ThemePicker } from "../components/settings/ThemePicker";
 
 function sanitizeFileStem(value: string) {
   return value
@@ -73,7 +73,7 @@ export function SettingsPage() {
 
   const { openChangelog, openChangelogHistory } = useChangelog();
   const { themeKey, setThemeKey, theme, customAccent, setCustomAccent } = useTheme();
-  const [customAccentInput, setCustomAccentInput] = useState(customAccent);
+  const [customAccentError, setCustomAccentError] = useState<string | null>(null);
   const [activeProviderType, setActiveProviderType] = useState<AIProviderType>(
     aiSettings?.activeProviderType ?? "openai",
   );
@@ -115,7 +115,7 @@ export function SettingsPage() {
     if (themeKey !== "custom") {
       return;
     }
-    setCustomAccentInput(customAccent);
+    setCustomAccentError(null);
   }, [customAccent, themeKey]);
   const [itemExportError, setItemExportError] = useState<string | null>(null);
   const [itemImportType, setItemImportType] = useState<
@@ -589,72 +589,26 @@ export function SettingsPage() {
         <div className="space-y-5">
           <Panel variant="flat">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Theme</div>
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">App accent</div>
               <Badge variant="accent">{theme.name}</Badge>
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-2.5 sm:grid-cols-4">
-              {(Object.entries(themes) as Array<[ThemeKey, (typeof themes)[ThemeKey]]>).map(
-                ([key, item]) => {
-                  const isSelected = key === themeKey;
-                  const previewStyle = buildThemeCssVariables({ themeKey: key, customAccent });
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      style={previewStyle as unknown as CSSProperties}
-                      onClick={() => setThemeKey(key)}
-                      aria-pressed={isSelected}
-                      className={cn(
-                        "flex flex-col items-center gap-2 rounded-[9px] border p-3 transition",
-                        isSelected
-                          ? "border-accent/40 bg-panel"
-                          : "border-divider/[0.4] bg-panel-muted hover:border-accent/20 hover:bg-panel",
-                      )}
-                    >
-                      <span className="h-7 w-7 rounded-full bg-accent" />
-                      <span className="text-[10px] font-semibold leading-tight text-ink">{item.name}</span>
-                      {isSelected ? (
-                        <span className="text-[8px] font-bold uppercase tracking-[0.12em] text-accent-soft">Active</span>
-                      ) : null}
-                    </button>
-                  );
-                },
-              )}
+            <div className="mt-4">
+              <ThemePicker
+                selectedKey={themeKey}
+                customAccent={customAccent}
+                onSelectKey={(key) => {
+                  setThemeKey(key);
+                  setCustomAccentError(null);
+                }}
+                onCustomAccentChange={(value) => {
+                  const applied = setCustomAccent(value);
+                  setCustomAccentError(applied ? null : "Enter a valid hex colour (#RRGGBB).");
+                }}
+              />
             </div>
-            {themeKey === "custom" ? (
-              <div className="mt-4 space-y-3 border-t border-divider/[0.3] pt-4">
-                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Custom Accent</div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <TextInput
-                    value={customAccentInput}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setCustomAccentInput(next);
-                      setCustomAccent(next);
-                    }}
-                    placeholder="#7C3AED"
-                  />
-                  <input
-                    type="color"
-                    value={customAccent}
-                    onChange={(event) => {
-                      setCustomAccentInput(event.target.value);
-                      setCustomAccent(event.target.value);
-                    }}
-                    className="h-9 w-9 cursor-pointer rounded-[8px] border border-divider bg-panel-muted p-1"
-                    aria-label="Pick custom accent"
-                  />
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setCustomAccentInput(themes.custom.accent);
-                      setCustomAccent(themes.custom.accent);
-                    }}
-                  >
-                    Reset
-                  </Button>
-                </div>
-                <div className="text-[11px] text-ink-muted">Enter a hex colour (#RRGGBB). Invalid values won’t apply.</div>
+            {customAccentError ? (
+              <div className="mt-3 rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
+                {customAccentError}
               </div>
             ) : null}
           </Panel>

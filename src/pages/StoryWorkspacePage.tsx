@@ -16,6 +16,8 @@ import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { cn } from "../utils/cn";
+import { useTheme } from "../app/theming/ThemeContext";
+import { type AccentThemeKey, isAccentThemeKey } from "../app/theming/themes";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
 import { createAIProvider } from "../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../lib/ai/models";
@@ -150,6 +152,7 @@ export function StoryWorkspacePage() {
     updateMessage,
     updateRpStats,
   } = useStoryEngine();
+  const { setStoryThemeOverride } = useTheme();
   const story = storyId ? getStoryById(storyId) : undefined;
   const universe = story ? getUniverseById(story.universeId) : undefined;
   const playerCharacter = story
@@ -290,6 +293,22 @@ export function StoryWorkspacePage() {
     setShowSequelPrompt(false);
     setDismissedSequelPromptMessageId(null);
   }, [storyId]);
+
+  useEffect(() => {
+    if (!story?.accentThemeKey || !isAccentThemeKey(story.accentThemeKey)) {
+      setStoryThemeOverride(null);
+      return;
+    }
+
+    setStoryThemeOverride({
+      themeKey: story.accentThemeKey as AccentThemeKey,
+      customAccent: story.accentThemeCustom,
+    });
+
+    return () => {
+      setStoryThemeOverride(null);
+    };
+  }, [setStoryThemeOverride, story?.accentThemeCustom, story?.accentThemeKey]);
 
   useEffect(() => {
     const lastMessage = messages.at(-1);
