@@ -5986,7 +5986,7 @@ export function StoryEngineProvider({
                         !!l &&
                         l !== "Narrator" &&
                         l.toLowerCase() !== playerNameNorm &&
-                        canTrackRelationshipParticipant(l, relationshipAllowlist),
+                        canTrackRelationshipParticipant(l, relationshipAllowlist, rpPlayerName),
                     ),
                 ),
               ];

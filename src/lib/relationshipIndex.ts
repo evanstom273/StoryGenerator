@@ -108,6 +108,63 @@ export function isDeniedSpeakerLabel(label: string | null | undefined): boolean 
 	return SPEAKER_LABEL_DENYLIST.has(first);
 }
 
+/** Possessive pseudo-speaker lines like "Jamie's:" — not a character. */
+export function isPossessiveSpeakerLabel(label: string): boolean {
+	const trimmed = label.trim();
+	return /^[A-Z][a-zA-Z''-]*['']s$/i.test(trimmed);
+}
+
+/** Strip mood/state parentheticals and possessive suffixes from relationship endpoint names. */
+export function stripRelationshipEndpointAnnotations(name: string): string {
+	let s = name.trim();
+	s = s.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+	s = s.replace(/['']s$/i, "").trim();
+	return s.replace(/\s+/g, " ");
+}
+
+export function buildPlayerNameVariants(playerName: string): Set<string> {
+	const variants = new Set<string>();
+	const trimmed = playerName.trim();
+	if (!trimmed) return variants;
+	variants.add(normalizeRelationshipKey(trimmed));
+	const tokens = trimmed.split(/\s+/).filter(Boolean);
+	if (tokens[0]) variants.add(normalizeRelationshipKey(tokens[0]));
+	if (tokens.length > 1) {
+		variants.add(normalizeRelationshipKey(tokens[tokens.length - 1]!));
+	}
+	return variants;
+}
+
+export function isPlayerNameVariant(
+	name: string,
+	playerName: string,
+	variants?: Set<string>,
+): boolean {
+	const norm = normalizeRelationshipKey(stripRelationshipEndpointAnnotations(name));
+	const set = variants ?? buildPlayerNameVariants(playerName);
+	return set.has(norm);
+}
+
+export function canonicalizeRelationshipEndpoint(
+	name: string,
+	playerName: string,
+	aliasToCanonical: Map<string, string>,
+	playerVariants?: Set<string>,
+): string | null {
+	if (isPossessiveSpeakerLabel(name.trim())) return null;
+	const stripped = stripRelationshipEndpointAnnotations(name);
+	if (!stripped || !isPlausibleCharacterName(stripped)) return null;
+	const variants = playerVariants ?? buildPlayerNameVariants(playerName);
+	if (isPlayerNameVariant(stripped, playerName, variants)) {
+		return playerName.trim();
+	}
+	const resolved = resolveCanonicalCharacterName(stripped, aliasToCanonical);
+	if (isPlayerNameVariant(resolved, playerName, variants)) {
+		return playerName.trim();
+	}
+	return resolved;
+}
+
 export function sanitizeRelationshipTier(value: unknown): RelationshipTier {
 	if (typeof value === "string" && RELATIONSHIP_TIER_SET.has(value)) {
 		return value as RelationshipTier;
@@ -117,6 +174,8 @@ export function sanitizeRelationshipTier(value: unknown): RelationshipTier {
 
 export function isPlausibleCharacterName(name: string): boolean {
 	if (!name.trim() || isDeniedSpeakerLabel(name)) return false;
+	if (isPossessiveSpeakerLabel(name.trim())) return false;
+	if (/\([^)]*\)/.test(name)) return false;
 	const words = name.trim().split(/\s+/);
 	if (words.length === 1 && ENVIRONMENTAL_SINGLE_WORDS.has(normalizeRelationshipKey(name))) {
 		return false;
@@ -131,10 +190,14 @@ export function buildCharacterAllowlist(params: {
 	existingRelationships?: RelationshipIndexEntry[];
 }): Set<string> {
 	const allowlist = new Set<string>();
+	const playerVariants = buildPlayerNameVariants(params.playerName);
 
 	const add = (raw: string | null | undefined) => {
-		if (!raw?.trim() || !isPlausibleCharacterName(raw)) return;
-		allowlist.add(normalizeRelationshipKey(raw));
+		if (!raw?.trim() || isPossessiveSpeakerLabel(raw.trim())) return;
+		const stripped = stripRelationshipEndpointAnnotations(raw);
+		if (!isPlausibleCharacterName(stripped)) return;
+		if (isPlayerNameVariant(stripped, params.playerName, playerVariants)) return;
+		allowlist.add(normalizeRelationshipKey(stripped));
 	};
 
 	add(params.playerName);
@@ -164,9 +227,11 @@ export function buildCharacterAllowlist(params: {
 	return allowlist;
 }
 
-export function canTrackRelationshipParticipant(name: string, allowlist: Set<string>): boolean {
-	if (!isPlausibleCharacterName(name)) return false;
-	return allowlist.has(normalizeRelationshipKey(name));
+export function canTrackRelationshipParticipant(name: string, allowlist: Set<string>, playerName?: string): boolean {
+	const stripped = stripRelationshipEndpointAnnotations(name);
+	if (!isPlausibleCharacterName(stripped) || isPossessiveSpeakerLabel(name.trim())) return false;
+	if (playerName && isPlayerNameVariant(stripped, playerName)) return false;
+	return allowlist.has(normalizeRelationshipKey(stripped));
 }
 
 export function resolveCanonicalCharacterName(
@@ -333,6 +398,8 @@ export function reconcileRelationshipEntries(
 ): RelationshipIndexEntry[] | undefined {
 	if (!relationships?.length) return undefined;
 
+	const playerVariants = opts?.playerName ? buildPlayerNameVariants(opts.playerName) : undefined;
+
 	const allowlist =
 		opts?.allowlist ??
 		buildCharacterAllowlist({
@@ -356,8 +423,14 @@ export function reconcileRelationshipEntries(
 		const rawB = typeof entry.b === "string" ? entry.b.trim() : "";
 		if (!rawA || !rawB) continue;
 
-		const canonicalA = resolveCanonicalCharacterName(rawA, aliasToCanonical);
-		const canonicalB = resolveCanonicalCharacterName(rawB, aliasToCanonical);
+		const canonicalA = opts?.playerName
+			? canonicalizeRelationshipEndpoint(rawA, opts.playerName, aliasToCanonical, playerVariants)
+			: resolveCanonicalCharacterName(rawA, aliasToCanonical);
+		const canonicalB = opts?.playerName
+			? canonicalizeRelationshipEndpoint(rawB, opts.playerName, aliasToCanonical, playerVariants)
+			: resolveCanonicalCharacterName(rawB, aliasToCanonical);
+		if (!canonicalA || !canonicalB) continue;
+		if (normalizeRelationshipKey(canonicalA) === normalizeRelationshipKey(canonicalB)) continue;
 		const keyA = normalizeRelationshipKey(canonicalA);
 		const keyB = normalizeRelationshipKey(canonicalB);
 		const ordered =
@@ -457,13 +530,14 @@ export function applyRelationshipDeltas(
 	const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
 
 	function findOrCreate(characterName: string, tier?: string): number | null {
-		if (!canTrackRelationshipParticipant(characterName, allowlist)) return null;
-		const idx = findPlayerNpcRelationshipIndex(working, playerName, characterName);
+		if (!canTrackRelationshipParticipant(characterName, allowlist, playerName)) return null;
+		const npcName = stripRelationshipEndpointAnnotations(characterName);
+		const idx = findPlayerNpcRelationshipIndex(working, playerName, npcName);
 		if (idx !== -1) return idx;
 		const resolvedTier = sanitizeRelationshipTier(tier);
 		working.push({
 			a: playerName,
-			b: characterName.trim(),
+			b: npcName,
 			tier: resolvedTier,
 			trust: 50,
 			affection: 50,

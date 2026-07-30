@@ -5,11 +5,14 @@ import {
 	canTrackRelationshipParticipant,
 	findPlayerNpcRelationshipIndex,
 	isDeniedSpeakerLabel,
+	isPlayerNameVariant,
+	isPossessiveSpeakerLabel,
 	makeRelationshipPairKey,
 	mergeRelationshipEntries,
 	reconcileRelationshipEntries,
 	resolveMergedTier,
 	sanitizeRelationshipTier,
+	stripRelationshipEndpointAnnotations,
 } from "../relationshipIndex";
 import type { RelationshipIndexEntry } from "../types/models";
 
@@ -126,12 +129,48 @@ describe("relationshipIndex", () => {
 		expect(merged.trust).toBe(65);
 	});
 
+	it("collapses player name variants and removes garbage pairs from screenshot scenario", () => {
+		const cleaned = reconcileRelationshipEntries(
+			[
+				{ a: "Jamie Mercer", b: "Jamie's", tier: "complicated" },
+				{ a: "Jamie", b: "Jamie Mercer", tier: "guarded" },
+				{ a: "Jamie (guarded)", b: "Jamie Mercer", tier: "guarded" },
+				{
+					a: "Dr. Aris",
+					b: "Jamie Mercer",
+					tier: "enemy",
+					summary: "Jamie refused Dr. Aris's care.",
+				},
+			],
+			new Map(),
+			{
+				playerName: "Jamie Mercer",
+				allowlist: buildCharacterAllowlist({
+					playerName: "Jamie Mercer",
+					existingRelationships: [
+						{ a: "Dr. Aris", b: "Jamie Mercer", tier: "enemy" },
+					],
+				}),
+			},
+		);
+		expect(cleaned?.length).toBe(1);
+		expect(cleaned?.[0]?.a === "Dr. Aris" || cleaned?.[0]?.b === "Dr. Aris").toBe(true);
+		expect(cleaned?.[0]?.tier).toBe("enemy");
+	});
+
+	it("rejects possessive and parenthetical speaker labels", () => {
+		expect(isPossessiveSpeakerLabel("Jamie's")).toBe(true);
+		expect(stripRelationshipEndpointAnnotations("Jamie (guarded)")).toBe("Jamie");
+		expect(isPlayerNameVariant("Jamie", "Jamie Mercer")).toBe(true);
+	});
+
 	it("canTrackRelationshipParticipant respects allowlist", () => {
 		const allowlist = buildCharacterAllowlist({
-			playerName: "Jamie",
+			playerName: "Jamie Mercer",
 			indexedCharacters: { Jake: { name: "Jake" } },
 		});
-		expect(canTrackRelationshipParticipant("Jake", allowlist)).toBe(true);
-		expect(canTrackRelationshipParticipant("Sun", allowlist)).toBe(false);
+		expect(canTrackRelationshipParticipant("Jake", allowlist, "Jamie Mercer")).toBe(true);
+		expect(canTrackRelationshipParticipant("Sun", allowlist, "Jamie Mercer")).toBe(false);
+		expect(canTrackRelationshipParticipant("Jamie", allowlist, "Jamie Mercer")).toBe(false);
 	});
 });
