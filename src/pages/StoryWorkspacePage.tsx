@@ -24,6 +24,12 @@ import { DiceRollModal, type DiceRollResult } from "../components/story/DiceRoll
 import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
 import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
+import {
+  countGeneratedChapters,
+  getLatestChapterStartMessage,
+  resolveChapterScrollElement,
+  scrollElementWithinContainer,
+} from "../lib/storyText/chapterNavigation";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
@@ -434,7 +440,9 @@ export function StoryWorkspacePage() {
   const activeUniverse = universe;
   const activePlayerCharacter = playerCharacter;
   const showLatestChapterJumpButton =
-    !readerMode && !archiveMode && storyChapters.length > 1;
+    !readerMode &&
+    !archiveMode &&
+    countGeneratedChapters(messages, storyChapters) > 1;
 
   function ensureChatComposerVisible(behavior: ScrollBehavior = "smooth") {
     const composer = chatComposerRef.current;
@@ -466,12 +474,7 @@ export function StoryWorkspacePage() {
   }
 
   function handleJumpToLatestChapter() {
-    if (storyChapters.length < 2) {
-      return;
-    }
-
-    const previousChapter = storyChapters[storyChapters.length - 2];
-    const targetMessage = messages[previousChapter.endsAtIndex];
+    const targetMessage = getLatestChapterStartMessage(messages, storyChapters);
     if (!targetMessage) {
       return;
     }
@@ -479,8 +482,11 @@ export function StoryWorkspacePage() {
     setHighlightedMessageId(targetMessage.id);
 
     requestAnimationFrame(() => {
-      const element = document.getElementById(`story-message-${targetMessage.id}`);
-      element?.scrollIntoView({ block: "start", behavior: "smooth" });
+      const element = resolveChapterScrollElement(targetMessage.id);
+      if (!element) {
+        return;
+      }
+      scrollElementWithinContainer(element, transcriptScrollRef.current, "smooth");
     });
 
     window.setTimeout(() => {
