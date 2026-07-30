@@ -17,6 +17,7 @@ import { getProviderDefaultModel, getProviderModels, getValidModel } from "../li
 import { downloadFile } from "../lib/download";
 import { serializeStoryExport } from "../lib/storyExport";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
+import { TutorialSettingsTab } from "../components/settings/TutorialSettingsTab";
 
 function sanitizeFileStem(value: string) {
   return value
@@ -537,12 +538,13 @@ export function SettingsPage() {
     }
   }
 
-  const [activeTab, setActiveTab] = useState<"theme" | "ai" | "data" | "storage">("theme");
+  const [activeTab, setActiveTab] = useState<"theme" | "ai" | "data" | "storage" | "tutorial">("theme");
   const tabs = [
     { id: "theme" as const, label: "Theme" },
     { id: "ai" as const, label: "AI" },
     { id: "data" as const, label: "Data" },
     { id: "storage" as const, label: "Storage" },
+    { id: "tutorial" as const, label: "Tutorial" },
   ];
 
   return (
@@ -550,7 +552,7 @@ export function SettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="Settings"
-        description="Configure your AI provider, theme, and local workspace."
+        description="Configure your AI provider, theme, local workspace, and learn how the app works."
       />
 
       {/* Tab bar */}
@@ -1072,6 +1074,8 @@ export function SettingsPage() {
           </Panel>
         </div>
       )}
+
+      {activeTab === "tutorial" && <TutorialSettingsTab />}
     </div>
   );
 }
