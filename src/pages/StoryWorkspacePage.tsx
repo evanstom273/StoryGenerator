@@ -166,6 +166,10 @@ export function StoryWorkspacePage() {
     () => (story ? getMessagesForStory(story.id) : []),
     [getMessagesForStory, story],
   );
+  const storyChapters = useMemo(
+    () => (story ? getChaptersForStory(story.id) : []),
+    [getChaptersForStory, messages, story],
+  );
   const [composerState, setComposerState] = useState(initialComposerState);
   const [editingMessage, setEditingMessage] = useState<StoryMessage | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -218,6 +222,14 @@ export function StoryWorkspacePage() {
   const [diceRollPending, setDiceRollPending] = useState<{ stat: string; modifier: number; resolvedMessage: string } | null>(null);
   const [diceStatLoading, setDiceStatLoading] = useState(false);
   const pendingDiceEventRef = useRef<{ ts: number; summary: string } | null>(null);
+  const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
+  const chatComposerRef = useRef<HTMLDivElement | null>(null);
+  const chatInputPinnedRef = useRef(false);
+  const scrollSyncRef = useRef({
+    initialized: false,
+    messageCount: 0,
+    streamingDraft: null as string | null,
+  });
 
   // Initial gold load only — live updates come from appliedRpChanges in sendChatMessage
   useEffect(() => {
@@ -298,10 +310,12 @@ export function StoryWorkspacePage() {
 
       setHighlightedMessageId(target.id);
 
-      requestAnimationFrame(() => {
-        const element = document.getElementById(`story-message-${target.id}`);
-        element?.scrollIntoView({ block: "center", behavior: "smooth" });
-      });
+      if (!chatInputPinnedRef.current) {
+        requestAnimationFrame(() => {
+          const element = document.getElementById(`story-message-${target.id}`);
+          element?.scrollIntoView({ block: "center", behavior: "smooth" });
+        });
+      }
 
       window.setTimeout(() => {
         setHighlightedMessageId((current) => (current === target.id ? null : current));
@@ -330,6 +344,50 @@ export function StoryWorkspacePage() {
     setManualMode(false);
     setEditingMessage(null);
   }, [readerMode]);
+
+  useEffect(() => {
+    if (archiveMode || readerMode || !story) {
+      return;
+    }
+
+    const previous = scrollSyncRef.current;
+    const messageCount = messages.length;
+    const draft = streamingDraft;
+    const messagesChanged = messageCount !== previous.messageCount;
+    const draftChanged = draft !== previous.streamingDraft;
+
+    if (!previous.initialized) {
+      scrollSyncRef.current = {
+        initialized: true,
+        messageCount,
+        streamingDraft: draft,
+      };
+      return;
+    }
+
+    if (!messagesChanged && !draftChanged) {
+      return;
+    }
+
+    scrollSyncRef.current = {
+      initialized: true,
+      messageCount,
+      streamingDraft: draft,
+    };
+
+    if (chatInputPinnedRef.current) {
+      requestAnimationFrame(() => ensureChatComposerVisible());
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      const transcript = transcriptScrollRef.current;
+      if (!transcript) {
+        return;
+      }
+      transcript.scrollTo({ top: transcript.scrollHeight, behavior: "smooth" });
+    });
+  }, [archiveMode, messages, readerMode, story, streamingDraft]);
 
   const latestAssistantMessage = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -375,6 +433,60 @@ export function StoryWorkspacePage() {
   const activeStory = story;
   const activeUniverse = universe;
   const activePlayerCharacter = playerCharacter;
+  const showLatestChapterJumpButton =
+    !readerMode && !archiveMode && storyChapters.length > 1;
+
+  function ensureChatComposerVisible(behavior: ScrollBehavior = "smooth") {
+    const composer = chatComposerRef.current;
+    if (!composer) {
+      return;
+    }
+
+    const rect = composer.getBoundingClientRect();
+    const visibleBottom = window.innerHeight - 56;
+    if (rect.bottom > visibleBottom || rect.top < 0) {
+      composer.scrollIntoView({ block: "end", behavior });
+    }
+  }
+
+  function handleChatInputFocus() {
+    chatInputPinnedRef.current = true;
+    requestAnimationFrame(() => ensureChatComposerVisible());
+  }
+
+  function handleChatInputBlur() {
+    window.setTimeout(() => {
+      const composer = chatComposerRef.current;
+      const active = document.activeElement;
+      if (composer && active && composer.contains(active)) {
+        return;
+      }
+      chatInputPinnedRef.current = false;
+    }, 150);
+  }
+
+  function handleJumpToLatestChapter() {
+    if (storyChapters.length < 2) {
+      return;
+    }
+
+    const previousChapter = storyChapters[storyChapters.length - 2];
+    const targetMessage = messages[previousChapter.endsAtIndex];
+    if (!targetMessage) {
+      return;
+    }
+
+    setHighlightedMessageId(targetMessage.id);
+
+    requestAnimationFrame(() => {
+      const element = document.getElementById(`story-message-${targetMessage.id}`);
+      element?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+
+    window.setTimeout(() => {
+      setHighlightedMessageId((current) => (current === targetMessage.id ? null : current));
+    }, 1500);
+  }
 
   const ROLL_TAG_RE = /\[roll(?:\s+(str|dex|con|int|wis|cha))?\]/i;
 
@@ -1337,7 +1449,7 @@ export function StoryWorkspacePage() {
         </div>
       </div>
 
-      <div className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
+      <div ref={transcriptScrollRef} className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
         {archiveMode ? (
           <StoryArchiveView storyId={activeStory.id} />
         ) : messages.length ? (
@@ -1491,7 +1603,8 @@ export function StoryWorkspacePage() {
       )}
 
       {readerMode ? null : (
-        <Panel variant="flat" className="mt-4" padding="sm">
+        <div ref={chatComposerRef}>
+          <Panel variant="flat" className="mt-4" padding="sm">
           <div className="space-y-5">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -1521,6 +1634,8 @@ export function StoryWorkspacePage() {
                 maxHeightPx={420}
                 value={chatInput}
                 onChange={(event) => setChatInput(event.target.value)}
+                onFocus={handleChatInputFocus}
+                onBlur={handleChatInputBlur}
                 disabled={isReadOnly}
                 placeholder="Write what your character does or says next."
               />
@@ -1564,6 +1679,7 @@ export function StoryWorkspacePage() {
             </div>
           </div>
         </Panel>
+        </div>
       )}
 
       {readerMode ? null : manualMode || editingMessage ? (
@@ -1753,6 +1869,16 @@ export function StoryWorkspacePage() {
           onClose={() => setRelationshipsOpen(false)}
           refreshKey={relationshipsRefreshKey}
         />
+      ) : null}
+
+      {showLatestChapterJumpButton ? (
+        <button
+          type="button"
+          onClick={handleJumpToLatestChapter}
+          className="fixed bottom-12 left-4 z-40 rounded-full border border-accent/30 bg-app-elevated/95 px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-soft shadow-hero backdrop-blur-sm transition hover:border-accent hover:bg-accent/15 hover:text-ink lg:left-[282px]"
+        >
+          Jump to Latest Chapter
+        </button>
       ) : null}
 
       {/* RP event toasts */}
