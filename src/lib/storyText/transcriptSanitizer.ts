@@ -1,4 +1,5 @@
 import type { StoryMessage } from "../../types/models";
+import { isDeniedSpeakerLabel } from "../relationshipIndex";
 import { standardizeAssistantStoryText } from "./storyStandardizer";
 
 function normalizeWhitespace(value: string) {
@@ -534,16 +535,10 @@ function removeEchoBlocks(text: string, latestUserMessage: string | null | undef
   return { text: kept.join("\n\n"), removed };
 }
 
-// Names that should never be treated as speaker headers
-const NOT_A_NAME_BARE = new Set([
-  "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
-  "The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
-  "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
-  "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
-  "Scene", "Chapter", "Part", "First", "Next", "Narrator",
-  "As", "With", "After", "Before", "While", "When", "Once", "Until",
-  "From", "Into", "Through", "Against", "Between", "Without",
-]);
+// Names that should never be treated as speaker headers — see relationshipIndex.SPEAKER_LABEL_DENYLIST
+function isBareNameDenied(trimmed: string, firstName: string): boolean {
+  return isDeniedSpeakerLabel(trimmed) || isDeniedSpeakerLabel(firstName);
+}
 
 // Add colon to bare name lines (e.g. "Jake\n*action*" → "Jake:\n*action*")
 function fixBareNameHeaders(text: string): string {
@@ -558,7 +553,7 @@ function fixBareNameHeaders(text: string): string {
     const nameMatch = trimmed.match(/^([A-Z][a-zA-Z']{1,30}(?:\s+[A-Z][a-zA-Z']{1,30}){0,3})$/);
     if (nameMatch) {
       const firstName = trimmed.split(/\s+/)[0] ?? "";
-      if (!NOT_A_NAME_BARE.has(firstName) && !NOT_A_NAME_BARE.has(trimmed)) {
+      if (!isBareNameDenied(trimmed, firstName)) {
         // Look ahead: is the next non-empty line action or dialogue?
         let nextIdx = i + 1;
         while (nextIdx < lines.length && !(lines[nextIdx] ?? "").trim()) nextIdx++;

@@ -1,12 +1,15 @@
 import type {
   MemoryArchitectureVersion,
-  RelationshipHistoryEntry,
-  RelationshipIndexEntry,
   StoryIndexesV2,
   StoryStateData,
   StoryStateDataV2,
 } from "../types/models";
 import { safeParseJsonObject } from "./ai/json";
+import {
+  buildCharacterAllowlist,
+  mergePerTurnRelationshipFields,
+  reconcileRelationshipEntries,
+} from "./relationshipIndex";
 
 export function safeParseStoryStateData(json: string): StoryStateData | null {
   const parsed = safeParseJsonObject<StoryStateDataV2>(json.trim());
@@ -130,84 +133,6 @@ function mergeEvidence(left: any, right: any) {
   return merged.length ? { messageNumbers: merged } : undefined;
 }
 
-function mergeHistory(
-  left: RelationshipHistoryEntry[] | undefined,
-  right: RelationshipHistoryEntry[] | undefined,
-): RelationshipHistoryEntry[] | undefined {
-  const combined = [...(left ?? []), ...(right ?? [])];
-  if (!combined.length) return undefined;
-  const seen = new Set<string>();
-  const deduped = combined.filter((h) => {
-    const key = h.summary.toLowerCase().trim();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  return deduped.slice(0, 5);
-}
-
-function mergeRelationship(left: RelationshipIndexEntry, right: RelationshipIndexEntry): RelationshipIndexEntry {
-  const summary = typeof right.summary === "string" && right.summary.trim()
-    ? right.summary.trim()
-    : typeof left.summary === "string" && left.summary.trim()
-      ? left.summary.trim()
-      : undefined;
-  const evidence = mergeEvidence(left.evidence, right.evidence);
-  const tier = right.tier ?? left.tier ?? "stranger";
-  const history = mergeHistory(left.history, right.history);
-
-  return {
-    a: left.a,
-    b: left.b,
-    tier,
-    ...(history?.length ? { history } : {}),
-    ...(summary ? { summary } : {}),
-    ...(evidence ? { evidence } : {}),
-  };
-}
-
-function reconcileRelationships(
-  relationships: RelationshipIndexEntry[] | undefined,
-  aliasToCanonical: Map<string, string>,
-) {
-  if (!relationships?.length) {
-    return undefined;
-  }
-
-  const byPair = new Map<string, RelationshipIndexEntry>();
-
-  for (const entry of relationships) {
-    const rawA = typeof entry.a === "string" ? entry.a.trim() : "";
-    const rawB = typeof entry.b === "string" ? entry.b.trim() : "";
-    if (!rawA || !rawB) {
-      continue;
-    }
-
-    const canonicalA = aliasToCanonical.get(normalizeKey(rawA)) ?? rawA;
-    const canonicalB = aliasToCanonical.get(normalizeKey(rawB)) ?? rawB;
-    const keyA = normalizeKey(canonicalA);
-    const keyB = normalizeKey(canonicalB);
-    const ordered =
-      keyA <= keyB ? { a: canonicalA, b: canonicalB, ka: keyA, kb: keyB } : { a: canonicalB, b: canonicalA, ka: keyB, kb: keyA };
-    const pairKey = `${ordered.ka}::${ordered.kb}`;
-
-    const normalizedEntry: RelationshipIndexEntry = {
-      a: ordered.a,
-      b: ordered.b,
-      tier: entry.tier ?? "stranger",
-      ...(Array.isArray(entry.history) && entry.history.length ? { history: entry.history } : {}),
-      ...(typeof entry.summary === "string" && entry.summary.trim() ? { summary: entry.summary.trim() } : {}),
-      ...(mergeEvidence(entry.evidence, undefined) ? { evidence: mergeEvidence(entry.evidence, undefined) } : {}),
-    };
-
-    const existing = byPair.get(pairKey);
-    byPair.set(pairKey, existing ? mergeRelationship(existing, normalizedEntry) : normalizedEntry);
-  }
-
-  const merged = Array.from(byPair.values());
-  return merged.length ? merged : undefined;
-}
-
 function reconcileIndexedEntities(
   entities: StoryIndexesV2["characters"] | undefined,
 ): { merged: StoryIndexesV2["characters"] | undefined; aliasToCanonical: Map<string, string> } {
@@ -329,6 +254,10 @@ function reconcileIndexedEntities(
 export function reconcileStoryIndexes(
   indexes: StoryIndexesV2 | undefined,
   totalMessages: number,
+  opts?: {
+    playerName?: string;
+    universeImportedCharacters?: string[];
+  },
 ): StoryIndexesV2 | undefined {
   if (!indexes || typeof indexes !== "object") {
     return undefined;
@@ -338,7 +267,19 @@ export function reconcileStoryIndexes(
 
   const { merged: characters, aliasToCanonical } = reconcileIndexedEntities(indexes.characters);
 
-  const relationships = reconcileRelationships(indexes.relationships, aliasToCanonical);
+  const allowlist = buildCharacterAllowlist({
+    playerName: opts?.playerName ?? "",
+    indexedCharacters: characters ?? indexes.characters,
+    universeImportedCharacters: opts?.universeImportedCharacters,
+    existingRelationships: indexes.relationships,
+  });
+
+  const relationships = reconcileRelationshipEntries(indexes.relationships, aliasToCanonical, {
+    playerName: opts?.playerName,
+    allowlist,
+    indexedCharacters: characters ?? indexes.characters,
+    universeImportedCharacters: opts?.universeImportedCharacters,
+  });
 
   return {
     ...indexes,
@@ -349,49 +290,6 @@ export function reconcileStoryIndexes(
   };
 }
 
-function mergePerTurnRelationshipFields(
-  reindexed: RelationshipIndexEntry[] | undefined,
-  previous: RelationshipIndexEntry[] | undefined,
-): RelationshipIndexEntry[] | undefined {
-  if (!reindexed?.length) return reindexed;
-  if (!previous?.length) return reindexed;
-
-  const prevByPair = new Map<string, RelationshipIndexEntry>();
-  for (const entry of previous) {
-    const keyA = normalizeKey(entry.a);
-    const keyB = normalizeKey(entry.b);
-    const pairKey = keyA <= keyB ? `${keyA}::${keyB}` : `${keyB}::${keyA}`;
-    prevByPair.set(pairKey, entry);
-  }
-
-  return reindexed.map((entry) => {
-    const keyA = normalizeKey(entry.a);
-    const keyB = normalizeKey(entry.b);
-    const pairKey = keyA <= keyB ? `${keyA}::${keyB}` : `${keyB}::${keyA}`;
-    const prev = prevByPair.get(pairKey);
-    if (!prev) return entry;
-
-    // Reindex owns: tier, summary, history, evidence (structural/analytical fields).
-    // Per-turn owns: npcInnerLife, arc, numeric metrics (accumulated during play).
-    return {
-      ...entry,
-      ...(prev.npcInnerLife && !entry.npcInnerLife ? { npcInnerLife: prev.npcInnerLife } : {}),
-      ...(prev.arc && !entry.arc ? { arc: prev.arc } : {}),
-      ...(prev.trust !== undefined && entry.trust === undefined ? { trust: prev.trust } : {}),
-      ...(prev.affection !== undefined && entry.affection === undefined ? { affection: prev.affection } : {}),
-      ...(prev.fear !== undefined && entry.fear === undefined ? { fear: prev.fear } : {}),
-      ...(prev.dependency !== undefined && entry.dependency === undefined ? { dependency: prev.dependency } : {}),
-      ...(prev.friendship !== undefined && entry.friendship === undefined ? { friendship: prev.friendship } : {}),
-      ...(prev.respect !== undefined && entry.respect === undefined ? { respect: prev.respect } : {}),
-      ...(prev.loyalty !== undefined && entry.loyalty === undefined ? { loyalty: prev.loyalty } : {}),
-      ...(prev.comfort !== undefined && entry.comfort === undefined ? { comfort: prev.comfort } : {}),
-      ...(prev.suspicion !== undefined && entry.suspicion === undefined ? { suspicion: prev.suspicion } : {}),
-      ...(prev.hostility !== undefined && entry.hostility === undefined ? { hostility: prev.hostility } : {}),
-      ...(prev.playerIntention && !entry.playerIntention ? { playerIntention: prev.playerIntention } : {}),
-    };
-  });
-}
-
 export function finalizeStoryStateForSave(params: {
   parsedState: StoryStateData;
   previousStateJson?: string;
@@ -399,6 +297,8 @@ export function finalizeStoryStateForSave(params: {
   now: string;
   mode: "auto" | "deep";
   deepIndexTrigger?: "auto" | "manual";
+  playerName?: string;
+  universeImportedCharacters?: string[];
 }): string {
   const previous = (() => {
     const json = params.previousStateJson?.trim() ?? "";
@@ -417,7 +317,10 @@ export function finalizeStoryStateForSave(params: {
   const previousV2 = normalizeStoryStateToV2(previous);
 
   const normalized = normalizeStoryStateToV2(params.parsedState);
-  let reconciledIndexes = reconcileStoryIndexes(normalized.indexes, params.totalMessages);
+  let reconciledIndexes = reconcileStoryIndexes(normalized.indexes, params.totalMessages, {
+    playerName: params.playerName,
+    universeImportedCharacters: params.universeImportedCharacters,
+  });
 
   // For deep reindex, preserve per-turn data (npcInnerLife, arc, numeric metrics)
   // accumulated in the existing relationship entries — the AI reindex only produces

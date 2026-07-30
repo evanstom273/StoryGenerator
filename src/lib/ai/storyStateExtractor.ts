@@ -5,6 +5,7 @@ import type {
   StoryStateData,
   StoryStateDataV2,
 } from "../../types/models";
+import { RELATIONSHIP_TIERS, sanitizeRelationshipTier } from "../relationshipIndex";
 import type { AIChatMessage } from "./types";
 import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "./json";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
@@ -166,9 +167,10 @@ export function buildStoryStateExtractionPrompt({
       "- Keep lists short and deduplicated.",
       "- Keep indexes bounded: max 50 entities per category, max 30 worldFacts, max 50 significantMemories, max 20 openThreads, max 60 relationships.",
       "- Evidence should use messageNumbers from the transcript brackets. If uncertain, omit the entry instead of guessing.",
-      "- For indexes.relationships: create an entry for EVERY named character who appears in the story, paired with the player character. Also create entries between NPCs who have direct notable interaction. Never omit a named character. Tier is REQUIRED on every entry — default to 'stranger' if there has been no meaningful interaction.",
+      "- For indexes.relationships: create an entry for EVERY established character paired with the player character. Also create entries between NPCs who have direct notable interaction.",
+      "- Only use characters from indexes.characters, universe canon, or clearly established recurring NPCs — never scene labels, weather headers, or narration prefixes (e.g. Sun, Moon, Rain, Morning).",
       "- For indexes.relationships: represent the CURRENT dynamic state (not a timeline). Keep only one entry per pair. Update/overwrite the pair instead of adding duplicates.",
-      "- For indexes.relationships.tier: assign the single best-fit tier. Use: stranger (named but minimal/no direct contact), acquaintance (met, some interaction, neutral), friend (genuine positive bond), family (parent, child, sibling, spouse, or other blood/legal kinship), ally (actively cooperating toward shared goals), rival (competitive or opposed but not hateful), enemy (active antagonism or opposing goals), nemesis (personal, intense, defining enmity), lover (romantic or intimate bond). Re-evaluate on every index pass.",
+      `- For indexes.relationships.tier: assign the single best-fit tier. Valid values: ${RELATIONSHIP_TIERS.join(", ")}. Default to stranger if there has been no meaningful interaction.`,
       "- For indexes.relationships.summary: write 1-2 sentences describing the current state of this relationship. Required for non-strangers; optional but encouraged even for strangers.",
       "- For indexes.relationships.history: record up to 3 key turning-point moments (first meeting counts). Each entry: concise 1-sentence summary + messageNumber if available. Preserve previous history entries unless superseded.",
       "- Preserve Open Threads quality. Track the questions/tensions a reader would still care about.",
@@ -287,7 +289,6 @@ function sanitizeIndexes(value: any) {
   const maxMessageNumber = messageCount && messageCount > 0 ? messageCount : undefined;
 
   const relationshipsList = (value as any).relationships;
-  const validTiers = ["stranger", "acquaintance", "friend", "family", "ally", "rival", "enemy", "nemesis", "lover"] as const;
   const relationships = Array.isArray(relationshipsList)
     ? relationshipsList
         .filter((entry: unknown) => entry && typeof entry === "object" && !Array.isArray(entry))
@@ -297,9 +298,7 @@ function sanitizeIndexes(value: any) {
           if (!entry.a.trim() || !entry.b.trim()) return null;
 
           const evidence = sanitizeEvidence(entry.evidence, maxMessageNumber);
-          const tier = typeof entry.tier === "string" && validTiers.includes(entry.tier as any)
-            ? (entry.tier as (typeof validTiers)[number])
-            : "stranger";
+          const tier = sanitizeRelationshipTier(entry.tier);
 
           const sanitizedHistory = Array.isArray(entry.history)
             ? entry.history

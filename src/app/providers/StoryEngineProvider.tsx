@@ -106,7 +106,13 @@ import {
 } from "../../lib/storyText/continueMode";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
-import { extractRpStatChanges, type NpcInnerLifeUpdate, type RelationshipArcUpdate, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
+import { extractRpStatChanges, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
+import {
+  applyRelationshipDeltas,
+  buildCharacterAllowlist,
+  canTrackRelationshipParticipant,
+  findPlayerNpcRelationshipIndex,
+} from "../../lib/relationshipIndex";
 import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
@@ -131,7 +137,6 @@ import type {
   PlayerCharacter,
   PlayerCharacterDraft,
   RelationshipIndexEntry,
-  RelationshipTier,
   RpChangelogEntry,
   RpEventLogEntry,
   RpStats,
@@ -1405,72 +1410,6 @@ interface StoryEngineProviderProps {
   repository?: StoryEngineRepository;
 }
 
-function applyRelationshipDeltas(
-  existing: RelationshipIndexEntry[],
-  deltas: RpRelationshipDelta[],
-  playerName: string,
-  innerLifeUpdates?: NpcInnerLifeUpdate[],
-  arcUpdates?: RelationshipArcUpdate[],
-): RelationshipIndexEntry[] {
-  const playerNorm = playerName.toLowerCase().trim();
-  const working: RelationshipIndexEntry[] = existing.map((e) => ({ ...e }));
-
-  const VALID_TIERS = new Set<string>(["devoted","lover","partner","best friend","confidant","close friend","friend","family","mentor","mentee","caregiver","patient","ally","colleague","professional","acquaintance","stranger","complicated","guarded","distant","estranged","rival","adversary","enemy","nemesis","threat"]);
-
-  function findOrCreate(characterName: string, tier?: string): number | null {
-    const nameNorm = characterName.toLowerCase().trim();
-    if (nameNorm === playerNorm) return null;
-    const idx = working.findIndex(
-      (r) => r.a.toLowerCase().trim() === nameNorm || r.b.toLowerCase().trim() === nameNorm,
-    );
-    if (idx !== -1) return idx;
-    const resolvedTier: RelationshipTier = (tier && VALID_TIERS.has(tier) ? tier : "stranger") as RelationshipTier;
-    working.push({ a: playerName, b: characterName, tier: resolvedTier, trust: 50, affection: 50, fear: 50, dependency: 50 });
-    return working.length - 1;
-  }
-
-  const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
-
-  for (const delta of deltas) {
-    const idx = findOrCreate(delta.characterName, delta.tier);
-    if (idx === null) continue;
-    const entry = working[idx]!;
-    if (delta.trust !== undefined) entry.trust = clamp((entry.trust ?? 50) + delta.trust);
-    if (delta.affection !== undefined) entry.affection = clamp((entry.affection ?? 50) + delta.affection);
-    if (delta.fear !== undefined) entry.fear = clamp((entry.fear ?? 50) + delta.fear);
-    if (delta.dependency !== undefined) entry.dependency = clamp((entry.dependency ?? 50) + delta.dependency);
-  }
-
-  for (const u of innerLifeUpdates ?? []) {
-    const idx = findOrCreate(u.characterName, u.tier);
-    if (idx === null) continue;
-    const entry = working[idx]!;
-    const prev = entry.npcInnerLife ?? {};
-    entry.npcInnerLife = {
-      ...prev,
-      ...(u.emotionalState ? { emotionalState: u.emotionalState } : {}),
-      ...(u.howTheyDescribeYou ? { howTheyDescribeYou: u.howTheyDescribeYou } : {}),
-      ...(u.whatTheyWant ? { whatTheyWant: u.whatTheyWant } : {}),
-      ...(u.whatTheyreNotSaying ? { whatTheyreNotSaying: u.whatTheyreNotSaying } : {}),
-    };
-  }
-
-  for (const u of arcUpdates ?? []) {
-    const idx = findOrCreate(u.characterName, u.tier);
-    if (idx === null) continue;
-    const entry = working[idx]!;
-    const prev = entry.arc ?? {};
-    entry.arc = {
-      ...prev,
-      ...(u.statusPhrase ? { statusPhrase: u.statusPhrase } : {}),
-      ...(u.tension ? { tension: u.tension } : {}),
-      ...(u.newMilestone ? { milestones: [...(prev.milestones ?? []), u.newMilestone].slice(-10) } : {}),
-    };
-  }
-
-  return working;
-}
-
 export function StoryEngineProvider({
   children,
   repository = storyEngineRepository,
@@ -2375,6 +2314,8 @@ export function StoryEngineProvider({
               now,
               mode: "deep",
               deepIndexTrigger: opts?.trigger ?? "manual",
+              playerName: playerCharacter.name,
+              universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
             });
           } catch {
             return JSON.stringify(
@@ -2964,6 +2905,8 @@ export function StoryEngineProvider({
             totalMessages: refreshedMessages.length,
             now,
             mode: "deep",
+            playerName: playerCharacter.name,
+            universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
           });
         } catch {
           return JSON.stringify(
@@ -4717,13 +4660,29 @@ export function StoryEngineProvider({
         return repository.getStoryState(storyId);
       },
       async updateRelationshipsIndex(storyId, relationships) {
+        const story = await repository.getStory(storyId);
+        const playerCharacter = story
+          ? await repository.getPlayerCharacter(story.playerCharacterId)
+          : null;
         const existing = await repository.getStoryState(storyId);
         const parsed = existing?.stateJson
           ? (() => { try { return JSON.parse(existing.stateJson); } catch { return {}; } })()
           : {};
+        const messageCount =
+          typeof parsed.indexes?.messageCount === "number" && Number.isFinite(parsed.indexes.messageCount)
+            ? Math.trunc(parsed.indexes.messageCount)
+            : (await repository.listStoryMessages(storyId)).length;
+        const reconciledIndexes = reconcileStoryIndexes(
+          { ...(parsed.indexes ?? {}), relationships },
+          messageCount,
+          {
+            playerName: playerCharacter?.name,
+            universeImportedCharacters: story?.universePackSnapshot?.universe?.importedCharacters ?? [],
+          },
+        );
         const next = {
           ...parsed,
-          indexes: { ...(parsed.indexes ?? {}), relationships },
+          indexes: reconciledIndexes ?? { ...(parsed.indexes ?? {}), relationships },
         };
         await repository.saveStoryState({
           id: `story-state:${storyId}`,
@@ -5993,6 +5952,7 @@ export function StoryEngineProvider({
 
           if (story.rpMode && story.rpConfig && currentRpStats) {
             try {
+              const rpPlayerName = playerCharacter.name;
               // Load existing relationships before extraction so we can pass tiers to the extractor
               const preExtractState = await repository.getStoryState(storyId);
               const preExtractParsed = preExtractState?.stateJson
@@ -6004,21 +5964,35 @@ export function StoryEngineProvider({
                   return Array.isArray(idx) ? idx : [];
                 } catch { return []; }
               })();
+              const preExtractIndexes = (preExtractParsed as any)?.indexes as Record<string, unknown> | undefined;
+              const indexedCharacters = preExtractIndexes?.characters as StoryIndexesV2["characters"] | undefined;
+              const universeImportedCharacters = effectiveUniverse.importedCharacters ?? [];
 
-              // Parse which named characters spoke in this scene (exclude player and Narrator)
-              const playerNameNorm = playerCharacter.name.toLowerCase().trim();
+              const relationshipAllowlist = buildCharacterAllowlist({
+                playerName: rpPlayerName,
+                indexedCharacters,
+                universeImportedCharacters,
+                existingRelationships: preExtractRelationships,
+              });
+
+              // Parse which established characters spoke in this scene (exclude player and Narrator)
+              const playerNameNorm = rpPlayerName.toLowerCase().trim();
               const speakerNamesInScene = [
                 ...new Set(
                   parseSceneBlocks(finalSanitizedText)
                     .map((b) => b.speakerLabel?.trim())
-                    .filter((l): l is string => !!l && l !== "Narrator" && l.toLowerCase() !== playerNameNorm),
+                    .filter(
+                      (l): l is string =>
+                        !!l &&
+                        l !== "Narrator" &&
+                        l.toLowerCase() !== playerNameNorm &&
+                        canTrackRelationshipParticipant(l, relationshipAllowlist),
+                    ),
                 ),
               ];
               const charactersInScene = speakerNamesInScene.map((name) => {
-                const nameNorm = name.toLowerCase();
-                const existing = preExtractRelationships.find(
-                  (r) => r.a.toLowerCase() === nameNorm || r.b.toLowerCase() === nameNorm,
-                );
+                const idx = findPlayerNpcRelationshipIndex(preExtractRelationships, rpPlayerName, name);
+                const existing = idx !== -1 ? preExtractRelationships[idx] : undefined;
                 return existing ? { name, tier: existing.tier as string } : { name };
               });
 
@@ -6160,10 +6134,35 @@ export function StoryEngineProvider({
                 const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" · ") : null;
                 const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" · ") || narrative || null;
 
+                const totalMessagesForIndex =
+                  typeof preExtractIndexes?.messageCount === "number" && Number.isFinite(preExtractIndexes.messageCount as number)
+                    ? Math.trunc(preExtractIndexes.messageCount as number)
+                    : sanitizedHistoryMessages.length + 1;
+
+                function buildIndexesWithRelationships(relationships: RelationshipIndexEntry[]) {
+                  const reconciled = reconcileStoryIndexes(
+                    { ...(preExtractIndexes ?? {}), relationships } as StoryIndexesV2,
+                    totalMessagesForIndex,
+                    {
+                      playerName: rpPlayerName,
+                      universeImportedCharacters,
+                    },
+                  );
+                  return reconciled ?? { ...(preExtractIndexes ?? {}), relationships };
+                }
+
                 // Compute updated relationships if any relationship data was returned
                 let updatedRelationships: RelationshipIndexEntry[] | null = null;
                 if (relationshipDeltas?.length || npcInnerLifeUpdates?.length || arcUpdates?.length) {
-                  updatedRelationships = applyRelationshipDeltas(preExtractRelationships, relationshipDeltas ?? [], playerCharacter.name, npcInnerLifeUpdates, arcUpdates);
+                  const merged = applyRelationshipDeltas(
+                    preExtractRelationships,
+                    relationshipDeltas ?? [],
+                    rpPlayerName,
+                    npcInnerLifeUpdates,
+                    arcUpdates,
+                    { allowlist: relationshipAllowlist },
+                  );
+                  updatedRelationships = buildIndexesWithRelationships(merged).relationships ?? merged;
                   if (relationshipDeltas?.length) appliedRelationshipDeltas = relationshipDeltas;
                 }
 
@@ -6370,7 +6369,10 @@ export function StoryEngineProvider({
                 shouldBootstrapAutoDeepAnchor
               ) {
                 const now = new Date().toISOString();
-                const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages);
+                const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages, {
+                  playerName: playerCharacter.name,
+                  universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
+                });
                 // Preserve rpStats from raw state when safeParseStoryStateData returns null
                 const rawRpStatsForCounter = (() => {
                   if (baseParsed) return undefined; // handled via baseState spread

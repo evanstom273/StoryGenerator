@@ -1902,6 +1902,7 @@ export function StoryWorkspacePage() {
           open={relationshipsOpen}
           storyId={storyId}
           playerName={activePlayerCharacter?.name}
+          universeImportedCharacters={activeStory?.universePackSnapshot?.universe?.importedCharacters}
           onClose={() => setRelationshipsOpen(false)}
           refreshKey={relationshipsRefreshKey}
         />
