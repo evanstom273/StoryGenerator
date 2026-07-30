@@ -140,7 +140,6 @@ export function StoryWorkspacePage() {
     getChildStories,
     getMessagesForStory,
     getParentStory,
-    getChaptersForStory,
     getPlayerCharacterById,
     getStoryById,
     getUniverseById,
