@@ -235,6 +235,7 @@ export function StoryWorkspacePage() {
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
   const chatComposerRef = useRef<HTMLDivElement | null>(null);
   const chatInputPinnedRef = useRef(false);
+  const jumpChapterScrollRef = useRef(false);
   const scrollSyncRef = useRef({
     initialized: false,
     messageCount: 0,
@@ -385,6 +386,10 @@ export function StoryWorkspacePage() {
       streamingDraft: draft,
     };
 
+    if (jumpChapterScrollRef.current) {
+      return;
+    }
+
     if (chatInputPinnedRef.current) {
       requestAnimationFrame(() => ensureChatComposerVisible());
       return;
@@ -484,19 +489,18 @@ export function StoryWorkspacePage() {
     }
 
     setHighlightedMessageId(targetMessage.id);
+    jumpChapterScrollRef.current = true;
 
-    const runScroll = () => {
+    window.setTimeout(() => {
       scrollToLatestChapterAnchor(
         targetMessage.id,
         transcriptScrollRef.current,
         "smooth",
       );
-    };
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(runScroll);
-    });
-    window.setTimeout(runScroll, 80);
+      window.setTimeout(() => {
+        jumpChapterScrollRef.current = false;
+      }, 800);
+    }, 100);
 
     window.setTimeout(() => {
       setHighlightedMessageId((current) => (current === targetMessage.id ? null : current));
