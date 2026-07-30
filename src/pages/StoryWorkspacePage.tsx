@@ -1503,7 +1503,7 @@ export function StoryWorkspacePage() {
             <StoryTranscriptView
               messages={messages}
               playerCharacterName={activePlayerCharacter.name}
-              chapters={getChaptersForStory(activeStory.id)}
+              chapters={storyChapters}
               highlightedMessageId={highlightedMessageId}
               rpConfig={activeStory.rpMode && activeStory.rpConfig ? activeStory.rpConfig : undefined}
               className={[
