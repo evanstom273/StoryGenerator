@@ -289,15 +289,22 @@ export function StoryTranscriptView({
   let prevStoryTime: RpTimeState | undefined = undefined;
   const chapterEndByMessageId = new Map<string, string>();
   const chapterStartBeforeMessage = new Map<number, string>();
-  for (const chapter of chapters ?? []) {
+  const sortedChapters = [...(chapters ?? [])].sort((left, right) => left.endsAtIndex - right.endsAtIndex);
+  for (const chapter of sortedChapters) {
     if (chapter.endsAtMessageId) {
       chapterEndByMessageId.set(chapter.endsAtMessageId, chapter.label);
     }
-    if (typeof chapter.endsAtIndex === "number" && chapter.endsAtIndex >= 1) {
-      const nextMessageIndex = chapter.endsAtIndex + 1;
-      if (nextMessageIndex <= messages.length) {
-        chapterStartBeforeMessage.set(nextMessageIndex, getNextChapterBannerLabel(chapter.label));
-      }
+
+    const endByIdIndex = messages.findIndex((message) => message.id === chapter.endsAtMessageId);
+    const nextMessageKey =
+      endByIdIndex >= 0
+        ? endByIdIndex + 2
+        : chapter.endsAtIndex >= 1
+          ? chapter.endsAtIndex + 1
+          : null;
+
+    if (nextMessageKey !== null && nextMessageKey <= messages.length) {
+      chapterStartBeforeMessage.set(nextMessageKey, getNextChapterBannerLabel(chapter.label));
     }
   }
   return (
