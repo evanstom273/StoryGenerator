@@ -9,9 +9,12 @@ import {
 } from "react";
 import { ChangelogModal } from "./ChangelogModal";
 import { ChangelogHistoryModal } from "./ChangelogHistoryModal";
+import { WelcomeModal } from "./WelcomeModal";
+import { router } from "../router";
 import { APP_NAME, APP_VERSION, CHANGELOG, type ChangelogEntry } from "./version";
 
 const STORAGE_KEY = "story-engine:changelog:last-viewed";
+const WELCOME_STORAGE_KEY = "story-engine:welcome:dismissed";
 
 type ChangelogContextValue = {
   isChangelogOpen: boolean;
@@ -47,6 +50,7 @@ function compareSemver(a: string, b: string) {
 export function ChangelogProvider({ children }: { children: ReactNode }) {
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isChangelogHistoryOpen, setIsChangelogHistoryOpen] = useState(false);
+  const [isWelcomeOpen, setIsWelcomeOpen] = useState(false);
   const [visibleVersions, setVisibleVersions] = useState<string[]>([APP_VERSION]);
 
   const latestEntry = useMemo(() => {
@@ -55,24 +59,54 @@ export function ChangelogProvider({ children }: { children: ReactNode }) {
 
   const appLabel = useMemo(() => `${APP_NAME} v${APP_VERSION}`, []);
 
-  useEffect(() => {
+  const openChangelogForMissedVersions = useCallback(() => {
     try {
       const lastViewed = localStorage.getItem(STORAGE_KEY);
-      if (lastViewed !== APP_VERSION) {
-        const knownVersions = Object.keys(CHANGELOG).sort(compareSemver);
-        const currentIndex = knownVersions.indexOf(APP_VERSION);
-        const lastIndex = lastViewed ? knownVersions.indexOf(lastViewed) : -1;
-        const missed =
-          lastIndex >= 0 && currentIndex >= 0
-            ? knownVersions.slice(lastIndex + 1, currentIndex + 1)
-            : [APP_VERSION];
-        setVisibleVersions(missed.length ? missed : [APP_VERSION]);
-        setIsChangelogOpen(true);
+      if (lastViewed === APP_VERSION) {
+        return;
       }
+
+      const knownVersions = Object.keys(CHANGELOG).sort(compareSemver);
+      const currentIndex = knownVersions.indexOf(APP_VERSION);
+      const lastIndex = lastViewed ? knownVersions.indexOf(lastViewed) : -1;
+      const missed =
+        lastIndex >= 0 && currentIndex >= 0
+          ? knownVersions.slice(lastIndex + 1, currentIndex + 1)
+          : [APP_VERSION];
+      setVisibleVersions(missed.length ? missed : [APP_VERSION]);
+      setIsChangelogOpen(true);
     } catch {
       setIsChangelogOpen(true);
     }
   }, []);
+
+  const dismissWelcome = useCallback(() => {
+    setIsWelcomeOpen(false);
+    try {
+      localStorage.setItem(WELCOME_STORAGE_KEY, "1");
+    } catch {}
+    openChangelogForMissedVersions();
+  }, [openChangelogForMissedVersions]);
+
+  const openTutorialFromWelcome = useCallback(() => {
+    dismissWelcome();
+    router.navigate("/settings?tab=tutorial");
+  }, [dismissWelcome]);
+
+  useEffect(() => {
+    try {
+      const welcomeDismissed = localStorage.getItem(WELCOME_STORAGE_KEY);
+      if (!welcomeDismissed) {
+        setIsWelcomeOpen(true);
+        return;
+      }
+    } catch {
+      setIsWelcomeOpen(true);
+      return;
+    }
+
+    openChangelogForMissedVersions();
+  }, [openChangelogForMissedVersions]);
 
   const openChangelog = useCallback(() => {
     setVisibleVersions([APP_VERSION]);
@@ -127,6 +161,11 @@ export function ChangelogProvider({ children }: { children: ReactNode }) {
   return (
     <ChangelogContext.Provider value={value}>
       {children}
+      <WelcomeModal
+        open={isWelcomeOpen}
+        onClose={dismissWelcome}
+        onOpenTutorial={openTutorialFromWelcome}
+      />
       <ChangelogModal open={isChangelogOpen} appLabel={appLabel} releases={releases} onClose={closeChangelog} />
       <ChangelogHistoryModal open={isChangelogHistoryOpen} onClose={closeChangelogHistory} />
     </ChangelogContext.Provider>
