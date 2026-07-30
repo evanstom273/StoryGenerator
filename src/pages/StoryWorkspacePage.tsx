@@ -27,7 +27,7 @@ import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
 import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
-  scrollToLatestChapterAnchor,
+  scrollToChapterHeader,
 } from "../lib/storyText/chapterNavigation";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
@@ -492,15 +492,15 @@ export function StoryWorkspacePage() {
     jumpChapterScrollRef.current = true;
 
     window.setTimeout(() => {
-      scrollToLatestChapterAnchor(
+      scrollToChapterHeader(
         targetMessage.id,
         transcriptScrollRef.current,
         "smooth",
       );
       window.setTimeout(() => {
         jumpChapterScrollRef.current = false;
-      }, 800);
-    }, 100);
+      }, 1200);
+    }, 50);
 
     window.setTimeout(() => {
       setHighlightedMessageId((current) => (current === targetMessage.id ? null : current));

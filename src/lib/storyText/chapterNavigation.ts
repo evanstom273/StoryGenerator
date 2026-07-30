@@ -81,6 +81,11 @@ export function hasActiveOpenChapter(
   messages: StoryMessage[],
   chapters: StoryChapter[],
 ): boolean {
+  const sortedChapters = [...chapters].sort((left, right) => left.endsAtIndex - right.endsAtIndex);
+  if (sortedChapters.length > 0) {
+    return hasMessagesAfterChapterRecord(messages, sortedChapters[sortedChapters.length - 1]);
+  }
+
   const sortedMessages = sortMessages(messages);
   const lastStartIndex = findLastChapterStartIndex(sortedMessages);
   if (lastStartIndex === null) {
@@ -109,78 +114,86 @@ export function countGeneratedChapters(
   return Math.max(fromTranscript, fromDb);
 }
 
-function getFirstMessageAfterChapterRecord(
+function resolveNextChapterStartIndex(
   messages: StoryMessage[],
   chapter: StoryChapter,
-): StoryMessage | null {
+): number | null {
   const sorted = sortMessages(messages);
   const endIndex = sorted.findIndex((message) => message.id === chapter.endsAtMessageId);
-  if (endIndex >= 0 && endIndex + 1 < sorted.length) {
-    return sorted[endIndex + 1];
+  if (endIndex >= 0) {
+    const nextIndex = endIndex + 1;
+    return nextIndex < sorted.length ? nextIndex : null;
   }
 
-  const indexFromEndsAt = chapter.endsAtIndex;
-  if (indexFromEndsAt >= 0 && indexFromEndsAt < sorted.length) {
-    return sorted[indexFromEndsAt];
-  }
-
-  const previousIndex = indexFromEndsAt - 1;
-  if (previousIndex >= 0 && previousIndex < sorted.length) {
-    return sorted[previousIndex];
+  // endsAtIndex is the 1-based message number of the closing message.
+  const nextIndex = chapter.endsAtIndex;
+  if (nextIndex >= 1 && nextIndex < sorted.length) {
+    return nextIndex;
   }
 
   return null;
 }
 
-function getLatestChapterStartMessageFromDb(
+/** First message of the chapter that begins after this chapter record ends. */
+function getFirstMessageAfterChapterRecord(
   messages: StoryMessage[],
-  chapters: StoryChapter[],
+  chapter: StoryChapter,
 ): StoryMessage | null {
-  const sorted = [...chapters].sort((left, right) => left.endsAtIndex - right.endsAtIndex);
-  if (sorted.length === 0) {
-    return null;
-  }
+  const sorted = sortMessages(messages);
+  const nextIndex = resolveNextChapterStartIndex(messages, chapter);
+  return nextIndex === null ? null : sorted[nextIndex] ?? null;
+}
 
-  const hasOpen = hasActiveOpenChapter(messages, chapters);
-  if (hasOpen) {
-    return getFirstMessageAfterChapterRecord(messages, sorted[sorted.length - 1]);
-  }
-
-  if (sorted.length < 2) {
-    return null;
-  }
-
-  return getFirstMessageAfterChapterRecord(messages, sorted[sorted.length - 2]);
+function hasMessagesAfterChapterRecord(
+  messages: StoryMessage[],
+  chapter: StoryChapter,
+): boolean {
+  return resolveNextChapterStartIndex(messages, chapter) !== null;
 }
 
 /**
- * Returns the anchor message for the latest chapter header.
- * Prefers chapter-record boundaries (inferred "Chapter N" banners) when they
- * are later than the last explicit start marker in the transcript.
+ * Message that owns the latest chapter header banner in the transcript.
+ * Chapter records are authoritative when present — inferred "Chapter N" banners
+ * come from these records, not from older explicit start markers.
  */
 export function getLatestChapterStartMessage(
   messages: StoryMessage[],
   chapters: StoryChapter[],
 ): StoryMessage | null {
+  const sorted = [...chapters].sort((left, right) => left.endsAtIndex - right.endsAtIndex);
+
+  if (sorted.length > 0) {
+    const afterLastClosed = getFirstMessageAfterChapterRecord(
+      messages,
+      sorted[sorted.length - 1],
+    );
+    if (afterLastClosed) {
+      return afterLastClosed;
+    }
+
+    if (sorted.length >= 2) {
+      const latestClosedChapterStart = getFirstMessageAfterChapterRecord(
+        messages,
+        sorted[sorted.length - 2],
+      );
+      if (latestClosedChapterStart) {
+        return latestClosedChapterStart;
+      }
+    }
+
+    const sortedMessages = sortMessages(messages);
+    if (sorted.length === 1 && sortedMessages.length > 0) {
+      return sortedMessages[0];
+    }
+  }
+
   const sortedMessages = sortMessages(messages);
-  const fromDb = getLatestChapterStartMessageFromDb(messages, chapters);
   const lastStartIndex = findLastChapterStartIndex(sortedMessages);
-
   if (lastStartIndex === null) {
-    return fromDb;
+    return null;
   }
 
-  const explicitStartMessage = sortedMessages[lastStartIndex] ?? null;
-  if (!fromDb || !explicitStartMessage) {
-    return fromDb ?? explicitStartMessage;
-  }
-
-  const fromDbIndex = sortedMessages.findIndex((message) => message.id === fromDb.id);
-  if (fromDbIndex >= 0 && fromDbIndex >= lastStartIndex) {
-    return fromDb;
-  }
-
-  return explicitStartMessage;
+  return sortedMessages[lastStartIndex] ?? null;
 }
 
 export function resolveChapterHeaderElement(messageId: string): HTMLElement | null {
@@ -192,61 +205,64 @@ export function resolveChapterHeaderElement(messageId: string): HTMLElement | nu
 
 export const CHAPTER_HEADER_SCROLL_GAP_PX = 40;
 
+function scrollHeaderToTopOfTranscript(
+  header: HTMLElement,
+  transcriptContainer: HTMLElement,
+  behavior: ScrollBehavior,
+): void {
+  const containerRect = transcriptContainer.getBoundingClientRect();
+  const elementRect = header.getBoundingClientRect();
+  const offset =
+    elementRect.top - containerRect.top + transcriptContainer.scrollTop - CHAPTER_HEADER_SCROLL_GAP_PX;
+  transcriptContainer.scrollTo({ top: Math.max(0, offset), behavior });
+}
+
 /**
- * Scroll the chapter header banner to the top of the transcript with a gap.
- * Does not use scrollIntoView on the header (that pins it to the bottom on mobile).
+ * Scroll so the chapter header banner sits near the top of the transcript panel.
+ * Retries until the header element exists (React may not have painted it yet).
  */
 export function scrollToChapterHeader(
   messageId: string,
   transcriptContainer: HTMLElement | null,
   behavior: ScrollBehavior = "smooth",
 ): boolean {
-  const header = resolveChapterHeaderElement(messageId);
-  if (!header) {
-    return false;
+  if (!transcriptContainer) {
+    const header = resolveChapterHeaderElement(messageId);
+    if (!header) {
+      return false;
+    }
+    header.scrollIntoView({ block: "start", behavior });
+    return true;
   }
 
-  if (transcriptContainer?.contains(header)) {
-    const containerRect = transcriptContainer.getBoundingClientRect();
+  const container = transcriptContainer;
+  let attempts = 0;
+  const maxAttempts = 16;
+
+  function tryScroll() {
+    const header = resolveChapterHeaderElement(messageId);
+    if (!header) {
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        window.setTimeout(tryScroll, 50);
+      }
+      return;
+    }
+
+    if (container.contains(header)) {
+      scrollHeaderToTopOfTranscript(header, container, behavior);
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
     const elementRect = header.getBoundingClientRect();
     const offset =
-      elementRect.top - containerRect.top + transcriptContainer.scrollTop - CHAPTER_HEADER_SCROLL_GAP_PX;
-    transcriptContainer.scrollTo({ top: Math.max(0, offset), behavior });
-    transcriptContainer.scrollIntoView({ block: "nearest", behavior });
-    return true;
+      elementRect.top - containerRect.top + container.scrollTop - CHAPTER_HEADER_SCROLL_GAP_PX;
+    container.scrollTo({ top: Math.max(0, offset), behavior });
   }
 
-  header.scrollIntoView({ block: "start", behavior });
-  return true;
-}
-
-/**
- * Scroll to the chapter header, or the message row if no header exists (bubble view).
- */
-export function scrollToLatestChapterAnchor(
-  messageId: string,
-  transcriptContainer: HTMLElement | null,
-  behavior: ScrollBehavior = "smooth",
-): boolean {
-  if (scrollToChapterHeader(messageId, transcriptContainer, behavior)) {
-    return true;
-  }
-
-  const message = document.getElementById(`story-message-${messageId}`);
-  if (!message) {
-    return false;
-  }
-
-  if (transcriptContainer?.contains(message)) {
-    const containerRect = transcriptContainer.getBoundingClientRect();
-    const elementRect = message.getBoundingClientRect();
-    const offset =
-      elementRect.top - containerRect.top + transcriptContainer.scrollTop - CHAPTER_HEADER_SCROLL_GAP_PX;
-    transcriptContainer.scrollTo({ top: Math.max(0, offset), behavior });
-    transcriptContainer.scrollIntoView({ block: "nearest", behavior });
-    return true;
-  }
-
-  message.scrollIntoView({ block: "start", behavior });
+  requestAnimationFrame(() => {
+    tryScroll();
+  });
   return true;
 }
