@@ -27,7 +27,7 @@ import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
 import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
-  scrollChapterTargetIntoView,
+  scrollChapterHeaderIntoView,
 } from "../lib/storyText/chapterNavigation";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
@@ -487,7 +487,7 @@ export function StoryWorkspacePage() {
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        scrollChapterTargetIntoView(
+        scrollChapterHeaderIntoView(
           targetMessage.id,
           transcriptScrollRef.current,
           "smooth",

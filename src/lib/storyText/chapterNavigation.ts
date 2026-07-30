@@ -171,18 +171,27 @@ export function getLatestChapterStartMessage(
   return getLatestChapterStartMessageFromDb(messages, chapters);
 }
 
-export function resolveChapterScrollElement(messageId: string): HTMLElement | null {
+export function resolveChapterHeaderElement(messageId: string): HTMLElement | null {
   return (
     document.getElementById(`story-chapter-start-${messageId}`) ??
-    document.getElementById(`story-chapter-marker-${messageId}`) ??
+    document.getElementById(`story-chapter-marker-${messageId}`)
+  );
+}
+
+export function resolveChapterScrollElement(messageId: string): HTMLElement | null {
+  return (
+    resolveChapterHeaderElement(messageId) ??
     document.getElementById(`story-message-${messageId}`)
   );
 }
+
+export const CHAPTER_HEADER_SCROLL_GAP_PX = 40;
 
 export function scrollElementWithinContainer(
   element: HTMLElement,
   container: HTMLElement | null,
   behavior: ScrollBehavior = "smooth",
+  topGapPx = CHAPTER_HEADER_SCROLL_GAP_PX,
 ): void {
   if (!container) {
     element.scrollIntoView({ block: "start", behavior });
@@ -191,9 +200,33 @@ export function scrollElementWithinContainer(
 
   const containerRect = container.getBoundingClientRect();
   const elementRect = element.getBoundingClientRect();
-  const offset = elementRect.top - containerRect.top + container.scrollTop - 12;
+  const offset = elementRect.top - containerRect.top + container.scrollTop - topGapPx;
 
   container.scrollTo({ top: Math.max(0, offset), behavior });
+}
+
+/** Scroll the chapter header banner (not the first message body) into view. */
+export function scrollChapterHeaderIntoView(
+  messageId: string,
+  transcriptContainer: HTMLElement | null,
+  behavior: ScrollBehavior = "smooth",
+): boolean {
+  const element = resolveChapterHeaderElement(messageId);
+  if (!element) {
+    return false;
+  }
+
+  if (transcriptContainer?.contains(element)) {
+    scrollElementWithinContainer(
+      element,
+      transcriptContainer,
+      behavior,
+      CHAPTER_HEADER_SCROLL_GAP_PX,
+    );
+  }
+
+  element.scrollIntoView({ block: "start", behavior });
+  return true;
 }
 
 /** Scroll a chapter target into view inside the transcript and the page shell. */
@@ -202,7 +235,11 @@ export function scrollChapterTargetIntoView(
   transcriptContainer: HTMLElement | null,
   behavior: ScrollBehavior = "smooth",
 ): boolean {
-  const element = resolveChapterScrollElement(messageId);
+  if (scrollChapterHeaderIntoView(messageId, transcriptContainer, behavior)) {
+    return true;
+  }
+
+  const element = document.getElementById(`story-message-${messageId}`);
   if (!element) {
     return false;
   }

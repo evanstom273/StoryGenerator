@@ -3,6 +3,7 @@ import type { StoryChapter, StoryMessage } from "../../../types/models";
 import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
+  resolveChapterHeaderElement,
 } from "../chapterNavigation";
 
 function makeMessage(
@@ -112,5 +113,16 @@ describe("chapterNavigation", () => {
     ];
 
     expect(getLatestChapterStartMessage(messages, chapters)?.id).toBe("m3");
+  });
+
+  it("prefers chapter header ids over message ids for scroll targets", () => {
+    document.body.innerHTML = `
+      <div id="story-chapter-start-m1">Chapter Two</div>
+      <div id="story-message-m1">Body</div>
+    `;
+
+    const header = resolveChapterHeaderElement("m1");
+    expect(header?.id).toBe("story-chapter-start-m1");
+    expect(header?.textContent).toBe("Chapter Two");
   });
 });
