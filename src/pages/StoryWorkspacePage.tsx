@@ -133,6 +133,7 @@ export function StoryWorkspacePage() {
   } = useUiPrefs();
   const {
     aiSettings,
+    chapters: engineChapters,
     createMessage,
     deleteMessage,
     fetchStoryState,
@@ -173,8 +174,13 @@ export function StoryWorkspacePage() {
     [getMessagesForStory, story],
   );
   const storyChapters = useMemo(
-    () => (story ? getChaptersForStory(story.id) : []),
-    [getChaptersForStory, messages, story],
+    () =>
+      story
+        ? [...engineChapters]
+            .filter((chapter) => chapter.storyId === story.id)
+            .sort((left, right) => left.endsAtIndex - right.endsAtIndex)
+        : [],
+    [engineChapters, story],
   );
   const [composerState, setComposerState] = useState(initialComposerState);
   const [editingMessage, setEditingMessage] = useState<StoryMessage | null>(null);

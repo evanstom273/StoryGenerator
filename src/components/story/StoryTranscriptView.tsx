@@ -8,6 +8,7 @@ import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
+import { resolveMessageChapterBoundary } from "../../lib/storyText/chapterNavigation";
 
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
@@ -297,7 +298,7 @@ export function StoryTranscriptView({
       {messages.map((message, messageIndex) => {
         const highlight = highlightedMessageId === message.id;
         const chapterEndLabel = chapterEndByMessageId.get(message.id);
-        const explicitChapterBoundary = message.chapterBoundary;
+        const explicitChapterBoundary = resolveMessageChapterBoundary(message);
         const chapterBoundary =
           explicitChapterBoundary ??
           (chapterEndLabel ? { kind: "end" as const, label: chapterEndLabel } : null);

@@ -5,14 +5,19 @@ import {
   getLatestChapterStartMessage,
 } from "../chapterNavigation";
 
-function makeMessage(id: string, index: number, chapterBoundary?: StoryMessage["chapterBoundary"]): StoryMessage {
+function makeMessage(
+  id: string,
+  index: number,
+  chapterBoundary?: StoryMessage["chapterBoundary"],
+  content?: string,
+): StoryMessage {
   return {
     id,
     storyId: "story-1",
     role: "user",
     speakerType: "player",
     speakerName: "Hero",
-    content: `Message ${index}`,
+    content: content ?? `Message ${index}`,
     timestamp: new Date(2026, 0, index + 1).toISOString(),
     chapterBoundary,
   };
@@ -60,5 +65,38 @@ describe("chapterNavigation", () => {
 
     expect(countGeneratedChapters(messages, chapters)).toBe(3);
     expect(getLatestChapterStartMessage(messages, chapters)?.id).toBe("m5");
+  });
+
+  it("detects chapter markers from message content when chapterBoundary is unset", () => {
+    const messages = [
+      makeMessage("m1", 0),
+      makeMessage("m2", 1),
+      makeMessage("m3", 2, undefined, "Chapter Two start"),
+      makeMessage("m4", 3),
+      makeMessage("m5", 4, undefined, "Chapter Three start"),
+      makeMessage("m6", 5),
+    ];
+
+    expect(countGeneratedChapters(messages, [])).toBe(3);
+    expect(getLatestChapterStartMessage(messages, [])?.id).toBe("m5");
+  });
+
+  it("counts many chapters from transcript markers alone", () => {
+    const messages = [
+      makeMessage("m1", 0),
+      makeMessage("m2", 1, undefined, "Chapter Two start"),
+      makeMessage("m3", 2),
+      makeMessage("m4", 3, undefined, "Chapter Three start"),
+      makeMessage("m5", 4),
+      makeMessage("m6", 5, undefined, "Chapter Four start"),
+      makeMessage("m7", 6),
+      makeMessage("m8", 7, undefined, "Chapter Five start"),
+      makeMessage("m9", 8),
+      makeMessage("m10", 9, undefined, "Chapter Six start"),
+      makeMessage("m11", 10),
+    ];
+
+    expect(countGeneratedChapters(messages, [])).toBe(6);
+    expect(getLatestChapterStartMessage(messages, [])?.id).toBe("m10");
   });
 });
