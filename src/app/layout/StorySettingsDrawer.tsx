@@ -10,8 +10,10 @@ import { serializeStoryExport } from "../../lib/storyExport";
 import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
+import { RelationshipOverviewList } from "../../components/story/RelationshipOverviewList";
+import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
-import type { AIProviderType, AutoIndexInterval, AutoIndexMode, ExportFormat } from "../../types/models";
+import type { AIProviderType, AutoIndexInterval, AutoIndexMode, ExportFormat, RelationshipIndexEntry } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useTheme } from "../theming/ThemeContext";
@@ -165,6 +167,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     getChaptersForStory,
     exportStory,
     fetchStoryState,
+    loadStoryRelationships,
     promoteStoryPlayerCharacter,
     cleanupDuplicatePlayerCharacters,
     updateStory,
@@ -216,6 +219,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [storyStateData, setStoryStateData] = useState<ReturnType<typeof normalizeStoryStateToV2> | null>(
     null,
   );
+  const [indexRelationships, setIndexRelationships] = useState<RelationshipIndexEntry[]>([]);
   const [expandedEvidenceKeys, setExpandedEvidenceKeys] = useState<Record<string, boolean>>({});
 
   async function handlePromoteCharacter() {
@@ -298,10 +302,18 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         setStoryStateData(null);
       });
 
+    void loadStoryRelationships(story.id)
+      .then((relationships) => {
+        if (!cancelled) setIndexRelationships(relationships);
+      })
+      .catch(() => {
+        if (!cancelled) setIndexRelationships([]);
+      });
+
     return () => {
       cancelled = true;
     };
-  }, [fetchStoryState, story, storySettingsOpen, rebuildStatus]);
+  }, [fetchStoryState, loadStoryRelationships, story, storySettingsOpen, rebuildStatus]);
 
   useEffect(() => {
     if (storySettingsOpen) {
@@ -1297,7 +1309,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     const locations = storyStateData.indexes?.locations
                       ? Object.values(storyStateData.indexes.locations)
                       : [];
-                    const relationships = storyStateData.indexes?.relationships ?? [];
+                    const relationships = indexRelationships;
                     const significantMemories = (storyStateData.indexes as any)?.significantMemories ?? [];
                     const premise = storyStateData.summaries?.premise?.trim() ?? "";
                     const protagonistSummary = storyStateData.summaries?.protagonistSummary?.trim() ?? "";
@@ -1579,68 +1591,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                           {relationships.length
                             ? renderArchiveDropdown({
                                 title: "Relationships",
-                                countLabel: `${Math.min(relationships.length, 12)} shown`,
+                                countLabel: `${Math.min(filterPlayerRelationships(relationships, playerCharacter?.name).length, 12)} shown`,
                                 children: (
-                                  <div className="space-y-3">
-                                    {relationships.slice(0, 12).map((entry, index) => {
-                                      const tierColor: Record<string, string> = {
-                                        friend: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
-                                        ally: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
-                                        lover: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
-                                        stranger: "bg-white/5 text-ink-muted border-white/10",
-                                        acquaintance: "bg-white/5 text-ink-muted border-white/10",
-                                        rival: "bg-orange-500/15 text-orange-400 border-orange-500/20",
-                                        enemy: "bg-red-500/15 text-red-400 border-red-500/20",
-                                        nemesis: "bg-red-500/15 text-red-400 border-red-500/20",
-                                      };
-                                      return (
-                                        <div key={`${entry.a}-${entry.b}-${index}`} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
-                                          <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="font-semibold text-ink-soft">
-                                              {entry.a} ↔ {entry.b}
-                                            </span>
-                                            {entry.tier ? (
-                                              <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize", tierColor[entry.tier] ?? "bg-white/5 text-ink-muted border-white/10")}>
-                                                {entry.tier}
-                                              </span>
-                                            ) : null}
-                                          </div>
-                                          {(() => {
-                                            const parts = [
-                                              typeof entry.friendship === "number" ? `Friendship ${Math.round(entry.friendship)}` : null,
-                                              typeof entry.trust === "number" ? `Trust ${Math.round(entry.trust)}` : null,
-                                              typeof entry.respect === "number" ? `Respect ${Math.round(entry.respect)}` : null,
-                                              typeof entry.loyalty === "number" ? `Loyalty ${Math.round(entry.loyalty)}` : null,
-                                              typeof entry.comfort === "number" ? `Comfort ${Math.round(entry.comfort)}` : null,
-                                              typeof entry.suspicion === "number" ? `Suspicion ${Math.round(entry.suspicion)}` : null,
-                                              typeof entry.fear === "number" ? `Fear ${Math.round(entry.fear)}` : null,
-                                              typeof entry.affection === "number" ? `Affection ${Math.round(entry.affection)}` : null,
-                                              typeof entry.tension === "number" ? `Tension ${Math.round(entry.tension)}` : null,
-                                              typeof entry.hostility === "number" ? `Hostility ${Math.round(entry.hostility)}` : null,
-                                            ].filter(Boolean);
-                                            return parts.length ? (
-                                              <div className="mt-1 text-xs text-ink-soft">{parts.join(" · ")}</div>
-                                            ) : null;
-                                          })()}
-                                          {entry.summary ? (
-                                            <MarkdownText text={entry.summary} className="mt-1 text-xs text-ink-muted" />
-                                          ) : null}
-                                          {Array.isArray(entry.history) && entry.history.length ? (
-                                            <div className="mt-2 space-y-1">
-                                              <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted/60">Key Moments</div>
-                                              {entry.history.slice(0, 3).map((h, hi) => (
-                                                <div key={hi} className="flex items-start gap-1.5 text-xs text-ink-muted">
-                                                  <span className="mt-px shrink-0 text-[10px] text-ink-muted/40">#{hi + 1}</span>
-                                                  <span>{h.summary}</span>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : null}
-                                          {renderEvidencePills(entry.evidence?.messageNumbers, `rel-${index}`)}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
+                                  <RelationshipOverviewList
+                                    relationships={filterPlayerRelationships(relationships, playerCharacter?.name)}
+                                    playerName={playerCharacter?.name}
+                                    limit={12}
+                                  />
                                 ),
                               })
                             : null}

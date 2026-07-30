@@ -1,5 +1,5 @@
 import { parseActionSegments, type StoryTextSegment } from "./parseActionSegments";
-import { isDeniedSpeakerLabel } from "../relationshipIndex";
+import { isDeniedSpeakerLabel, isPossessiveSpeakerLabel } from "../relationshipIndex";
 
 export interface SceneBlock {
   speakerLabel?: string;
@@ -22,6 +22,8 @@ const NOT_A_NAME = new Set([
 function isValidSpeakerLabel(label: string): boolean {
   if (!label) return false;
   if (isDeniedSpeakerLabel(label)) return false;
+  if (isPossessiveSpeakerLabel(label)) return false;
+  if (/\([^)]*\)/.test(label)) return false;
   // Commas indicate a narrative phrase, not a speaker name
   if (label.includes(",")) return false;
   const words = label.trim().split(/\s+/);
