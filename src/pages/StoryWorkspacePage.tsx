@@ -27,8 +27,7 @@ import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
 import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
-  resolveChapterScrollElement,
-  scrollElementWithinContainer,
+  scrollChapterTargetIntoView,
 } from "../lib/storyText/chapterNavigation";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
@@ -487,11 +486,13 @@ export function StoryWorkspacePage() {
     setHighlightedMessageId(targetMessage.id);
 
     requestAnimationFrame(() => {
-      const element = resolveChapterScrollElement(targetMessage.id);
-      if (!element) {
-        return;
-      }
-      scrollElementWithinContainer(element, transcriptScrollRef.current, "smooth");
+      requestAnimationFrame(() => {
+        scrollChapterTargetIntoView(
+          targetMessage.id,
+          transcriptScrollRef.current,
+          "smooth",
+        );
+      });
     });
 
     window.setTimeout(() => {

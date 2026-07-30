@@ -99,4 +99,18 @@ describe("chapterNavigation", () => {
     expect(countGeneratedChapters(messages, [])).toBe(6);
     expect(getLatestChapterStartMessage(messages, [])?.id).toBe("m10");
   });
+
+  it("finds chapter start via endsAtMessageId when endsAtIndex does not match array position", () => {
+    const messages = [
+      makeMessage("m1", 0),
+      makeMessage("m2", 1),
+      makeMessage("m3", 2, undefined, "Chapter Two start"),
+      makeMessage("m4", 3),
+    ];
+    const chapters = [
+      makeChapter("Chapter One", "m2", 99),
+    ];
+
+    expect(getLatestChapterStartMessage(messages, chapters)?.id).toBe("m3");
+  });
 });
