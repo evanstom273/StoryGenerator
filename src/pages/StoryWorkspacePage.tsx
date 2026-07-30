@@ -492,14 +492,12 @@ export function StoryWorkspacePage() {
     jumpChapterScrollRef.current = true;
 
     window.setTimeout(() => {
-      scrollToChapterHeader(
-        targetMessage.id,
-        transcriptScrollRef.current,
-        "smooth",
-      );
+      scrollToChapterHeader(targetMessage.id, "smooth", {
+        allowMessageFallback: showChrome,
+      });
       window.setTimeout(() => {
         jumpChapterScrollRef.current = false;
-      }, 1200);
+      }, 1500);
     }, 50);
 
     window.setTimeout(() => {

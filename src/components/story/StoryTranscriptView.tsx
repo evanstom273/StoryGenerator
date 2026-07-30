@@ -8,7 +8,7 @@ import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
-import { resolveMessageChapterBoundary } from "../../lib/storyText/chapterNavigation";
+import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
 
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
@@ -295,16 +295,9 @@ export function StoryTranscriptView({
       chapterEndByMessageId.set(chapter.endsAtMessageId, chapter.label);
     }
 
-    const endByIdIndex = messages.findIndex((message) => message.id === chapter.endsAtMessageId);
-    const nextMessageKey =
-      endByIdIndex >= 0
-        ? endByIdIndex + 2
-        : chapter.endsAtIndex >= 1
-          ? chapter.endsAtIndex + 1
-          : null;
-
-    if (nextMessageKey !== null && nextMessageKey <= messages.length) {
-      chapterStartBeforeMessage.set(nextMessageKey, getNextChapterBannerLabel(chapter.label));
+    const endIndex = resolveChapterEndMessageIndex(messages, chapter);
+    if (endIndex !== null && endIndex + 1 < messages.length) {
+      chapterStartBeforeMessage.set(endIndex + 2, getNextChapterBannerLabel(chapter.label));
     }
   }
   return (

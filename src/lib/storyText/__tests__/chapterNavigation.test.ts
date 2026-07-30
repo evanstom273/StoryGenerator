@@ -101,20 +101,6 @@ describe("chapterNavigation", () => {
     expect(getLatestChapterStartMessage(messages, [])?.id).toBe("m10");
   });
 
-  it("finds chapter start via endsAtMessageId when endsAtIndex does not match array position", () => {
-    const messages = [
-      makeMessage("m1", 0),
-      makeMessage("m2", 1),
-      makeMessage("m3", 2, undefined, "Chapter Two start"),
-      makeMessage("m4", 3),
-    ];
-    const chapters = [
-      makeChapter("Chapter One", "m2", 99),
-    ];
-
-    expect(getLatestChapterStartMessage(messages, chapters)?.id).toBe("m3");
-  });
-
   it("finds open chapter via endsAtIndex when endsAtMessageId is missing", () => {
     const messages = [
       makeMessage("m1", 0),
@@ -139,6 +125,37 @@ describe("chapterNavigation", () => {
 
     expect(countGeneratedChapters(messages, chapters)).toBe(6);
     expect(getLatestChapterStartMessage(messages, chapters)?.id).toBe("m11");
+  });
+
+  it("finds chapter start via endsAtMessageId when endsAtIndex does not match array position", () => {
+    const messages = [
+      makeMessage("m1", 0),
+      makeMessage("m2", 1),
+      makeMessage("m3", 2, undefined, "Chapter Two start"),
+      makeMessage("m4", 3),
+    ];
+    const chapters = [
+      makeChapter("Chapter One", "m2", 99),
+    ];
+
+    expect(getLatestChapterStartMessage(messages, chapters)?.id).toBe("m3");
+  });
+
+  it("uses zero-based endsAtIndex when a start marker closes the previous chapter", () => {
+    const messages = [
+      makeMessage("m1", 0),
+      makeMessage("m2", 1),
+      makeMessage("m3", 2, { kind: "start", label: "Chapter Two" }),
+      makeMessage("m4", 3),
+      makeMessage("m5", 4, { kind: "start", label: "Chapter Three" }),
+      makeMessage("m6", 5),
+    ];
+    const chapters = [
+      makeChapter("Chapter One", "missing", 1),
+      makeChapter("Chapter Two", "missing", 3),
+    ];
+
+    expect(getLatestChapterStartMessage(messages, chapters)?.id).toBe("m5");
   });
 
   it("prefers inferred latest chapter over an older explicit start marker", () => {
