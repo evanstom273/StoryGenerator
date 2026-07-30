@@ -1,0 +1,517 @@
+import type {
+	IndexedEntity,
+	RelationshipHistoryEntry,
+	RelationshipIndexEntry,
+	RelationshipTier,
+	StoryIndexesV2,
+} from "../types/models";
+
+/** Full tier vocabulary shared by overlay, RP extractor, and index sanitizer. */
+export const RELATIONSHIP_TIERS: readonly RelationshipTier[] = [
+	"devoted",
+	"lover",
+	"partner",
+	"best friend",
+	"confidant",
+	"close friend",
+	"friend",
+	"family",
+	"mentor",
+	"mentee",
+	"caregiver",
+	"patient",
+	"ally",
+	"colleague",
+	"professional",
+	"acquaintance",
+	"stranger",
+	"complicated",
+	"guarded",
+	"distant",
+	"estranged",
+	"rival",
+	"adversary",
+	"enemy",
+	"nemesis",
+	"threat",
+] as const;
+
+const RELATIONSHIP_TIER_SET = new Set<string>(RELATIONSHIP_TIERS);
+
+/** Prefer specific tiers over generic stranger/acquaintance when merging. */
+const TIER_SPECIFICITY: Record<string, number> = {
+	stranger: 0,
+	acquaintance: 1,
+	professional: 2,
+	colleague: 3,
+	ally: 4,
+	patient: 5,
+	caregiver: 6,
+	mentee: 7,
+	mentor: 11,
+	friend: 9,
+	"close friend": 10,
+	confidant: 11,
+	"best friend": 12,
+	partner: 13,
+	family: 14,
+	lover: 15,
+	devoted: 16,
+	guarded: 17,
+	distant: 18,
+	complicated: 19,
+	estranged: 20,
+	rival: 21,
+	adversary: 22,
+	threat: 23,
+	enemy: 24,
+	nemesis: 25,
+};
+
+/** Labels that must never become characters or relationship endpoints. */
+export const SPEAKER_LABEL_DENYLIST = new Set([
+	"He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
+	"The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
+	"Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
+	"Note", "Warning", "However", "Therefore", "Eventually", "Finally",
+	"Scene", "Chapter", "Part", "First", "Next", "Narrator",
+	"As", "With", "After", "Before", "While", "When", "Once", "Until",
+	"From", "Into", "Through", "Against", "Between", "Without",
+	// Weather / atmosphere headers the model sometimes emits as pseudo-speakers
+	"Sun", "Moon", "Rain", "Snow", "Wind", "Storm", "Thunder", "Lightning",
+	"Morning", "Evening", "Dawn", "Dusk", "Day", "Night", "Midnight", "Noon",
+	"Spring", "Summer", "Autumn", "Fall", "Winter",
+	"Weather", "Sky", "Clouds", "Fog", "Mist", "Darkness", "Silence",
+]);
+
+const ENVIRONMENTAL_SINGLE_WORDS = new Set([
+	"sun", "moon", "rain", "snow", "wind", "storm", "thunder", "lightning",
+	"morning", "evening", "dawn", "dusk", "day", "night", "midnight", "noon",
+	"spring", "summer", "autumn", "fall", "winter",
+	"weather", "sky", "clouds", "fog", "mist", "darkness", "silence",
+]);
+
+export function normalizeRelationshipKey(value: string): string {
+	return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+export function makeRelationshipPairKey(a: string, b: string): string {
+	const [x, y] = [normalizeRelationshipKey(a), normalizeRelationshipKey(b)].sort();
+	return `${x}::${y}`;
+}
+
+export function isDeniedSpeakerLabel(label: string | null | undefined): boolean {
+	if (!label?.trim()) return true;
+	const trimmed = label.trim();
+	if (SPEAKER_LABEL_DENYLIST.has(trimmed)) return true;
+	const first = trimmed.split(/\s+/)[0] ?? "";
+	return SPEAKER_LABEL_DENYLIST.has(first);
+}
+
+export function sanitizeRelationshipTier(value: unknown): RelationshipTier {
+	if (typeof value === "string" && RELATIONSHIP_TIER_SET.has(value)) {
+		return value as RelationshipTier;
+	}
+	return "stranger";
+}
+
+export function isPlausibleCharacterName(name: string): boolean {
+	if (!name.trim() || isDeniedSpeakerLabel(name)) return false;
+	const words = name.trim().split(/\s+/);
+	if (words.length === 1 && ENVIRONMENTAL_SINGLE_WORDS.has(normalizeRelationshipKey(name))) {
+		return false;
+	}
+	return true;
+}
+
+export function buildCharacterAllowlist(params: {
+	playerName: string;
+	indexedCharacters?: StoryIndexesV2["characters"];
+	universeImportedCharacters?: string[];
+	existingRelationships?: RelationshipIndexEntry[];
+}): Set<string> {
+	const allowlist = new Set<string>();
+
+	const add = (raw: string | null | undefined) => {
+		if (!raw?.trim() || !isPlausibleCharacterName(raw)) return;
+		allowlist.add(normalizeRelationshipKey(raw));
+	};
+
+	add(params.playerName);
+
+	if (params.indexedCharacters && typeof params.indexedCharacters === "object") {
+		for (const [key, value] of Object.entries(params.indexedCharacters)) {
+			add(key);
+			if (value && typeof value === "object") {
+				const entity = value as IndexedEntity;
+				add(entity.name);
+				for (const alias of Array.isArray(entity.aliases) ? entity.aliases : []) {
+					add(alias);
+				}
+			}
+		}
+	}
+
+	for (const imported of params.universeImportedCharacters ?? []) {
+		add(imported);
+	}
+
+	for (const rel of params.existingRelationships ?? []) {
+		add(rel.a);
+		add(rel.b);
+	}
+
+	return allowlist;
+}
+
+export function canTrackRelationshipParticipant(name: string, allowlist: Set<string>): boolean {
+	if (!isPlausibleCharacterName(name)) return false;
+	return allowlist.has(normalizeRelationshipKey(name));
+}
+
+export function resolveCanonicalCharacterName(
+	name: string,
+	aliasToCanonical: Map<string, string>,
+): string {
+	const norm = normalizeRelationshipKey(name);
+	return aliasToCanonical.get(norm) ?? name.trim();
+}
+
+function mergeEvidence(left: RelationshipIndexEntry["evidence"], right: RelationshipIndexEntry["evidence"]) {
+	const leftNumbers = Array.isArray(left?.messageNumbers) ? left.messageNumbers : [];
+	const rightNumbers = Array.isArray(right?.messageNumbers) ? right.messageNumbers : [];
+	const merged = Array.from(
+		new Set(
+			[...leftNumbers, ...rightNumbers].filter((n) => typeof n === "number" && Number.isFinite(n) && n >= 1),
+		),
+	).sort((a, b) => a - b);
+	return merged.length ? { messageNumbers: merged } : undefined;
+}
+
+function mergeHistory(
+	left: RelationshipHistoryEntry[] | undefined,
+	right: RelationshipHistoryEntry[] | undefined,
+): RelationshipHistoryEntry[] | undefined {
+	const combined = [...(left ?? []), ...(right ?? [])];
+	if (!combined.length) return undefined;
+	const seen = new Set<string>();
+	const deduped = combined.filter((h) => {
+		const key = h.summary.toLowerCase().trim();
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+	return deduped.slice(0, 5);
+}
+
+export function resolveMergedTier(left?: RelationshipTier, right?: RelationshipTier): RelationshipTier {
+	const a = sanitizeRelationshipTier(left ?? "stranger");
+	const b = sanitizeRelationshipTier(right ?? "stranger");
+	if (a === "stranger" && b !== "stranger") return b;
+	if (b === "stranger" && a !== "stranger") return a;
+	const scoreA = TIER_SPECIFICITY[a] ?? 0;
+	const scoreB = TIER_SPECIFICITY[b] ?? 0;
+	return scoreA >= scoreB ? a : b;
+}
+
+export function mergeRelationshipEntries(
+	left: RelationshipIndexEntry,
+	right: RelationshipIndexEntry,
+): RelationshipIndexEntry {
+	const summary =
+		typeof right.summary === "string" && right.summary.trim()
+			? right.summary.trim()
+			: typeof left.summary === "string" && left.summary.trim()
+				? left.summary.trim()
+				: undefined;
+	const evidence = mergeEvidence(left.evidence, right.evidence);
+	const tier = resolveMergedTier(left.tier, right.tier);
+	const history = mergeHistory(left.history, right.history);
+
+	const leftArc = left.arc ?? {};
+	const rightArc = right.arc ?? {};
+	const mergedArc =
+		left.arc || right.arc
+			? {
+				...(leftArc.statusPhrase ? { statusPhrase: leftArc.statusPhrase } : {}),
+				...(rightArc.statusPhrase ? { statusPhrase: rightArc.statusPhrase } : {}),
+				...(leftArc.tension ? { tension: leftArc.tension } : {}),
+				...(rightArc.tension ? { tension: rightArc.tension } : {}),
+				milestones: [...(leftArc.milestones ?? []), ...(rightArc.milestones ?? [])].slice(-10),
+			}
+			: undefined;
+
+	const leftInner = left.npcInnerLife ?? {};
+	const rightInner = right.npcInnerLife ?? {};
+	const mergedInner =
+		left.npcInnerLife || right.npcInnerLife
+			? {
+				...(leftInner.emotionalState ? { emotionalState: leftInner.emotionalState } : {}),
+				...(rightInner.emotionalState ? { emotionalState: rightInner.emotionalState } : {}),
+				...(leftInner.howTheyDescribeYou ? { howTheyDescribeYou: leftInner.howTheyDescribeYou } : {}),
+				...(rightInner.howTheyDescribeYou ? { howTheyDescribeYou: rightInner.howTheyDescribeYou } : {}),
+				...(leftInner.whatTheyWant ? { whatTheyWant: leftInner.whatTheyWant } : {}),
+				...(rightInner.whatTheyWant ? { whatTheyWant: rightInner.whatTheyWant } : {}),
+				...(leftInner.whatTheyreNotSaying ? { whatTheyreNotSaying: leftInner.whatTheyreNotSaying } : {}),
+				...(rightInner.whatTheyreNotSaying ? { whatTheyreNotSaying: rightInner.whatTheyreNotSaying } : {}),
+			}
+			: undefined;
+
+	const numericFields = [
+		"trust", "affection", "fear", "dependency",
+		"friendship", "respect", "loyalty", "comfort", "suspicion", "hostility", "tension",
+	] as const;
+
+	const mergedNumeric: Partial<RelationshipIndexEntry> = {};
+	for (const field of numericFields) {
+		const l = left[field];
+		const r = right[field];
+		if (r !== undefined) mergedNumeric[field] = r;
+		else if (l !== undefined) mergedNumeric[field] = l;
+	}
+
+	return {
+		a: left.a,
+		b: left.b,
+		tier,
+		...(history?.length ? { history } : {}),
+		...(summary ? { summary } : {}),
+		...(evidence ? { evidence } : {}),
+		...(mergedInner && Object.keys(mergedInner).length ? { npcInnerLife: mergedInner } : {}),
+		...(mergedArc && Object.keys(mergedArc).length ? { arc: mergedArc } : {}),
+		...(left.playerIntention && !right.playerIntention ? { playerIntention: left.playerIntention } : {}),
+		...(right.playerIntention ? { playerIntention: right.playerIntention } : {}),
+		...mergedNumeric,
+	};
+}
+
+export function relationshipInvolvesPlayer(entry: RelationshipIndexEntry, playerName: string): boolean {
+	const playerNorm = normalizeRelationshipKey(playerName);
+	return normalizeRelationshipKey(entry.a) === playerNorm || normalizeRelationshipKey(entry.b) === playerNorm;
+}
+
+export function filterRelationshipEntries(
+	relationships: RelationshipIndexEntry[] | undefined,
+	opts: {
+		playerName?: string;
+		allowlist: Set<string>;
+	},
+): RelationshipIndexEntry[] {
+	if (!relationships?.length) return [];
+
+	return relationships.filter((entry) => {
+		if (!isPlausibleCharacterName(entry.a) || !isPlausibleCharacterName(entry.b)) return false;
+		if (normalizeRelationshipKey(entry.a) === normalizeRelationshipKey(entry.b)) return false;
+
+		if (opts.playerName) {
+			const playerNorm = normalizeRelationshipKey(opts.playerName);
+			const aNorm = normalizeRelationshipKey(entry.a);
+			const bNorm = normalizeRelationshipKey(entry.b);
+			const involvesPlayer = aNorm === playerNorm || bNorm === playerNorm;
+			if (involvesPlayer) {
+				const other = aNorm === playerNorm ? entry.b : entry.a;
+				if (!canTrackRelationshipParticipant(other, opts.allowlist)) return false;
+			} else {
+				if (!canTrackRelationshipParticipant(entry.a, opts.allowlist)) return false;
+				if (!canTrackRelationshipParticipant(entry.b, opts.allowlist)) return false;
+			}
+		}
+
+		return true;
+	});
+}
+
+export function reconcileRelationshipEntries(
+	relationships: RelationshipIndexEntry[] | undefined,
+	aliasToCanonical: Map<string, string>,
+	opts?: {
+		playerName?: string;
+		allowlist?: Set<string>;
+		indexedCharacters?: StoryIndexesV2["characters"];
+		universeImportedCharacters?: string[];
+	},
+): RelationshipIndexEntry[] | undefined {
+	if (!relationships?.length) return undefined;
+
+	const allowlist =
+		opts?.allowlist ??
+		buildCharacterAllowlist({
+			playerName: opts?.playerName ?? "",
+			indexedCharacters: opts?.indexedCharacters,
+			universeImportedCharacters: opts?.universeImportedCharacters,
+			existingRelationships: relationships,
+		});
+
+	const filtered = filterRelationshipEntries(relationships, {
+		playerName: opts?.playerName,
+		allowlist,
+	});
+
+	if (!filtered.length) return undefined;
+
+	const byPair = new Map<string, RelationshipIndexEntry>();
+
+	for (const entry of filtered) {
+		const rawA = typeof entry.a === "string" ? entry.a.trim() : "";
+		const rawB = typeof entry.b === "string" ? entry.b.trim() : "";
+		if (!rawA || !rawB) continue;
+
+		const canonicalA = resolveCanonicalCharacterName(rawA, aliasToCanonical);
+		const canonicalB = resolveCanonicalCharacterName(rawB, aliasToCanonical);
+		const keyA = normalizeRelationshipKey(canonicalA);
+		const keyB = normalizeRelationshipKey(canonicalB);
+		const ordered =
+			keyA <= keyB
+				? { a: canonicalA, b: canonicalB, ka: keyA, kb: keyB }
+				: { a: canonicalB, b: canonicalA, ka: keyB, kb: keyA };
+		const pairKey = `${ordered.ka}::${ordered.kb}`;
+
+		const normalizedEntry: RelationshipIndexEntry = {
+			...entry,
+			a: ordered.a,
+			b: ordered.b,
+			tier: sanitizeRelationshipTier(entry.tier),
+		};
+
+		const existing = byPair.get(pairKey);
+		byPair.set(pairKey, existing ? mergeRelationshipEntries(existing, normalizedEntry) : normalizedEntry);
+	}
+
+	const merged = Array.from(byPair.values());
+	return merged.length ? merged : undefined;
+}
+
+export function findPlayerNpcRelationshipIndex(
+	entries: RelationshipIndexEntry[],
+	playerName: string,
+	npcName: string,
+): number {
+	const playerNorm = normalizeRelationshipKey(playerName);
+	const npcNorm = normalizeRelationshipKey(npcName);
+	return entries.findIndex(
+		(r) =>
+			(normalizeRelationshipKey(r.a) === playerNorm && normalizeRelationshipKey(r.b) === npcNorm) ||
+			(normalizeRelationshipKey(r.b) === playerNorm && normalizeRelationshipKey(r.a) === npcNorm),
+	);
+}
+
+export function mergePerTurnRelationshipFields(
+	reindexed: RelationshipIndexEntry[] | undefined,
+	previous: RelationshipIndexEntry[] | undefined,
+): RelationshipIndexEntry[] | undefined {
+	if (!reindexed?.length) return reindexed;
+	if (!previous?.length) return reindexed;
+
+	const prevByPair = new Map<string, RelationshipIndexEntry>();
+	for (const entry of previous) {
+		prevByPair.set(makeRelationshipPairKey(entry.a, entry.b), entry);
+	}
+
+	return reindexed.map((entry) => {
+		const prev = prevByPair.get(makeRelationshipPairKey(entry.a, entry.b));
+		if (!prev) return entry;
+		return mergeRelationshipEntries(prev, entry);
+	});
+}
+
+export type RpRelationshipDelta = {
+	characterName: string;
+	tier?: string;
+	trust?: number;
+	affection?: number;
+	fear?: number;
+	dependency?: number;
+	reason: string;
+};
+
+export type NpcInnerLifeUpdate = {
+	characterName: string;
+	tier?: string;
+	emotionalState?: string;
+	howTheyDescribeYou?: string;
+	whatTheyWant?: string;
+	whatTheyreNotSaying?: string;
+};
+
+export type RelationshipArcUpdate = {
+	characterName: string;
+	tier?: string;
+	statusPhrase?: string;
+	newMilestone?: string;
+	tension?: string;
+};
+
+export function applyRelationshipDeltas(
+	existing: RelationshipIndexEntry[],
+	deltas: RpRelationshipDelta[],
+	playerName: string,
+	innerLifeUpdates?: NpcInnerLifeUpdate[],
+	arcUpdates?: RelationshipArcUpdate[],
+	opts?: {
+		allowlist: Set<string>;
+	},
+): RelationshipIndexEntry[] {
+	const working: RelationshipIndexEntry[] = existing.map((e) => ({ ...e }));
+	const allowlist = opts?.allowlist ?? new Set<string>();
+
+	const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+
+	function findOrCreate(characterName: string, tier?: string): number | null {
+		if (!canTrackRelationshipParticipant(characterName, allowlist)) return null;
+		const idx = findPlayerNpcRelationshipIndex(working, playerName, characterName);
+		if (idx !== -1) return idx;
+		const resolvedTier = sanitizeRelationshipTier(tier);
+		working.push({
+			a: playerName,
+			b: characterName.trim(),
+			tier: resolvedTier,
+			trust: 50,
+			affection: 50,
+			fear: 50,
+			dependency: 50,
+		});
+		return working.length - 1;
+	}
+
+	for (const delta of deltas) {
+		const idx = findOrCreate(delta.characterName, delta.tier);
+		if (idx === null) continue;
+		const entry = working[idx]!;
+		if (delta.tier) entry.tier = sanitizeRelationshipTier(delta.tier);
+		if (delta.trust !== undefined) entry.trust = clamp((entry.trust ?? 50) + delta.trust);
+		if (delta.affection !== undefined) entry.affection = clamp((entry.affection ?? 50) + delta.affection);
+		if (delta.fear !== undefined) entry.fear = clamp((entry.fear ?? 50) + delta.fear);
+		if (delta.dependency !== undefined) entry.dependency = clamp((entry.dependency ?? 50) + delta.dependency);
+	}
+
+	for (const u of innerLifeUpdates ?? []) {
+		const idx = findOrCreate(u.characterName, u.tier);
+		if (idx === null) continue;
+		const entry = working[idx]!;
+		const prev = entry.npcInnerLife ?? {};
+		entry.npcInnerLife = {
+			...prev,
+			...(u.emotionalState ? { emotionalState: u.emotionalState } : {}),
+			...(u.howTheyDescribeYou ? { howTheyDescribeYou: u.howTheyDescribeYou } : {}),
+			...(u.whatTheyWant ? { whatTheyWant: u.whatTheyWant } : {}),
+			...(u.whatTheyreNotSaying ? { whatTheyreNotSaying: u.whatTheyreNotSaying } : {}),
+		};
+		if (u.tier) entry.tier = sanitizeRelationshipTier(u.tier);
+	}
+
+	for (const u of arcUpdates ?? []) {
+		const idx = findOrCreate(u.characterName, u.tier);
+		if (idx === null) continue;
+		const entry = working[idx]!;
+		const prev = entry.arc ?? {};
+		entry.arc = {
+			...prev,
+			...(u.statusPhrase ? { statusPhrase: u.statusPhrase } : {}),
+			...(u.tension ? { tension: u.tension } : {}),
+			...(u.newMilestone ? { milestones: [...(prev.milestones ?? []), u.newMilestone].slice(-10) } : {}),
+		};
+		if (u.tier) entry.tier = sanitizeRelationshipTier(u.tier);
+	}
+
+	return working;
+}

@@ -3,7 +3,7 @@ import type { AIProvider, AIChatMessage } from "./types";
 import type { StoryMessage, StoryStateDataV2 } from "../../types/models";
 import { sortByTimestampAsc } from "../dates";
 import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storyStateExtractor";
-import { normalizeStoryStateToV2, safeParseStoryStateData, withIndexedMetadata } from "../storyStateV2";
+import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata } from "../storyStateV2";
 import { AIError } from "./errors";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
 
@@ -81,6 +81,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
   const messages = sortByTimestampAsc(rawMessages);
   const total = messages.length;
+  const universeImportedCharacters = story.universePackSnapshot?.universe?.importedCharacters ?? [];
 
   const baseParsed = storyState?.stateJson ? safeParseStoryStateData(storyState.stateJson) : null;
   let currentState: StoryStateDataV2 = normalizeStoryStateToV2(baseParsed);
@@ -232,17 +233,22 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     // data would be overwritten and lost.
     const previousRelationships = currentState.indexes?.relationships ?? [];
     const newRelationships = normalized.indexes?.relationships ?? [];
-    const mergedRelationships = [...previousRelationships, ...newRelationships];
+    const combinedIndexes = {
+      ...(currentState.indexes ?? {}),
+      ...(normalized.indexes ?? {}),
+      messageCount: total,
+      messageNumberingVersion: "1.0" as const,
+      relationships: [...previousRelationships, ...newRelationships],
+    };
+    const reconciledIndexes = reconcileStoryIndexes(combinedIndexes, total, {
+      playerName: playerCharacter.name,
+      universeImportedCharacters,
+    });
 
     currentState = {
       ...normalized,
       memoryArchitectureVersion: "2.0",
-      indexes: {
-        ...(normalized.indexes ?? {}),
-        messageCount: total,
-        messageNumberingVersion: "1.0",
-        ...(mergedRelationships.length ? { relationships: mergedRelationships } : {}),
-      },
+      indexes: reconciledIndexes ?? combinedIndexes,
     };
 
     processed += chunk.length;
@@ -260,7 +266,15 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
   onProgress?.({ processed, total, message: "Building final indexes…" });
 
-  const finalState = withIndexedMetadata({ ...currentState, memoryArchitectureVersion: "2.0" });
+  const finalIndexes = reconcileStoryIndexes(currentState.indexes, total, {
+    playerName: playerCharacter.name,
+    universeImportedCharacters,
+  });
+  const finalState = withIndexedMetadata({
+    ...currentState,
+    memoryArchitectureVersion: "2.0",
+    ...(finalIndexes ? { indexes: finalIndexes } : {}),
+  });
   const finalJson = JSON.stringify(finalState);
 
   return {
