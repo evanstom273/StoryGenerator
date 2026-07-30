@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useSearchParams } from "react-router-dom";
 import { cn } from "../utils/cn";
 import { PageHeader } from "../components/PageHeader";
 import { DatabaseIcon } from "../components/icons";
@@ -47,6 +48,7 @@ async function readSelectedFileAsText(file: File) {
 }
 
 export function SettingsPage() {
+  const [searchParams] = useSearchParams();
   const {
     aiSettings,
     saveAISettings,
@@ -539,6 +541,14 @@ export function SettingsPage() {
   }
 
   const [activeTab, setActiveTab] = useState<"theme" | "ai" | "data" | "storage" | "tutorial">("theme");
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "tutorial") {
+      setActiveTab("tutorial");
+    }
+  }, [searchParams]);
+
   const tabs = [
     { id: "theme" as const, label: "Theme" },
     { id: "ai" as const, label: "AI" },

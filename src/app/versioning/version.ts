@@ -6,9 +6,22 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "2.6.0";
+export const APP_VERSION = "2.7.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "2.7.0": {
+    title: "Chapter Jump + Onboarding Tutorial",
+    added: [
+      "Jump to Latest Chapter button in the story workspace scrolls to the current chapter header when multiple chapters exist",
+      "Tutorial tab in Settings with a full onboarding guide for new users covering setup, workspace controls, chapters, RP mode, MetaChat, and backups",
+      "Welcome modal on first launch with an optional Tutorial button or Close to dismiss",
+    ],
+    fixed: [
+      "Chapter jump scroll accounts for mobile sticky navigation and targets the chapter heading banner instead of the first message in the chapter",
+      "Version wiring aligned to 2.7.0 across the app label, changelog, npm metadata, and Android release metadata",
+    ],
+    knownIssues: [],
+  },
   "2.6.0": {
     title: "Transcript Command System",
     added: [
