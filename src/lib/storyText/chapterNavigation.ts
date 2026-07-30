@@ -109,6 +109,29 @@ export function countGeneratedChapters(
   return Math.max(fromTranscript, fromDb);
 }
 
+function getFirstMessageAfterChapterRecord(
+  messages: StoryMessage[],
+  chapter: StoryChapter,
+): StoryMessage | null {
+  const sorted = sortMessages(messages);
+  const endIndex = sorted.findIndex((message) => message.id === chapter.endsAtMessageId);
+  if (endIndex >= 0 && endIndex + 1 < sorted.length) {
+    return sorted[endIndex + 1];
+  }
+
+  const indexFromEndsAt = chapter.endsAtIndex;
+  if (indexFromEndsAt >= 0 && indexFromEndsAt < sorted.length) {
+    return sorted[indexFromEndsAt];
+  }
+
+  const previousIndex = indexFromEndsAt - 1;
+  if (previousIndex >= 0 && previousIndex < sorted.length) {
+    return sorted[previousIndex];
+  }
+
+  return null;
+}
+
 function getLatestChapterStartMessageFromDb(
   messages: StoryMessage[],
   chapters: StoryChapter[],
@@ -119,17 +142,15 @@ function getLatestChapterStartMessageFromDb(
   }
 
   const hasOpen = hasActiveOpenChapter(messages, chapters);
-  const startIndex = hasOpen
-    ? sorted[sorted.length - 1].endsAtIndex
-    : sorted.length < 2
-      ? null
-      : sorted[sorted.length - 2].endsAtIndex;
+  if (hasOpen) {
+    return getFirstMessageAfterChapterRecord(messages, sorted[sorted.length - 1]);
+  }
 
-  if (startIndex === null) {
+  if (sorted.length < 2) {
     return null;
   }
 
-  return messages[startIndex] ?? null;
+  return getFirstMessageAfterChapterRecord(messages, sorted[sorted.length - 2]);
 }
 
 /**
@@ -173,4 +194,23 @@ export function scrollElementWithinContainer(
   const offset = elementRect.top - containerRect.top + container.scrollTop - 12;
 
   container.scrollTo({ top: Math.max(0, offset), behavior });
+}
+
+/** Scroll a chapter target into view inside the transcript and the page shell. */
+export function scrollChapterTargetIntoView(
+  messageId: string,
+  transcriptContainer: HTMLElement | null,
+  behavior: ScrollBehavior = "smooth",
+): boolean {
+  const element = resolveChapterScrollElement(messageId);
+  if (!element) {
+    return false;
+  }
+
+  if (transcriptContainer?.contains(element)) {
+    scrollElementWithinContainer(element, transcriptContainer, behavior);
+  }
+
+  element.scrollIntoView({ block: "start", behavior });
+  return true;
 }
