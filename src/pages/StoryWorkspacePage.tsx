@@ -10,6 +10,7 @@ import { GenerationFailureModal } from "../components/story/GenerationFailureMod
 import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
 import { RPCharacterSheetOverlay } from "../components/story/RPCharacterSheetOverlay";
 import { RelationshipsOverlay } from "../components/story/RelationshipsOverlay";
+import { EncyclopediaOverlay } from "../components/story/EncyclopediaOverlay";
 import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
@@ -209,6 +210,7 @@ export function StoryWorkspacePage() {
   const [isAssistantEditSaving, setIsAssistantEditSaving] = useState(false);
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
   const [relationshipsOpen, setRelationshipsOpen] = useState(false);
+  const [encyclopediaOpen, setEncyclopediaOpen] = useState(false);
 
   interface VariantCandidate {
     id: string;
@@ -284,6 +286,7 @@ export function StoryWorkspacePage() {
     setIsAssistantEditSaving(false);
     setRpSheetOpen(false);
     setRelationshipsOpen(false);
+    setEncyclopediaOpen(false);
     setRpToasts([]);
     setShowZeroHpModal(false);
     setZeroHpConsequenceChoice("");
@@ -1473,6 +1476,12 @@ export function StoryWorkspacePage() {
             onClick={() => setRelationshipsOpen((c) => !c)}
             icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="8" r="2.5"/><path d="M3 21v-2a5 5 0 0 1 5-5h2"/><path d="M13 21v-1.5a3.5 3.5 0 0 1 7 0V21"/></svg>}
           />
+          <WorkspaceIconBtn
+            label="Encyclopedia"
+            active={encyclopediaOpen}
+            onClick={() => setEncyclopediaOpen((c) => !c)}
+            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v18.5A2.5 2.5 0 0 0 17.5 22H4Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>}
+          />
           {readerMode || archiveMode ? null : (
             <WorkspaceIconBtn
               label="Manual entry"
@@ -1910,6 +1919,15 @@ export function StoryWorkspacePage() {
           onClose={() => setRelationshipsOpen(false)}
           refreshKey={relationshipsRefreshKey}
           onRelationshipsChange={() => setRelationshipsRefreshKey((key) => key + 1)}
+        />
+      ) : null}
+
+      {storyId && encyclopediaOpen ? (
+        <EncyclopediaOverlay
+          open={encyclopediaOpen}
+          storyId={storyId}
+          messageCount={messages.length}
+          onClose={() => setEncyclopediaOpen(false)}
         />
       ) : null}
 
