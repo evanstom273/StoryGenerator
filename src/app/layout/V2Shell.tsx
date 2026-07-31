@@ -16,6 +16,7 @@ import {
   writeStoredTextSize,
 } from "../ui/UiPrefsContext";
 import { StorySettingsDrawer } from "./StorySettingsDrawer";
+import { PwaInstallBanner } from "../../components/PwaInstallBanner";
 import { V2LeftSidebar } from "./V2LeftSidebar";
 import { V2RightSidebar } from "./V2RightSidebar";
 
@@ -250,6 +251,7 @@ export function V2Shell() {
             )}
 
             <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+              <PwaInstallBanner />
               <Outlet />
             </main>
 
