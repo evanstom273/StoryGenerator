@@ -1,11 +1,11 @@
 import type { StoryEncyclopedia } from "../../types/models";
 import { safeParseStoryStateData } from "../storyStateV2";
-import { isEncyclopediaIndexed } from "./encyclopediaMerge";
+import { isEncyclopediaIndexed, sanitizeStoryEncyclopedia } from "./encyclopediaMerge";
 
 export function parseStoryEncyclopedia(stateJson: string | undefined | null): StoryEncyclopedia | undefined {
 	if (!stateJson?.trim()) return undefined;
 	const parsed = safeParseStoryStateData(stateJson);
-	return parsed?.encyclopedia;
+	return sanitizeStoryEncyclopedia(parsed?.encyclopedia);
 }
 
 export function isStoryEncyclopediaIndexed(stateJson: string | undefined | null): boolean {
