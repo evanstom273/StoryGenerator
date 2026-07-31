@@ -11,11 +11,35 @@ import type {
 } from "../../types/models";
 import { makeEncyclopediaId, normalizeEncyclopediaKey } from "./encyclopediaKeys";
 
-function trimStrings(values: string[] | undefined, max = 20): string[] | undefined {
-	if (!values?.length) return undefined;
+function coerceArray<T>(value: unknown): T[] {
+	if (Array.isArray(value)) return value;
+	if (value && typeof value === "object") return Object.values(value as Record<string, T>);
+	return [];
+}
+
+function coerceRecord<T extends { id?: string; name?: string }>(value: unknown): Record<string, T> | undefined {
+	if (!value) return undefined;
+	if (Array.isArray(value)) {
+		const out: Record<string, T> = {};
+		for (const item of value) {
+			if (!item || typeof item !== "object") continue;
+			const entry = item as T;
+			const name = entry.name?.trim();
+			if (!name) continue;
+			const id = entry.id?.trim() || makeEncyclopediaId(name);
+			out[id] = { ...entry, id, name };
+		}
+		return Object.keys(out).length ? out : undefined;
+	}
+	if (typeof value === "object") return value as Record<string, T>;
+	return undefined;
+}
+
+function trimStrings(values: unknown, max = 20): string[] | undefined {
 	const seen = new Set<string>();
 	const out: string[] = [];
-	for (const value of values) {
+	for (const value of coerceArray<unknown>(values)) {
+		if (typeof value !== "string") continue;
 		const trimmed = value.trim();
 		if (!trimmed) continue;
 		const key = trimmed.toLowerCase();
@@ -51,11 +75,11 @@ function mergeStringField(left?: string, right?: string): string | undefined {
 
 function mergeRecordPages<T extends { id: string; name: string; related?: EncyclopediaLinkRef[] }>(
 	left: Record<string, T> | undefined,
-	right: Record<string, T> | undefined,
+	right: unknown,
 	mergeEntry: (a: T, b: T) => T,
 ): Record<string, T> | undefined {
 	const out: Record<string, T> = { ...(left ?? {}) };
-	for (const [key, entry] of Object.entries(right ?? {})) {
+	for (const [key, entry] of Object.entries(coerceRecord<T>(right) ?? {})) {
 		const normalizedKey = normalizeEncyclopediaKey(entry.name);
 		const existingKey =
 			Object.keys(out).find((k) => normalizeEncyclopediaKey(out[k]!.name) === normalizedKey) ?? key;
@@ -160,8 +184,8 @@ function mergeRule(left: EncyclopediaRulePage, right: EncyclopediaRulePage): Enc
 	};
 }
 
-function mergeEvents(left: EncyclopediaEventPage[] | undefined, right: EncyclopediaEventPage[] | undefined): EncyclopediaEventPage[] | undefined {
-	const combined = [...(left ?? []), ...(right ?? [])];
+function mergeEvents(left: unknown, right: unknown): EncyclopediaEventPage[] | undefined {
+	const combined = [...coerceArray<EncyclopediaEventPage>(left), ...coerceArray<EncyclopediaEventPage>(right)];
 	if (!combined.length) return undefined;
 	const byKey = new Map<string, EncyclopediaEventPage>();
 	for (const event of combined) {
@@ -198,7 +222,7 @@ export function mergeEncyclopediaEntries(left: StoryEncyclopedia | undefined, ri
 		technology: mergeRecordPages(left?.technology, right.technology, mergeTechnology),
 		events: mergeEvents(left?.events, right.events),
 		rules: (() => {
-			const combined = [...(left?.rules ?? []), ...(right.rules ?? [])];
+			const combined = [...coerceArray<EncyclopediaRulePage>(left?.rules), ...coerceArray<EncyclopediaRulePage>(right.rules)];
 			if (!combined.length) return undefined;
 			const byKey = new Map<string, EncyclopediaRulePage>();
 			for (const rule of combined) {
@@ -213,9 +237,8 @@ export function mergeEncyclopediaEntries(left: StoryEncyclopedia | undefined, ri
 }
 
 export function normalizeEncyclopediaDelta(delta: Partial<StoryEncyclopedia>): StoryEncyclopedia {
-	const normalizeRecord = <T extends { id: string; name: string }>(
-		entries: Record<string, T> | undefined,
-	): Record<string, T> | undefined => {
+	const normalizeRecord = <T extends { id: string; name: string }>(value: unknown): Record<string, T> | undefined => {
+		const entries = coerceRecord<T>(value);
 		if (!entries) return undefined;
 		const out: Record<string, T> = {};
 		for (const entry of Object.values(entries)) {
@@ -226,21 +249,21 @@ export function normalizeEncyclopediaDelta(delta: Partial<StoryEncyclopedia>): S
 		return Object.keys(out).length ? out : undefined;
 	};
 
-	const events = delta.events
-		?.filter((e) => e?.title?.trim())
+	const events = coerceArray<Partial<EncyclopediaEventPage>>(delta.events)
+		.filter((e) => e?.title?.trim())
 		.map((e) => ({
 			...e,
-			id: e.id?.trim() || makeEncyclopediaId(e.title, "event"),
-			title: e.title.trim(),
-		}));
+			id: e.id?.trim() || makeEncyclopediaId(e.title!, "event"),
+			title: e.title!.trim(),
+		})) as EncyclopediaEventPage[];
 
-	const rules = delta.rules
-		?.filter((r) => r?.title?.trim())
+	const rules = coerceArray<Partial<EncyclopediaRulePage>>(delta.rules)
+		.filter((r) => r?.title?.trim())
 		.map((r) => ({
 			...r,
-			id: r.id?.trim() || makeEncyclopediaId(r.title, "rule"),
-			title: r.title.trim(),
-		}));
+			id: r.id?.trim() || makeEncyclopediaId(r.title!, "rule"),
+			title: r.title!.trim(),
+		})) as EncyclopediaRulePage[];
 
 	return {
 		version: "1.0",
@@ -249,8 +272,22 @@ export function normalizeEncyclopediaDelta(delta: Partial<StoryEncyclopedia>): S
 		objects: normalizeRecord(delta.objects),
 		organizations: normalizeRecord(delta.organizations),
 		technology: normalizeRecord(delta.technology),
-		events: events?.length ? events.slice(0, 40) : undefined,
-		rules: rules?.length ? rules.slice(0, 30) : undefined,
+		events: events.length ? events.slice(0, 40) : undefined,
+		rules: rules.length ? rules.slice(0, 30) : undefined,
+	};
+}
+
+export function sanitizeStoryEncyclopedia(encyclopedia: StoryEncyclopedia | undefined): StoryEncyclopedia | undefined {
+	if (!encyclopedia) return undefined;
+	const normalized = normalizeEncyclopediaDelta(encyclopedia);
+	return {
+		...encyclopedia,
+		...normalized,
+		indexedAt: encyclopedia.indexedAt,
+		lastUpdatedAt: encyclopedia.lastUpdatedAt,
+		lastUpdatedChapter: encyclopedia.lastUpdatedChapter,
+		lastUpdatedMessageCount: encyclopedia.lastUpdatedMessageCount,
+		indexedMessageCount: encyclopedia.indexedMessageCount,
 	};
 }
 
