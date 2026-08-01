@@ -25,7 +25,6 @@ export type BackgroundJobStatus =
   | "cancelled";
 export type BackgroundJobType =
   | "story_index"
-  | "encyclopedia_index"
   | "metachat_generate"
   | "story_export"
   | "story_archive_export";
@@ -437,124 +436,6 @@ export type RpCondition = {
   addedAt: number;
 };
 
-export type EncyclopediaCategory =
-  | "characters"
-  | "locations"
-  | "events"
-  | "objects"
-  | "organizations"
-  | "rules"
-  | "technology";
-
-export type EncyclopediaLinkRef = {
-  type: EncyclopediaCategory;
-  id: string;
-  label?: string;
-};
-
-export type EncyclopediaAppearanceRef = {
-  messageNumber: number;
-  chapterLabel?: string;
-};
-
-export type EncyclopediaCharacterPage = {
-  id: string;
-  name: string;
-  aliases?: string[];
-  description?: string;
-  status?: string;
-  relationships?: string[];
-  family?: string[];
-  occupation?: string;
-  firstAppearance?: EncyclopediaAppearanceRef;
-  latestAppearance?: EncyclopediaAppearanceRef;
-  history?: string[];
-  majorEvents?: string[];
-  currentLocation?: string;
-  quotes?: string[];
-  related?: EncyclopediaLinkRef[];
-};
-
-export type EncyclopediaLocationPage = {
-  id: string;
-  name: string;
-  description?: string;
-  firstAppearance?: EncyclopediaAppearanceRef;
-  currentState?: string;
-  associatedCharacters?: string[];
-  events?: string[];
-  chapterLabels?: string[];
-  related?: EncyclopediaLinkRef[];
-};
-
-export type EncyclopediaEventPage = {
-  id: string;
-  title: string;
-  description?: string;
-  chapterLabel?: string;
-  messageNumber?: number;
-  participants?: string[];
-  location?: string;
-  related?: EncyclopediaLinkRef[];
-};
-
-export type EncyclopediaObjectPage = {
-  id: string;
-  name: string;
-  description?: string;
-  purpose?: string;
-  currentOwner?: string;
-  history?: string[];
-  relatedEvents?: string[];
-  related?: EncyclopediaLinkRef[];
-};
-
-export type EncyclopediaOrganizationPage = {
-  id: string;
-  name: string;
-  description?: string;
-  type?: string;
-  members?: string[];
-  roleInStory?: string;
-  related?: EncyclopediaLinkRef[];
-};
-
-export type EncyclopediaRulePage = {
-  id: string;
-  title: string;
-  description?: string;
-  scope?: string;
-  currentState?: string;
-  history?: string[];
-  related?: EncyclopediaLinkRef[];
-};
-
-export type EncyclopediaTechnologyPage = {
-  id: string;
-  name: string;
-  description?: string;
-  capabilities?: string[];
-  upgrades?: string[];
-  currentState?: string;
-  related?: EncyclopediaLinkRef[];
-};
-
-export type StoryEncyclopedia = {
-  version: "1.0";
-  indexedAt?: Timestamp;
-  lastUpdatedAt?: Timestamp;
-  lastUpdatedChapter?: string;
-  lastUpdatedMessageCount?: number;
-  indexedMessageCount?: number;
-  characters?: Record<string, EncyclopediaCharacterPage>;
-  locations?: Record<string, EncyclopediaLocationPage>;
-  events?: EncyclopediaEventPage[];
-  objects?: Record<string, EncyclopediaObjectPage>;
-  organizations?: Record<string, EncyclopediaOrganizationPage>;
-  rules?: EncyclopediaRulePage[];
-  technology?: Record<string, EncyclopediaTechnologyPage>;
-};
-
 export type StoryIndexesV2 = {
   messageCount?: number;
   messageNumberingVersion?: "1.0";
@@ -678,7 +559,6 @@ export type StoryStateData = {
   scene?: StorySceneSnapshotV2;
   threads?: StoryThreadsV2;
   rpStats?: RpStats;
-  encyclopedia?: StoryEncyclopedia;
 };
 
 export type StoryStateDataV2 = Partial<StoryStateData> & {
@@ -687,7 +567,6 @@ export type StoryStateDataV2 = Partial<StoryStateData> & {
   indexes?: StoryIndexesV2;
   scene?: StorySceneSnapshotV2;
   threads?: StoryThreadsV2;
-  encyclopedia?: StoryEncyclopedia;
 };
 
 export interface StoryState {
