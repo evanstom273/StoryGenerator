@@ -7,19 +7,17 @@ export interface SceneBlock {
   segments: StoryTextSegment[];
 }
 
-/** Strip leading speaker labels from a line for transcript display only. */
-export function stripDisplaySpeakerPrefix(line: string): string {
+/** Strip narrator-block labels (Narrator:, Jamie's:, etc.) for display only — not character dialogue lines. */
+export function stripNarratorBlockDisplayPrefix(line: string): string {
 	const trimmed = line.trim();
 	if (!trimmed) return trimmed;
 
-	const inline = trimmed.match(/^(?:Narrator|[^\n:]{1,48})\s*(?::|\s[-—])\s+(.*)$/i);
-	if (inline?.[1]?.trim()) {
-		return inline[1].trim();
-	}
+	const narrator = trimmed.match(/^Narrator\s*(?::|\s[-—])\s*(.*)$/i);
+	if (narrator?.[1]?.trim()) return narrator[1].trim();
+	if (/^Narrator\s*(?::|\s[-—])\s*$/i.test(trimmed)) return "";
 
-	if (/^(?:Narrator|[^\n:]{1,48})\s*(?::|\s[-—])\s*$/i.test(trimmed)) {
-		return "";
-	}
+	const possessive = trimmed.match(/^([A-Z][a-zA-Z''-]*['']s)\s*(?::|\s[-—])\s+(.*)$/i);
+	if (possessive?.[2]?.trim()) return possessive[2].trim();
 
 	return trimmed;
 }
