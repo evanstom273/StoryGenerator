@@ -2,8 +2,20 @@ import { describe, expect, it } from "vitest";
 import { formatNarratorBlockForDisplay, stripNarratorBlockDisplayPrefix } from "../parseSceneBlocks";
 
 describe("stripNarratorBlockDisplayPrefix", () => {
-	it("strips Narrator and repairs possessive pseudo-labels in narrator blocks", () => {
+	it("strips Narrator labels entirely from narrator blocks", () => {
 		expect(stripNarratorBlockDisplayPrefix("Narrator: *The rain fell hard.*")).toBe("*The rain fell hard.*");
+		expect(
+			stripNarratorBlockDisplayPrefix("Narrator: Amy shifts closer on the mattress, wrapping her arms around both of them."),
+		).toBe("Amy shifts closer on the mattress, wrapping her arms around both of them.");
+		expect(
+			stripNarratorBlockDisplayPrefix("Narrator: Amy: shifts closer on the mattress."),
+		).toBe("Amy shifts closer on the mattress.");
+	});
+
+	it("removes colons from name pseudo-labels but keeps the name", () => {
+		expect(
+			stripNarratorBlockDisplayPrefix("Amy: shifts closer on the mattress, wrapping her arms around both of them."),
+		).toBe("Amy shifts closer on the mattress, wrapping her arms around both of them.");
 		expect(
 			stripNarratorBlockDisplayPrefix("Jamie's: eyelashes fluttered open, his vision slowly adjusting."),
 		).toBe("Jamie's eyelashes fluttered open, his vision slowly adjusting.");
@@ -18,14 +30,18 @@ describe("stripNarratorBlockDisplayPrefix", () => {
 		).toBe("Jamie's eyelashes fluttered open, his vision slowly adjusting.");
 	});
 
-	it("joins possessive labels split across lines", () => {
+	it("joins labels split across lines", () => {
 		expect(
 			formatNarratorBlockForDisplay("Jamie's:\neyelashes fluttered open, his vision slowly adjusting."),
 		).toBe("Jamie's eyelashes fluttered open, his vision slowly adjusting.");
+		expect(
+			formatNarratorBlockForDisplay("Amy:\nshifts closer on the mattress, wrapping her arms around both of them."),
+		).toBe("Amy shifts closer on the mattress, wrapping her arms around both of them.");
 	});
 
-	it("keeps character name prefixes for dialogue lines", () => {
-		expect(stripNarratorBlockDisplayPrefix("Amy: *smiles* \"Hello.\"")).toBe("Amy: *smiles* \"Hello.\"");
-		expect(stripNarratorBlockDisplayPrefix("Jake: steps into the room")).toBe("Jake: steps into the room");
+	it("does not strip narrative pronoun lines", () => {
+		expect(stripNarratorBlockDisplayPrefix("She shifts closer on the mattress.")).toBe(
+			"She shifts closer on the mattress.",
+		);
 	});
 });

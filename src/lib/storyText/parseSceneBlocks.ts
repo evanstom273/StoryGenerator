@@ -7,52 +7,6 @@ export interface SceneBlock {
   segments: StoryTextSegment[];
 }
 
-/** Strip narrator-block labels (Narrator:, Jamie's:, etc.) for display only — not character dialogue lines. */
-export function repairPossessiveLabelLines(text: string): string {
-	const lines = text.replace(/\r\n/g, "\n").split("\n");
-	const out: string[] = [];
-
-	for (let index = 0; index < lines.length; index++) {
-		const trimmed = lines[index].trim();
-		const labelOnly = trimmed.match(/^([A-Z][a-zA-Z''-]*['']s)\s*:\s*$/i);
-		if (labelOnly) {
-			const next = lines[index + 1]?.trim();
-			if (next) {
-				out.push(`${labelOnly[1]} ${next}`);
-				index += 1;
-				continue;
-			}
-		}
-		out.push(lines[index]);
-	}
-
-	return out.join("\n");
-}
-
-export function stripNarratorBlockDisplayPrefix(line: string): string {
-	const trimmed = line.trim();
-	if (!trimmed) return trimmed;
-
-	const narrator = trimmed.match(/^Narrator\s*(?::|\s[-—])\s*(.*)$/i);
-	if (narrator?.[1]?.trim()) return narrator[1].trim();
-	if (/^Narrator\s*(?::|\s[-—])\s*$/i.test(trimmed)) return "";
-
-	const possessiveLabel = trimmed.match(/^([A-Z][a-zA-Z''-]*['']s)\s*:\s*(.*)$/i);
-	if (possessiveLabel?.[1]) {
-		const remainder = possessiveLabel[2]?.trim() ?? "";
-		return remainder ? `${possessiveLabel[1]} ${remainder}` : possessiveLabel[1];
-	}
-
-	return trimmed;
-}
-
-export function formatNarratorBlockForDisplay(text: string): string {
-	return repairPossessiveLabelLines(text)
-		.split("\n")
-		.map((line) => stripNarratorBlockDisplayPrefix(line))
-		.join("\n");
-}
-
 // Words that start sentences but are never character names.
 const NOT_A_NAME = new Set([
   "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
@@ -80,6 +34,77 @@ function isValidSpeakerLabel(label: string): boolean {
   // Common words are narrative markers, not names — reject whether alone or as the first word of a multi-word label
   if (NOT_A_NAME.has(words[0]!)) return false;
   return true;
+}
+
+const NAME_SPEAKER_LABEL_LINE =
+	/^([A-Z][a-zA-Z''-]*(?:\s+[A-Z][a-zA-Z''-]*){0,3})\s*:\s*(.*)$/;
+
+/** Join label-only lines (Amy:, Jamie's:) with the prose line that follows. */
+export function repairNarratorLabelLines(text: string): string {
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+	const out: string[] = [];
+
+	for (let index = 0; index < lines.length; index++) {
+		const trimmed = lines[index].trim();
+		const possessiveOnly = trimmed.match(/^([A-Z][a-zA-Z''-]*['']s)\s*:\s*$/i);
+		if (possessiveOnly) {
+			const next = lines[index + 1]?.trim();
+			if (next) {
+				out.push(`${possessiveOnly[1]} ${next}`);
+				index += 1;
+				continue;
+			}
+		}
+
+		const nameOnly = trimmed.match(/^([A-Z][a-zA-Z''-]*(?:\s+[A-Z][a-zA-Z''-]*){0,3})\s*:\s*$/);
+		if (nameOnly?.[1] && isValidSpeakerLabel(nameOnly[1].trim())) {
+			const next = lines[index + 1]?.trim();
+			if (next) {
+				out.push(`${nameOnly[1].trim()} ${next}`);
+				index += 1;
+				continue;
+			}
+		}
+
+		out.push(lines[index]);
+	}
+
+	return out.join("\n");
+}
+
+/** Display-only: strip Narrator labels; remove colons from other name pseudo-labels. */
+export function stripNarratorBlockDisplayPrefix(line: string): string {
+	const trimmed = line.trim();
+	if (!trimmed) return trimmed;
+
+	const narrator = trimmed.match(/^Narrator\s*(?::|\s[-—])\s*(.*)$/i);
+	if (narrator) {
+		const remainder = narrator[1]?.trim() ?? "";
+		if (!remainder) return "";
+		return stripNarratorBlockDisplayPrefix(remainder);
+	}
+
+	const possessiveLabel = trimmed.match(/^([A-Z][a-zA-Z''-]*['']s)\s*:\s*(.*)$/i);
+	if (possessiveLabel?.[1]) {
+		const remainder = possessiveLabel[2]?.trim() ?? "";
+		return remainder ? `${possessiveLabel[1]} ${remainder}` : possessiveLabel[1];
+	}
+
+	const nameLabel = trimmed.match(NAME_SPEAKER_LABEL_LINE);
+	if (nameLabel?.[1] && isValidSpeakerLabel(nameLabel[1].trim())) {
+		const label = nameLabel[1].trim();
+		const remainder = nameLabel[2]?.trim() ?? "";
+		return remainder ? `${label} ${remainder}` : label;
+	}
+
+	return trimmed;
+}
+
+export function formatNarratorBlockForDisplay(text: string): string {
+	return repairNarratorLabelLines(text)
+		.split("\n")
+		.map((line) => stripNarratorBlockDisplayPrefix(line))
+		.join("\n");
 }
 
 function isSpeakerHeader(line: string) {
