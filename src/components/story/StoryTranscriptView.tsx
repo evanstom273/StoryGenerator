@@ -3,7 +3,7 @@ import type { RpConfig, RpTimeState, StoryChapter, StoryMessage } from "../../ty
 import { formatTimeShort, timesDiffer } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
-import { parseSceneBlocks, stripNarratorBlockDisplayPrefix } from "../../lib/storyText/parseSceneBlocks";
+import { parseSceneBlocks, formatNarratorBlockForDisplay } from "../../lib/storyText/parseSceneBlocks";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
@@ -464,12 +464,14 @@ export function StoryTranscriptView({
                   ? getSpeakerTag("Narrator", "narrator")
                   : getSpeakerTag(block.speakerLabel?.trim() || "Unknown", "npc");
                 if (isNarration) {
+                  const displayText = formatNarratorBlockForDisplay(block.text);
+                  const displayLines = displayText.split("\n");
                   return (
                     <div key={blockIndex} className={tag.rowClass}>
                       <div className={cn("min-w-0 text-sm leading-7 whitespace-pre-wrap break-words", tag.contentClass)}>
-                        {lines.map((line, index) => (
+                        {displayLines.map((line, index) => (
                           <div key={index}>
-                            {renderLine(stripNarratorBlockDisplayPrefix(line), { forceItalic: true })}
+                            {renderLine(line, { forceItalic: true })}
                           </div>
                         ))}
                       </div>

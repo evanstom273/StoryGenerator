@@ -8,6 +8,27 @@ export interface SceneBlock {
 }
 
 /** Strip narrator-block labels (Narrator:, Jamie's:, etc.) for display only — not character dialogue lines. */
+export function repairPossessiveLabelLines(text: string): string {
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+	const out: string[] = [];
+
+	for (let index = 0; index < lines.length; index++) {
+		const trimmed = lines[index].trim();
+		const labelOnly = trimmed.match(/^([A-Z][a-zA-Z''-]*['']s)\s*:\s*$/i);
+		if (labelOnly) {
+			const next = lines[index + 1]?.trim();
+			if (next) {
+				out.push(`${labelOnly[1]} ${next}`);
+				index += 1;
+				continue;
+			}
+		}
+		out.push(lines[index]);
+	}
+
+	return out.join("\n");
+}
+
 export function stripNarratorBlockDisplayPrefix(line: string): string {
 	const trimmed = line.trim();
 	if (!trimmed) return trimmed;
@@ -23,6 +44,13 @@ export function stripNarratorBlockDisplayPrefix(line: string): string {
 	}
 
 	return trimmed;
+}
+
+export function formatNarratorBlockForDisplay(text: string): string {
+	return repairPossessiveLabelLines(text)
+		.split("\n")
+		.map((line) => stripNarratorBlockDisplayPrefix(line))
+		.join("\n");
 }
 
 // Words that start sentences but are never character names.
