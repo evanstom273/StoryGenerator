@@ -4,13 +4,20 @@ import type { StoryEncyclopedia } from "../../types/models";
 import { sortByTimestampAsc } from "../dates";
 import { AIError } from "../ai/errors";
 import { safeParseStoryStateData } from "../storyStateV2";
-import { buildEncyclopediaExtractionPrompt, parseEncyclopediaDelta } from "./encyclopediaExtractor";
+import {
+	buildEncyclopediaEntityIndex,
+	buildSingleMessageEncyclopediaPrompt,
+	parseEncyclopediaDelta,
+} from "./encyclopediaExtractor";
 import { mergeEncyclopediaEntries } from "./encyclopediaMerge";
-import { resolveLatestChapterLabel } from "./encyclopediaTranscript";
+import {
+	resolveChapterLabelAtMessage,
+	resolveLatestChapterLabel,
+	shouldIndexMessageForEncyclopedia,
+} from "./encyclopediaTranscript";
 
-const ENCYCLOPEDIA_REQUEST_TIMEOUT_MS = 180_000;
+const ENCYCLOPEDIA_REQUEST_TIMEOUT_MS = 120_000;
 const ENCYCLOPEDIA_MAX_ATTEMPTS = 3;
-const CHUNK_SIZE = 25;
 
 async function generateWithRetry(
 	provider: AIProvider,
@@ -52,14 +59,6 @@ async function generateWithRetry(
 		}
 	}
 	throw lastError;
-}
-
-function chunkMessages<T>(messages: T[], chunkSize: number): T[][] {
-	const chunks: T[][] = [];
-	for (let i = 0; i < messages.length; i += chunkSize) {
-		chunks.push(messages.slice(i, i + chunkSize));
-	}
-	return chunks;
 }
 
 export async function buildEncyclopediaFromTranscript(params: {
@@ -114,49 +113,51 @@ export async function buildEncyclopediaFromTranscript(params: {
 			? { ...existing }
 			: { version: "1.0" };
 
-	const chunks = chunkMessages(targetMessages, CHUNK_SIZE);
 	const startOffset = params.rebuild || !params.incremental ? 0 : lastIndexed;
-	let processed = startOffset;
 
 	params.onProgress?.({
-		processed,
+		processed: startOffset,
 		total,
 		message: params.rebuild
-			? `Indexing full transcript… 0/${total} messages`
+			? `Reading transcript message by message… 0/${total}`
 			: params.incremental
-				? `Updating encyclopedia from ${targetMessages.length} new message${targetMessages.length === 1 ? "" : "s"}…`
-				: `Indexing transcript… 0/${total} messages`,
+				? `Updating from ${targetMessages.length} new message${targetMessages.length === 1 ? "" : "s"}…`
+				: `Reading transcript message by message… 0/${total}`,
 	});
 
-	for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-		const chunk = chunks[chunkIndex]!;
+	for (let index = 0; index < targetMessages.length; index++) {
+		const message = targetMessages[index]!;
+		const messageNumber = startOffset + index + 1;
+
 		if (params.signal?.aborted) throw new Error("Encyclopedia indexing aborted.");
 
-		const messageNumberStart = startOffset + chunkIndex * CHUNK_SIZE + 1;
-		const accumulatedJson = JSON.stringify({
-			characters: accumulated.characters,
-			locations: accumulated.locations,
-			events: accumulated.events,
-			objects: accumulated.objects,
-			organizations: accumulated.organizations,
-			rules: accumulated.rules,
-			technology: accumulated.technology,
-		});
+		if (!shouldIndexMessageForEncyclopedia(message)) {
+			params.onProgress?.({
+				processed: messageNumber,
+				total,
+				message: `Skipped meta message ${messageNumber}/${total}…`,
+			});
+			continue;
+		}
 
-		const prompt = buildEncyclopediaExtractionPrompt({
+		const chapterLabel = resolveChapterLabelAtMessage(messageNumber, messages, chapters);
+		const entityIndex = buildEncyclopediaEntityIndex(accumulated);
+
+		const prompt = buildSingleMessageEncyclopediaPrompt({
 			playerName: playerCharacter.name,
-			transcriptChunk: chunk,
-			messageNumberStart,
+			message,
+			messageNumber,
 			messageNumberTotal: total,
-			accumulatedEncyclopediaJson: chunkIndex > 0 ? accumulatedJson : undefined,
+			chapterLabel,
+			entityIndex,
 		});
 
 		const raw = await generateWithRetry(params.provider, {
 			apiKey: params.apiKey,
 			model: params.model,
 			messages: prompt,
-			maxTokens: 8000,
-			temperature: 0.2,
+			maxTokens: 3000,
+			temperature: 0.1,
 			jsonMode: true,
 			timeoutMs: ENCYCLOPEDIA_REQUEST_TIMEOUT_MS,
 			signal: params.signal,
@@ -167,11 +168,10 @@ export async function buildEncyclopediaFromTranscript(params: {
 			accumulated = mergeEncyclopediaEntries(accumulated, delta);
 		}
 
-		processed = startOffset + Math.min((chunkIndex + 1) * CHUNK_SIZE, targetMessages.length);
 		params.onProgress?.({
-			processed,
+			processed: messageNumber,
 			total,
-			message: `Indexed ${processed}/${total} messages…`,
+			message: `Read message ${messageNumber}/${total}…`,
 		});
 	}
 
