@@ -116,9 +116,6 @@ import {
 import {
   reconcileRelationshipsFromStateJson,
 } from "../../lib/storyRelationshipLoad";
-import { buildEncyclopediaFromTranscript } from "../../lib/encyclopedia/encyclopediaBuilder";
-import { countEncyclopediaEntries } from "../../lib/encyclopedia/encyclopediaMerge";
-import { parseStoryEncyclopedia, isStoryEncyclopediaIndexed } from "../../lib/encyclopedia/storyEncyclopediaLoad";
 import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
@@ -143,7 +140,6 @@ import type {
   PlayerCharacter,
   PlayerCharacterDraft,
   RelationshipIndexEntry,
-  StoryEncyclopedia,
   RpChangelogEntry,
   RpEventLogEntry,
   RpStats,
@@ -162,7 +158,6 @@ import type {
   StoryMessageDraft,
   StoryState,
   StoryStateData,
-  StoryStateDataV2,
   StorySummary,
   UniverseExportBundleV1,
   Universe,
@@ -194,14 +189,6 @@ interface StoryEngineContextValue {
     message?: string;
     error?: string;
     warning?: string;
-  };
-  encyclopediaIndexStatus?: {
-    storyId: string;
-    phase: "idle" | "loading" | "extracting" | "saving" | "done" | "error";
-    processedMessages: number;
-    totalMessages: number;
-    message?: string;
-    error?: string;
   };
   jobNotice?: {
     id: string;
@@ -330,11 +317,6 @@ interface StoryEngineContextValue {
     storyId: string,
     opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean },
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
-  queueEncyclopediaIndexJob: (
-    storyId: string,
-    opts?: { trigger?: "manual" | "auto"; incremental?: boolean; rebuild?: boolean; force?: boolean },
-  ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
-  loadStoryEncyclopedia: (storyId: string) => Promise<StoryEncyclopedia | undefined>;
   cancelBackgroundJob: (jobId: string) => Promise<BackgroundJob | null>;
   dismissJobNotice: () => void;
   importUniverseExport: (
@@ -1455,8 +1437,6 @@ export function StoryEngineProvider({
     DeveloperTestingNote[]
   >([]);
   const [rebuildStatus, setRebuildStatus] = useState<StoryEngineContextValue["rebuildStatus"]>();
-  const [encyclopediaIndexStatus, setEncyclopediaIndexStatus] =
-    useState<StoryEngineContextValue["encyclopediaIndexStatus"]>();
   const [jobNotice, setJobNotice] = useState<StoryEngineContextValue["jobNotice"]>(null);
   const rebuildAbortRef = useRef<AbortController | null>(null);
   const activeBackgroundJobRef = useRef<string | null>(null);
@@ -2038,54 +2018,6 @@ export function StoryEngineProvider({
     [hydrate, repository],
   );
 
-  const queueEncyclopediaIndexJob = useCallback(
-    async (
-      storyId: string,
-      opts?: { trigger?: "manual" | "auto"; incremental?: boolean; rebuild?: boolean; force?: boolean },
-    ) => {
-      const existing = (await repository.listBackgroundJobs()).find(
-        (job) =>
-          job.type === "encyclopedia_index" &&
-          job.storyId === storyId &&
-          (job.status === "queued" || job.status === "running"),
-      );
-
-      if (existing) {
-        if (!opts?.force) return { job: existing, duplicate: true };
-        await repository.saveBackgroundJob({
-          ...existing,
-          status: "cancelled",
-          finishedAt: new Date().toISOString(),
-          error: undefined,
-        });
-        const existingController = backgroundJobControllersRef.current[existing.id];
-        existingController?.abort();
-        if (activeBackgroundJobRef.current === existing.id) {
-          activeBackgroundJobRef.current = null;
-        }
-      }
-
-      const job: BackgroundJob = {
-        id: createEntityId("background-job"),
-        type: "encyclopedia_index",
-        storyId,
-        createdAt: new Date().toISOString(),
-        status: "queued",
-        dedupeKey: `encyclopedia_index:${storyId}`,
-        payload: {
-          trigger: opts?.trigger ?? "manual",
-          incremental: opts?.incremental ?? false,
-          rebuild: opts?.rebuild ?? false,
-        },
-      };
-
-      await repository.saveBackgroundJob(job);
-      await hydrate(false);
-      return { job, duplicate: false };
-    },
-    [hydrate, repository],
-  );
-
   const queueMetaChatMessage = useCallback(
     async (scopeId: string, content: string) => {
       const trimmed = content.trim();
@@ -2538,130 +2470,6 @@ export function StoryEngineProvider({
     [getNormalizedAISettings, hydrate, repository, resolveAIProfile, touchStory],
   );
 
-  const runEncyclopediaIndexProcess = useCallback(
-    async (
-      storyId: string,
-      opts?: {
-        signal?: AbortSignal;
-        trigger?: "manual" | "auto";
-        incremental?: boolean;
-        rebuild?: boolean;
-        jobId?: string;
-      },
-    ) => {
-      const signal = opts?.signal;
-      const story = await repository.getStory(storyId);
-      if (!story) throw new Error("Story not found.");
-
-      setEncyclopediaIndexStatus({
-        storyId,
-        phase: "loading",
-        processedMessages: 0,
-        totalMessages: 0,
-        message: opts?.rebuild ? "Rebuilding encyclopedia from transcript…" : "Indexing encyclopedia…",
-      });
-
-      try {
-        const storyConfig = await repository.getStoryAIConfig(storyId);
-        const providerType = storyConfig?.providerType ?? aiSettings?.activeProviderType;
-        if (!providerType) throw new Error("Configure an AI provider in Settings before indexing.");
-
-        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
-        const provider = createAIProvider(providerType);
-
-        const allMessages = await repository.listStoryMessages(storyId);
-        const existingStoryState = await repository.getStoryState(storyId);
-
-        setEncyclopediaIndexStatus({
-          storyId,
-          phase: "extracting",
-          processedMessages: 0,
-          totalMessages: allMessages.length,
-          message: `Reading transcript… 0/${allMessages.length} messages`,
-        });
-
-        const result = await buildEncyclopediaFromTranscript({
-          storyId,
-          repository,
-          provider,
-          apiKey,
-          model,
-          rebuild: opts?.rebuild ?? false,
-          incremental: opts?.incremental ?? false,
-          signal,
-          onProgress: ({ processed, total, message }) => {
-            setEncyclopediaIndexStatus((current) => {
-              if (!current || current.storyId !== storyId) return current;
-              return {
-                ...current,
-                phase: "extracting",
-                processedMessages: processed,
-                totalMessages: total,
-                message,
-              };
-            });
-            if (opts?.jobId) {
-              void repository.getBackgroundJob(opts.jobId).then((liveJob) => {
-                if (!liveJob || liveJob.status !== "running") return;
-                void repository.saveBackgroundJob({
-                  ...liveJob,
-                  progress: {
-                    current: processed,
-                    total,
-                    label: message ?? `${processed}/${total} messages`,
-                  },
-                }).catch(() => {});
-              }).catch(() => {});
-            }
-          },
-        });
-
-        if (signal?.aborted) throw new Error("Encyclopedia indexing aborted.");
-
-        setEncyclopediaIndexStatus((current) =>
-          current?.storyId === storyId
-            ? { ...current, phase: "saving", message: "Saving encyclopedia…" }
-            : current,
-        );
-
-        const parsed = existingStoryState?.stateJson
-          ? safeParseStoryStateData(existingStoryState.stateJson)
-          : null;
-        const nextState: StoryStateDataV2 = {
-          ...normalizeStoryStateToV2(parsed),
-          encyclopedia: result.encyclopedia,
-        };
-
-        await repository.saveStoryState({
-          id: `story-state:${storyId}`,
-          storyId,
-          stateJson: JSON.stringify(nextState),
-          updatedAt: new Date().toISOString(),
-        });
-
-        const entryCount = countEncyclopediaEntries(result.encyclopedia);
-        const summaryLine = `Encyclopedia updated — ${entryCount} entr${entryCount === 1 ? "y" : "ies"} from ${result.messageCount} messages.`;
-
-        setEncyclopediaIndexStatus({
-          storyId,
-          phase: "done",
-          processedMessages: result.messageCount,
-          totalMessages: result.messageCount,
-          message: summaryLine,
-        });
-
-        return summaryLine;
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        setEncyclopediaIndexStatus((current) =>
-          current?.storyId === storyId ? { ...current, phase: "error", error: msg } : current,
-        );
-        throw error;
-      }
-    },
-    [aiSettings?.activeProviderType, getNormalizedAISettings, repository, resolveAIProfile],
-  );
-
   const generateMetaChatAssistantReply = useCallback(
     async (
       scopeId: string,
@@ -2769,6 +2577,17 @@ export function StoryEngineProvider({
       await hydrate(false);
 
       try {
+        if ((job.type as string) === "encyclopedia_index") {
+          await repository.saveBackgroundJob({
+            ...runningJob,
+            status: "cancelled",
+            finishedAt: new Date().toISOString(),
+            error: undefined,
+          });
+          await hydrate(false);
+          return;
+        }
+
         if (job.type === "story_index") {
           const summaryLine = await runDeepIndexProcess(job.storyId ?? "", {
             signal,
@@ -2817,44 +2636,6 @@ export function StoryEngineProvider({
             storyId: job.storyId,
             title:
               completedJob.result?.notificationTitle ?? "Indexing complete",
-            body: completedJob.result?.notificationBody ?? summaryLine,
-          });
-        } else if (job.type === "encyclopedia_index") {
-          const summaryLine = await runEncyclopediaIndexProcess(job.storyId ?? "", {
-            signal,
-            trigger: job.payload?.trigger ?? "manual",
-            incremental: job.payload?.incremental ?? false,
-            rebuild: job.payload?.rebuild ?? false,
-            jobId: job.id,
-          });
-          const refreshed = await repository.getBackgroundJob(job.id);
-          if (signal.aborted || refreshed?.status === "cancelled") {
-            await repository.saveBackgroundJob({
-              ...runningJob,
-              status: "cancelled",
-              finishedAt: new Date().toISOString(),
-              error: undefined,
-            });
-            await hydrate(false);
-            return;
-          }
-          const story = job.storyId ? await repository.getStory(job.storyId) : null;
-          const completedJob: BackgroundJob = {
-            ...runningJob,
-            status: "complete",
-            finishedAt: new Date().toISOString(),
-            result: {
-              notificationTitle: story
-                ? `Encyclopedia updated for ${story.title}`
-                : "Encyclopedia updated",
-              notificationBody: summaryLine,
-            },
-          };
-          await repository.saveBackgroundJob(completedJob);
-          await deliverJobNotice({
-            jobId: completedJob.id,
-            storyId: job.storyId,
-            title: completedJob.result?.notificationTitle ?? "Encyclopedia updated",
             body: completedJob.result?.notificationBody ?? summaryLine,
           });
         } else if (job.type === "metachat_generate") {
@@ -2970,7 +2751,7 @@ export function StoryEngineProvider({
         throw error;
       }
     },
-    [deliverJobNotice, generateMetaChatAssistantReply, hydrate, repository, runDeepIndexProcess, runEncyclopediaIndexProcess],
+    [deliverJobNotice, generateMetaChatAssistantReply, hydrate, repository, runDeepIndexProcess],
   );
 
   useEffect(() => {
@@ -3206,7 +2987,6 @@ export function StoryEngineProvider({
       developerFeatureRequests,
       developerTestingNotes,
       rebuildStatus,
-      encyclopediaIndexStatus,
       jobNotice,
       getUniverseById: (id) => universes.find((universe) => universe.id === id),
       getPlayerCharacterById: (id) =>
@@ -4974,10 +4754,6 @@ export function StoryEngineProvider({
 
         return relationships;
       },
-      async loadStoryEncyclopedia(storyId) {
-        const storyState = await repository.getStoryState(storyId);
-        return parseStoryEncyclopedia(storyState?.stateJson);
-      },
       async updateRpStats(storyId, rpStats) {
         const existing = await repository.getStoryState(storyId);
         const parsed = existing?.stateJson
@@ -5002,7 +4778,6 @@ export function StoryEngineProvider({
         });
       },
       queueStoryIndexJob,
-      queueEncyclopediaIndexJob,
       cancelBackgroundJob,
       dismissJobNotice() {
         setJobNotice(null);
@@ -6757,13 +6532,6 @@ export function StoryEngineProvider({
           } catch {}
         })();
 
-        void (async () => {
-          try {
-            const state = await repository.getStoryState(storyId);
-            if (!isStoryEncyclopediaIndexed(state?.stateJson)) return;
-            await queueEncyclopediaIndexJob(storyId, { trigger: "auto", incremental: true });
-          } catch {}
-        })();
         return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary, appliedRelationshipDeltas };
       },
     };
@@ -6785,7 +6553,6 @@ export function StoryEngineProvider({
     developerFeatureRequests,
     developerTestingNotes,
     rebuildStatus,
-    queueEncyclopediaIndexJob,
   ]);
 
   return (
