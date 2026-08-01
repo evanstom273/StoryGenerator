@@ -16,8 +16,11 @@ export function stripNarratorBlockDisplayPrefix(line: string): string {
 	if (narrator?.[1]?.trim()) return narrator[1].trim();
 	if (/^Narrator\s*(?::|\s[-—])\s*$/i.test(trimmed)) return "";
 
-	const possessive = trimmed.match(/^([A-Z][a-zA-Z''-]*['']s)\s*(?::|\s[-—])\s+(.*)$/i);
-	if (possessive?.[2]?.trim()) return possessive[2].trim();
+	const possessiveLabel = trimmed.match(/^([A-Z][a-zA-Z''-]*['']s)\s*:\s*(.*)$/i);
+	if (possessiveLabel?.[1]) {
+		const remainder = possessiveLabel[2]?.trim() ?? "";
+		return remainder ? `${possessiveLabel[1]} ${remainder}` : possessiveLabel[1];
+	}
 
 	return trimmed;
 }
