@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { stripDisplaySpeakerPrefix } from "../parseSceneBlocks";
+import { stripNarratorBlockDisplayPrefix } from "../parseSceneBlocks";
 
-describe("stripDisplaySpeakerPrefix", () => {
-	it("strips Narrator and character prefixes", () => {
-		expect(stripDisplaySpeakerPrefix("Narrator: *The rain fell hard.*")).toBe("*The rain fell hard.*");
-		expect(stripDisplaySpeakerPrefix("Amy: *smiles* \"Hello.\"")).toBe("*smiles* \"Hello.\"");
-		expect(stripDisplaySpeakerPrefix("Jamie's: *softly runs her fingers through his hair*")).toBe(
-			"*softly runs her fingers through his hair*",
-		);
+describe("stripNarratorBlockDisplayPrefix", () => {
+	it("strips Narrator and possessive prefixes in narrator blocks", () => {
+		expect(stripNarratorBlockDisplayPrefix("Narrator: *The rain fell hard.*")).toBe("*The rain fell hard.*");
+		expect(
+			stripNarratorBlockDisplayPrefix("Jamie's: *softly runs her fingers through his hair*"),
+		).toBe("*softly runs her fingers through his hair*");
 	});
 
-	it("leaves plain dialogue unchanged", () => {
-		expect(stripDisplaySpeakerPrefix("\"Hey. Shh, it's okay.\"")).toBe("\"Hey. Shh, it's okay.\"");
+	it("keeps character name prefixes for dialogue lines", () => {
+		expect(stripNarratorBlockDisplayPrefix("Amy: *smiles* \"Hello.\"")).toBe("Amy: *smiles* \"Hello.\"");
+		expect(stripNarratorBlockDisplayPrefix("Jake: steps into the room")).toBe("Jake: steps into the room");
 	});
 });
