@@ -4,6 +4,58 @@ import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
 
+export function shouldIndexMessageForEncyclopedia(
+	message: Pick<StoryMessage, "role" | "content" | "speakerType" | "speakerName" | "authorDirective">,
+): boolean {
+	if (message.role === "system") return false;
+	if (!message.content?.trim()) return false;
+	if (isContinueMessage(message)) return false;
+	if (isDirectorMessage(message)) return false;
+	if (isAuthorDirectiveMessage(message)) return false;
+	return true;
+}
+
+function resolveMessageSpeakerLabel(message: StoryMessage, playerName: string): string {
+	if (message.role === "user") {
+		return playerName.trim() || "Player";
+	}
+	if (message.speakerType === "canon") {
+		return message.speakerName?.trim() || "Unknown canon character";
+	}
+	if (message.speakerType === "narrator") {
+		return "Narrator";
+	}
+	return "Story";
+}
+
+export function formatSingleMessageForEncyclopedia(
+	message: StoryMessage,
+	playerName: string,
+	messageNumber: number,
+	messageNumberTotal: number,
+	chapterLabel?: string,
+): string {
+	const boundary = resolveMessageChapterBoundary(message);
+	const chapterNote =
+		boundary?.kind === "start" && boundary.label?.trim()
+			? boundary.label.trim()
+			: chapterLabel?.trim() || undefined;
+	const speaker = resolveMessageSpeakerLabel(message, playerName);
+	const role = message.role;
+
+	const lines = [
+		`--- Message ${messageNumber} of ${messageNumberTotal} ---`,
+		`Speaker: ${speaker}`,
+		`Role: ${role}`,
+	];
+	if (chapterNote) {
+		lines.push(`Chapter: ${chapterNote}`);
+	}
+	lines.push("", "MESSAGE TEXT:", message.content.trim(), "", `--- End Message ${messageNumber} ---`);
+
+	return lines.join("\n");
+}
+
 export function formatTranscriptForEncyclopedia(
 	messages: StoryMessage[],
 	playerName: string,
@@ -14,26 +66,7 @@ export function formatTranscriptForEncyclopedia(
 	return messages
 		.map((message, index) => {
 			const number = messageNumberStart + index;
-			const boundary = resolveMessageChapterBoundary(message);
-			const chapterNote =
-				boundary?.kind === "start" && boundary.label?.trim()
-					? ` [Chapter start: ${boundary.label.trim()}]`
-					: "";
-			const prefix =
-				message.role === "user"
-					? isAuthorDirectiveMessage(message)
-						? message.authorDirective?.kind ?? "author"
-						: isContinueMessage(message)
-							? "continue"
-							: isDirectorMessage(message)
-								? "director"
-								: `user (${playerName})`
-					: message.speakerType === "canon"
-						? `canon (${message.speakerName?.trim() || "Unknown"})`
-						: message.speakerType === "narrator"
-							? "narrator"
-							: "assistant";
-			return `[Message ${number}/${total}]${chapterNote} ${prefix}: ${message.content}`;
+			return formatSingleMessageForEncyclopedia(message, playerName, number, total);
 		})
 		.join("\n\n");
 }
