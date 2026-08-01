@@ -1,7 +1,7 @@
 import type { StoryMessage, StoryMessageSpeakerType } from "../../types/models";
 import { formatDateTime } from "../../lib/dates";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
-import { parseSceneBlocks, stripNarratorBlockDisplayPrefix } from "../../lib/storyText/parseSceneBlocks";
+import { parseSceneBlocks, formatNarratorBlockForDisplay } from "../../lib/storyText/parseSceneBlocks";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
@@ -225,7 +225,8 @@ export function StoryMessageBubble({
   }
 
   function renderTextLines(text: string, { forceItalic }: { forceItalic?: boolean } = {}) {
-    const lines = text.replace(/\r\n/g, "\n").split("\n");
+    const prepared = forceItalic ? formatNarratorBlockForDisplay(text) : text;
+    const lines = prepared.replace(/\r\n/g, "\n").split("\n");
 
     return (
       <div className="space-y-1 whitespace-pre-wrap">
@@ -234,9 +235,7 @@ export function StoryMessageBubble({
             return <div key={index} className="h-2" />;
           }
 
-          const segments = parseActionSegments(
-            forceItalic ? stripNarratorBlockDisplayPrefix(line) : line,
-          );
+          const segments = parseActionSegments(line);
 
           if (forceItalic) {
             return (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stripNarratorBlockDisplayPrefix } from "../parseSceneBlocks";
+import { formatNarratorBlockForDisplay, stripNarratorBlockDisplayPrefix } from "../parseSceneBlocks";
 
 describe("stripNarratorBlockDisplayPrefix", () => {
 	it("strips Narrator and repairs possessive pseudo-labels in narrator blocks", () => {
@@ -15,6 +15,12 @@ describe("stripNarratorBlockDisplayPrefix", () => {
 	it("leaves natural possessive prose unchanged", () => {
 		expect(
 			stripNarratorBlockDisplayPrefix("Jamie's eyelashes fluttered open, his vision slowly adjusting."),
+		).toBe("Jamie's eyelashes fluttered open, his vision slowly adjusting.");
+	});
+
+	it("joins possessive labels split across lines", () => {
+		expect(
+			formatNarratorBlockForDisplay("Jamie's:\neyelashes fluttered open, his vision slowly adjusting."),
 		).toBe("Jamie's eyelashes fluttered open, his vision slowly adjusting.");
 	});
 
