@@ -1,7 +1,7 @@
 import type { StoryMessage, StoryMessageSpeakerType } from "../../types/models";
 import { formatDateTime } from "../../lib/dates";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
-import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
+import { parseSceneBlocks, stripDisplaySpeakerPrefix } from "../../lib/storyText/parseSceneBlocks";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
@@ -234,7 +234,7 @@ export function StoryMessageBubble({
             return <div key={index} className="h-2" />;
           }
 
-          const segments = parseActionSegments(line);
+          const segments = parseActionSegments(stripDisplaySpeakerPrefix(line));
 
           if (forceItalic) {
             return (
@@ -250,12 +250,11 @@ export function StoryMessageBubble({
     );
   }
 
-  function renderInlineSpeakerLine(speaker: string, text: string) {
+  function renderInlineSpeakerLine(text: string) {
     const combined = text.replace(/\s*\n+\s*/g, " ").replace(/\s+/g, " ").trim();
     const segments = parseActionSegments(combined);
     return (
       <div className="whitespace-pre-wrap">
-        <span className="font-bold text-accent">{speaker}:</span>{" "}
         {renderInlineSegments(segments)}
       </div>
     );
@@ -281,7 +280,7 @@ export function StoryMessageBubble({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div className="flex min-w-0 items-center gap-2">
-            {speakerLabel ? (
+            {speakerLabel && message.role !== "assistant" ? (
               <div className={cn("truncate text-sm font-semibold", speakerTagClass)}>
                 {speakerLabel}
               </div>
@@ -323,7 +322,7 @@ export function StoryMessageBubble({
                 <div key={index}>
                   {!block.speakerLabel || block.speakerLabel === "Narrator"
                     ? renderTextLines(block.text, { forceItalic: true })
-                    : renderInlineSpeakerLine(block.speakerLabel, block.text)}
+                    : renderInlineSpeakerLine(block.text)}
                 </div>
               ))
             : (

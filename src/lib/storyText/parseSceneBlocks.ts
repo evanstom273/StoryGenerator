@@ -7,6 +7,23 @@ export interface SceneBlock {
   segments: StoryTextSegment[];
 }
 
+/** Strip leading speaker labels from a line for transcript display only. */
+export function stripDisplaySpeakerPrefix(line: string): string {
+	const trimmed = line.trim();
+	if (!trimmed) return trimmed;
+
+	const inline = trimmed.match(/^(?:Narrator|[^\n:]{1,48})\s*(?::|\s[-—])\s+(.*)$/i);
+	if (inline?.[1]?.trim()) {
+		return inline[1].trim();
+	}
+
+	if (/^(?:Narrator|[^\n:]{1,48})\s*(?::|\s[-—])\s*$/i.test(trimmed)) {
+		return "";
+	}
+
+	return trimmed;
+}
+
 // Words that start sentences but are never character names.
 const NOT_A_NAME = new Set([
   "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",

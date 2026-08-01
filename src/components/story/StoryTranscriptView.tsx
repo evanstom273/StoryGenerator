@@ -3,7 +3,7 @@ import type { RpConfig, RpTimeState, StoryChapter, StoryMessage } from "../../ty
 import { formatTimeShort, timesDiffer } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
-import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
+import { parseSceneBlocks, stripDisplaySpeakerPrefix } from "../../lib/storyText/parseSceneBlocks";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
@@ -205,32 +205,6 @@ function getSpeakerTag(label: string, kind: SpeakerKind) {
     rowClass: "rounded-2xl px-3 py-1 bg-transparent",
     contentClass: "text-ink",
   };
-}
-
-function renderInlineContent(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const segments = parseActionSegments(trimmed);
-  if (!segments.some((segment) => segment.type === "action")) {
-    return <span className="text-ink">{trimmed}</span>;
-  }
-
-  return (
-    <span className="text-ink">
-      {segments.map((segment, index) =>
-        segment.type === "action" ? (
-          <span key={index} className="italic text-ink-muted">
-            {segment.text}
-          </span>
-        ) : (
-          <span key={index}>{segment.text}</span>
-        ),
-      )}
-    </span>
-  );
 }
 
 function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
@@ -463,24 +437,14 @@ export function StoryTranscriptView({
                 const tag = isNarration
                   ? getSpeakerTag("Narrator", "narrator")
                   : getSpeakerTag(block.speakerLabel?.trim() || "Unknown", "npc");
-                if (isNarration) {
-                  return (
-                    <div key={blockIndex} className={tag.rowClass}>
-                      <div className={cn("min-w-0 text-sm leading-7 whitespace-pre-wrap break-words", tag.contentClass)}>
-                        {lines.map((line, index) => (
-                          <div key={index}>{renderLine(line, { forceItalic: true })}</div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                }
                 return (
                   <div key={blockIndex} className={tag.rowClass}>
-                    <div className="flex items-start gap-3 text-sm leading-7">
-                      <div className={tag.tagClass}>{tag.label}:</div>
-                      <div className={cn("min-w-0 flex-1 space-y-2 whitespace-pre-wrap break-words", tag.contentClass)}>
-                        {renderInlineContent(lines.join(" ").replace(/\s+/g, " "))}
-                      </div>
+                    <div className={cn("min-w-0 text-sm leading-7 whitespace-pre-wrap break-words", tag.contentClass)}>
+                      {lines.map((line, index) => (
+                        <div key={index}>
+                          {renderLine(stripDisplaySpeakerPrefix(line), { forceItalic: isNarration })}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );
