@@ -92,6 +92,7 @@ export interface PlayerCharacter {
   goals: string;
   notes: string;
   universeId: EntityId;
+  universeIds?: EntityId[];
   scope?: "library" | "story";
   storyId?: EntityId;
   createdAt: Timestamp;
@@ -196,6 +197,7 @@ export interface Story {
   id: EntityId;
   title: string;
   universeId: EntityId;
+  universeIds?: EntityId[];
   playerCharacterId: EntityId;
   parentStoryId?: EntityId;
   rootStoryId?: EntityId;
@@ -204,6 +206,7 @@ export interface Story {
   sequelSeedSourceStoryId?: EntityId;
   openingPrompt?: string;
   universePackSnapshot?: UniversePackSnapshotV1;
+  universePackSnapshots?: UniversePackSnapshotV1[];
   isArchived?: boolean;
   readOnlyReason?: "sequel_prequel";
   readOnlyLockedAt?: Timestamp;
@@ -633,6 +636,7 @@ export interface PlayerCharacterDraft {
   goals: string;
   notes: string;
   universeId: EntityId;
+  universeIds?: EntityId[];
   scope?: "library" | "story";
   storyId?: EntityId;
 }
@@ -640,6 +644,7 @@ export interface PlayerCharacterDraft {
 export interface StoryDraft {
   title: string;
   universeId: EntityId;
+  universeIds?: EntityId[];
   playerCharacterId: EntityId;
   parentStoryId?: EntityId;
   rootStoryId?: EntityId;

@@ -4,6 +4,7 @@ import { EmptyState } from "../components/EmptyState";
 import { buttonClasses } from "../components/ui/Button";
 import { StoryListRow } from "../components/story/StoryListRow";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
+import { getUniverseIds } from "../lib/universeIds";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 
 export function StoriesPage() {
@@ -30,7 +31,7 @@ export function StoriesPage() {
     }
 
     if (universeFilter !== "all") {
-      result = result.filter((story) => story.universeId === universeFilter);
+      result = result.filter((story) => getUniverseIds(story).includes(universeFilter));
     }
 
     if (sortMode === "created") {
@@ -124,7 +125,9 @@ export function StoriesPage() {
               <StoryListRow
                 key={story.id}
                 story={story}
-                universeName={getUniverseById(story.universeId)?.name ?? "Unknown universe"}
+                universeName={getUniverseIds(story)
+                  .map((universeId) => getUniverseById(universeId)?.name ?? "Unknown universe")
+                  .join(", ")}
                 playerCharacterName={
                   getPlayerCharacterById(story.playerCharacterId)?.name ?? "Unknown character"
                 }

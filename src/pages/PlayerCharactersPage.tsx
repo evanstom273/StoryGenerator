@@ -5,6 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 import { CharacterCard } from "../components/cards/CharacterCard";
 import { buttonClasses } from "../components/ui/Button";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
+import { characterMatchesUniverses, getUniverseIds } from "../lib/universeIds";
 
 export function PlayerCharactersPage() {
   const {
@@ -23,7 +24,9 @@ export function PlayerCharactersPage() {
   const filteredCharacters = useMemo(() => {
     let items = libraryCharacters;
     if (universeFilter !== "all") {
-      items = items.filter((character) => character.universeId === universeFilter);
+      items = items.filter((character) =>
+        characterMatchesUniverses(character, [universeFilter]),
+      );
     }
 
     const sorted = [...items];
@@ -90,7 +93,9 @@ export function PlayerCharactersPage() {
             <CharacterCard
               key={character.id}
               character={character}
-              universeName={getUniverseById(character.universeId)?.name ?? "Unknown universe"}
+              universeName={getUniverseIds(character)
+                .map((universeId) => getUniverseById(universeId)?.name ?? "Unknown universe")
+                .join(", ")}
               linkedStoryCount={getStoriesForPlayerCharacter(character.id).length}
               actions={
                 <Link

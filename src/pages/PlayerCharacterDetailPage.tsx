@@ -6,6 +6,7 @@ import { buttonClasses, Button } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { formatDate } from "../lib/dates";
+import { getUniverseIds } from "../lib/universeIds";
 
 export function PlayerCharacterDetailPage() {
   const { characterId } = useParams();
@@ -17,11 +18,15 @@ export function PlayerCharacterDetailPage() {
     getUniverseById,
   } = useStoryEngine();
   const character = characterId ? getPlayerCharacterById(characterId) : undefined;
-  const universe = character ? getUniverseById(character.universeId) : undefined;
+  const linkedUniverses = character
+    ? getUniverseIds(character)
+        .map((universeId) => getUniverseById(universeId))
+        .filter((universe): universe is NonNullable<typeof universe> => Boolean(universe))
+    : [];
   const linkedStories = character ? getStoriesForPlayerCharacter(character.id) : [];
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  if (!character || !universe) {
+  if (!character || !linkedUniverses.length) {
     return (
       <div className="space-y-8">
         <PageHeader
@@ -43,7 +48,7 @@ export function PlayerCharacterDetailPage() {
   }
 
   const activeCharacter = character;
-  const activeUniverse = universe;
+  const universeLabel = linkedUniverses.map((universe) => universe.name).join(", ");
 
   async function handleDelete() {
     const confirmed = window.confirm(
@@ -69,7 +74,7 @@ export function PlayerCharacterDetailPage() {
       <PageHeader
         eyebrow="Player Characters"
         title={activeCharacter.name}
-        description="This is the original character the user controls inside the selected universe."
+        description="This is the original character the user controls across the selected universes."
         actions={
           <div className="flex gap-3">
             <Link
@@ -90,8 +95,8 @@ export function PlayerCharacterDetailPage() {
           <Panel variant="flat">
             <dl className="divide-y divide-divider/[0.3]">
               <div className="flex items-center justify-between gap-4 py-2.5">
-                <dt className="text-[11px] text-ink-muted">Universe</dt>
-                <dd className="text-[13px] text-ink-soft">{activeUniverse.name}</dd>
+                <dt className="text-[11px] text-ink-muted">Universes</dt>
+                <dd className="text-[13px] text-ink-soft">{universeLabel}</dd>
               </div>
               <div className="flex items-center justify-between gap-4 py-2.5">
                 <dt className="text-[11px] text-ink-muted">Age</dt>
@@ -158,14 +163,17 @@ export function PlayerCharacterDetailPage() {
                 <dd className="text-[13px] text-ink-soft">{formatDate(activeCharacter.createdAt)}</dd>
               </div>
               <div className="flex items-center justify-between gap-3 py-2.5">
-                <dt className="text-[11px] text-ink-muted">Universe</dt>
-                <dd>
-                  <Link
-                    to={`/universes/${activeUniverse.id}`}
-                    className={buttonClasses({ variant: "ghost", size: "sm" })}
-                  >
-                    Open
-                  </Link>
+                <dt className="text-[11px] text-ink-muted">Universes</dt>
+                <dd className="flex flex-wrap gap-2">
+                  {linkedUniverses.map((universe) => (
+                    <Link
+                      key={universe.id}
+                      to={`/universes/${universe.id}`}
+                      className={buttonClasses({ variant: "ghost", size: "sm" })}
+                    >
+                      {universe.name}
+                    </Link>
+                  ))}
                 </dd>
               </div>
             </dl>

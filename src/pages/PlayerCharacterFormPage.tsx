@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
-import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
+import { Field, MultiUniversePicker, TextAreaInput, TextInput } from "../components/forms/Fields";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { SparklesIcon } from "../components/icons";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import type { PlayerCharacterDraft } from "../types/models";
+import { parseUniverseIdsParam } from "../lib/universeIds";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 
 const initialFormState: PlayerCharacterDraft = {
@@ -23,6 +24,7 @@ const initialFormState: PlayerCharacterDraft = {
   goals: "",
   notes: "",
   universeId: "",
+  universeIds: [],
 };
 
 export function PlayerCharacterFormPage() {
@@ -38,10 +40,16 @@ export function PlayerCharacterFormPage() {
   } = useStoryEngine();
   const existingCharacter = characterId ? getPlayerCharacterById(characterId) : undefined;
   const isEditing = Boolean(existingCharacter);
-  const [formState, setFormState] = useState<PlayerCharacterDraft>(() => ({
-    ...initialFormState,
-    universeId: searchParams.get("universeId") ?? "",
-  }));
+  const [formState, setFormState] = useState<PlayerCharacterDraft>(() => {
+    const seededIds = parseUniverseIdsParam(searchParams.get("universeIds"));
+    const legacyId = searchParams.get("universeId")?.trim() ?? "";
+    const universeIds = seededIds.length ? seededIds : legacyId ? [legacyId] : [];
+    return {
+      ...initialFormState,
+      universeId: universeIds[0] ?? "",
+      universeIds,
+    };
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -73,6 +81,9 @@ export function PlayerCharacterFormPage() {
       goals: existingCharacter.goals,
       notes: existingCharacter.notes,
       universeId: existingCharacter.universeId,
+      universeIds: existingCharacter.universeIds?.length
+        ? existingCharacter.universeIds
+        : [existingCharacter.universeId],
     });
   }, [existingCharacter]);
 
@@ -82,7 +93,7 @@ export function PlayerCharacterFormPage() {
         return;
       }
 
-      if (!formState.name.trim() || !formState.universeId) {
+      if (!formState.universeIds?.length && !formState.universeId) {
         return;
       }
 
@@ -107,6 +118,7 @@ export function PlayerCharacterFormPage() {
       formState.goals,
       formState.notes,
       formState.universeId,
+      formState.universeIds?.join("|"),
       isSubmitting,
       isGenerating,
     ],
@@ -167,8 +179,8 @@ export function PlayerCharacterFormPage() {
       return;
     }
 
-    if (!formState.universeId) {
-      setErrorMessage("Select the universe this player character belongs to.");
+    if (!formState.universeIds?.length && !formState.universeId) {
+      setErrorMessage("Select at least one universe for this player character.");
       return;
     }
 
@@ -308,23 +320,18 @@ export function PlayerCharacterFormPage() {
               />
             </Field>
 
-            <Field label="Universe" hint="Required">
-              <SelectInput
-                value={formState.universeId}
-                onChange={(event) =>
+            <Field label="Universes" hint="Select one or more">
+              <MultiUniversePicker
+                universes={universes}
+                selectedIds={formState.universeIds ?? (formState.universeId ? [formState.universeId] : [])}
+                onChange={(universeIds) =>
                   setFormState((currentState) => ({
                     ...currentState,
-                    universeId: event.target.value,
+                    universeIds,
+                    universeId: universeIds[0] ?? "",
                   }))
                 }
-              >
-                <option value="">Select a universe</option>
-                {universes.map((universe) => (
-                  <option key={universe.id} value={universe.id}>
-                    {universe.name}
-                  </option>
-                ))}
-              </SelectInput>
+              />
             </Field>
           </div>
 
