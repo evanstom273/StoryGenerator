@@ -1,5 +1,5 @@
 const DATABASE_NAME = "story-engine-db";
-const DATABASE_VERSION = 6;
+const DATABASE_VERSION = 7;
 
 export type StoreName =
   | "universes"
@@ -73,9 +73,11 @@ export function openStoryEngineDatabase() {
 
       const playerCharacters = ensureStore("playerCharacters", { keyPath: "id" });
       ensureIndex(playerCharacters, "universeId", "universeId", { unique: false });
+      ensureIndex(playerCharacters, "universeIds", "universeIds", { unique: false, multiEntry: true });
 
       const stories = ensureStore("stories", { keyPath: "id" });
       ensureIndex(stories, "universeId", "universeId", { unique: false });
+      ensureIndex(stories, "universeIds", "universeIds", { unique: false, multiEntry: true });
       ensureIndex(stories, "playerCharacterId", "playerCharacterId", { unique: false });
 
       const messages = ensureStore("messages", { keyPath: "id" });
@@ -131,6 +133,37 @@ export function openStoryEngineDatabase() {
 
         if (fromVersion < 6 && toVersion >= 6) {
           return;
+        }
+
+        if (fromVersion < 7 && toVersion >= 7) {
+          const migrateUniverseIds = (storeName: "playerCharacters" | "stories") => {
+            const store = transaction.objectStore(storeName);
+            const request = store.openCursor();
+
+            request.onsuccess = () => {
+              const cursor = request.result;
+              if (!cursor) {
+                return;
+              }
+
+              const record = cursor.value as {
+                universeId?: string;
+                universeIds?: string[];
+              };
+
+              if (!record.universeIds?.length && record.universeId?.trim()) {
+                cursor.update({
+                  ...record,
+                  universeIds: [record.universeId.trim()],
+                });
+              }
+
+              cursor.continue();
+            };
+          };
+
+          migrateUniverseIds("playerCharacters");
+          migrateUniverseIds("stories");
         }
       };
 

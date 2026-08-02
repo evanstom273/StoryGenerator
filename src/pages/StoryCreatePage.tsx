@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
-import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
+import { Field, MultiUniversePicker, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
+import { getUniverseIds } from "../lib/universeIds";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
@@ -12,6 +13,7 @@ import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
 const initialFormState = {
   title: "",
   universeId: "",
+  universeIds: [] as string[],
   playerCharacterId: "",
   currentSummary: "",
 };
@@ -29,6 +31,7 @@ const initialQuickCharacterState: PlayerCharacterDraft = {
   goals: "",
   notes: "",
   universeId: "",
+  universeIds: [],
   scope: "story",
 };
 
@@ -75,21 +78,32 @@ export function StoryCreatePage() {
   const sourceStory = sourceMode
     ? getStoryById(sourceMode === "branch" ? branchFromId : sequelToId)
     : undefined;
-  const sourceUniverse = sourceStory ? getUniverseById(sourceStory.universeId) : undefined;
+  const sourceUniverseIds = sourceStory ? getUniverseIds(sourceStory) : [];
+  const sourceUniverses = sourceUniverseIds
+    .map((universeId) => getUniverseById(universeId))
+    .filter((universe): universe is NonNullable<typeof universe> => Boolean(universe));
   const sourceCharacter = sourceStory
     ? getPlayerCharacterById(sourceStory.playerCharacterId)
     : undefined;
   const seededSourceKeyRef = useRef<string | null>(null);
-  const isSequelMode = sourceMode === "sequel" && Boolean(sourceStory && sourceUniverse && sourceCharacter);
-  const isBranchMode = sourceMode === "branch" && Boolean(sourceStory && sourceUniverse && sourceCharacter);
+  const isSequelMode =
+    sourceMode === "sequel" && Boolean(sourceStory && sourceUniverses.length && sourceCharacter);
+  const isBranchMode =
+    sourceMode === "branch" && Boolean(sourceStory && sourceUniverses.length && sourceCharacter);
   const isDerivedMode = isSequelMode || isBranchMode;
+  const hasSelectedUniverses = formState.universeIds.length > 0 || Boolean(formState.universeId);
 
   const availableCharacters = useMemo(
-    () =>
-      formState.universeId
-        ? getPlayerCharactersForUniverse(formState.universeId)
-        : [],
-    [formState.universeId, getPlayerCharactersForUniverse],
+    () => {
+      const selectedIds =
+        formState.universeIds.length > 0
+          ? formState.universeIds
+          : formState.universeId
+            ? [formState.universeId]
+            : [];
+      return selectedIds.length ? getPlayerCharactersForUniverse(selectedIds) : [];
+    },
+    [formState.universeId, formState.universeIds, getPlayerCharactersForUniverse],
   );
 
   const selectableCharacters = useMemo(() => {
@@ -106,12 +120,18 @@ export function StoryCreatePage() {
     setQuickCharacterState((current) => ({
       ...current,
       universeId: formState.universeId,
+      universeIds:
+        formState.universeIds.length > 0
+          ? formState.universeIds
+          : formState.universeId
+            ? [formState.universeId]
+            : [],
       scope: "story",
     }));
-  }, [formState.universeId]);
+  }, [formState.universeId, formState.universeIds]);
 
   useEffect(() => {
-    if (!isDerivedMode || !sourceStory || !sourceUniverse || !sourceCharacter) {
+    if (!isDerivedMode || !sourceStory || !sourceUniverses.length || !sourceCharacter) {
       return;
     }
 
@@ -129,12 +149,21 @@ export function StoryCreatePage() {
       return {
         ...current,
         title: current.title || nextTitle,
-        universeId: sourceUniverse.id,
+        universeId: sourceUniverseIds[0] ?? "",
+        universeIds: sourceUniverseIds,
         playerCharacterId: current.playerCharacterId || sourceCharacter.id,
         currentSummary: isBranchMode ? sourceStory.currentSummary : current.currentSummary,
       };
     });
-  }, [isBranchMode, isDerivedMode, sourceCharacter, sourceMode, sourceStory, sourceUniverse]);
+  }, [
+    isBranchMode,
+    isDerivedMode,
+    sourceCharacter,
+    sourceMode,
+    sourceStory,
+    sourceUniverseIds,
+    sourceUniverses.length,
+  ]);
 
   useEffect(() => {
     if (!isDerivedMode || !sourceStory) {
@@ -183,8 +212,8 @@ export function StoryCreatePage() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!formState.universeId) {
-      setErrorMessage("Select a universe before creating the story.");
+    if (!hasSelectedUniverses) {
+      setErrorMessage("Select at least one universe before creating the story.");
       return;
     }
 
@@ -220,6 +249,10 @@ export function StoryCreatePage() {
         const createdCharacter = await createPlayerCharacter({
           ...quickCharacterState,
           universeId: formState.universeId,
+          universeIds:
+            formState.universeIds.length > 0
+              ? formState.universeIds
+              : [formState.universeId],
           scope: "story",
         });
         resolvedPlayerCharacterId = createdCharacter.id;
@@ -239,6 +272,10 @@ export function StoryCreatePage() {
           })
         : await createStory({
             ...formState,
+            universeIds:
+              formState.universeIds.length > 0
+                ? formState.universeIds
+                : [formState.universeId],
             playerCharacterId: resolvedPlayerCharacterId,
             currentSummary: formState.currentSummary.trim(),
           });
@@ -247,6 +284,10 @@ export function StoryCreatePage() {
         await updatePlayerCharacter(resolvedPlayerCharacterId, {
           ...quickCharacterState,
           universeId: formState.universeId,
+          universeIds:
+            formState.universeIds.length > 0
+              ? formState.universeIds
+              : [formState.universeId],
           scope: "story",
           storyId: story.id,
         }).catch(() => null);
@@ -269,8 +310,8 @@ export function StoryCreatePage() {
   }
 
   async function handleGenerateQuickCharacterDetails(mode: "overwrite" | "fillEmpty") {
-    if (!formState.universeId) {
-      setQuickCharacterError("Select a universe before generating a character.");
+    if (!hasSelectedUniverses) {
+      setQuickCharacterError("Select at least one universe before generating a character.");
       return;
     }
 
@@ -284,7 +325,10 @@ export function StoryCreatePage() {
 
     const fields =
       mode === "fillEmpty"
-        ? candidateFields.filter((field) => !(quickCharacterState[field] ?? "").trim())
+        ? candidateFields.filter((field) => {
+            const value = quickCharacterState[field];
+            return typeof value === "string" && !value.trim();
+          })
         : candidateFields;
 
     if (!fields.length) {
@@ -331,14 +375,15 @@ export function StoryCreatePage() {
         }
       />
 
-      {isDerivedMode && sourceStory && sourceUniverse && sourceCharacter ? (
+      {isDerivedMode && sourceStory && sourceUniverses.length && sourceCharacter ? (
         <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]" padding="lg">
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
             {isBranchMode ? "Branch Source" : "Sequel Source"}
           </div>
           <div className="mt-3 text-lg font-semibold text-ink">{sourceStory.title}</div>
           <p className="mt-2 text-sm leading-7 text-ink-muted">
-            Universe: {sourceUniverse.name} · Default protagonist: {sourceCharacter.name}
+            Universes: {sourceUniverses.map((universe) => universe.name).join(", ")} · Default
+            protagonist: {sourceCharacter.name}
           </p>
           <p className="mt-3 text-sm leading-7 text-ink-muted">
             {isBranchMode ? (
@@ -377,28 +422,36 @@ export function StoryCreatePage() {
       <Panel variant="flat" padding="lg">
         <form className="space-y-8" onSubmit={handleSubmit}>
           <div className="grid gap-6 lg:grid-cols-2">
-            <Field label="Universe" hint="Required">
-              <SelectInput
-                value={formState.universeId}
-                disabled={isDerivedMode}
-                onChange={(event) =>
-                  setFormState((currentState) => ({
-                    ...currentState,
-                    universeId: event.target.value,
-                    playerCharacterId:
-                      currentState.universeId === event.target.value
-                        ? currentState.playerCharacterId
-                        : "",
-                  }))
+            <Field label="Universes" hint="Select one or more">
+              <MultiUniversePicker
+                universes={universes}
+                selectedIds={
+                  formState.universeIds.length > 0
+                    ? formState.universeIds
+                    : formState.universeId
+                      ? [formState.universeId]
+                      : []
                 }
-              >
-                <option value="">Select a universe</option>
-                {universes.map((universe) => (
-                  <option key={universe.id} value={universe.id}>
-                    {universe.name}
-                  </option>
-                ))}
-              </SelectInput>
+                disabled={isDerivedMode}
+                onChange={(universeIds) =>
+                  setFormState((currentState) => {
+                    const previousIds =
+                      currentState.universeIds.length > 0
+                        ? currentState.universeIds
+                        : currentState.universeId
+                          ? [currentState.universeId]
+                          : [];
+                    const selectionChanged =
+                      previousIds.join("|") !== universeIds.join("|");
+                    return {
+                      ...currentState,
+                      universeIds,
+                      universeId: universeIds[0] ?? "",
+                      playerCharacterId: selectionChanged ? "" : currentState.playerCharacterId,
+                    };
+                  })
+                }
+              />
             </Field>
 
             <Field label="Protagonist" hint="Required">
@@ -406,7 +459,7 @@ export function StoryCreatePage() {
                 <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/50 px-4 py-3 text-sm text-ink-muted">
                   {isBranchMode
                     ? "A branch keeps the same universe and protagonist as the source story so the transcript and indexed state stay consistent."
-                    : "The sequel stays in the same universe. You can keep the same protagonist or switch to another character from this universe."}
+                    : "The sequel stays in the same universes. You can keep the same protagonist or switch to another character from those universes."}
                 </div>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-3">
@@ -414,7 +467,7 @@ export function StoryCreatePage() {
                     type="button"
                     variant={protagonistMode === "existing" ? "secondary" : "ghost"}
                     onClick={() => setProtagonistMode("existing")}
-                    disabled={!formState.universeId}
+                    disabled={!hasSelectedUniverses}
                   >
                     Existing
                   </Button>
@@ -422,7 +475,7 @@ export function StoryCreatePage() {
                     type="button"
                     variant={protagonistMode === "newPermanent" ? "secondary" : "ghost"}
                     onClick={() => setProtagonistMode("newPermanent")}
-                    disabled={!formState.universeId}
+                    disabled={!hasSelectedUniverses}
                   >
                     New
                   </Button>
@@ -430,7 +483,7 @@ export function StoryCreatePage() {
                     type="button"
                     variant={protagonistMode === "quick" ? "secondary" : "ghost"}
                     onClick={() => setProtagonistMode("quick")}
-                    disabled={!formState.universeId}
+                    disabled={!hasSelectedUniverses}
                   >
                     Quick
                   </Button>
@@ -449,14 +502,14 @@ export function StoryCreatePage() {
                     playerCharacterId: event.target.value,
                   }))
                 }
-                disabled={isBranchMode || !formState.universeId || !selectableCharacters.length}
+                disabled={isBranchMode || !hasSelectedUniverses || !selectableCharacters.length}
               >
                 <option value="">
-                  {formState.universeId
+                  {hasSelectedUniverses
                     ? selectableCharacters.length
                       ? "Select a player character"
-                      : "No player characters in this universe yet"
-                    : "Select a universe first"}
+                      : "No player characters in these universes yet"
+                    : "Select universes first"}
                 </option>
                 {selectableCharacters.map((character) => (
                   <option key={character.id} value={character.id}>
@@ -474,7 +527,13 @@ export function StoryCreatePage() {
                 This adds the character to your Player Characters library so you can reuse them across stories.
               </p>
               <Link
-                to={`/player-characters/new?universeId=${formState.universeId}`}
+                to={`/player-characters/new?universeIds=${encodeURIComponent(
+                  (
+                    formState.universeIds.length > 0
+                      ? formState.universeIds
+                      : [formState.universeId]
+                  ).join(","),
+                )}`}
                 className={buttonClasses({ className: "mt-5" })}
               >
                 Create Player Character
@@ -701,17 +760,23 @@ export function StoryCreatePage() {
             </p>
           </Panel>
 
-          {formState.universeId && !selectableCharacters.length && protagonistMode === "existing" && !isDerivedMode ? (
+          {hasSelectedUniverses && !selectableCharacters.length && protagonistMode === "existing" && !isDerivedMode ? (
             <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]">
               <h2 className="text-lg font-semibold text-ink">
-                This universe needs a player character
+                These universes need a player character
               </h2>
               <p className="mt-2 text-sm leading-7 text-ink-muted">
                 Create the original character the user will play, then return to
                 finish this story setup. Or switch to Quick.
               </p>
               <Link
-                to={`/player-characters/new?universeId=${formState.universeId}`}
+                to={`/player-characters/new?universeIds=${encodeURIComponent(
+                  (
+                    formState.universeIds.length > 0
+                      ? formState.universeIds
+                      : [formState.universeId]
+                  ).join(","),
+                )}`}
                 className={buttonClasses({ className: "mt-5" })}
               >
                 Create Player Character

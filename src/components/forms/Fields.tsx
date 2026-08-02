@@ -6,6 +6,7 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 import { useEffect, useRef, useState } from "react";
+import type { EntityId, Universe } from "../../types/models";
 import { cn } from "../../utils/cn";
 
 export function Field({
@@ -170,6 +171,53 @@ export function TextAreaInput({
         Drag to resize
         <span className="ml-3 h-1.5 w-10 rounded-full bg-divider/80 transition group-hover:bg-accent/50" />
       </button>
+    </div>
+  );
+}
+
+export function MultiUniversePicker({
+  universes,
+  selectedIds,
+  onChange,
+  disabled,
+}: {
+  universes: Universe[];
+  selectedIds: EntityId[];
+  onChange: (ids: EntityId[]) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      {universes.map((universe) => {
+        const checked = selectedIds.includes(universe.id);
+        return (
+          <label
+            key={universe.id}
+            className={cn(
+              "flex items-center gap-3 rounded-[8px] border px-3 py-2.5 text-sm transition",
+              checked
+                ? "border-accent/[0.35] bg-accent/[0.08] text-ink"
+                : "border-divider/[0.45] bg-panel-muted/50 text-ink-soft",
+              disabled ? "opacity-60" : "cursor-pointer hover:border-accent/[0.25]",
+            )}
+          >
+            <input
+              type="checkbox"
+              className="size-4 rounded border-divider text-accent focus:ring-accent/[0.25]"
+              checked={checked}
+              disabled={disabled}
+              onChange={() => {
+                if (checked) {
+                  onChange(selectedIds.filter((id) => id !== universe.id));
+                  return;
+                }
+                onChange([...selectedIds, universe.id]);
+              }}
+            />
+            <span className="font-medium">{universe.name}</span>
+          </label>
+        );
+      })}
     </div>
   );
 }

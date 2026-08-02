@@ -12,6 +12,12 @@ import {
   storyEngineRepository,
   type StoryEngineRepository,
 } from "../../lib/repository";
+import { resolveStoryUniverseContext } from "../../lib/storyUniverseContext";
+import {
+  characterMatchesUniverses,
+  getUniverseIds,
+  normalizeUniverseIds,
+} from "../../lib/universeIds";
 import {
   sortByCreatedAtDesc,
   sortByTimestampAsc,
@@ -211,7 +217,7 @@ interface StoryEngineContextValue {
   getMetaChatJobs: (scopeId: string) => BackgroundJob[];
   getMetaChatDraft: (storyId: string) => string;
   getMetaChatReferences: (scopeId: string) => MetaChatReference[];
-  getPlayerCharactersForUniverse: (universeId: string) => PlayerCharacter[];
+  getPlayerCharactersForUniverse: (universeIdOrIds: string | string[]) => PlayerCharacter[];
   getStoriesForUniverse: (universeId: string) => Story[];
   getStoriesForPlayerCharacter: (playerCharacterId: string) => Story[];
   getParentStory: (storyId: string) => Story | undefined;
@@ -530,6 +536,33 @@ function buildUniversePackSnapshot(
         universeImports: universePack.universeImports,
       }
     : undefined;
+}
+
+function applyUniverseIdsFromDraft<T extends { universeId: string; universeIds?: string[] }>(
+  draft: { universeId: string; universeIds?: string[] },
+  entity: T,
+): T {
+  const universeIds = normalizeUniverseIds(
+    draft.universeIds?.length ? draft.universeIds : [draft.universeId],
+  );
+  return {
+    ...entity,
+    universeId: universeIds[0] ?? draft.universeId,
+    universeIds,
+  };
+}
+
+async function buildUniversePackSnapshotsForIds(
+  repository: StoryEngineRepository,
+  universeIds: string[],
+): Promise<UniversePackSnapshotV1[]> {
+  const snapshots = await Promise.all(
+    normalizeUniverseIds(universeIds).map(async (universeId) => {
+      const pack = await repository.getUniverseExportBundle(universeId);
+      return buildUniversePackSnapshot(pack);
+    }),
+  );
+  return snapshots.filter((snapshot): snapshot is UniversePackSnapshotV1 => Boolean(snapshot));
 }
 
 function reportGenerationAudit(args: {
@@ -1818,23 +1851,26 @@ export function StoryEngineProvider({
           return null;
         }
 
-        const [universe, playerCharacter, storyState, storyMessages, storyChapters] =
+        const [universeContext, playerCharacter, storyState, storyMessages, storyChapters] =
           await Promise.all([
-            repository.getUniverse(story.universeId),
+            resolveStoryUniverseContext({
+              story,
+              getUniverse: repository.getUniverse,
+              listUniverseImports: repository.listUniverseImports,
+            }),
             repository.getPlayerCharacter(story.playerCharacterId),
             repository.getStoryState(storyId),
             repository.listStoryMessages(storyId),
             repository.listStoryChapters(storyId),
           ]);
 
-        if (!universe || !playerCharacter) {
+        if (!playerCharacter) {
           return null;
         }
 
-        const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
         return `${heading}\n${buildMetaChatCanonContext({
           story,
-          universe: effectiveUniverse,
+          universe: universeContext.universe,
           playerCharacter,
           storyState,
           messages: storyMessages,
@@ -1925,13 +1961,13 @@ export function StoryEngineProvider({
           continue;
         }
         const relatedStories = stories
-          .filter((story) => story.universeId === universe.id)
+          .filter((story) => getUniverseIds(story).includes(universe.id))
           .slice(0, 8)
           .map((story) => story.title);
         const relatedCharacters = playerCharacters
           .filter(
             (character) =>
-              character.universeId === universe.id &&
+              characterMatchesUniverses(character, [universe.id]) &&
               (character.scope ?? "library") === "library",
           )
           .slice(0, 8)
@@ -3017,16 +3053,25 @@ export function StoryEngineProvider({
         storyUiStates.find((record) => record.storyId === scopeId)?.metaChatDraft ?? "",
       getMetaChatReferences: (scopeId) =>
         storyUiStates.find((record) => record.storyId === scopeId)?.metaChatReferences ?? [],
-      getPlayerCharactersForUniverse: (universeId) =>
-        sortByCreatedAtDesc(
+      getPlayerCharactersForUniverse: (universeIdOrIds) => {
+        const selectedIds = normalizeUniverseIds(
+          Array.isArray(universeIdOrIds) ? universeIdOrIds : [universeIdOrIds],
+        );
+        if (!selectedIds.length) {
+          return [];
+        }
+        return sortByCreatedAtDesc(
           playerCharacters.filter(
             (character) =>
-              character.universeId === universeId &&
-              (character.scope ?? "library") === "library",
+              (character.scope ?? "library") === "library" &&
+              characterMatchesUniverses(character, selectedIds),
           ),
-        ),
+        );
+      },
       getStoriesForUniverse: (universeId) =>
-        sortByUpdatedAtDesc(stories.filter((story) => story.universeId === universeId)),
+        sortByUpdatedAtDesc(
+          stories.filter((story) => getUniverseIds(story).includes(universeId)),
+        ),
       getStoriesForPlayerCharacter: (playerCharacterId) =>
         sortByUpdatedAtDesc(
           stories.filter((story) => story.playerCharacterId === playerCharacterId),
@@ -3195,10 +3240,10 @@ export function StoryEngineProvider({
         };
       },
       async deleteUniverse(id) {
-        const linkedCharacters = playerCharacters.some(
-          (character) => character.universeId === id,
+        const linkedCharacters = playerCharacters.some((character) =>
+          getUniverseIds(character).includes(id),
         );
-        const linkedStories = stories.some((story) => story.universeId === id);
+        const linkedStories = stories.some((story) => getUniverseIds(story).includes(id));
 
         if (linkedCharacters || linkedStories) {
           return {
@@ -3214,7 +3259,7 @@ export function StoryEngineProvider({
         return { ok: true };
       },
       async createPlayerCharacter(draft) {
-        const nextCharacter: PlayerCharacter = {
+        const nextCharacter = applyUniverseIdsFromDraft(draft, {
           id: createEntityId("player-character"),
           name: draft.name.trim(),
           age: draft.age.trim(),
@@ -3231,7 +3276,7 @@ export function StoryEngineProvider({
           scope: draft.scope ?? "library",
           storyId: draft.storyId,
           createdAt: new Date().toISOString(),
-        };
+        } satisfies PlayerCharacter);
 
         await repository.savePlayerCharacter(nextCharacter);
         await hydrate(false);
@@ -3256,11 +3301,20 @@ export function StoryEngineProvider({
         }
 
         const promoted: PlayerCharacter = {
-          ...playerCharacter,
-          universeId: story.universeId,
+          ...applyUniverseIdsFromDraft(
+            {
+              universeId: story.universeId,
+              universeIds: getUniverseIds(story),
+            },
+            {
+              ...playerCharacter,
+              scope: "library",
+              storyId: undefined,
+              createdAt: new Date().toISOString(),
+            },
+          ),
           scope: "library",
           storyId: undefined,
-          createdAt: new Date().toISOString(),
         };
 
         await repository.savePlayerCharacter(promoted);
@@ -3354,7 +3408,7 @@ export function StoryEngineProvider({
           return null;
         }
 
-        const nextCharacter: PlayerCharacter = {
+        const nextCharacter = applyUniverseIdsFromDraft(draft, {
           ...currentCharacter,
           name: draft.name.trim(),
           age: draft.age.trim(),
@@ -3370,14 +3424,14 @@ export function StoryEngineProvider({
           universeId: draft.universeId,
           scope: draft.scope ?? currentCharacter.scope ?? "library",
           storyId: draft.storyId ?? currentCharacter.storyId,
-        };
+        });
 
         const identityChanged =
           currentCharacter.name.trim() !== nextCharacter.name.trim() ||
           currentCharacter.pronouns.trim() !== nextCharacter.pronouns.trim() ||
           (currentCharacter.species ?? "").trim() !== (nextCharacter.species ?? "").trim() ||
           currentCharacter.gender.trim() !== nextCharacter.gender.trim() ||
-          currentCharacter.universeId !== nextCharacter.universeId;
+          getUniverseIds(currentCharacter).join("|") !== getUniverseIds(nextCharacter).join("|");
 
         await repository.savePlayerCharacter(nextCharacter);
         await hydrate(false);
@@ -3426,22 +3480,18 @@ export function StoryEngineProvider({
       },
       async createStory(draft) {
         const now = new Date().toISOString();
-        const universePack = await repository.getUniverseExportBundle(draft.universeId);
+        const universeIds = normalizeUniverseIds(
+          draft.universeIds?.length ? draft.universeIds : [draft.universeId],
+        );
+        const universePackSnapshots = await buildUniversePackSnapshotsForIds(repository, universeIds);
         const storyId = createEntityId("story");
-        const universePackSnapshot: UniversePackSnapshotV1 | undefined = universePack
-          ? {
-              snapshotVersion: 1,
-              exportedAt: universePack.exportedAt,
-              packVersion: universePack.packVersion ?? 1,
-              universe: universePack.universe,
-              universeImports: universePack.universeImports,
-            }
-          : undefined;
+        const universePackSnapshot = universePackSnapshots[0];
 
         const nextStory: Story = {
           id: storyId,
           title: draft.title.trim(),
-          universeId: draft.universeId,
+          universeId: universeIds[0] ?? draft.universeId,
+          universeIds,
           playerCharacterId: draft.playerCharacterId,
           parentStoryId: draft.parentStoryId,
           rootStoryId: draft.rootStoryId ?? storyId,
@@ -3449,6 +3499,8 @@ export function StoryEngineProvider({
           lineageType: draft.lineageType,
           sequelSeedSourceStoryId: draft.sequelSeedSourceStoryId,
           universePackSnapshot,
+          universePackSnapshots:
+            universePackSnapshots.length > 1 ? universePackSnapshots : undefined,
           isArchived: draft.isArchived,
           readOnlyReason: undefined,
           readOnlyLockedAt: undefined,
@@ -3477,10 +3529,10 @@ export function StoryEngineProvider({
           throw new Error("Source story not found.");
         }
 
-        const [playerCharacter, universePack, sourceStateRecord, sourceSummaries, sourceAiConfig] =
+        const [playerCharacter, universePackSnapshots, sourceStateRecord, sourceSummaries, sourceAiConfig] =
           await Promise.all([
             repository.getPlayerCharacter(input.playerCharacterId),
-            repository.getUniverseExportBundle(sourceStory.universeId),
+            buildUniversePackSnapshotsForIds(repository, getUniverseIds(sourceStory)),
             repository.getStoryState(sourceStory.id),
             repository.listStorySummaries(sourceStory.id),
             repository.getStoryAIConfig(sourceStory.id),
@@ -3490,8 +3542,10 @@ export function StoryEngineProvider({
           throw new Error("Player character not found.");
         }
 
-        if (playerCharacter.universeId !== sourceStory.universeId) {
-          throw new Error("Sequel protagonists must belong to the same universe as the source story.");
+        if (!characterMatchesUniverses(playerCharacter, getUniverseIds(sourceStory))) {
+          throw new Error(
+            "Sequel protagonists must belong to at least one universe from the source story.",
+          );
         }
 
         const storyId = createEntityId("story");
@@ -3514,11 +3568,12 @@ export function StoryEngineProvider({
           sourceSummary: sequelSummary,
           now,
         });
-        const universePackSnapshot = buildUniversePackSnapshot(universePack);
+        const universePackSnapshot = universePackSnapshots[0];
         const nextStory: Story = {
           id: storyId,
           title: input.title.trim(),
           universeId: sourceStory.universeId,
+          universeIds: getUniverseIds(sourceStory),
           playerCharacterId: input.playerCharacterId,
           parentStoryId: sourceStory.id,
           rootStoryId: sourceStory.rootStoryId ?? sourceStory.id,
@@ -3526,6 +3581,8 @@ export function StoryEngineProvider({
           lineageType: "sequel",
           sequelSeedSourceStoryId: sourceStory.id,
           universePackSnapshot,
+          universePackSnapshots:
+            universePackSnapshots.length > 1 ? universePackSnapshots : undefined,
           isArchived: false,
           matureFictionMode: sourceStory.matureFictionMode,
           rpMode: sourceStory.rpMode,
@@ -3944,21 +4001,26 @@ export function StoryEngineProvider({
           throw new Error("Cannot regenerate without a preceding user message.");
         }
 
-        const [universe, playerCharacter] = await Promise.all([
-          repository.getUniverse(story.universeId),
+        const [universeContext, playerCharacter] = await Promise.all([
+          resolveStoryUniverseContext({
+            story,
+            getUniverse: repository.getUniverse,
+            listUniverseImports: repository.listUniverseImports,
+          }),
           repository.getPlayerCharacter(story.playerCharacterId),
         ]);
 
-        if (!universe || !playerCharacter) {
-          throw new Error("Story references missing universe or player character.");
+        if (!playerCharacter) {
+          throw new Error("Story references missing player character.");
         }
 
-        const [imports, summaries, storyConfig, storyState] = await Promise.all([
-          repository.listUniverseImports(universe.id),
+        const [summaries, storyConfig, storyState] = await Promise.all([
           repository.listStorySummaries(storyId),
           repository.getStoryAIConfig(storyId),
           repository.getStoryState(storyId),
         ]);
+        const effectiveUniverse = universeContext.universe;
+        const effectiveImports = universeContext.imports;
 
         const settings = await getNormalizedAISettings();
 
@@ -4025,8 +4087,6 @@ export function StoryEngineProvider({
           };
         });
 
-        const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
-        const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
         const latestPriorUserMessage = getLatestPriorUserMessage(sanitizedHistoryMessages);
         const allowDirectedPlayerControl = shouldAllowDirectedPlayerControlForUserTurn(
           previousMessage,
@@ -4901,14 +4961,18 @@ export function StoryEngineProvider({
           throw new Error("Story not found.");
         }
 
-        const [universe, playerCharacter, storyConfig] = await Promise.all([
-          repository.getUniverse(story.universeId),
+        const [universeContext, playerCharacter, storyConfig] = await Promise.all([
+          resolveStoryUniverseContext({
+            story,
+            getUniverse: repository.getUniverse,
+            listUniverseImports: repository.listUniverseImports,
+          }),
           repository.getPlayerCharacter(story.playerCharacterId),
           repository.getStoryAIConfig(storyId),
         ]);
 
-        if (!universe || !playerCharacter) {
-          throw new Error("Story references missing universe or player character.");
+        if (!playerCharacter) {
+          throw new Error("Story references missing player character.");
         }
 
         const settings = await getNormalizedAISettings();
@@ -4920,15 +4984,14 @@ export function StoryEngineProvider({
         const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
         const provider = createAIProvider(providerType);
 
-        const [imports, summaries, refreshedMessages] = await Promise.all([
-          repository.listUniverseImports(universe.id),
+        const [summaries, refreshedMessages] = await Promise.all([
           repository.listStorySummaries(storyId),
           repository.listStoryMessages(storyId),
         ]);
 
         const recentMessages = sortByTimestampAsc(refreshedMessages).slice(-30);
-        const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
-        const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
+        const effectiveUniverse = universeContext.universe;
+        const effectiveImports = universeContext.imports;
         const context = buildPlayerAssistContext({
           universe: effectiveUniverse,
           story,
@@ -5094,14 +5157,21 @@ export function StoryEngineProvider({
 
         const story = await assertStoryWritable(storyId);
 
-        const [universe, playerCharacter] = await Promise.all([
-          repository.getUniverse(story.universeId),
+        const [universeContext, playerCharacter] = await Promise.all([
+          resolveStoryUniverseContext({
+            story,
+            getUniverse: repository.getUniverse,
+            listUniverseImports: repository.listUniverseImports,
+          }),
           repository.getPlayerCharacter(story.playerCharacterId),
         ]);
 
-        if (!universe || !playerCharacter) {
-          throw new Error("Story references missing universe or player character.");
+        if (!playerCharacter) {
+          throw new Error("Story references missing player character.");
         }
+
+        const effectiveUniverse = universeContext.universe;
+        const effectiveImports = universeContext.imports;
 
         const existingMessages = await repository.listStoryMessages(storyId);
         const lastMessage = existingMessages[existingMessages.length - 1];
@@ -5195,8 +5265,7 @@ export function StoryEngineProvider({
           }
         }
 
-        const [imports, summaries, refreshedMessages, storyConfig, storyState, storedChapters] = await Promise.all([
-          repository.listUniverseImports(universe.id),
+        const [summaries, refreshedMessages, storyConfig, storyState, storedChapters] = await Promise.all([
           repository.listStorySummaries(storyId),
           repository.listStoryMessages(storyId),
           repository.getStoryAIConfig(storyId),
@@ -5374,8 +5443,6 @@ export function StoryEngineProvider({
         });
         // #endregion
 
-        const effectiveUniverse = story.universePackSnapshot?.universe ?? universe;
-        const effectiveImports = story.universePackSnapshot?.universeImports ?? imports;
         const shouldSkipAssistantReply = Boolean(chapterBoundary);
         const latestPriorUserMessage = getLatestPriorUserMessage(historyMessages);
         const allowDirectedPlayerControl = shouldAllowDirectedPlayerControlForUserTurn(
