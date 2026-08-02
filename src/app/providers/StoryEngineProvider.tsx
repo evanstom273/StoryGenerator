@@ -73,7 +73,7 @@ import {
   formatStoryLongTermMemoryForPrompt,
   formatStorySceneStateForPrompt,
 } from "../../lib/ai/storyStateExtractor";
-import { runAndroidAutoBackupIfNeeded } from "../../lib/androidAutoBackup";
+import { runAutoBackupIfNeeded } from "../../lib/autoBackup";
 import {
   sendJobCompletionNotification,
 } from "../../lib/jobNotifications";
@@ -1703,31 +1703,45 @@ export function StoryEngineProvider({
       return;
     }
 
-    let listener: { remove: () => Promise<void> } | { remove: () => void } | null = null;
+    let appListener: { remove: () => Promise<void> } | { remove: () => void } | null = null;
+    let onVisibilityChange: (() => void) | null = null;
 
     void (async () => {
       try {
+        await runAutoBackupIfNeeded(repository);
+
         const { Capacitor } = await import("@capacitor/core");
-        if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") {
+        const isAndroidNative =
+          Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+
+        if (isAndroidNative) {
+          const { App } = await import("@capacitor/app");
+          appListener = await App.addListener("appStateChange", ({ isActive }) => {
+            if (!isActive) {
+              return;
+            }
+            void runAutoBackupIfNeeded(repository);
+          });
           return;
         }
 
-        await runAndroidAutoBackupIfNeeded(repository);
-
-        const { App } = await import("@capacitor/app");
-        listener = await App.addListener("appStateChange", ({ isActive }) => {
-          if (!isActive) {
+        onVisibilityChange = () => {
+          if (document.visibilityState !== "visible") {
             return;
           }
-          void runAndroidAutoBackupIfNeeded(repository);
-        });
+          void runAutoBackupIfNeeded(repository);
+        };
+        document.addEventListener("visibilitychange", onVisibilityChange);
       } catch {}
     })();
 
     return () => {
+      if (onVisibilityChange) {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
       void (async () => {
         try {
-          await listener?.remove();
+          await appListener?.remove();
         } catch {}
       })();
     };
