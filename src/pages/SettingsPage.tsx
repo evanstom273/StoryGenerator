@@ -15,7 +15,13 @@ import { useTheme } from "../app/theming/ThemeContext";
 import type { AIProviderType } from "../types/models";
 import { getProviderDefaultModel, getProviderModels, getValidModel } from "../lib/ai/models";
 import { downloadFile } from "../lib/download";
+import {
+	listAutoBackupRecords,
+	readAutoBackupLastRunAt,
+	type AutoBackupRecord,
+} from "../lib/autoBackupStorage";
 import { serializeStoryExport } from "../lib/storyExport";
+import { formatDateTime } from "../lib/dates";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 import { TutorialSettingsTab } from "../components/settings/TutorialSettingsTab";
 import { ThemePicker } from "../components/settings/ThemePicker";
@@ -100,6 +106,7 @@ export function SettingsPage() {
   const [backupFile, setBackupFile] = useState<File | null>(null);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [autoBackups, setAutoBackups] = useState<AutoBackupRecord[]>([]);
   const [itemExportType, setItemExportType] = useState<
     "universe" | "playerCharacter" | "story"
   >("story");
@@ -543,6 +550,16 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<"theme" | "ai" | "data" | "storage" | "tutorial">("theme");
 
   useEffect(() => {
+    if (activeTab !== "data") {
+      return;
+    }
+
+    void listAutoBackupRecords()
+      .then((records) => setAutoBackups(records))
+      .catch(() => setAutoBackups([]));
+  }, [activeTab]);
+
+  useEffect(() => {
     const tab = searchParams.get("tab");
     if (tab === "tutorial") {
       setActiveTab("tutorial");
@@ -802,6 +819,50 @@ export function SettingsPage() {
                 <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">{backupError}</div>
               ) : null}
             </div>
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+              Automatic Backups
+            </div>
+            <p className="mt-2 text-[13px] leading-6 text-ink-muted">
+              When your workspace changes, an automatic backup runs about every 12 hours. On
+              Android you get a share prompt; on web/PWA the app keeps the last five copies locally
+              and triggers a download so you can save the file.
+            </p>
+            {readAutoBackupLastRunAt() ? (
+              <p className="mt-2 text-[11px] text-ink-muted">
+                Last automatic backup: {formatDateTime(new Date(readAutoBackupLastRunAt()!).toISOString())}
+              </p>
+            ) : null}
+            {autoBackups.length ? (
+              <div className="mt-4 space-y-2">
+                {autoBackups.map((record) => (
+                  <div
+                    key={record.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-divider/[0.35] bg-panel-muted/40 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-ink-soft">{record.id}</div>
+                      <div className="text-[11px] text-ink-muted">
+                        {formatDateTime(record.createdAt)}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        void downloadFile(record.id, record.json, "application/json").catch(() => null)
+                      }
+                    >
+                      Download
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-[13px] text-ink-muted">No automatic backups stored yet.</p>
+            )}
           </Panel>
 
           <Panel variant="flat">

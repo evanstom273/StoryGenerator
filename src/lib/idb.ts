@@ -1,5 +1,5 @@
 const DATABASE_NAME = "story-engine-db";
-const DATABASE_VERSION = 7;
+const DATABASE_VERSION = 8;
 
 export type StoreName =
   | "universes"
@@ -17,7 +17,8 @@ export type StoreName =
   | "storyUiStates"
   | "developerBugs"
   | "developerFeatureRequests"
-  | "developerTestingNotes";
+  | "developerTestingNotes"
+  | "autoBackups";
 
 let databasePromise: Promise<IDBDatabase> | null = null;
 
@@ -114,6 +115,9 @@ export function openStoryEngineDatabase() {
       ensureStore("developerFeatureRequests", { keyPath: "id" });
       ensureStore("developerTestingNotes", { keyPath: "id" });
 
+      const autoBackups = ensureStore("autoBackups", { keyPath: "id" });
+      ensureIndex(autoBackups, "createdAt", "createdAt", { unique: false });
+
       const runMigrations = (fromVersion: number, toVersion: number) => {
         if (fromVersion < 2 && toVersion >= 2) {
           return;
@@ -164,6 +168,10 @@ export function openStoryEngineDatabase() {
 
           migrateUniverseIds("playerCharacters");
           migrateUniverseIds("stories");
+        }
+
+        if (fromVersion < 8 && toVersion >= 8) {
+          return;
         }
       };
 
