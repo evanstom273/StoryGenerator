@@ -5,7 +5,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EntityId, Universe } from "../../types/models";
 import { cn } from "../../utils/cn";
 
@@ -186,38 +186,103 @@ export function MultiUniversePicker({
   onChange: (ids: EntityId[]) => void;
   disabled?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
+
+  const summary = useMemo(() => {
+    if (!selectedIds.length) {
+      return "Select universes";
+    }
+
+    const names = selectedIds
+      .map((id) => universes.find((universe) => universe.id === id)?.name)
+      .filter((name): name is string => Boolean(name));
+
+    if (names.length === 1) {
+      return names[0];
+    }
+
+    if (names.length === 2) {
+      return names.join(", ");
+    }
+
+    return `${names.length} universes selected`;
+  }, [selectedIds, universes]);
+
   return (
-    <div className="space-y-2">
-      {universes.map((universe) => {
-        const checked = selectedIds.includes(universe.id);
-        return (
-          <label
-            key={universe.id}
-            className={cn(
-              "flex items-center gap-3 rounded-[8px] border px-3 py-2.5 text-sm transition",
-              checked
-                ? "border-accent/[0.35] bg-accent/[0.08] text-ink"
-                : "border-divider/[0.45] bg-panel-muted/50 text-ink-soft",
-              disabled ? "opacity-60" : "cursor-pointer hover:border-accent/[0.25]",
-            )}
-          >
-            <input
-              type="checkbox"
-              className="size-4 rounded border-divider text-accent focus:ring-accent/[0.25]"
-              checked={checked}
-              disabled={disabled}
-              onChange={() => {
-                if (checked) {
-                  onChange(selectedIds.filter((id) => id !== universe.id));
-                  return;
-                }
-                onChange([...selectedIds, universe.id]);
-              }}
-            />
-            <span className="font-medium">{universe.name}</span>
-          </label>
-        );
-      })}
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        className={cn(
+          inputClasses,
+          "flex items-center justify-between gap-3 text-left",
+          disabled && "opacity-60",
+        )}
+        onClick={() => {
+          if (!disabled) {
+            setOpen((current) => !current);
+          }
+        }}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <span className={cn(!selectedIds.length && "text-ink-muted")}>{summary}</span>
+        <span className="shrink-0 text-xs text-ink-muted">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open ? (
+        <div
+          className="absolute z-50 mt-1 w-full rounded-[8px] border border-divider bg-panel shadow-lg"
+          role="listbox"
+        >
+          <div className="max-h-56 space-y-1 overflow-y-auto p-2">
+            {universes.map((universe) => {
+              const checked = selectedIds.includes(universe.id);
+              return (
+                <label
+                  key={universe.id}
+                  className={cn(
+                    "flex items-center gap-3 rounded-[6px] px-2.5 py-2 text-sm transition",
+                    checked ? "bg-accent/[0.08] text-ink" : "text-ink-soft hover:bg-panel-muted/80",
+                    disabled ? "opacity-60" : "cursor-pointer",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    className="size-4 rounded border-divider text-accent focus:ring-accent/[0.25]"
+                    checked={checked}
+                    disabled={disabled}
+                    onChange={() => {
+                      if (checked) {
+                        onChange(selectedIds.filter((id) => id !== universe.id));
+                        return;
+                      }
+                      onChange([...selectedIds, universe.id]);
+                    }}
+                  />
+                  <span className="font-medium">{universe.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
