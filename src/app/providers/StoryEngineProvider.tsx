@@ -132,6 +132,7 @@ import {
   resolveUserSpeakerTypeForContinue,
 } from "../../lib/storyText/continueMode";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
+import { clampAudiobookParallelChapters } from "../../lib/ai/storyAudiobookParallel";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import {
@@ -415,6 +416,7 @@ interface StoryEngineContextValue {
     storyId: string;
     providerType: AIProviderType;
     model?: string;
+    audiobookParallelChapters?: number;
   }) => Promise<StoryAIConfig>;
   listUniverseImports: (universeId: string) => Promise<UniverseImport[]>;
   saveUniverseImport: (next: Omit<UniverseImport, "id">) => Promise<UniverseImport>;
@@ -5231,13 +5233,18 @@ export function StoryEngineProvider({
         return repository.getStoryAIConfig(storyId);
       },
       async saveStoryAIConfig(next) {
+        const existing = await repository.getStoryAIConfig(next.storyId);
         const now = new Date().toISOString();
         const record: StoryAIConfig = {
-          id: createEntityId("story-ai-config"),
+          id: existing?.id ?? createEntityId("story-ai-config"),
           storyId: next.storyId,
           providerType: next.providerType,
           model: next.model?.trim() || undefined,
-          createdAt: now,
+          audiobookParallelChapters:
+            next.audiobookParallelChapters !== undefined
+              ? clampAudiobookParallelChapters(next.audiobookParallelChapters)
+              : existing?.audiobookParallelChapters,
+          createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         };
 

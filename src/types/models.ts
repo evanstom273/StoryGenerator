@@ -296,6 +296,7 @@ export interface StoryAIConfig {
   storyId: EntityId;
   providerType: AIProviderType;
   model?: string;
+  audiobookParallelChapters?: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

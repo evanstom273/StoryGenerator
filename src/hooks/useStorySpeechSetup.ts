@@ -10,6 +10,10 @@ import {
 } from "../lib/ai/characterTtsVoices";
 import { buildCharacterTtsRegistryForStory } from "../lib/storyText/messageSpeechText";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
+import {
+	clampAudiobookParallelChapters,
+	DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
+} from "../lib/ai/storyAudiobookParallel";
 
 export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterName: string) {
 	const {
@@ -19,6 +23,7 @@ export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterNam
 		fetchStoryState,
 		getStoryById,
 		getPlayerCharacterById,
+		getStoryAIConfig,
 	} = useStoryEngine();
 	const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
 	const storyId = messages[0]?.storyId;
@@ -28,6 +33,32 @@ export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterNam
 		? getPlayerCharacterById(story.playerCharacterId)
 		: undefined;
 	const [characterGenders, setCharacterGenders] = useState<CharacterTtsGenderMap>({});
+	const [audiobookParallelChapters, setAudiobookParallelChapters] = useState(
+		DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
+	);
+
+	useEffect(() => {
+		if (!storyId) {
+			setAudiobookParallelChapters(DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS);
+			return;
+		}
+
+		let cancelled = false;
+
+		void getStoryAIConfig(storyId).then((config) => {
+			if (cancelled) {
+				return;
+			}
+
+			setAudiobookParallelChapters(
+				clampAudiobookParallelChapters(config?.audiobookParallelChapters),
+			);
+		});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [getStoryAIConfig, storyId]);
 
 	useEffect(() => {
 		if (!storyId) {
@@ -80,5 +111,6 @@ export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterNam
 		storyTitle: story?.title ?? "Story",
 		characterRegistry,
 		hasGeminiKey: Boolean(aiSettings?.apiKeys?.gemini?.trim()),
+		audiobookParallelChapters,
 	};
 }

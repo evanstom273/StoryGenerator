@@ -22,6 +22,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Full-story Listen from the transcript reuses cached chapter audio and only synthesizes missing segments",
       "Export Story Audiobook (WAV) from story settings merges all chapter segments into one downloadable file",
       "Chapter Listen and full-story audiobook playback announce chapter titles in the narrator voice before each chapter body",
+      "Per-story audiobook parallel chapter setting (1–5) speeds full-story listen and export by synthesizing multiple chapters at once",
       "Character speech uses a simple transcript rule: quoted lines use each character's voice; asterisk actions and unquoted prose use the narrator (with character names on action beats)",
       "Director directions use the narrator voice; per-chunk volume normalization keeps character voices closer to the same loudness",
       "MetaChat reply play button for assistant messages",
