@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { getMessagesForChapterStartingAt } from "../storyText/chapterNavigation";
 import {
 	buildChapterSpeechPlan,
+	buildCharacterTtsRegistryForStory,
 	buildStoryMessageSpeechPlan,
 	isSpeakableUserMessage,
 	metaChatContentToSpeechText,
 } from "../storyText/messageSpeechText";
+import { normalizeCharacterTtsKey } from "../ai/characterTtsVoices";
 import { resolveGeminiNarrationTtsSettings } from "../ai/geminiTtsVoices";
 import type { StoryMessage } from "../../types/models";
 
@@ -40,12 +42,11 @@ describe("messageSpeechText", () => {
 		);
 
 		expect(plan?.multiSpeaker).toBe(true);
-		expect(plan?.speakers).toEqual([
-			{ name: "Narrator", voice: narrationTts.voice },
-			{ name: "Character", voice: narrationTts.characterVoice },
-		]);
-		expect(plan?.text).toContain("Narrator:");
-		expect(plan?.text).toContain("Character: Marcus");
+		expect(plan?.speakers.find((speaker) => speaker.name === "Narrator")?.voice).toBe(
+			narrationTts.voice,
+		);
+		expect(plan?.scriptLines.some((line) => line.speaker === "Marcus")).toBe(true);
+		expect(plan?.text).toContain("Marcus:");
 		expect(plan?.text).toContain("We need to move");
 	});
 
@@ -57,7 +58,7 @@ describe("messageSpeechText", () => {
 
 		expect(plan?.text.toLowerCase()).toContain("jake");
 		expect(plan?.text).toContain("puts his pen down");
-		expect(plan?.text).not.toMatch(/Character: puts his pen down/i);
+		expect(plan?.text).toMatch(/Jake Peralta:/i);
 	});
 
 	it("strips markdown from MetaChat content", () => {
@@ -79,8 +80,8 @@ describe("messageSpeechText", () => {
 			{ playerName: "Amy Santiago", narrationTts },
 		);
 
-		expect(plan?.multiSpeaker).toBe(false);
-		expect(plan?.speakers[0]?.voice).toBe(narrationTts.characterVoice);
+		expect(plan?.multiSpeaker).toBe(true);
+		expect(plan?.speakers.some((speaker) => speaker.name === "Amy Santiago")).toBe(true);
 		expect(plan?.text.toLowerCase()).toContain("leave");
 	});
 
@@ -117,8 +118,30 @@ describe("messageSpeechText", () => {
 			},
 			{ narrationTts },
 		);
-		expect(directorPlan?.text).toContain("Director:");
+		expect(directorPlan?.scriptLines[0]?.speaker).toBe("Director");
 		expect(directorPlan?.text.toLowerCase()).toContain("chase");
+	});
+
+	it("uses per-character speaker labels when registry is provided", () => {
+		const messages: StoryMessage[] = [
+			assistantMessage("Rosa: We need to move.\n\nAmy: Copy that.", "a1"),
+		];
+		const registry = buildCharacterTtsRegistryForStory(messages, {
+			playerName: "Jake Peralta",
+			narrationTts,
+		});
+		const plan = buildChapterSpeechPlan(messages, {
+			narrationTts,
+			characterRegistry: registry,
+		});
+
+		expect(plan?.scriptLines.some((line) => line.speaker === "Rosa")).toBe(true);
+		expect(plan?.scriptLines.some((line) => line.speaker === "Amy")).toBe(true);
+		expect(plan?.speakers.some((speaker) => speaker.name === "Rosa")).toBe(true);
+		expect(plan?.speakers.some((speaker) => speaker.name === "Amy")).toBe(true);
+		expect(plan?.speakers.find((speaker) => speaker.name === "Rosa")?.voice).toBe(
+			registry.voices[normalizeCharacterTtsKey("Rosa")],
+		);
 	});
 
 	it("builds chapter speech with player, director, and multi-voice narration", () => {

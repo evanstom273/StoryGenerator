@@ -4,6 +4,7 @@ import type { SpeechSynthesisPlan } from "../storyText/messageSpeechText";
 
 const samplePlan: SpeechSynthesisPlan = {
 	text: "Hello world.",
+	scriptLines: [{ speaker: "Narrator", text: "Hello world." }],
 	speakers: [{ name: "Narrator", voice: "iapetus" }],
 	multiSpeaker: false,
 };

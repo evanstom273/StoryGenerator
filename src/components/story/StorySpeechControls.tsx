@@ -1,7 +1,11 @@
 import type { StoryMessage } from "../../types/models";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
-import { buildChapterSpeechPlan } from "../../lib/storyText/messageSpeechText";
+import { registryChanged } from "../../lib/ai/characterTtsVoices";
+import {
+	buildChapterSpeechPlan,
+	buildCharacterTtsRegistryForStory,
+} from "../../lib/storyText/messageSpeechText";
 import { getMessagesForChapterStartingAt } from "../../lib/storyText/chapterNavigation";
 import { cn } from "../../utils/cn";
 import { MessagePlayButton } from "./MessagePlayButton";
@@ -23,12 +27,31 @@ export function ChapterListenBanner({
 	playerCharacterName,
 	className,
 }: ChapterListenBannerProps) {
-	const { aiSettings } = useStoryEngine();
+	const { aiSettings, getStoryCharacterTtsRegistry, saveStoryCharacterTtsRegistry } =
+		useStoryEngine();
 	const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
+	const storyId = messages[0]?.storyId;
+	const existingRegistry = storyId ? getStoryCharacterTtsRegistry(storyId) : undefined;
+
+	const characterRegistry = buildCharacterTtsRegistryForStory(messages, {
+		playerName: playerCharacterName,
+		narrationTts,
+		existingRegistry,
+	});
+
+	if (
+		storyId &&
+		registryChanged(existingRegistry, characterRegistry)
+	) {
+		void saveStoryCharacterTtsRegistry(storyId, characterRegistry);
+	}
+
 	const chapterMessages = getMessagesForChapterStartingAt(messages, messageId);
 	const plan = buildChapterSpeechPlan(chapterMessages, {
 		playerName: playerCharacterName,
 		narrationTts,
+		characterRegistry,
+		allStoryMessages: messages,
 	});
 
 	return (

@@ -315,6 +315,8 @@ export interface StoryUiState {
   storyId: EntityId;
   metaChatDraft?: string;
   metaChatReferences?: MetaChatReference[];
+  characterTtsVoices?: Record<string, string>;
+  characterTtsLabels?: Record<string, string>;
   updatedAt: Timestamp;
 }
 

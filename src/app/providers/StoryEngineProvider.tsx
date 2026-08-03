@@ -240,6 +240,14 @@ interface StoryEngineContextValue {
   getMetaChatJobs: (scopeId: string) => BackgroundJob[];
   getMetaChatDraft: (storyId: string) => string;
   getMetaChatReferences: (scopeId: string) => MetaChatReference[];
+  getStoryCharacterTtsRegistry: (storyId: string) => {
+    voices: Record<string, string>;
+    labels: Record<string, string>;
+  } | undefined;
+  saveStoryCharacterTtsRegistry: (
+    storyId: string,
+    registry: { voices: Record<string, string>; labels: Record<string, string> },
+  ) => Promise<void>;
   getPlayerCharactersForUniverse: (universeIdOrIds: string | string[]) => PlayerCharacter[];
   getStoriesForUniverse: (universeId: string) => Story[];
   getStoriesForPlayerCharacter: (playerCharacterId: string) => Story[];
@@ -1885,6 +1893,8 @@ export function StoryEngineProvider({
         storyId,
         metaChatDraft: current?.metaChatDraft,
         metaChatReferences: current?.metaChatReferences ?? [],
+        characterTtsVoices: current?.characterTtsVoices,
+        characterTtsLabels: current?.characterTtsLabels,
         updatedAt: new Date().toISOString(),
         ...patch,
       };
@@ -3128,6 +3138,23 @@ export function StoryEngineProvider({
         storyUiStates.find((record) => record.storyId === scopeId)?.metaChatDraft ?? "",
       getMetaChatReferences: (scopeId) =>
         storyUiStates.find((record) => record.storyId === scopeId)?.metaChatReferences ?? [],
+      getStoryCharacterTtsRegistry: (storyId) => {
+        const record = storyUiStates.find((entry) => entry.storyId === storyId);
+        if (!record?.characterTtsVoices && !record?.characterTtsLabels) {
+          return undefined;
+        }
+
+        return {
+          voices: record.characterTtsVoices ?? {},
+          labels: record.characterTtsLabels ?? {},
+        };
+      },
+      async saveStoryCharacterTtsRegistry(storyId, registry) {
+        await saveStoryUiStateRecord(storyId, {
+          characterTtsVoices: registry.voices,
+          characterTtsLabels: registry.labels,
+        });
+      },
       getPlayerCharactersForUniverse: (universeIdOrIds) => {
         const selectedIds = normalizeUniverseIds(
           Array.isArray(universeIdOrIds) ? universeIdOrIds : [universeIdOrIds],
