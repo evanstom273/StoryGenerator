@@ -1,10 +1,15 @@
 import {
 	GEMINI_TTS_VOICE_IDS,
+	geminiTtsVoiceMatchesGender,
+	getGeminiTtsVoiceIdsForGender,
 	type GeminiNarrationTtsSettings,
 } from "./geminiTtsVoices";
+import type { StoryStateData } from "../../types/models";
 
 export type CharacterTtsVoiceMap = Record<string, string>;
 export type CharacterTtsLabelMap = Record<string, string>;
+export type CharacterTtsGenderHint = "male" | "female";
+export type CharacterTtsGenderMap = Record<string, CharacterTtsGenderHint>;
 
 export interface CharacterTtsRegistry {
 	voices: CharacterTtsVoiceMap;
@@ -94,14 +99,134 @@ export function isPlayerCharacterTtsKey(key: string, playerName: string | null |
 	return getPlayerNameVariants(playerName).includes(normalizedKey);
 }
 
+export function inferCharacterTtsGenderHint(
+	gender?: string | null,
+	pronouns?: string | null,
+): CharacterTtsGenderHint | undefined {
+	const normalizedGender = gender?.trim().toLowerCase() ?? "";
+	if (normalizedGender) {
+		if (/^(m|male|man|boy)\b/.test(normalizedGender) || normalizedGender === "m") {
+			return "male";
+		}
+		if (/^(f|female|woman|girl)\b/.test(normalizedGender) || normalizedGender === "f") {
+			return "female";
+		}
+	}
+
+	const normalizedPronouns = pronouns?.trim().toLowerCase() ?? "";
+	if (normalizedPronouns) {
+		if (/\b(he\/him|him\/he)\b/.test(normalizedPronouns) || normalizedPronouns === "he/him") {
+			return "male";
+		}
+		if (/\b(she\/her|her\/she)\b/.test(normalizedPronouns) || normalizedPronouns === "she/her") {
+			return "female";
+		}
+	}
+
+	return undefined;
+}
+
+function addGenderHintForName(
+	hints: CharacterTtsGenderMap,
+	name: string,
+	gender: CharacterTtsGenderHint,
+) {
+	const key = normalizeCharacterTtsKey(name);
+	if (!key) {
+		return;
+	}
+
+	hints[key] = gender;
+
+	const firstToken = key.split(" ")[0] ?? "";
+	if (firstToken.length >= 2) {
+		hints[firstToken] = gender;
+	}
+}
+
+export function buildCharacterGenderHintsFromStoryState(
+	storyStateData: StoryStateData | null | undefined,
+	options?: {
+		playerName?: string | null;
+		playerGender?: string | null;
+		playerPronouns?: string | null;
+	},
+): CharacterTtsGenderMap {
+	const hints: CharacterTtsGenderMap = {};
+	const playerGender = inferCharacterTtsGenderHint(options?.playerGender, options?.playerPronouns);
+
+	if (playerGender && options?.playerName?.trim()) {
+		addGenderHintForName(hints, options.playerName.trim(), playerGender);
+	}
+
+	for (const [canonicalKey, entry] of Object.entries(storyStateData?.characters ?? {})) {
+		const gender = inferCharacterTtsGenderHint(entry?.gender, entry?.pronouns);
+		if (!gender) {
+			continue;
+		}
+
+		const names = [
+			canonicalKey,
+			entry?.canonicalName,
+			entry?.displayName,
+			...(entry?.aliases ?? []),
+		].filter((name): name is string => Boolean(name?.trim()));
+
+		for (const name of names) {
+			addGenderHintForName(hints, name, gender);
+		}
+	}
+
+	return hints;
+}
+
+function resolveGenderHintForKey(
+	key: string,
+	labels: CharacterTtsLabelMap,
+	characterGenders?: CharacterTtsGenderMap | null,
+): CharacterTtsGenderHint | undefined {
+	if (!characterGenders) {
+		return undefined;
+	}
+
+	if (characterGenders[key]) {
+		return characterGenders[key];
+	}
+
+	const label = labels[key];
+	if (label) {
+		const labelKey = normalizeCharacterTtsKey(label);
+		if (characterGenders[labelKey]) {
+			return characterGenders[labelKey];
+		}
+	}
+
+	const firstToken = key.split(" ")[0] ?? "";
+	if (firstToken.length >= 2 && characterGenders[firstToken]) {
+		return characterGenders[firstToken];
+	}
+
+	return undefined;
+}
+
 function pickVoiceForCharacterKey(
 	key: string,
 	usedVoices: Set<string>,
 	narratorVoice: string,
+	genderPreference?: CharacterTtsGenderHint,
 ) {
-	const pool = GEMINI_TTS_VOICE_IDS.filter(
-		(voiceId) => voiceId !== narratorVoice && !usedVoices.has(voiceId),
-	);
+	const excludeUnavailable = (voiceIds: string[]) =>
+		voiceIds.filter((voiceId) => voiceId !== narratorVoice && !usedVoices.has(voiceId));
+
+	let pool = excludeUnavailable(GEMINI_TTS_VOICE_IDS);
+
+	if (genderPreference) {
+		const genderPool = excludeUnavailable(getGeminiTtsVoiceIdsForGender(genderPreference));
+		if (genderPool.length > 0) {
+			pool = genderPool;
+		}
+	}
+
 	const fallbackPool =
 		pool.length > 0
 			? pool
@@ -117,6 +242,7 @@ export function ensureCharacterTtsRegistry(params: {
 	characters: Array<{ key: string; label: string }>;
 	narrationTts: GeminiNarrationTtsSettings;
 	playerName?: string | null;
+	characterGenders?: CharacterTtsGenderMap | null;
 }): CharacterTtsRegistry {
 	const voices: CharacterTtsVoiceMap = { ...(params.existingVoices ?? {}) };
 	const labels: CharacterTtsLabelMap = { ...(params.existingLabels ?? {}) };
@@ -130,29 +256,47 @@ export function ensureCharacterTtsRegistry(params: {
 		}
 
 		const key = resolveCharacterTtsKey(label, labels);
+		const genderHint = resolveGenderHintForKey(key, labels, params.characterGenders);
 
 		if (!labels[key]) {
 			labels[key] = label;
 		}
 
 		if (voices[key]) {
-			continue;
+			if (!genderHint || geminiTtsVoiceMatchesGender(voices[key], genderHint)) {
+				continue;
+			}
 		}
 
 		if (key === DIRECTOR_TTS_KEY) {
-			const directorVoice = pickVoiceForCharacterKey(key, usedVoices, params.narrationTts.voice);
+			const directorVoice = pickVoiceForCharacterKey(
+				key,
+				usedVoices,
+				params.narrationTts.voice,
+				genderHint,
+			);
 			voices[key] = directorVoice;
 			usedVoices.add(directorVoice);
 			continue;
 		}
 
 		if (isPlayerCharacterTtsKey(key, params.playerName)) {
-			voices[key] = params.narrationTts.characterVoice;
-			usedVoices.add(params.narrationTts.characterVoice);
+			const preferredVoice = params.narrationTts.characterVoice;
+			const playerVoice =
+				genderHint && !geminiTtsVoiceMatchesGender(preferredVoice, genderHint)
+					? pickVoiceForCharacterKey(key, usedVoices, params.narrationTts.voice, genderHint)
+					: preferredVoice;
+			voices[key] = playerVoice;
+			usedVoices.add(playerVoice);
 			continue;
 		}
 
-		const assignedVoice = pickVoiceForCharacterKey(key, usedVoices, params.narrationTts.voice);
+		const assignedVoice = pickVoiceForCharacterKey(
+			key,
+			usedVoices,
+			params.narrationTts.voice,
+			genderHint,
+		);
 		voices[key] = assignedVoice;
 		usedVoices.add(assignedVoice);
 	}
