@@ -125,3 +125,34 @@ export function resolveGeminiPodcastTtsSettings(
 export function getGeminiTtsVoiceOption(voiceId: string) {
 	return GEMINI_TTS_VOICE_CATALOG.find((voice) => voice.id === voiceId);
 }
+
+export const DEFAULT_GEMINI_NARRATION_VOICE = "Iapetus";
+export const DEFAULT_GEMINI_CHARACTER_VOICE = "Aoede";
+
+export interface GeminiNarrationTtsSettings {
+	voice: string;
+	characterVoice: string;
+	model: GeminiTtsModelId;
+}
+
+export type GeminiNarrationTtsSettingsInput = {
+	voice?: string;
+	characterVoice?: string;
+	model?: string;
+};
+
+export function resolveGeminiNarrationTtsSettings(
+	partial?: GeminiNarrationTtsSettingsInput | null,
+): GeminiNarrationTtsSettings {
+	const voice = partial?.voice?.trim() ?? "";
+	const characterVoice = partial?.characterVoice?.trim() ?? "";
+	const model = partial?.model?.trim() ?? "";
+
+	return {
+		voice: isValidGeminiTtsVoice(voice) ? voice : DEFAULT_GEMINI_NARRATION_VOICE,
+		characterVoice: isValidGeminiTtsVoice(characterVoice)
+			? characterVoice
+			: DEFAULT_GEMINI_CHARACTER_VOICE,
+		model: isValidGeminiTtsModel(model) ? model : GEMINI_TTS_MODEL_PRIMARY,
+	};
+}

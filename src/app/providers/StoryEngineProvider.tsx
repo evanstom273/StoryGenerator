@@ -49,7 +49,7 @@ import {
 } from "../../lib/aiDocumentGenerator/presets";
 import { generateChapterStructuredDocument, resolveSourceMaterialForStructure } from "../../lib/aiDocumentGenerator/chapterGeneration";
 import { generateGeminiPodcastAudioFromMarkdown } from "../../lib/aiDocumentGenerator/geminiAudio";
-import { resolveGeminiPodcastTtsSettings } from "../../lib/ai/geminiTtsVoices";
+import { resolveGeminiPodcastTtsSettings, resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
 import {
 	buildAudioFilenameFromMarkdownUpload,
 	segmentStoryBundleByChapter,
@@ -162,6 +162,7 @@ import type {
   DeveloperTestingNoteDraft,
   DirectorIntent,
   GeminiPodcastTtsSettings,
+  GeminiNarrationTtsSettings,
   GuardedDeleteResult,
   MetaChatReference,
   PlayerCharacterExportBundleV1,
@@ -398,6 +399,7 @@ interface StoryEngineContextValue {
     apiKeys?: Partial<Record<AIProviderType, string>>;
     defaultModels?: Partial<Record<AIProviderType, string>>;
     geminiPodcastTts?: Partial<GeminiPodcastTtsSettings>;
+    geminiNarrationTts?: Partial<GeminiNarrationTtsSettings>;
   }) => Promise<AISettings>;
   validateAIConnection: (providerType?: AIProviderType) => Promise<void>;
   getStoryAIConfig: (storyId: string) => Promise<StoryAIConfig | null>;
@@ -1547,6 +1549,7 @@ export function StoryEngineProvider({
       const normalized: AISettings = {
         ...(record as AISettings),
         geminiPodcastTts: resolveGeminiPodcastTtsSettings(record.geminiPodcastTts),
+        geminiNarrationTts: resolveGeminiNarrationTtsSettings(record.geminiNarrationTts),
       };
       return normalized;
     }
@@ -5160,6 +5163,14 @@ export function StoryEngineProvider({
           : current?.geminiPodcastTts
             ? resolveGeminiPodcastTtsSettings(current.geminiPodcastTts)
             : undefined;
+        const geminiNarrationTts = next.geminiNarrationTts
+          ? resolveGeminiNarrationTtsSettings({
+              ...current?.geminiNarrationTts,
+              ...next.geminiNarrationTts,
+            })
+          : current?.geminiNarrationTts
+            ? resolveGeminiNarrationTtsSettings(current.geminiNarrationTts)
+            : undefined;
 
         const settings: AISettings = {
           id: "ai-settings",
@@ -5167,6 +5178,7 @@ export function StoryEngineProvider({
           apiKeys,
           defaultModels,
           geminiPodcastTts,
+          geminiNarrationTts,
           createdAt,
           updatedAt: now,
         };

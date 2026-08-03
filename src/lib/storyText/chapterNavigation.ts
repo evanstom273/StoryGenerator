@@ -349,3 +349,26 @@ export function scrollToChapterHeader(
   });
   return true;
 }
+
+export function getMessagesForChapterStartingAt(messages: StoryMessage[], startMessageId: string) {
+	const sorted = sortMessages(messages);
+	const startIndex = sorted.findIndex((message) => message.id === startMessageId);
+	if (startIndex < 0) {
+		return [];
+	}
+
+	let fromIndex = startIndex;
+	const startBoundary = resolveMessageChapterBoundary(sorted[startIndex]!);
+	if (startBoundary?.kind === "start") {
+		fromIndex = startIndex + 1;
+	}
+
+	for (let index = fromIndex + 1; index < sorted.length; index += 1) {
+		const boundary = resolveMessageChapterBoundary(sorted[index]!);
+		if (boundary?.kind === "start") {
+			return sorted.slice(fromIndex, index);
+		}
+	}
+
+	return sorted.slice(fromIndex);
+}

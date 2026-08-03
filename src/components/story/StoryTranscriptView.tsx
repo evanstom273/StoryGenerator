@@ -9,6 +9,7 @@ import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
+import { ChapterListenBanner, StoryMessagePlayButton } from "./StorySpeechControls";
 
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
@@ -270,13 +271,6 @@ function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
   );
 }
 
-function chapterStartBannerClasses(highlighted: boolean) {
-  return cn(
-    "max-lg:scroll-mt-[6.5rem] lg:scroll-mt-10 rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft",
-    highlighted ? "ring-2 ring-accent/35" : "",
-  );
-}
-
 export function StoryTranscriptView({
   messages,
   playerCharacterName,
@@ -325,13 +319,14 @@ export function StoryTranscriptView({
 
         if (chapterBoundary?.kind === "start") {
           return (
-            <div
+            <ChapterListenBanner
               key={message.id}
-              id={`story-chapter-marker-${message.id}`}
-              className={chapterStartBannerClasses(highlight)}
-            >
-              {chapterBoundary.label}
-            </div>
+              messageId={message.id}
+              label={chapterBoundary.label}
+              highlighted={highlight}
+              messages={messages}
+              playerCharacterName={playerCharacterName}
+            />
           );
         }
 
@@ -340,12 +335,13 @@ export function StoryTranscriptView({
           return (
             <Fragment key={message.id}>
               {chapterStartLabel ? (
-                <div
-                  id={`story-chapter-start-${message.id}`}
-                  className={chapterStartBannerClasses(highlight)}
-                >
-                  {chapterStartLabel}
-                </div>
+                <ChapterListenBanner
+                  messageId={message.id}
+                  label={chapterStartLabel}
+                  highlighted={highlight}
+                  messages={messages}
+                  playerCharacterName={playerCharacterName}
+                />
               ) : null}
               <div
                 id={`story-message-${message.id}`}
@@ -374,12 +370,13 @@ export function StoryTranscriptView({
           if (isContinue) {
             return chapterStartLabel ? (
               <Fragment key={message.id}>
-                <div
-                  id={`story-chapter-start-${message.id}`}
-                  className={chapterStartBannerClasses(highlight)}
-                >
-                  {chapterStartLabel}
-                </div>
+                <ChapterListenBanner
+                  messageId={message.id}
+                  label={chapterStartLabel}
+                  highlighted={highlight}
+                  messages={messages}
+                  playerCharacterName={playerCharacterName}
+                />
               </Fragment>
             ) : null;
           }
@@ -399,12 +396,13 @@ export function StoryTranscriptView({
           return (
             <Fragment key={message.id}>
               {chapterStartLabel ? (
-                <div
-                  id={`story-chapter-start-${message.id}`}
-                  className={chapterStartBannerClasses(highlight)}
-                >
-                  {chapterStartLabel}
-                </div>
+                <ChapterListenBanner
+                  messageId={message.id}
+                  label={chapterStartLabel}
+                  highlighted={highlight}
+                  messages={messages}
+                  playerCharacterName={playerCharacterName}
+                />
               ) : null}
               <div
                 id={`story-message-${message.id}`}
@@ -438,12 +436,13 @@ export function StoryTranscriptView({
         return (
           <Fragment key={message.id}>
             {chapterStartLabel ? (
-              <div
-                id={`story-chapter-start-${message.id}`}
-                className={chapterStartBannerClasses(highlight)}
-              >
-                {chapterStartLabel}
-              </div>
+              <ChapterListenBanner
+                messageId={message.id}
+                label={chapterStartLabel}
+                highlighted={highlight}
+                messages={messages}
+                playerCharacterName={playerCharacterName}
+              />
             ) : null}
             {showTimeChip && rpConfig && message.storyTime ? (
               <div className="select-none py-1 text-center text-[10px] text-white/25">
@@ -457,6 +456,13 @@ export function StoryTranscriptView({
                 highlight && !chapterStartLabel ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
               )}
             >
+              <div className="flex justify-end">
+                <StoryMessagePlayButton
+                  message={message}
+                  playerCharacterName={playerCharacterName}
+                  latestUserMessage={latestUserMessage}
+                />
+              </div>
               {blocks.map((block, blockIndex) => {
                 const isNarration = !block.speakerLabel || block.speakerLabel === "Narrator";
                 const lines = block.text.split("\n");

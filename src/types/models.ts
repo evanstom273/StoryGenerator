@@ -274,12 +274,19 @@ export interface GeminiPodcastTtsSettings {
   model: string;
 }
 
+export interface GeminiNarrationTtsSettings {
+  voice: string;
+  characterVoice: string;
+  model: string;
+}
+
 export interface AISettings {
   id: "ai-settings";
   activeProviderType: AIProviderType;
   apiKeys: Partial<Record<AIProviderType, string>>;
   defaultModels: Partial<Record<AIProviderType, string>>;
   geminiPodcastTts?: GeminiPodcastTtsSettings;
+  geminiNarrationTts?: GeminiNarrationTtsSettings;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
