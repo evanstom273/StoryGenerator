@@ -13,21 +13,24 @@ import {
 	type AiDocumentPresetId,
 } from "../../lib/aiDocumentGenerator/presets";
 import type { AiDocumentOutputFormat, AiDocumentStructure } from "../../lib/aiDocumentGenerator/types";
-import { readUploadedSourceFile } from "../../lib/aiDocumentGenerator/sourceMaterial";
+import { readMarkdownUploadFile, readUploadedSourceFile } from "../../lib/aiDocumentGenerator/sourceMaterial";
 
 type SourceMode = "library" | "upload";
 
 export function AiDocumentGeneratorTab() {
-	const { stories, aiSettings, generateAiDocument } = useStoryEngine();
+	const { stories, aiSettings, generateAiDocument, generateAiDocumentAudioFromMarkdown } = useStoryEngine();
 	const [sourceMode, setSourceMode] = useState<SourceMode>("library");
 	const [storyId, setStoryId] = useState("");
 	const [uploadFile, setUploadFile] = useState<File | null>(null);
+	const [markdownAudioFile, setMarkdownAudioFile] = useState<File | null>(null);
 	const [presetId, setPresetId] = useState<AiDocumentPresetId>("podcast-chapter-breakdown");
 	const [structure, setStructure] = useState<AiDocumentStructure>("chapter-by-chapter");
 	const [outputFormat, setOutputFormat] = useState<AiDocumentOutputFormat>("markdown");
 	const [customPrompt, setCustomPrompt] = useState("");
 	const [statusMessage, setStatusMessage] = useState<string | null>(null);
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	const [audioStatusMessage, setAudioStatusMessage] = useState<string | null>(null);
+	const [audioErrorMessage, setAudioErrorMessage] = useState<string | null>(null);
 	const [isGenerating, setIsGenerating] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
 
@@ -144,6 +147,57 @@ export function AiDocumentGeneratorTab() {
 
 	function handleCancel() {
 		abortRef.current?.abort();
+	}
+
+	async function handleGenerateAudioFromMarkdown() {
+		setAudioErrorMessage(null);
+		setAudioStatusMessage(null);
+
+		if (!markdownAudioFile) {
+			setAudioErrorMessage("Upload a Markdown file from a previous generator export.");
+			return;
+		}
+
+		if (!hasGeminiKey) {
+			setAudioErrorMessage("Add a Gemini API key in Settings → AI to generate podcast audio.");
+			return;
+		}
+
+		setIsGenerating(true);
+		const controller = new AbortController();
+		abortRef.current = controller;
+
+		try {
+			const markdown = await readMarkdownUploadFile(markdownAudioFile);
+			setAudioStatusMessage("Generating Gemini podcast audio…");
+
+			const result = await generateAiDocumentAudioFromMarkdown({
+				markdown,
+				label: markdownAudioFile.name,
+				signal: controller.signal,
+				onProgress: (message) => setAudioStatusMessage(message),
+			});
+
+			await downloadFile(result.filename, result.content, result.mimeType);
+			setAudioStatusMessage(`Downloaded ${result.filename}`);
+		} catch (error) {
+			if (isGenerationFailureError(error)) {
+				const failure = error.failure;
+				const isSilentCancel = failure.kind === "cancelled";
+				if (isSilentCancel) {
+					setAudioStatusMessage("Generation cancelled.");
+				} else {
+					setAudioErrorMessage(failure.summaryMessage);
+				}
+			} else if (error instanceof Error && /abort/i.test(error.message)) {
+				setAudioStatusMessage("Generation cancelled.");
+			} else {
+				setAudioErrorMessage(error instanceof Error ? error.message : "Unable to generate audio.");
+			}
+		} finally {
+			setIsGenerating(false);
+			abortRef.current = null;
+		}
 	}
 
 	const outputExtension = outputFormat === "gemini-audio-wav" ? "wav" : "md";
@@ -302,6 +356,63 @@ export function AiDocumentGeneratorTab() {
 					<div className="flex flex-wrap gap-3">
 						<Button type="button" onClick={() => void handleGenerate()} disabled={isGenerating}>
 							{isGenerating ? "Generating…" : errorMessage ? "Retry" : "Generate"}
+						</Button>
+						{isGenerating ? (
+							<Button type="button" variant="secondary" onClick={handleCancel}>
+								Cancel
+							</Button>
+						) : null}
+					</div>
+				</div>
+			</Panel>
+
+			<Panel variant="flat" padding="lg">
+				<div className="space-y-6">
+					<div>
+						<div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">
+							Audio from Markdown
+						</div>
+						<p className="mt-2 text-[13px] leading-6 text-ink-muted">
+							Upload a podcast Markdown export to generate Gemini TTS audio without re-running document
+							generation. Use files from this tool or compatible exports with labeled host dialogue.
+						</p>
+					</div>
+
+					<Field
+						label="Markdown file"
+						hint={
+							hasGeminiKey
+								? "Podcast chapter breakdown or discussion exports (.md)"
+								: "Add a Gemini API key in Settings → AI for audio"
+						}
+					>
+						<input
+							type="file"
+							accept=".md,.markdown,text/markdown"
+							disabled={isGenerating}
+							className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-[8px] file:border-0 file:bg-white/[0.06] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
+							onChange={(event) => setMarkdownAudioFile(event.target.files?.[0] ?? null)}
+						/>
+					</Field>
+
+					{audioStatusMessage ? (
+						<div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">
+							{audioStatusMessage}
+						</div>
+					) : null}
+					{audioErrorMessage ? (
+						<div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
+							{audioErrorMessage}
+						</div>
+					) : null}
+
+					<div className="flex flex-wrap gap-3">
+						<Button
+							type="button"
+							onClick={() => void handleGenerateAudioFromMarkdown()}
+							disabled={isGenerating || !hasGeminiKey}
+						>
+							{isGenerating ? "Generating…" : audioErrorMessage ? "Retry" : "Generate audio"}
 						</Button>
 						{isGenerating ? (
 							<Button type="button" variant="secondary" onClick={handleCancel}>

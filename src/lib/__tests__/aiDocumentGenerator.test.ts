@@ -6,6 +6,7 @@ import {
 	getAiDocumentPreset,
 } from "../aiDocumentGenerator/presets";
 import { extractPodcastDialogueFromMarkdown } from "../aiDocumentGenerator/podcastScript";
+import { buildAudioFilenameFromMarkdownUpload } from "../aiDocumentGenerator/sourceMaterial";
 import { encodePcm16ToWav } from "../aiDocumentGenerator/wavEncode";
 
 describe("aiDocumentGenerator", () => {
@@ -65,6 +66,15 @@ describe("aiDocumentGenerator", () => {
 				sourceMaterial: "Source",
 			}),
 		).toThrow(/describe the document/i);
+	});
+
+	it("builds audio filename from markdown upload name", () => {
+		expect(buildAudioFilenameFromMarkdownUpload("podcast-discussion.md")).toBe(
+			"podcast-discussion.wav",
+		);
+		expect(buildAudioFilenameFromMarkdownUpload("Peralta Custom Document.MARKDOWN")).toBe(
+			"peralta-custom-document.wav",
+		);
 	});
 
 	it("encodes pcm to wav", () => {

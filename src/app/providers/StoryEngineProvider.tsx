@@ -50,6 +50,7 @@ import {
 import { generateChapterStructuredDocument, resolveSourceMaterialForStructure } from "../../lib/aiDocumentGenerator/chapterGeneration";
 import { generateGeminiPodcastAudioFromMarkdown } from "../../lib/aiDocumentGenerator/geminiAudio";
 import {
+	buildAudioFilenameFromMarkdownUpload,
 	segmentStoryBundleByChapter,
 	segmentUploadedSourceByChapter,
 } from "../../lib/aiDocumentGenerator/sourceMaterial";
@@ -266,6 +267,12 @@ interface StoryEngineContextValue {
     signal?: AbortSignal;
     onChunk?: (chunk: string) => void;
     onChunkReset?: () => void;
+    onProgress?: (message: string) => void;
+  }) => Promise<AiDocumentGenerationResult>;
+  generateAiDocumentAudioFromMarkdown: (input: {
+    markdown: string;
+    label: string;
+    signal?: AbortSignal;
     onProgress?: (message: string) => void;
   }) => Promise<AiDocumentGenerationResult>;
   deleteUniverse: (id: string) => Promise<GuardedDeleteResult>;
@@ -3423,6 +3430,32 @@ export function StoryEngineProvider({
           filename: buildAiDocumentFilename(preset.filenameStem, storyTitle, "md"),
           mimeType: "text/markdown",
           content: markdown,
+        };
+      },
+      async generateAiDocumentAudioFromMarkdown(input) {
+        const settings = await getNormalizedAISettings();
+        const geminiApiKey = settings?.apiKeys?.gemini?.trim() ?? "";
+        if (!geminiApiKey) {
+          throw new Error("Add a Gemini API key in Settings → AI to generate podcast audio.");
+        }
+
+        const markdown = input.markdown.trim();
+        if (!markdown) {
+          throw new Error("The uploaded Markdown file is empty.");
+        }
+
+        input.onProgress?.("Generating Gemini podcast audio…");
+        const wavBuffer = await generateGeminiPodcastAudioFromMarkdown({
+          apiKey: geminiApiKey,
+          markdown,
+          signal: input.signal,
+          onProgress: input.onProgress,
+        });
+
+        return {
+          filename: buildAudioFilenameFromMarkdownUpload(input.label),
+          mimeType: "audio/wav",
+          content: wavBuffer,
         };
       },
       async deleteUniverse(id) {

@@ -155,6 +155,29 @@ export function segmentUploadedSourceByChapter(text: string): ChapterSourceSegme
 	return segments.length ? segments : [{ label: "Full Story", transcript: truncateSourceMaterial(text, MAX_CHAPTER_SOURCE_CHARS) }];
 }
 
+export async function readMarkdownUploadFile(file: File) {
+	const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+	if (extension !== "md" && extension !== "markdown") {
+		throw new Error("Upload a Markdown (.md) file from a previous generator export.");
+	}
+
+	const text = await readFileAsText(file);
+	if (!text.trim()) {
+		throw new Error("The uploaded Markdown file is empty.");
+	}
+
+	return text;
+}
+
+export function buildAudioFilenameFromMarkdownUpload(filename: string) {
+	const base = filename.replace(/\.(md|markdown)$/i, "").trim();
+	const safe = base
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "");
+	return safe ? `${safe}.wav` : "podcast-audio.wav";
+}
+
 export async function readUploadedSourceFile(file: File) {
 	const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
 
