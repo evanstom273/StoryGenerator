@@ -36,10 +36,28 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 	version: APP_VERSION,
 	title: `Welcome to ${APP_NAME}`,
 	intro: [
-		`${APP_NAME} is a local-first storytelling workspace. You build universes and characters, then play through AI-assisted stories where you control your protagonist and the AI narrates the world around you. Everything lives on your device until you choose to export it.`,
+		"You always control your protagonist. The AI controls the world, NPCs, and narration around you — that's the core idea behind Story Engine.",
+		`${APP_NAME} is a local-first storytelling workspace. You build universes and characters, then play through AI-assisted stories on your device until you choose to export them.`,
 		"Use the sections below as an onboarding guide. Start with setup, then open a story and experiment with the workspace taskbar. You can download this tutorial as PDF, TXT, or Markdown from the bottom of this tab.",
 	],
 	sections: [
+		{
+			title: "Why Story Engine?",
+			blocks: [
+				{
+					type: "paragraph",
+					text: `${APP_NAME} is different because:`,
+				},
+				{
+					type: "bullets",
+					items: [
+						"You always control your protagonist.",
+						"Stories maintain continuity over long campaigns.",
+						"Universes, characters, and stories can all be reused and connected.",
+					],
+				},
+			],
+		},
 		{
 			title: "Quick start — your first story",
 			blocks: [
@@ -104,7 +122,7 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 						{
 							label: "Archive",
 							description:
-								"Browse indexed story state: premise, open threads, characters, locations, relationships, and memories.",
+								"Automatically summarises your story, characters, locations, relationships, and open plot threads so you don't have to remember everything yourself.",
 						},
 						{
 							label: "Reader mode",
@@ -158,7 +176,7 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 			blocks: [
 				{
 					type: "paragraph",
-					text: "Each Send sends your message and generates the next AI scene. The AI narrates the world and NPCs but does not control your player character — you always own your protagonist's actions and dialogue.",
+					text: "Each Send sends your message and generates the next AI scene.",
 				},
 				{
 					type: "bullets",
@@ -186,7 +204,7 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 						"Transcript view (default) — prose layout with speaker tags, chapter banners, and RP time/gold when enabled.",
 						"Bubble view — compact chat bubbles; best for editing individual messages.",
 						"Reader mode — clean reading without composer controls.",
-						"Archive view — structured index of story state, not the live transcript. Use Jump to #N links to return to a message.",
+						"Archive view — automatically summarises your story, characters, locations, relationships, and open plot threads. Use Jump to #N links to return to a transcript message.",
 					],
 				},
 				{
@@ -224,7 +242,8 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 					type: "bullets",
 					items: [
 						"Director — scene cuts and time skips (“three days later”, “cut to the tavern”). /time +2h, +30m, +3d also works in chat.",
-						"Author — canon declarations, secrets, reveals, and retcons. Highest-priority truth for the AI.",
+						"Author — declare canon the AI should always remember (highest-priority truth). Example: “The king is secretly a vampire.”",
+						"Secret, Reveal, and Retcon — record hidden facts, authorise when they surface, or correct earlier canon going forward.",
 						"Continue — send a continue turn to nudge the AI forward without adding new player dialogue.",
 						"Canon speaker lines — assistant messages attributed to named NPCs from your universe.",
 						"Narrator — omniscient narration beats separate from character dialogue.",
@@ -328,6 +347,15 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 						"Export a backup before major experiments or imports.",
 						"Install the PWA on mobile so your library stays in one place on that device.",
 					],
+				},
+			],
+		},
+		{
+			title: "You're ready",
+			blocks: [
+				{
+					type: "paragraph",
+					text: "That's it! The best way to learn Story Engine is to create a universe, build a character, and start writing.",
 				},
 			],
 		},
