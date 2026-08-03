@@ -2,7 +2,6 @@ import { normalizeAIError } from "./errors";
 
 const GEMINI_TTS_MODEL = "gemini-3.1-flash-tts-preview";
 const GEMINI_TTS_FALLBACK_MODEL = "gemini-2.5-flash-preview-tts";
-const GEMINI_INTERACTIONS_API_REVISION = "2026-05-20";
 const TTS_REQUEST_TIMEOUT_MS = 180_000;
 const TTS_ATTEMPTS_PER_MODEL = 3;
 
@@ -10,6 +9,12 @@ export const GEMINI_TTS_VOICES = {
 	hostA: "Kore",
 	hostB: "Puck",
 } as const;
+
+interface InlineAudioData {
+	data?: string;
+	mimeType?: string;
+	mime_type?: string;
+}
 
 interface ContentBlock {
 	type?: string;
@@ -29,6 +34,20 @@ export interface GeminiInteractionPayload {
 	};
 	outputs?: ContentBlock[];
 	steps?: InteractionStep[];
+	error?: {
+		message?: string;
+	};
+}
+
+export interface GeminiGenerateContentPayload {
+	candidates?: Array<{
+		content?: {
+			parts?: Array<{
+				inlineData?: InlineAudioData;
+				inline_data?: InlineAudioData;
+			}>;
+		};
+	}>;
 	error?: {
 		message?: string;
 	};
@@ -75,6 +94,20 @@ function extractPcmFromWav(wav: Uint8Array) {
 	}
 
 	return wav.byteLength > 44 ? wav.subarray(44) : wav;
+}
+
+function decodeInlineAudioToPcm(inline: InlineAudioData) {
+	if (!inline.data) {
+		return null;
+	}
+
+	const bytes = decodeBase64ToBytes(inline.data);
+	const mimeType = (inline.mimeType ?? inline.mime_type ?? "").toLowerCase();
+	if (mimeType.includes("wav") || isWavBytes(bytes)) {
+		return extractPcmFromWav(bytes);
+	}
+
+	return bytes;
 }
 
 function collectAudioBlocks(payload: GeminiInteractionPayload) {
@@ -140,39 +173,78 @@ export function decodeGeminiInteractionAudioToPcm(payload: GeminiInteractionPayl
 	return bytes;
 }
 
-async function requestGeminiTtsInteraction(params: {
+export function decodeGeminiGenerateContentAudioToPcm(payload: GeminiGenerateContentPayload) {
+	const parts = payload.candidates?.[0]?.content?.parts ?? [];
+	for (const part of parts) {
+		const inline = part.inlineData ?? part.inline_data;
+		if (!inline?.data) {
+			continue;
+		}
+		const pcm = decodeInlineAudioToPcm(inline);
+		if (pcm?.byteLength) {
+			return pcm;
+		}
+	}
+	return null;
+}
+
+function buildSpeechConfig(speakers: Array<{ name: string; voice: string }>) {
+	if (speakers.length <= 1) {
+		const voice = speakers[0]?.voice ?? GEMINI_TTS_VOICES.hostA;
+		return {
+			voiceConfig: {
+				prebuiltVoiceConfig: {
+					voiceName: voice,
+				},
+			},
+		};
+	}
+
+	return {
+		multiSpeakerVoiceConfig: {
+			speakerVoiceConfigs: speakers.map((speaker) => ({
+				speaker: speaker.name,
+				voiceConfig: {
+					prebuiltVoiceConfig: {
+						voiceName: speaker.voice,
+					},
+				},
+			})),
+		},
+	};
+}
+
+async function requestGeminiTtsGenerateContent(params: {
 	apiKey: string;
 	model: string;
 	input: string;
 	speakers: Array<{ name: string; voice: string }>;
 	signal?: AbortSignal;
 }) {
-	const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"x-goog-api-key": params.apiKey,
-			"Api-Revision": GEMINI_INTERACTIONS_API_REVISION,
-		},
-		body: JSON.stringify({
-			model: params.model,
-			input: params.input,
-			response_format: { type: "audio" },
-			generation_config: {
-				speech_config: params.speakers.map((speaker) => ({
-					speaker: speaker.name,
-					voice: speaker.voice,
-				})),
+	const response = await fetch(
+		`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(params.model)}:generateContent`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"x-goog-api-key": params.apiKey,
 			},
-		}),
-		signal: params.signal,
-	});
+			body: JSON.stringify({
+				contents: [{ parts: [{ text: params.input }] }],
+				generationConfig: {
+					responseModalities: ["AUDIO"],
+					speechConfig: buildSpeechConfig(params.speakers),
+				},
+			}),
+			signal: params.signal,
+		},
+	);
 
 	const responseText = await response.text();
-	let payload: GeminiInteractionPayload | null = null;
+	let payload: GeminiGenerateContentPayload | null = null;
 	if (responseText) {
 		try {
-			payload = JSON.parse(responseText) as GeminiInteractionPayload;
+			payload = JSON.parse(responseText) as GeminiGenerateContentPayload;
 		} catch {
 			payload = null;
 		}
@@ -215,7 +287,7 @@ export async function generateGeminiMultiSpeakerAudio(params: {
 	try {
 		for (const model of models) {
 			for (let attempt = 0; attempt < TTS_ATTEMPTS_PER_MODEL; attempt += 1) {
-				const result = await requestGeminiTtsInteraction({
+				const result = await requestGeminiTtsGenerateContent({
 					apiKey: safeKey,
 					model,
 					input: params.input,
@@ -247,7 +319,7 @@ export async function generateGeminiMultiSpeakerAudio(params: {
 					break;
 				}
 
-				const pcm = decodeGeminiInteractionAudioToPcm(result.payload);
+				const pcm = decodeGeminiGenerateContentAudioToPcm(result.payload);
 				if (pcm?.byteLength) {
 					return pcm;
 				}
