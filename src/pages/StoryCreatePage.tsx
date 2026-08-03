@@ -16,6 +16,7 @@ const initialFormState = {
   universeIds: [] as string[],
   playerCharacterId: "",
   currentSummary: "",
+  matureFictionMode: true,
 };
 
 const initialQuickCharacterState: PlayerCharacterDraft = {
@@ -278,6 +279,7 @@ export function StoryCreatePage() {
                 : [formState.universeId],
             playerCharacterId: resolvedPlayerCharacterId,
             currentSummary: formState.currentSummary.trim(),
+            matureFictionMode: formState.matureFictionMode,
           });
 
       if (!isDerivedMode && protagonistMode === "quick") {
@@ -825,6 +827,26 @@ export function StoryCreatePage() {
                 />
               </Field>
             )}
+
+            {!isDerivedMode ? (
+              <Field
+                label="Mature fiction (non-graphic)"
+                hint="Defaults to on for new stories"
+              >
+                <SelectInput
+                  value={formState.matureFictionMode ? "on" : "off"}
+                  onChange={(event) =>
+                    setFormState((currentState) => ({
+                      ...currentState,
+                      matureFictionMode: event.target.value === "on",
+                    }))
+                  }
+                >
+                  <option value="on">On</option>
+                  <option value="off">Off</option>
+                </SelectInput>
+              </Field>
+            ) : null}
           </div>
 
           {errorMessage ? (

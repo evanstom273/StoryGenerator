@@ -3518,10 +3518,10 @@ export function StoryEngineProvider({
           isArchived: draft.isArchived,
           readOnlyReason: undefined,
           readOnlyLockedAt: undefined,
-          matureFictionMode: draft.matureFictionMode,
+          matureFictionMode: draft.matureFictionMode ?? true,
           rpMode: draft.rpMode,
           rpConfig: draft.rpConfig,
-          autoIndexMode: draft.autoIndexMode,
+          autoIndexMode: draft.autoIndexMode ?? "chapter",
           autoIndexInterval: draft.autoIndexInterval ?? 20,
           accentThemeKey: draft.accentThemeKey,
           accentThemeCustom: draft.accentThemeCustom,
@@ -3531,6 +3531,18 @@ export function StoryEngineProvider({
         };
 
         await repository.saveStory(nextStory);
+        await repository.saveStoryMessage({
+          id: createEntityId("story-message"),
+          storyId,
+          role: "system",
+          content: "Chapter I.",
+          timestamp: now,
+          speakerType: "system",
+          chapterBoundary: {
+            kind: "start",
+            label: "Chapter I",
+          },
+        });
         await hydrate(false);
 
         return nextStory;
