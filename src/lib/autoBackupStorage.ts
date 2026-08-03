@@ -28,15 +28,4 @@ export async function pruneAutoBackupRecords(keepLatest: number) {
 	await Promise.all(toDelete.map((record) => deleteFromStore(AUTO_BACKUPS_STORE, record.id)));
 }
 
-export function readAutoBackupLastRunAt(): number | null {
-	try {
-		const raw = localStorage.getItem("story-engine:backup:lastBackupAt");
-		if (!raw) {
-			return null;
-		}
-		const value = Number(raw);
-		return Number.isFinite(value) ? value : null;
-	} catch {
-		return null;
-	}
-}
+export const AUTO_BACKUP_KEEP_LATEST = 5;

@@ -3,6 +3,7 @@ import {
 	pruneAutoBackupRecords,
 	saveAutoBackupRecord,
 } from "./autoBackupStorage";
+import { getAutoBackupIntervalMs } from "./autoBackupSchedule";
 import { downloadFile } from "./download";
 
 const LAST_BACKUP_AT_KEY = "story-engine:backup:lastBackupAt";
@@ -10,7 +11,6 @@ const LAST_BACKUP_SIGNATURE_KEY = "story-engine:backup:lastBackupSignature";
 
 const BACKUP_DIR = "StoryEngineBackups";
 const KEEP_LATEST = 5;
-const MS_12H = 12 * 60 * 60 * 1000;
 
 function pad(value: number) {
 	return String(value).padStart(2, "0");
@@ -205,7 +205,7 @@ async function persistWebAutoBackup(filename: string, json: string, createdAt: s
 export async function runAutoBackupIfNeeded(repository: StoryEngineRepository) {
 	const now = Date.now();
 	const lastBackupAt = readLocalStorageNumber(LAST_BACKUP_AT_KEY) ?? 0;
-	if (now - lastBackupAt < MS_12H) {
+	if (now - lastBackupAt < getAutoBackupIntervalMs()) {
 		return;
 	}
 
