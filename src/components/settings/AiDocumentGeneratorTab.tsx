@@ -10,6 +10,7 @@ import {
 	GEMINI_TTS_VOICE_CATALOG,
 	GEMINI_TTS_VOICE_GROUP_LABELS,
 	resolveGeminiPodcastTtsSettings,
+	resolveGeminiNarrationTtsSettings,
 	type GeminiTtsVoiceGroup,
 } from "../../lib/ai/geminiTtsVoices";
 import {
@@ -52,6 +53,27 @@ export function AiDocumentGeneratorTab() {
 	const selectedPreset = getAiDocumentPreset(presetId);
 	const hasGeminiKey = Boolean(aiSettings?.apiKeys?.gemini?.trim());
 	const podcastTts = resolveGeminiPodcastTtsSettings(aiSettings?.geminiPodcastTts);
+	const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
+
+	async function persistNarrationTts(
+		patch: Partial<{
+			voice: string;
+			characterVoice: string;
+			model: string;
+		}>,
+	) {
+		if (!aiSettings) {
+			return;
+		}
+
+		await saveAISettings({
+			activeProviderType: aiSettings.activeProviderType,
+			geminiNarrationTts: {
+				...narrationTts,
+				...patch,
+			},
+		});
+	}
 
 	async function persistPodcastTts(
 		patch: Partial<{
@@ -313,16 +335,90 @@ export function AiDocumentGeneratorTab() {
 					<div className="space-y-6">
 						<div>
 							<div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">
-								Gemini podcast voices
+								Gemini TTS voices
 							</div>
 							<p className="mt-2 text-[13px] leading-6 text-ink-muted">
-								Choose voices for Sam and Alex (or whatever host names appear in your Markdown).
-								Gemini offers 30 prebuilt narrators — not separate voicing models. Pick a TTS model
-								below; the app falls back to 2.5 if 3.1 is unavailable.
+								Configure podcast export voices and story/MetaChat playback (message play buttons,
+								Listen to Chapter). Defaults favor clear, emotive narration.
 							</p>
 						</div>
 
-						<div className="grid gap-6 md:grid-cols-2">
+						<div className="space-y-4 rounded-[8px] border border-divider/[0.35] bg-panel-muted/30 px-3.5 py-4">
+							<div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+								Story & MetaChat playback
+							</div>
+							<div className="grid gap-6 md:grid-cols-2">
+								<Field label="Narration voice" hint="Clear story narration — default Iapetus">
+									<SelectInput
+										value={narrationTts.voice}
+										onChange={(event) =>
+											void persistNarrationTts({ voice: event.target.value })
+										}
+										disabled={isGenerating}
+									>
+										{(Object.keys(voiceGroups) as GeminiTtsVoiceGroup[]).map((group) => {
+											const voices = voiceGroups[group];
+											if (!voices.length) {
+												return null;
+											}
+											return (
+												<optgroup key={group} label={GEMINI_TTS_VOICE_GROUP_LABELS[group]}>
+													{voices.map((voice) => (
+														<option key={voice.id} value={voice.id}>
+															{voice.label} — {voice.description}
+														</option>
+													))}
+												</optgroup>
+											);
+										})}
+									</SelectInput>
+								</Field>
+								<Field label="Character dialogue voice" hint="NPC lines — default Aoede">
+									<SelectInput
+										value={narrationTts.characterVoice}
+										onChange={(event) =>
+											void persistNarrationTts({ characterVoice: event.target.value })
+										}
+										disabled={isGenerating}
+									>
+										{(Object.keys(voiceGroups) as GeminiTtsVoiceGroup[]).map((group) => {
+											const voices = voiceGroups[group];
+											if (!voices.length) {
+												return null;
+											}
+											return (
+												<optgroup key={group} label={GEMINI_TTS_VOICE_GROUP_LABELS[group]}>
+													{voices.map((voice) => (
+														<option key={voice.id} value={voice.id}>
+															{voice.label} — {voice.description}
+														</option>
+													))}
+												</optgroup>
+											);
+										})}
+									</SelectInput>
+								</Field>
+							</div>
+							<Field label="Story TTS model">
+								<SelectInput
+									value={narrationTts.model}
+									onChange={(event) => void persistNarrationTts({ model: event.target.value })}
+									disabled={isGenerating}
+								>
+									{GEMINI_TTS_MODEL_OPTIONS.map((model) => (
+										<option key={model.id} value={model.id}>
+											{model.label} — {model.description}
+										</option>
+									))}
+								</SelectInput>
+							</Field>
+						</div>
+
+						<div className="space-y-4">
+							<div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+								Podcast document export
+							</div>
+							<div className="grid gap-6 md:grid-cols-2">
 							<Field
 								label="Sam voice (host one)"
 								hint={podcastTts.hostOneVoice}
@@ -379,21 +475,22 @@ export function AiDocumentGeneratorTab() {
 									})}
 								</SelectInput>
 							</Field>
-						</div>
+							</div>
 
-						<Field label="TTS model">
-							<SelectInput
-								value={podcastTts.model}
-								onChange={(event) => void persistPodcastTts({ model: event.target.value })}
-								disabled={isGenerating}
-							>
-								{GEMINI_TTS_MODEL_OPTIONS.map((model) => (
-									<option key={model.id} value={model.id}>
-										{model.label} — {model.description}
-									</option>
-								))}
-							</SelectInput>
-						</Field>
+							<Field label="Podcast TTS model">
+								<SelectInput
+									value={podcastTts.model}
+									onChange={(event) => void persistPodcastTts({ model: event.target.value })}
+									disabled={isGenerating}
+								>
+									{GEMINI_TTS_MODEL_OPTIONS.map((model) => (
+										<option key={model.id} value={model.id}>
+											{model.label} — {model.description}
+										</option>
+									))}
+								</SelectInput>
+							</Field>
+						</div>
 					</div>
 				</Panel>
 			) : null}

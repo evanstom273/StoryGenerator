@@ -8,6 +8,7 @@ import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitiz
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
+import { StoryMessagePlayButton } from "./StorySpeechControls";
 
 interface StoryMessageBubbleProps {
   message: StoryMessage;
@@ -293,6 +294,13 @@ export function StoryMessageBubble({
           </div>
           <div className="flex items-center gap-2">
             <div className="text-xs text-ink-muted">{formatDateTime(message.timestamp)}</div>
+            {message.role === "assistant" ? (
+              <StoryMessagePlayButton
+                message={message}
+                playerCharacterName={playerCharacterName}
+                latestUserMessage={latestUserMessage}
+              />
+            ) : null}
             <div className="hidden items-center gap-1 opacity-0 transition group-hover:flex group-hover:opacity-100">
               <Button
                 size="sm"
@@ -332,6 +340,13 @@ export function StoryMessageBubble({
               )}
         </div>
         <div className="mt-2 flex gap-2 group-hover:hidden">
+          {message.role === "assistant" ? (
+            <StoryMessagePlayButton
+              message={message}
+              playerCharacterName={playerCharacterName}
+              latestUserMessage={latestUserMessage}
+            />
+          ) : null}
           <Button
             size="sm"
             variant="ghost"
