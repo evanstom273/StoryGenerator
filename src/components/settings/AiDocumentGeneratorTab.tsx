@@ -6,6 +6,13 @@ import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { downloadFile } from "../../lib/download";
 import { isGenerationFailureError } from "../../lib/ai/errors";
 import {
+	GEMINI_TTS_MODEL_OPTIONS,
+	GEMINI_TTS_VOICE_CATALOG,
+	GEMINI_TTS_VOICE_GROUP_LABELS,
+	resolveGeminiPodcastTtsSettings,
+	type GeminiTtsVoiceGroup,
+} from "../../lib/ai/geminiTtsVoices";
+import {
 	AI_DOCUMENT_CUSTOM_PRESET_ID,
 	AI_DOCUMENT_PRESETS,
 	buildAiDocumentFilename,
@@ -18,7 +25,13 @@ import { readMarkdownUploadFile, readUploadedSourceFile } from "../../lib/aiDocu
 type SourceMode = "library" | "upload";
 
 export function AiDocumentGeneratorTab() {
-	const { stories, aiSettings, generateAiDocument, generateAiDocumentAudioFromMarkdown } = useStoryEngine();
+	const {
+		stories,
+		aiSettings,
+		saveAISettings,
+		generateAiDocument,
+		generateAiDocumentAudioFromMarkdown,
+	} = useStoryEngine();
 	const [sourceMode, setSourceMode] = useState<SourceMode>("library");
 	const [storyId, setStoryId] = useState("");
 	const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -38,6 +51,41 @@ export function AiDocumentGeneratorTab() {
 
 	const selectedPreset = getAiDocumentPreset(presetId);
 	const hasGeminiKey = Boolean(aiSettings?.apiKeys?.gemini?.trim());
+	const podcastTts = resolveGeminiPodcastTtsSettings(aiSettings?.geminiPodcastTts);
+
+	async function persistPodcastTts(
+		patch: Partial<{
+			hostOneVoice: string;
+			hostTwoVoice: string;
+			model: string;
+		}>,
+	) {
+		if (!aiSettings) {
+			return;
+		}
+
+		await saveAISettings({
+			activeProviderType: aiSettings.activeProviderType,
+			geminiPodcastTts: {
+				...podcastTts,
+				...patch,
+			},
+		});
+	}
+
+	const voiceGroups = GEMINI_TTS_VOICE_CATALOG.reduce<
+		Record<GeminiTtsVoiceGroup, typeof GEMINI_TTS_VOICE_CATALOG>
+	>((groups, voice) => {
+		groups[voice.group].push(voice);
+		return groups;
+	}, {
+		narration: [],
+		podcast: [],
+		news: [],
+		warm: [],
+		expressive: [],
+		other: [],
+	});
 
 	useEffect(() => {
 		if (!storyId && stories[0]?.id) {
@@ -259,6 +307,96 @@ export function AiDocumentGeneratorTab() {
 					Read-only: stories, archives, and exports are never modified.
 				</p>
 			</Panel>
+
+			{hasGeminiKey ? (
+				<Panel variant="flat" padding="lg">
+					<div className="space-y-6">
+						<div>
+							<div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">
+								Gemini podcast voices
+							</div>
+							<p className="mt-2 text-[13px] leading-6 text-ink-muted">
+								Choose voices for Sam and Alex (or whatever host names appear in your Markdown).
+								Gemini offers 30 prebuilt narrators — not separate voicing models. Pick a TTS model
+								below; the app falls back to 2.5 if 3.1 is unavailable.
+							</p>
+						</div>
+
+						<div className="grid gap-6 md:grid-cols-2">
+							<Field
+								label="Sam voice (host one)"
+								hint={podcastTts.hostOneVoice}
+							>
+								<SelectInput
+									value={podcastTts.hostOneVoice}
+									onChange={(event) =>
+										void persistPodcastTts({ hostOneVoice: event.target.value })
+									}
+									disabled={isGenerating}
+								>
+									{(Object.keys(voiceGroups) as GeminiTtsVoiceGroup[]).map((group) => {
+										const voices = voiceGroups[group];
+										if (!voices.length) {
+											return null;
+										}
+										return (
+											<optgroup key={group} label={GEMINI_TTS_VOICE_GROUP_LABELS[group]}>
+												{voices.map((voice) => (
+													<option key={voice.id} value={voice.id}>
+														{voice.label} — {voice.description}
+													</option>
+												))}
+											</optgroup>
+										);
+									})}
+								</SelectInput>
+							</Field>
+							<Field
+								label="Alex voice (host two)"
+								hint={podcastTts.hostTwoVoice}
+							>
+								<SelectInput
+									value={podcastTts.hostTwoVoice}
+									onChange={(event) =>
+										void persistPodcastTts({ hostTwoVoice: event.target.value })
+									}
+									disabled={isGenerating}
+								>
+									{(Object.keys(voiceGroups) as GeminiTtsVoiceGroup[]).map((group) => {
+										const voices = voiceGroups[group];
+										if (!voices.length) {
+											return null;
+										}
+										return (
+											<optgroup key={group} label={GEMINI_TTS_VOICE_GROUP_LABELS[group]}>
+												{voices.map((voice) => (
+													<option key={voice.id} value={voice.id}>
+														{voice.label} — {voice.description}
+													</option>
+												))}
+											</optgroup>
+										);
+									})}
+								</SelectInput>
+							</Field>
+						</div>
+
+						<Field label="TTS model">
+							<SelectInput
+								value={podcastTts.model}
+								onChange={(event) => void persistPodcastTts({ model: event.target.value })}
+								disabled={isGenerating}
+							>
+								{GEMINI_TTS_MODEL_OPTIONS.map((model) => (
+									<option key={model.id} value={model.id}>
+										{model.label} — {model.description}
+									</option>
+								))}
+							</SelectInput>
+						</Field>
+					</div>
+				</Panel>
+			) : null}
 
 			<Panel variant="flat" padding="lg">
 				<div className="space-y-8">

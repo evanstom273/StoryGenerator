@@ -49,6 +49,7 @@ import {
 } from "../../lib/aiDocumentGenerator/presets";
 import { generateChapterStructuredDocument, resolveSourceMaterialForStructure } from "../../lib/aiDocumentGenerator/chapterGeneration";
 import { generateGeminiPodcastAudioFromMarkdown } from "../../lib/aiDocumentGenerator/geminiAudio";
+import { resolveGeminiPodcastTtsSettings } from "../../lib/ai/geminiTtsVoices";
 import {
 	buildAudioFilenameFromMarkdownUpload,
 	segmentStoryBundleByChapter,
@@ -160,6 +161,7 @@ import type {
   DeveloperTestingNote,
   DeveloperTestingNoteDraft,
   DirectorIntent,
+  GeminiPodcastTtsSettings,
   GuardedDeleteResult,
   MetaChatReference,
   PlayerCharacterExportBundleV1,
@@ -395,6 +397,7 @@ interface StoryEngineContextValue {
     activeProviderType: AIProviderType;
     apiKeys?: Partial<Record<AIProviderType, string>>;
     defaultModels?: Partial<Record<AIProviderType, string>>;
+    geminiPodcastTts?: Partial<GeminiPodcastTtsSettings>;
   }) => Promise<AISettings>;
   validateAIConnection: (providerType?: AIProviderType) => Promise<void>;
   getStoryAIConfig: (storyId: string) => Promise<StoryAIConfig | null>;
@@ -1541,7 +1544,11 @@ export function StoryEngineProvider({
       typeof record.defaultModels === "object" &&
       record.defaultModels !== null
     ) {
-      return record as AISettings;
+      const normalized: AISettings = {
+        ...(record as AISettings),
+        geminiPodcastTts: resolveGeminiPodcastTtsSettings(record.geminiPodcastTts),
+      };
+      return normalized;
     }
 
     if (
@@ -3433,6 +3440,7 @@ export function StoryEngineProvider({
             onProgress: input.onProgress,
             onChunkComplete: input.onAudioChunkComplete,
             resume: input.audioResume,
+            tts: settings.geminiPodcastTts,
           });
 
           return {
@@ -3468,6 +3476,7 @@ export function StoryEngineProvider({
           onProgress: input.onProgress,
           onChunkComplete: input.onChunkComplete,
           resume: input.resume,
+          tts: settings?.geminiPodcastTts,
         });
 
         return {
@@ -5143,12 +5152,21 @@ export function StoryEngineProvider({
             Object.entries(nextDefaultModels).filter((entry) => entry[1]?.trim()),
           ),
         } as Partial<Record<AIProviderType, string>>;
+        const geminiPodcastTts = next.geminiPodcastTts
+          ? resolveGeminiPodcastTtsSettings({
+              ...current?.geminiPodcastTts,
+              ...next.geminiPodcastTts,
+            })
+          : current?.geminiPodcastTts
+            ? resolveGeminiPodcastTtsSettings(current.geminiPodcastTts)
+            : undefined;
 
         const settings: AISettings = {
           id: "ai-settings",
           activeProviderType: next.activeProviderType,
           apiKeys,
           defaultModels,
+          geminiPodcastTts,
           createdAt,
           updatedAt: now,
         };

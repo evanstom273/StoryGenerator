@@ -1,15 +1,21 @@
 import { normalizeAIError } from "./errors";
+import {
+	DEFAULT_GEMINI_PODCAST_HOST_ONE_VOICE,
+	DEFAULT_GEMINI_PODCAST_HOST_TWO_VOICE,
+	GEMINI_TTS_MODEL_FALLBACK,
+	GEMINI_TTS_MODEL_PRIMARY,
+} from "./geminiTtsVoices";
 
-const GEMINI_TTS_MODEL = "gemini-3.1-flash-tts-preview";
-const GEMINI_TTS_FALLBACK_MODEL = "gemini-2.5-flash-preview-tts";
+const GEMINI_TTS_MODEL = GEMINI_TTS_MODEL_PRIMARY;
+const GEMINI_TTS_FALLBACK_MODEL = GEMINI_TTS_MODEL_FALLBACK;
 const TTS_REQUEST_TIMEOUT_MS = 300_000;
 const TTS_REQUEST_TIMEOUT_BASE_MS = 120_000;
 const TTS_REQUEST_TIMEOUT_PER_CHAR_MS = 12;
 const TTS_ATTEMPTS_PER_MODEL = 4;
 
 export const GEMINI_TTS_VOICES = {
-	hostA: "Kore",
-	hostB: "Puck",
+	hostA: DEFAULT_GEMINI_PODCAST_HOST_ONE_VOICE,
+	hostB: DEFAULT_GEMINI_PODCAST_HOST_TWO_VOICE,
 } as const;
 
 interface InlineAudioData {
