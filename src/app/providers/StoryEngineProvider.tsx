@@ -268,12 +268,24 @@ interface StoryEngineContextValue {
     onChunk?: (chunk: string) => void;
     onChunkReset?: () => void;
     onProgress?: (message: string) => void;
+    onAudioChunkComplete?: (state: {
+      index: number;
+      total: number;
+      pcmParts: Uint8Array[];
+    }) => void;
+    audioResume?: { pcmParts: Uint8Array[] };
   }) => Promise<AiDocumentGenerationResult>;
   generateAiDocumentAudioFromMarkdown: (input: {
     markdown: string;
     label: string;
     signal?: AbortSignal;
     onProgress?: (message: string) => void;
+    onChunkComplete?: (state: {
+      index: number;
+      total: number;
+      pcmParts: Uint8Array[];
+    }) => void;
+    resume?: { pcmParts: Uint8Array[] };
   }) => Promise<AiDocumentGenerationResult>;
   deleteUniverse: (id: string) => Promise<GuardedDeleteResult>;
   createPlayerCharacter: (draft: PlayerCharacterDraft) => Promise<PlayerCharacter>;
@@ -3417,6 +3429,8 @@ export function StoryEngineProvider({
             markdown,
             signal: input.signal,
             onProgress: input.onProgress,
+            onChunkComplete: input.onAudioChunkComplete,
+            resume: input.audioResume,
           });
 
           return {
@@ -3450,6 +3464,8 @@ export function StoryEngineProvider({
           markdown,
           signal: input.signal,
           onProgress: input.onProgress,
+          onChunkComplete: input.onChunkComplete,
+          resume: input.resume,
         });
 
         return {

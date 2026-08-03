@@ -33,6 +33,8 @@ export function AiDocumentGeneratorTab() {
 	const [audioErrorMessage, setAudioErrorMessage] = useState<string | null>(null);
 	const [isGenerating, setIsGenerating] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
+	const uploadAudioResumeRef = useRef<{ key: string; pcmParts: Uint8Array[] } | null>(null);
+	const documentAudioResumeRef = useRef<{ key: string; pcmParts: Uint8Array[] } | null>(null);
 
 	const selectedPreset = getAiDocumentPreset(presetId);
 	const hasGeminiKey = Boolean(aiSettings?.apiKeys?.gemini?.trim());
@@ -113,6 +115,16 @@ export function AiDocumentGeneratorTab() {
 					: "Generating document…",
 			);
 
+			const sourceKey =
+				sourceMode === "library"
+					? `story:${storyId}`
+					: `upload:${uploadFile!.name}:${uploadFile!.size}`;
+			const audioResume =
+				outputFormat === "gemini-audio-wav" &&
+				documentAudioResumeRef.current?.key === sourceKey
+					? { pcmParts: documentAudioResumeRef.current.pcmParts }
+					: undefined;
+
 			const result = await generateAiDocument({
 				source,
 				presetId,
@@ -121,9 +133,21 @@ export function AiDocumentGeneratorTab() {
 				outputFormat,
 				signal: controller.signal,
 				onProgress: (message) => setStatusMessage(message),
+				audioResume,
+				onAudioChunkComplete:
+					outputFormat === "gemini-audio-wav"
+						? (state) => {
+								documentAudioResumeRef.current = {
+									key: sourceKey,
+									pcmParts: state.pcmParts,
+								};
+								setStatusMessage(`Generating audio ${state.index + 1}/${state.total}…`);
+							}
+						: undefined,
 			});
 
 			await downloadFile(result.filename, result.content, result.mimeType);
+			documentAudioResumeRef.current = null;
 			setStatusMessage(`Downloaded ${result.filename}`);
 		} catch (error) {
 			if (isGenerationFailureError(error)) {
@@ -147,6 +171,8 @@ export function AiDocumentGeneratorTab() {
 
 	function handleCancel() {
 		abortRef.current?.abort();
+		documentAudioResumeRef.current = null;
+		uploadAudioResumeRef.current = null;
 	}
 
 	async function handleGenerateAudioFromMarkdown() {
@@ -169,16 +195,35 @@ export function AiDocumentGeneratorTab() {
 
 		try {
 			const markdown = await readMarkdownUploadFile(markdownAudioFile);
-			setAudioStatusMessage("Generating Gemini podcast audio…");
+			const resumeKey = `${markdownAudioFile.name}:${markdown.length}`;
+			const resume =
+				uploadAudioResumeRef.current?.key === resumeKey
+					? { pcmParts: uploadAudioResumeRef.current.pcmParts }
+					: undefined;
+
+			setAudioStatusMessage(
+				resume
+					? `Resuming audio at ${resume.pcmParts.length + 1}/…`
+					: "Generating Gemini podcast audio…",
+			);
 
 			const result = await generateAiDocumentAudioFromMarkdown({
 				markdown,
 				label: markdownAudioFile.name,
 				signal: controller.signal,
+				resume,
 				onProgress: (message) => setAudioStatusMessage(message),
+				onChunkComplete: (state) => {
+					uploadAudioResumeRef.current = {
+						key: resumeKey,
+						pcmParts: state.pcmParts,
+					};
+					setAudioStatusMessage(`Generating audio ${state.index + 1}/${state.total}…`);
+				},
 			});
 
 			await downloadFile(result.filename, result.content, result.mimeType);
+			uploadAudioResumeRef.current = null;
 			setAudioStatusMessage(`Downloaded ${result.filename}`);
 		} catch (error) {
 			if (isGenerationFailureError(error)) {
@@ -391,7 +436,10 @@ export function AiDocumentGeneratorTab() {
 							accept=".md,.markdown,text/markdown"
 							disabled={isGenerating}
 							className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-[8px] file:border-0 file:bg-white/[0.06] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
-							onChange={(event) => setMarkdownAudioFile(event.target.files?.[0] ?? null)}
+							onChange={(event) => {
+								setMarkdownAudioFile(event.target.files?.[0] ?? null);
+								uploadAudioResumeRef.current = null;
+							}}
 						/>
 					</Field>
 

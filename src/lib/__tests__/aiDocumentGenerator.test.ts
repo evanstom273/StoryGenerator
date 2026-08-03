@@ -7,6 +7,7 @@ import {
 } from "../aiDocumentGenerator/presets";
 import { extractPodcastDialogueFromMarkdown } from "../aiDocumentGenerator/podcastScript";
 import { buildAudioFilenameFromMarkdownUpload } from "../aiDocumentGenerator/sourceMaterial";
+import { planGeminiPodcastTtsChunks } from "../aiDocumentGenerator/geminiAudio";
 import { encodePcm16ToWav } from "../aiDocumentGenerator/wavEncode";
 
 describe("aiDocumentGenerator", () => {
@@ -75,6 +76,16 @@ describe("aiDocumentGenerator", () => {
 		expect(buildAudioFilenameFromMarkdownUpload("Peralta Custom Document.MARKDOWN")).toBe(
 			"peralta-custom-document.wav",
 		);
+	});
+
+	it("splits long chapter sections into multiple TTS chunks", () => {
+		const lines = ["### Chapter I", "", "**Sam:** Hello.", "**Alex:** Hi."];
+		for (let index = 0; index < 120; index += 1) {
+			lines.push(`**Sam:** Line ${index} with enough text to grow the script.`);
+		}
+		const markdown = lines.join("\n");
+		const chunks = planGeminiPodcastTtsChunks(markdown);
+		expect(chunks.length).toBeGreaterThan(1);
 	});
 
 	it("encodes pcm to wav", () => {

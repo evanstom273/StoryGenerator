@@ -1,11 +1,29 @@
 import { GEMINI_TTS_VOICES, generateGeminiMultiSpeakerAudio } from "../ai/geminiTts";
+import { isGenerationFailureError } from "../ai/errors";
 import {
 	buildGeminiTtsInput,
 	extractPodcastDialogueFromMarkdown,
 } from "./podcastScript";
-import { encodePcm16ToWav, concatArrayBuffers } from "./wavEncode";
+import { concatPcm16, encodePcm16ToWav } from "./wavEncode";
 
-const MAX_TTS_CHARS = 6000;
+const MAX_TTS_CHARS = 4500;
+const CHUNK_ATTEMPTS = 4;
+
+export interface GeminiPodcastTtsChunk {
+	script: string;
+	hostOne: string;
+	hostTwo: string;
+}
+
+export interface GeminiPodcastAudioResumeState {
+	pcmParts: Uint8Array[];
+}
+
+export interface GeminiPodcastAudioChunkProgress {
+	index: number;
+	total: number;
+	pcmParts: Uint8Array[];
+}
 
 function splitMarkdownByChapterSections(markdown: string) {
 	const lines = markdown.split("\n");
@@ -26,49 +44,6 @@ function splitMarkdownByChapterSections(markdown: string) {
 	}
 
 	return chunks.filter(Boolean);
-}
-
-export async function generateGeminiPodcastAudioFromMarkdown(params: {
-	apiKey: string;
-	markdown: string;
-	signal?: AbortSignal;
-	onProgress?: (message: string) => void;
-}) {
-	const dialogue = extractPodcastDialogueFromMarkdown(params.markdown);
-	if (!dialogue) {
-		throw new Error(
-			"Could not extract host dialogue from the document. Use a podcast preset with labeled speaker lines.",
-		);
-	}
-
-	const sections = splitMarkdownByChapterSections(params.markdown);
-	const ttsChunks =
-		sections.length > 1
-			? sections
-			: dialogue.script.length > MAX_TTS_CHARS
-				? splitScriptByLength(dialogue.script, MAX_TTS_CHARS)
-				: [dialogue.script];
-
-	const wavParts: ArrayBuffer[] = [];
-	for (let index = 0; index < ttsChunks.length; index += 1) {
-		const chunk = ttsChunks[index]!;
-		const chunkDialogue = extractPodcastDialogueFromMarkdown(chunk) ?? dialogue;
-		params.onProgress?.(`Generating audio ${index + 1}/${ttsChunks.length}…`);
-
-		const pcm = await generateGeminiMultiSpeakerAudio({
-			apiKey: params.apiKey,
-			input: buildGeminiTtsInput(chunkDialogue.script, chunkDialogue.hostOne, chunkDialogue.hostTwo),
-			speakers: [
-				{ name: chunkDialogue.hostOne, voice: GEMINI_TTS_VOICES.hostA },
-				{ name: chunkDialogue.hostTwo, voice: GEMINI_TTS_VOICES.hostB },
-			],
-			signal: params.signal,
-		});
-
-		wavParts.push(encodePcm16ToWav(pcm));
-	}
-
-	return concatArrayBuffers(wavParts);
 }
 
 function splitScriptByLength(script: string, maxChars: number) {
@@ -92,5 +67,137 @@ function splitScriptByLength(script: string, maxChars: number) {
 		chunks.push(current.join("\n"));
 	}
 
-	return chunks;
+	return chunks.filter(Boolean);
+}
+
+function splitDialogueIntoChunks(dialogue: {
+	hostOne: string;
+	hostTwo: string;
+	script: string;
+}): GeminiPodcastTtsChunk[] {
+	if (dialogue.script.length <= MAX_TTS_CHARS) {
+		return [
+			{
+				script: dialogue.script,
+				hostOne: dialogue.hostOne,
+				hostTwo: dialogue.hostTwo,
+			},
+		];
+	}
+
+	return splitScriptByLength(dialogue.script, MAX_TTS_CHARS).map((script) => ({
+		script,
+		hostOne: dialogue.hostOne,
+		hostTwo: dialogue.hostTwo,
+	}));
+}
+
+export function planGeminiPodcastTtsChunks(markdown: string) {
+	const dialogue = extractPodcastDialogueFromMarkdown(markdown);
+	if (!dialogue) {
+		return [];
+	}
+
+	const sections = splitMarkdownByChapterSections(markdown);
+	const chunks: GeminiPodcastTtsChunk[] = [];
+
+	if (sections.length <= 1) {
+		return splitDialogueIntoChunks(dialogue);
+	}
+
+	for (const section of sections) {
+		const sectionDialogue = extractPodcastDialogueFromMarkdown(section);
+		if (!sectionDialogue?.script.trim()) {
+			continue;
+		}
+		chunks.push(...splitDialogueIntoChunks(sectionDialogue));
+	}
+
+	return chunks.length ? chunks : splitDialogueIntoChunks(dialogue);
+}
+
+function shouldRetryChunkError(error: unknown, signal?: AbortSignal) {
+	if (signal?.aborted) {
+		return false;
+	}
+	if (isGenerationFailureError(error)) {
+		return error.failure.kind !== "cancelled";
+	}
+	if (error instanceof Error && /abort/i.test(error.message)) {
+		return false;
+	}
+	return true;
+}
+
+export async function generateGeminiPodcastAudioFromMarkdown(params: {
+	apiKey: string;
+	markdown: string;
+	signal?: AbortSignal;
+	onProgress?: (message: string) => void;
+	onChunkComplete?: (state: GeminiPodcastAudioChunkProgress) => void;
+	resume?: GeminiPodcastAudioResumeState;
+}) {
+	const dialogue = extractPodcastDialogueFromMarkdown(params.markdown);
+	if (!dialogue) {
+		throw new Error(
+			"Could not extract host dialogue from the document. Use a podcast preset with labeled speaker lines.",
+		);
+	}
+
+	const ttsChunks = planGeminiPodcastTtsChunks(params.markdown);
+	if (!ttsChunks.length) {
+		throw new Error("Could not find podcast dialogue to synthesize.");
+	}
+
+	const pcmParts: Uint8Array[] = params.resume?.pcmParts ? [...params.resume.pcmParts] : [];
+	const startIndex = pcmParts.length;
+
+	if (startIndex >= ttsChunks.length) {
+		return encodePcm16ToWav(concatPcm16(pcmParts));
+	}
+
+	if (startIndex > 0) {
+		params.onProgress?.(`Resuming audio at ${startIndex + 1}/${ttsChunks.length}…`);
+	}
+
+	for (let index = startIndex; index < ttsChunks.length; index += 1) {
+		const chunk = ttsChunks[index]!;
+		params.onProgress?.(`Generating audio ${index + 1}/${ttsChunks.length}…`);
+
+		let pcm: Uint8Array | undefined;
+		for (let attempt = 0; attempt < CHUNK_ATTEMPTS; attempt += 1) {
+			try {
+				pcm = await generateGeminiMultiSpeakerAudio({
+					apiKey: params.apiKey,
+					input: buildGeminiTtsInput(chunk.script, chunk.hostOne, chunk.hostTwo),
+					speakers: [
+						{ name: chunk.hostOne, voice: GEMINI_TTS_VOICES.hostA },
+						{ name: chunk.hostTwo, voice: GEMINI_TTS_VOICES.hostB },
+					],
+					signal: params.signal,
+				});
+				break;
+			} catch (error) {
+				if (!shouldRetryChunkError(error, params.signal) || attempt === CHUNK_ATTEMPTS - 1) {
+					throw error;
+				}
+				params.onProgress?.(
+					`Retrying audio ${index + 1}/${ttsChunks.length} (attempt ${attempt + 2}/${CHUNK_ATTEMPTS})…`,
+				);
+			}
+		}
+
+		if (!pcm?.byteLength) {
+			throw new Error(`Gemini TTS returned no audio for segment ${index + 1}/${ttsChunks.length}.`);
+		}
+
+		pcmParts.push(pcm);
+		params.onChunkComplete?.({
+			index,
+			total: ttsChunks.length,
+			pcmParts: [...pcmParts],
+		});
+	}
+
+	return encodePcm16ToWav(concatPcm16(pcmParts));
 }

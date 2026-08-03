@@ -34,6 +34,17 @@ export function encodePcm16ToWav(
 	return buffer;
 }
 
+export function concatPcm16(parts: Uint8Array[]): Uint8Array {
+	const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+	const merged = new Uint8Array(total);
+	let offset = 0;
+	for (const part of parts) {
+		merged.set(part, offset);
+		offset += part.byteLength;
+	}
+	return merged;
+}
+
 export function concatArrayBuffers(parts: ArrayBuffer[]): ArrayBuffer {
 	const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
 	const merged = new Uint8Array(total);
