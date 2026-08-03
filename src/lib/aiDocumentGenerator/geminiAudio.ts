@@ -1,7 +1,7 @@
 import { generateGeminiMultiSpeakerAudio } from "../ai/geminiTts";
 import {
 	resolveGeminiPodcastTtsSettings,
-	type GeminiPodcastTtsSettings,
+	type GeminiPodcastTtsSettingsInput,
 } from "../ai/geminiTtsVoices";
 import { isGenerationFailureError } from "../ai/errors";
 import {
@@ -162,7 +162,7 @@ export async function generateGeminiPodcastAudioFromMarkdown(params: {
 	onProgress?: (message: string) => void;
 	onChunkComplete?: (state: GeminiPodcastAudioChunkProgress) => void;
 	resume?: GeminiPodcastAudioResumeState;
-	tts?: Partial<GeminiPodcastTtsSettings>;
+	tts?: GeminiPodcastTtsSettingsInput;
 }) {
 	const ttsSettings = resolveGeminiPodcastTtsSettings(params.tts);
 	const dialogue = extractPodcastDialogueFromMarkdown(params.markdown);

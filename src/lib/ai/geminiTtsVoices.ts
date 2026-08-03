@@ -90,6 +90,12 @@ export interface GeminiPodcastTtsSettings {
 	model: GeminiTtsModelId;
 }
 
+export type GeminiPodcastTtsSettingsInput = {
+	hostOneVoice?: string;
+	hostTwoVoice?: string;
+	model?: string;
+};
+
 export function isValidGeminiTtsVoice(voice: string) {
 	return GEMINI_TTS_VOICE_IDS.includes(voice);
 }
@@ -99,7 +105,7 @@ export function isValidGeminiTtsModel(model: string): model is GeminiTtsModelId 
 }
 
 export function resolveGeminiPodcastTtsSettings(
-	partial?: Partial<GeminiPodcastTtsSettings> | null,
+	partial?: GeminiPodcastTtsSettingsInput | null,
 ): GeminiPodcastTtsSettings {
 	const hostOneVoice = partial?.hostOneVoice?.trim() ?? "";
 	const hostTwoVoice = partial?.hostTwoVoice?.trim() ?? "";
