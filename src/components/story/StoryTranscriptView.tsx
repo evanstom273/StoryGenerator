@@ -9,7 +9,7 @@ import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
-import { ChapterListenBanner, StoryMessagePlayButton } from "./StorySpeechControls";
+import { ChapterListenBanner } from "./StorySpeechControls";
 
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
@@ -411,13 +411,6 @@ export function StoryTranscriptView({
                   highlight && !chapterStartLabel ? "ring-2 ring-accent/35" : "",
                 )}
               >
-                <div className="flex justify-end">
-                  <StoryMessagePlayButton
-                    message={message}
-                    messages={messages}
-                    playerCharacterName={playerCharacterName}
-                  />
-                </div>
                 <div className="flex items-start gap-3 text-sm leading-7">
                   <div className={tag.tagClass}>{tag.label}</div>
                   <div className={cn("min-w-0 flex-1 space-y-2", tag.contentClass)}>
@@ -463,13 +456,6 @@ export function StoryTranscriptView({
                 highlight && !chapterStartLabel ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
               )}
             >
-              <div className="flex justify-end">
-                <StoryMessagePlayButton
-                  message={message}
-                  messages={messages}
-                  playerCharacterName={playerCharacterName}
-                />
-              </div>
               {blocks.map((block, blockIndex) => {
                 const isNarration = !block.speakerLabel || block.speakerLabel === "Narrator";
                 const lines = block.text.split("\n");

@@ -1497,8 +1497,13 @@ export function StoryWorkspacePage() {
             <div className="space-y-1">
               {(() => {
                 const nodes: React.ReactNode[] = [];
+                let latestUserMessage: string | null = null;
 
                 for (const message of messages) {
+                  if (message.role === "user") {
+                    latestUserMessage = message.content;
+                  }
+
                   if (streamingDraft !== null && message.role === "assistant" && message.id === latestAssistantMessage?.id) {
                     continue;
                   }
@@ -1507,8 +1512,8 @@ export function StoryWorkspacePage() {
                     <StoryMessageBubble
                       key={message.id}
                       message={message}
-                      messages={messages}
                       playerCharacterName={activePlayerCharacter.name}
+                      latestUserMessage={latestUserMessage}
                       onEdit={populateComposerFromMessage}
                       onQuickEdit={isReadOnly ? undefined : handleOpenAssistantEdit}
                       onRegenerate={isReadOnly ? undefined : handleRegenerateLastAssistant}
