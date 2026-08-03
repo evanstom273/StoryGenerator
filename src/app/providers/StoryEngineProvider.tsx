@@ -122,7 +122,7 @@ import {
 import {
   reconcileRelationshipsFromStateJson,
 } from "../../lib/storyRelationshipLoad";
-import { applyStatChange, buildRpEventSummary, clampStat, defaultRpStats, getStatValue } from "../../lib/rpStats";
+import { applyStatChange, buildRpEventSummary, clampStat, DEFAULT_RP_CONFIG, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
   formatUniverseWikiSources,
@@ -3500,6 +3500,7 @@ export function StoryEngineProvider({
         const universePackSnapshots = await buildUniversePackSnapshotsForIds(repository, universeIds);
         const storyId = createEntityId("story");
         const universePackSnapshot = universePackSnapshots[0];
+        const rpMode = draft.rpMode ?? true;
 
         const nextStory: Story = {
           id: storyId,
@@ -3518,10 +3519,10 @@ export function StoryEngineProvider({
           isArchived: draft.isArchived,
           readOnlyReason: undefined,
           readOnlyLockedAt: undefined,
-          matureFictionMode: draft.matureFictionMode,
-          rpMode: draft.rpMode,
-          rpConfig: draft.rpConfig,
-          autoIndexMode: draft.autoIndexMode,
+          matureFictionMode: draft.matureFictionMode ?? true,
+          rpMode,
+          rpConfig: draft.rpConfig ?? (rpMode ? DEFAULT_RP_CONFIG : undefined),
+          autoIndexMode: draft.autoIndexMode ?? "chapter",
           autoIndexInterval: draft.autoIndexInterval ?? 20,
           accentThemeKey: draft.accentThemeKey,
           accentThemeCustom: draft.accentThemeCustom,
@@ -3531,6 +3532,18 @@ export function StoryEngineProvider({
         };
 
         await repository.saveStory(nextStory);
+        await repository.saveStoryMessage({
+          id: createEntityId("story-message"),
+          storyId,
+          role: "system",
+          content: "Chapter I.",
+          timestamp: now,
+          speakerType: "system",
+          chapterBoundary: {
+            kind: "start",
+            label: "Chapter I",
+          },
+        });
         await hydrate(false);
 
         return nextStory;
