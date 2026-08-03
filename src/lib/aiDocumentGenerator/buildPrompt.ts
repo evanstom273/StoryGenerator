@@ -1,6 +1,16 @@
 import type { AiDocumentPreset } from "./presets";
 import { AI_DOCUMENT_CUSTOM_PRESET_ID } from "./presets";
 import type { AiDocumentStructure } from "./types";
+import type { ChapterCoverageGuide } from "./podcastPrompt";
+import {
+	buildPodcastChapterSectionPrompt,
+	buildPodcastFinalThoughtsSectionPrompt,
+	buildPodcastIntroductionSectionPrompt,
+} from "./podcastPrompt";
+
+function isPodcastPreset(preset: AiDocumentPreset) {
+	return preset.id === "podcast-chapter-breakdown" || preset.id === "podcast-discussion";
+}
 
 export function buildAiDocumentMessages(params: {
 	preset: AiDocumentPreset;
@@ -10,6 +20,12 @@ export function buildAiDocumentMessages(params: {
 	structure?: AiDocumentStructure;
 	section?: "introduction" | "chapter" | "epilogue";
 	chapterLabel?: string;
+	podcastChapterContext?: {
+		chapterIndex: number;
+		totalChapters: number;
+		coverage: ChapterCoverageGuide;
+		priorDiscussions: string;
+	};
 }) {
 	const customInstructions =
 		params.preset.id === AI_DOCUMENT_CUSTOM_PRESET_ID
@@ -22,7 +38,12 @@ export function buildAiDocumentMessages(params: {
 
 	const structureNote =
 		params.structure === "chapter-by-chapter"
-			? buildChapterStructureInstructions(params.section, params.chapterLabel)
+			? buildChapterStructureInstructions(
+					params.preset,
+					params.section,
+					params.chapterLabel,
+					params.podcastChapterContext,
+				)
 			: "";
 
 	const systemContent =
@@ -47,39 +68,77 @@ export function buildAiDocumentMessages(params: {
 }
 
 function buildChapterStructureInstructions(
+	preset: AiDocumentPreset,
 	section?: "introduction" | "chapter" | "epilogue",
 	chapterLabel?: string,
+	podcastChapterContext?: {
+		chapterIndex: number;
+		totalChapters: number;
+		coverage: ChapterCoverageGuide;
+		priorDiscussions: string;
+	},
 ) {
+	if (preset.id === "podcast-chapter-breakdown") {
+		if (section === "introduction") {
+			return buildPodcastIntroductionSectionPrompt();
+		}
+
+		if (section === "chapter" && chapterLabel?.trim() && podcastChapterContext) {
+			return buildPodcastChapterSectionPrompt({
+				chapterLabel,
+				chapterIndex: podcastChapterContext.chapterIndex,
+				totalChapters: podcastChapterContext.totalChapters,
+				coverage: podcastChapterContext.coverage,
+				priorDiscussions: podcastChapterContext.priorDiscussions,
+			});
+		}
+
+		if (section === "epilogue") {
+			return buildPodcastFinalThoughtsSectionPrompt();
+		}
+
+		return `
+Structure requirements:
+- Title with podcast name and story topic
+- ### Introduction with Sam and Alex welcoming listeners
+- One ### section per chapter in source order (labelled **Sam:** / **Alex:** dialogue)
+- ### Final Thoughts — rich closing discussion`;
+	}
+
 	if (section === "introduction") {
 		return `\n\nWrite ONLY the podcast title block, host names, topic line, and Introduction section. Do not summarize individual chapters yet.`;
 	}
 
 	if (section === "chapter" && chapterLabel?.trim()) {
+		const hostNote = isPodcastPreset(preset)
+			? "Use Sam and Alex with **Sam:** / **Alex:** labels."
+			: "Use two hosts in dialogue (label them consistently).";
 		return `\n\nWrite ONLY the podcast section for ${chapterLabel.trim()}.
 Use ### ${chapterLabel.trim()}: [short descriptive subtitle] as the heading.
-Use two hosts in dialogue (label them consistently, e.g. Host A and Host B or Sam and Alex).
-Do not write the introduction, summary table, themes section, or open questions.`;
+${hostNote}
+Do not write the introduction or closing sections.`;
 	}
 
 	if (section === "epilogue") {
-		return `\n\nWrite ONLY the closing sections after all chapter discussions:
-1. ### Summary Table — markdown table with Chapter, Key Location, Core Events columns for every chapter covered
-2. ### Themes & Character Arcs — bullet lists for core themes and character evolution
-3. ### Open Questions for Listeners — numbered thoughtful questions
+		if (isPodcastPreset(preset)) {
+			return buildPodcastFinalThoughtsSectionPrompt();
+		}
+		return `\n\nWrite ONLY the closing sections after all chapter discussions.
 Do not repeat chapter-by-chapter dialogue.`;
 	}
 
 	return `\n\nStructure requirements:
 - Title with podcast name and story topic
 - Host names and short introduction
-- One ### section per chapter in source order, each with a descriptive subtitle and two-host dialogue
-- ### Summary Table with Chapter | Key Location | Core Events
-- ### Themes & Character Arcs (core themes + character evolution)
-- ### Open Questions for Listeners`;
+- One ### section per chapter in source order
+- Closing discussion section`;
 }
 
-export function buildEpilogueSourceMaterial(chapterSections: string[]) {
+export function buildEpilogueSourceMaterial(chapterSections: string[], chapterLabels?: string[]) {
 	return chapterSections
-		.map((section, index) => `Chapter section ${index + 1}:\n${section.trim()}`)
+		.map((section, index) => {
+			const label = chapterLabels?.[index]?.trim() || `Chapter section ${index + 1}`;
+			return `${label}:\n${section.trim()}`;
+		})
 		.join("\n\n---\n\n");
 }

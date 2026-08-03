@@ -15,8 +15,8 @@ function parseSpeakerLine(line: string) {
 export function extractPodcastDialogueFromMarkdown(markdown: string) {
 	const lines = markdown.split("\n");
 	const dialogueLines: string[] = [];
-	let hostOne = "Host A";
-	let hostTwo = "Host B";
+	let hostOne = "Sam";
+	let hostTwo = "Alex";
 
 	for (const line of lines) {
 		const trimmed = line.trim();

@@ -24,7 +24,7 @@ describe("aiDocumentGenerator", () => {
 		expect(messages[1].content).toContain("Example Story");
 	});
 
-	it("includes chapter structure instructions for podcast chapter breakdown", () => {
+	it("includes podcast structure for chapter breakdown preset", () => {
 		const preset = getAiDocumentPreset("podcast-chapter-breakdown");
 		const messages = buildAiDocumentMessages({
 			preset,
@@ -33,8 +33,9 @@ describe("aiDocumentGenerator", () => {
 			structure: "chapter-by-chapter",
 		});
 
-		expect(messages[0].content).toContain("Summary Table");
-		expect(messages[0].content).toContain("Open Questions");
+		expect(messages[0].content).toContain("Final Thoughts");
+		expect(messages[0].content).toContain("Sam");
+		expect(messages[0].content).toContain("predictions");
 	});
 
 	it("extracts labeled podcast dialogue for Gemini TTS", () => {
