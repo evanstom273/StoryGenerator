@@ -5,6 +5,10 @@ import {
 	buildEpilogueSourceMaterial,
 } from "./buildPrompt";
 import type { AiDocumentPreset } from "./presets";
+import {
+	estimateChapterDiscussionCoverage,
+	formatPriorDiscussionsForPrompt,
+} from "./podcastPrompt";
 import { buildChapterSegmentedSourceMaterial, buildSourceMaterialFromStoryBundle } from "./sourceMaterial";
 
 type GenerateChunk = (messages: Array<{ role: "system" | "user"; content: string }>) => Promise<string>;
@@ -35,6 +39,8 @@ export async function generateChapterStructuredDocument(params: {
 		return await params.generateChunk(messages);
 	}
 
+	const isPodcastBreakdown = params.preset.id === "podcast-chapter-breakdown";
+
 	params.onProgress?.("Writing introduction…");
 	const introMessages = buildAiDocumentMessages({
 		preset: params.preset,
@@ -47,11 +53,23 @@ export async function generateChapterStructuredDocument(params: {
 	const introduction = await params.generateChunk(introMessages);
 
 	const chapterSections: string[] = [];
-	for (const segment of segments) {
+	for (let index = 0; index < segments.length; index += 1) {
+		const segment = segments[index]!;
 		if (params.signal?.aborted) {
 			throw new Error("Request aborted.");
 		}
-		params.onProgress?.(`Chapter: ${segment.label}`);
+
+		const coverage = estimateChapterDiscussionCoverage(segment, segments);
+		const progressLabel =
+			isPodcastBreakdown
+				? `${segment.label} (${coverage.tier} coverage)`
+				: segment.label;
+		params.onProgress?.(`Chapter: ${progressLabel}`);
+
+		const priorDiscussions = isPodcastBreakdown
+			? formatPriorDiscussionsForPrompt(segments, chapterSections, index)
+			: "";
+
 		const chapterMessages = buildAiDocumentMessages({
 			preset: params.preset,
 			customPrompt: params.customPrompt,
@@ -60,17 +78,28 @@ export async function generateChapterStructuredDocument(params: {
 			structure: "chapter-by-chapter",
 			section: "chapter",
 			chapterLabel: segment.label,
+			podcastChapterContext: isPodcastBreakdown
+				? {
+						chapterIndex: index,
+						totalChapters: segments.length,
+						coverage,
+						priorDiscussions,
+					}
+				: undefined,
 		});
 		const section = await params.generateChunk(chapterMessages);
 		chapterSections.push(section.trim());
 	}
 
-	params.onProgress?.("Writing summary, themes, and open questions…");
+	params.onProgress?.(
+		isPodcastBreakdown ? "Writing final thoughts…" : "Writing closing sections…",
+	);
+	const chapterLabels = segments.map((segment) => segment.label);
 	const epilogueMessages = buildAiDocumentMessages({
 		preset: params.preset,
 		customPrompt: params.customPrompt,
 		sourceLabel: params.sourceLabel,
-		sourceMaterial: buildEpilogueSourceMaterial(chapterSections),
+		sourceMaterial: buildEpilogueSourceMaterial(chapterSections, chapterLabels),
 		structure: "chapter-by-chapter",
 		section: "epilogue",
 	});

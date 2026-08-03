@@ -3353,6 +3353,8 @@ export function StoryEngineProvider({
             streamedDraft = "";
           });
 
+        const documentMaxTokens = preset.supportsGeminiTts ? 16000 : 12000;
+
         const generateChunk = async (messages: AIChatMessage[]) => {
           let response: GenerateResponseResult;
           try {
@@ -3362,7 +3364,7 @@ export function StoryEngineProvider({
               apiKey,
               model,
               messages,
-              maxTokens: 12000,
+              maxTokens: documentMaxTokens,
               temperature: 0.35,
               signal: input.signal,
               onChunk,

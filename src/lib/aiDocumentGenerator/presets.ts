@@ -1,3 +1,8 @@
+import {
+	buildPodcastChapterBreakdownSystemPrompt,
+	buildPodcastDiscussionSystemPrompt,
+} from "./podcastPrompt";
+
 export type AiDocumentPresetId =
 	| "podcast-chapter-breakdown"
 	| "podcast-discussion"
@@ -31,12 +36,6 @@ const SHARED_RULES = [
 	"Use clear headings, lists, and structure appropriate to the document type.",
 ].join("\n");
 
-const PODCAST_HOST_RULES = [
-	"Use two hosts in a natural back-and-forth podcast conversation.",
-	"Label speakers consistently on every line (e.g. **Host A:** / **Host B:** or named hosts like Sam and Alex).",
-	"Balance analysis, recap, and reaction — not a dry transcript readout.",
-].join("\n");
-
 export const AI_DOCUMENT_PRESETS: AiDocumentPreset[] = [
 	{
 		id: "podcast-chapter-breakdown",
@@ -44,33 +43,14 @@ export const AI_DOCUMENT_PRESETS: AiDocumentPreset[] = [
 		filenameStem: "podcast-chapter-breakdown",
 		defaultStructure: "chapter-by-chapter",
 		supportsGeminiTts: true,
-		systemPrompt: `${SHARED_RULES}
-
-${PODCAST_HOST_RULES}
-
-Create a podcast episode that combines a chapter-by-chapter recap with thematic discussion.
-
-Include:
-- Podcast title, host names, and topic line
-- Introduction that sets up the story and family/world context
-- One section per chapter (use chapter labels from the source), each with a descriptive subtitle and host dialogue
-- Summary table: Chapter | Key Location | Core Events
-- Themes & Character Arcs (core themes + character evolution bullets)
-- Open Questions for Listeners (numbered)
-
-Match the energy of a thoughtful recap show: warm when appropriate, serious when the story turns heavy.`,
+		systemPrompt: buildPodcastChapterBreakdownSystemPrompt(),
 	},
 	{
 		id: "podcast-discussion",
 		displayName: "Podcast Discussion",
 		filenameStem: "podcast-discussion",
 		supportsGeminiTts: true,
-		systemPrompt: `${SHARED_RULES}
-
-${PODCAST_HOST_RULES}
-
-Write a thematic podcast discussion about the full story (not necessarily chapter-by-chapter).
-Include major beats, emotional pivots, themes, character arcs, and open questions for listeners.`,
+		systemPrompt: buildPodcastDiscussionSystemPrompt(),
 	},
 	{
 		id: "story-summary",
