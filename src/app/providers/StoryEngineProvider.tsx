@@ -40,14 +40,24 @@ import {
   buildUniverseBlueprintSystemPrompt,
 } from "../../lib/ai/universeGenerator";
 import {
-  buildAiDocumentMessages,
+	buildAiDocumentMessages,
 } from "../../lib/aiDocumentGenerator/buildPrompt";
 import {
-  buildAiDocumentFilename,
-  getAiDocumentPreset,
-  type AiDocumentPresetId,
+	buildAiDocumentFilename,
+	getAiDocumentPreset,
+	type AiDocumentPresetId,
 } from "../../lib/aiDocumentGenerator/presets";
-import { buildSourceMaterialFromStoryBundle } from "../../lib/aiDocumentGenerator/sourceMaterial";
+import { generateChapterStructuredDocument, resolveSourceMaterialForStructure } from "../../lib/aiDocumentGenerator/chapterGeneration";
+import { generateGeminiPodcastAudioFromMarkdown } from "../../lib/aiDocumentGenerator/geminiAudio";
+import {
+	segmentStoryBundleByChapter,
+	segmentUploadedSourceByChapter,
+} from "../../lib/aiDocumentGenerator/sourceMaterial";
+import type {
+	AiDocumentOutputFormat,
+	AiDocumentStructure,
+	AiDocumentGenerationResult,
+} from "../../lib/aiDocumentGenerator/types";
 import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "../../lib/ai/json";
 import { buildMatureFictionPolicyBlock } from "../../lib/ai/matureFictionPolicy";
 import {
@@ -251,10 +261,13 @@ interface StoryEngineContextValue {
       | { type: "upload"; text: string; label: string };
     presetId: AiDocumentPresetId;
     customPrompt?: string;
+    structure?: AiDocumentStructure;
+    outputFormat?: AiDocumentOutputFormat;
     signal?: AbortSignal;
     onChunk?: (chunk: string) => void;
     onChunkReset?: () => void;
-  }) => Promise<{ markdown: string; filename: string }>;
+    onProgress?: (message: string) => void;
+  }) => Promise<AiDocumentGenerationResult>;
   deleteUniverse: (id: string) => Promise<GuardedDeleteResult>;
   createPlayerCharacter: (draft: PlayerCharacterDraft) => Promise<PlayerCharacter>;
   promoteStoryPlayerCharacter: (storyId: string) => Promise<PlayerCharacter>;
@@ -3282,34 +3295,32 @@ export function StoryEngineProvider({
         const { apiKey, model } = await resolveAIProfile(providerType);
         const provider = createAIProvider(providerType);
         const preset = getAiDocumentPreset(input.presetId);
+        const structure = input.structure ?? preset.defaultStructure ?? "single";
+        const outputFormat = input.outputFormat ?? "markdown";
 
         let sourceMaterial = "";
         let sourceLabel = "";
         let storyTitle: string | undefined;
+        let chapterSegments: import("../../lib/aiDocumentGenerator/types").ChapterSourceSegment[] = [];
 
         if (input.source.type === "story") {
           const bundle = await repository.getStoryExportBundle(input.source.storyId);
           if (!bundle) {
             throw new Error("Story not found.");
           }
-          sourceMaterial = buildSourceMaterialFromStoryBundle(bundle);
+          sourceMaterial = resolveSourceMaterialForStructure(bundle, structure);
           sourceLabel = input.source.label.trim() || bundle.story.title;
           storyTitle = bundle.story.title;
+          chapterSegments = segmentStoryBundleByChapter(bundle);
         } else {
           sourceMaterial = input.source.text;
           sourceLabel = input.source.label.trim() || "Uploaded export";
+          chapterSegments = segmentUploadedSourceByChapter(input.source.text);
         }
 
         if (!sourceMaterial.trim()) {
           throw new Error("Source material is empty.");
         }
-
-        const messages = buildAiDocumentMessages({
-          preset,
-          customPrompt: input.customPrompt,
-          sourceLabel,
-          sourceMaterial,
-        });
 
         let streamedDraft = "";
         const onChunk =
@@ -3323,43 +3334,95 @@ export function StoryEngineProvider({
             streamedDraft = "";
           });
 
-        let response: GenerateResponseResult;
-        try {
-          response = await generateResponseWithRetry({
-            providerType,
-            provider,
-            apiKey,
-            model,
-            messages,
-            maxTokens: 12000,
-            temperature: 0.35,
+        const generateChunk = async (messages: AIChatMessage[]) => {
+          let response: GenerateResponseResult;
+          try {
+            response = await generateResponseWithRetry({
+              providerType,
+              provider,
+              apiKey,
+              model,
+              messages,
+              maxTokens: 12000,
+              temperature: 0.35,
+              signal: input.signal,
+              onChunk,
+              onChunkReset,
+              debugTrace: {
+                traceId: makeGenerationAuditTraceId("other"),
+                mode: "other",
+                stage: "ai-document",
+              },
+            });
+          } catch (error) {
+            rethrowUserFacingGenerationError(error, providerType);
+          }
+
+          const content = response.content.trim() || streamedDraft.trim();
+          if (!content) {
+            rethrowUserFacingGenerationError(
+              createAIGenerationError(
+                "validation",
+                "Document generator returned empty output.",
+              ),
+              providerType,
+            );
+          }
+          return content;
+        };
+
+        let markdown = "";
+        if (structure === "chapter-by-chapter" && chapterSegments.length > 1) {
+          markdown = await generateChapterStructuredDocument({
+            preset,
+            customPrompt: input.customPrompt,
+            sourceLabel,
+            chapterSegments,
+            fullSourceMaterial: sourceMaterial,
+            generateChunk,
+            onProgress: input.onProgress,
             signal: input.signal,
-            onChunk,
-            onChunkReset,
-            debugTrace: {
-              traceId: makeGenerationAuditTraceId("other"),
-              mode: "other",
-              stage: "ai-document",
-            },
           });
-        } catch (error) {
-          rethrowUserFacingGenerationError(error, providerType);
+        } else {
+          const messages = buildAiDocumentMessages({
+            preset,
+            customPrompt: input.customPrompt,
+            sourceLabel,
+            sourceMaterial,
+            structure,
+          });
+          markdown = await generateChunk(messages);
         }
 
-        const markdown = (response.content.trim() || streamedDraft.trim());
-        if (!markdown) {
-          rethrowUserFacingGenerationError(
-            createAIGenerationError(
-              "validation",
-              "Document generator returned empty output.",
-            ),
-            providerType,
-          );
+        if (outputFormat === "gemini-audio-wav") {
+          if (!preset.supportsGeminiTts) {
+            throw new Error("Gemini audio is only available for podcast document types.");
+          }
+
+          const geminiApiKey = settings.apiKeys?.gemini?.trim() ?? "";
+          if (!geminiApiKey) {
+            throw new Error("Add a Gemini API key in Settings → AI to generate podcast audio.");
+          }
+
+          input.onProgress?.("Generating Gemini podcast audio…");
+          const wavBuffer = await generateGeminiPodcastAudioFromMarkdown({
+            apiKey: geminiApiKey,
+            markdown,
+            signal: input.signal,
+            onProgress: input.onProgress,
+          });
+
+          return {
+            filename: buildAiDocumentFilename(preset.filenameStem, storyTitle, "wav"),
+            mimeType: "audio/wav",
+            content: wavBuffer,
+          };
         }
 
         return {
-          markdown,
-          filename: buildAiDocumentFilename(preset.filenameStem, storyTitle),
+          filename: buildAiDocumentFilename(preset.filenameStem, storyTitle, "md"),
+          mimeType: "text/markdown",
+          content: markdown,
         };
       },
       async deleteUniverse(id) {

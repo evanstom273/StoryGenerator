@@ -1,15 +1,124 @@
-import type { StoryExportBundle } from "../../types/models";
+import type { PlayerCharacter, StoryExportBundle, StoryMessage } from "../../types/models";
+import { formatDateTime } from "../dates";
+import { resolveMessageChapterBoundary } from "../storyText/chapterNavigation";
+import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
+import { isContinueMessage } from "../storyText/continueMode";
+import { isDirectorMessage } from "../storyText/directorMode";
 import { serializeStoryExport } from "../storyExport";
+import type { ChapterSourceSegment } from "./types";
 
 const MAX_SOURCE_CHARS = 140000;
+const MAX_CHAPTER_SOURCE_CHARS = 32000;
 
-function truncateSourceMaterial(text: string) {
+function truncateSourceMaterial(text: string, maxChars = MAX_SOURCE_CHARS) {
 	const trimmed = text.trim();
-	if (trimmed.length <= MAX_SOURCE_CHARS) {
+	if (trimmed.length <= maxChars) {
 		return trimmed;
 	}
 
-	return `${trimmed.slice(0, MAX_SOURCE_CHARS).trim()}\n\n[Source truncated for model context limits.]`;
+	return `${trimmed.slice(0, maxChars).trim()}\n\n[Source truncated for model context limits.]`;
+}
+
+function resolveSpeakerLabel(message: StoryMessage, playerCharacter: PlayerCharacter) {
+	if (message.role === "user") {
+		if (isAuthorDirectiveMessage(message)) {
+			return message.speakerName?.trim() || "Author";
+		}
+		if (isContinueMessage(message)) {
+			return "Continue";
+		}
+		if (isDirectorMessage(message)) {
+			return "Director";
+		}
+		return message.speakerName?.trim() || playerCharacter.name;
+	}
+
+	if (message.role === "system" || message.speakerType === "system") {
+		return "System";
+	}
+
+	if (message.speakerName?.trim()) {
+		return message.speakerName.trim();
+	}
+
+	if (message.speakerType === "narrator") {
+		return "Narrator";
+	}
+
+	return message.role === "assistant" ? "Narrator" : "System";
+}
+
+function formatMessageLine(message: StoryMessage, playerCharacter: PlayerCharacter) {
+	const speaker = resolveSpeakerLabel(message, playerCharacter);
+	const prefix = speaker ? `${speaker}: ` : "";
+	return `[${formatDateTime(message.timestamp)}] ${prefix}${message.content.trim()}`;
+}
+
+export function segmentStoryBundleByChapter(bundle: StoryExportBundle): ChapterSourceSegment[] {
+	const sortedMessages = [...bundle.messages].sort(
+		(left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime(),
+	);
+
+	if (!sortedMessages.length) {
+		return [];
+	}
+
+	const segments: ChapterSourceSegment[] = [];
+	let currentLabel = "Opening";
+	let currentLines: string[] = [];
+
+	const pushSegment = () => {
+		if (!currentLines.length) {
+			return;
+		}
+		segments.push({
+			label: currentLabel,
+			transcript: truncateSourceMaterial(currentLines.join("\n"), MAX_CHAPTER_SOURCE_CHARS),
+		});
+	};
+
+	for (const message of sortedMessages) {
+		const boundary = resolveMessageChapterBoundary(message);
+		if (boundary?.kind === "start") {
+			pushSegment();
+			currentLines = [];
+			currentLabel = boundary.label.trim() || "Chapter";
+		}
+		currentLines.push(formatMessageLine(message, bundle.playerCharacter));
+	}
+
+	pushSegment();
+
+	if (segments.length === 1 && segments[0]?.label === "Opening") {
+		segments[0] = {
+			label: "Chapter I",
+			transcript: segments[0].transcript,
+		};
+	}
+
+	return segments;
+}
+
+export function buildChapterSegmentedSourceMaterial(bundle: StoryExportBundle) {
+	const segments = segmentStoryBundleByChapter(bundle);
+	if (!segments.length) {
+		return buildSourceMaterialFromStoryBundle(bundle);
+	}
+
+	const header = [
+		`Story: ${bundle.story.title}`,
+		`Universe: ${bundle.universe.name}`,
+		`Protagonist: ${bundle.playerCharacter.name}`,
+		`Summary: ${bundle.story.currentSummary?.trim() || "No summary provided."}`,
+		"",
+		"The transcript below is split by chapter. Cover every chapter in order.",
+	].join("\n");
+
+	const body = segments
+		.map((segment) => [`## ${segment.label}`, "", segment.transcript, ""].join("\n"))
+		.join("\n");
+
+	return truncateSourceMaterial(`${header}\n\n${body}`);
 }
 
 export function buildSourceMaterialFromStoryBundle(bundle: StoryExportBundle) {
@@ -19,6 +128,31 @@ export function buildSourceMaterialFromStoryBundle(bundle: StoryExportBundle) {
 			? markdown.content
 			: new TextDecoder().decode(markdown.content as ArrayBuffer);
 	return truncateSourceMaterial(raw);
+}
+
+export function segmentUploadedSourceByChapter(text: string): ChapterSourceSegment[] {
+	const pattern = /^##\s+(.+)$/gm;
+	const matches = [...text.matchAll(pattern)];
+	if (!matches.length) {
+		return [{ label: "Full Story", transcript: truncateSourceMaterial(text, MAX_CHAPTER_SOURCE_CHARS) }];
+	}
+
+	const segments: ChapterSourceSegment[] = [];
+	for (let index = 0; index < matches.length; index += 1) {
+		const match = matches[index]!;
+		const label = match[1]!.trim();
+		const start = match.index ?? 0;
+		const end = index + 1 < matches.length ? matches[index + 1]!.index ?? text.length : text.length;
+		const body = text.slice(start, end).replace(/^##\s+.+$/m, "").trim();
+		if (body) {
+			segments.push({
+				label,
+				transcript: truncateSourceMaterial(body, MAX_CHAPTER_SOURCE_CHARS),
+			});
+		}
+	}
+
+	return segments.length ? segments : [{ label: "Full Story", transcript: truncateSourceMaterial(text, MAX_CHAPTER_SOURCE_CHARS) }];
 }
 
 export async function readUploadedSourceFile(file: File) {

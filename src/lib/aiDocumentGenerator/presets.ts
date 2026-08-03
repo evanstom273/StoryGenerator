@@ -1,4 +1,5 @@
 export type AiDocumentPresetId =
+	| "podcast-chapter-breakdown"
 	| "podcast-discussion"
 	| "story-summary"
 	| "character-guide"
@@ -18,6 +19,8 @@ export interface AiDocumentPreset {
 	displayName: string;
 	filenameStem: string;
 	systemPrompt: string;
+	defaultStructure?: "single" | "chapter-by-chapter";
+	supportsGeminiTts?: boolean;
 }
 
 const SHARED_RULES = [
@@ -28,16 +31,46 @@ const SHARED_RULES = [
 	"Use clear headings, lists, and structure appropriate to the document type.",
 ].join("\n");
 
+const PODCAST_HOST_RULES = [
+	"Use two hosts in a natural back-and-forth podcast conversation.",
+	"Label speakers consistently on every line (e.g. **Host A:** / **Host B:** or named hosts like Sam and Alex).",
+	"Balance analysis, recap, and reaction — not a dry transcript readout.",
+].join("\n");
+
 export const AI_DOCUMENT_PRESETS: AiDocumentPreset[] = [
+	{
+		id: "podcast-chapter-breakdown",
+		displayName: "Podcast Chapter Breakdown",
+		filenameStem: "podcast-chapter-breakdown",
+		defaultStructure: "chapter-by-chapter",
+		supportsGeminiTts: true,
+		systemPrompt: `${SHARED_RULES}
+
+${PODCAST_HOST_RULES}
+
+Create a podcast episode that combines a chapter-by-chapter recap with thematic discussion.
+
+Include:
+- Podcast title, host names, and topic line
+- Introduction that sets up the story and family/world context
+- One section per chapter (use chapter labels from the source), each with a descriptive subtitle and host dialogue
+- Summary table: Chapter | Key Location | Core Events
+- Themes & Character Arcs (core themes + character evolution bullets)
+- Open Questions for Listeners (numbered)
+
+Match the energy of a thoughtful recap show: warm when appropriate, serious when the story turns heavy.`,
+	},
 	{
 		id: "podcast-discussion",
 		displayName: "Podcast Discussion",
 		filenameStem: "podcast-discussion",
+		supportsGeminiTts: true,
 		systemPrompt: `${SHARED_RULES}
 
-Write a lively podcast-style discussion between two hosts about this story.
-Use speaker labels (Host A / Host B) or similar.
-Cover themes, character arcs, memorable moments, and open questions for listeners.`,
+${PODCAST_HOST_RULES}
+
+Write a thematic podcast discussion about the full story (not necessarily chapter-by-chapter).
+Include major beats, emotional pivots, themes, character arcs, and open questions for listeners.`,
 	},
 	{
 		id: "story-summary",
@@ -79,10 +112,11 @@ Separate canon from speculation.`,
 		id: "episode-guide",
 		displayName: "Episode Guide",
 		filenameStem: "episode-guide",
+		defaultStructure: "chapter-by-chapter",
 		systemPrompt: `${SHARED_RULES}
 
-Write an episode guide organized by chapter or major arc.
-For each section: title, synopsis, key characters, and notable developments.`,
+Write an episode guide organized by chapter.
+For each chapter: title, synopsis, key characters, and notable developments.`,
 	},
 	{
 		id: "writer-commentary",
@@ -132,7 +166,11 @@ export function getAiDocumentPreset(id: AiDocumentPresetId): AiDocumentPreset {
 	return AI_DOCUMENT_PRESETS.find((preset) => preset.id === id) ?? AI_DOCUMENT_PRESETS[0];
 }
 
-export function buildAiDocumentFilename(stem: string, storyTitle?: string) {
+export function buildAiDocumentFilename(
+	stem: string,
+	storyTitle?: string,
+	extension: "md" | "wav" = "md",
+) {
 	const safeStem = stem.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 	const safeTitle = storyTitle
 		?.trim()
@@ -140,7 +178,7 @@ export function buildAiDocumentFilename(stem: string, storyTitle?: string) {
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "");
 	if (safeTitle) {
-		return `${safeTitle}-${safeStem}.md`;
+		return `${safeTitle}-${safeStem}.${extension}`;
 	}
-	return `${safeStem}.md`;
+	return `${safeStem}.${extension}`;
 }
