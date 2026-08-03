@@ -10,21 +10,26 @@ export const APP_VERSION = "3.0.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
   "3.0.0": {
-    title: "AI Documents, Gemini TTS & In-App Narration",
+    title: "AI Documents, Story Audiobook & Gemini Narration",
     added: [
       "AI Document Generator (Settings → AI Documents): companion documents from library stories or uploaded exports — podcast chapter breakdowns, thematic discussions, guides, and custom prompts",
       "Chapter-by-chapter document generation with long-form Sam & Alex podcast prompts (personalities, variable chapter depth, rolling context, Final Thoughts epilogue)",
       "Gemini TTS podcast audio export (WAV) from generated Markdown, plus Audio from Markdown to synthesize WAV without re-running document generation",
       "Gemini TTS voice catalog: 30 prebuilt narrators with grouped pickers for Sam/Alex podcast export and separate story/MetaChat narration settings",
       "TTS model selection (Gemini 3.1 Flash TTS with automatic 2.5 fallback)",
-      "In-app Gemini TTS playback: play/stop on every assistant story message (chrome and reader modes)",
+      "In-app Gemini story narration with persistent per-character voices, gender-matched assignment from story state, player sheets, and pronouns in transcript text",
+      "Prepare-then-play story audio: per-message Play on assistant turns, Listen to Chapter on chapter banners, and a fixed Spotify-style player bar with scrubbing and ±5s skip",
+      "Full-story Listen from the transcript reuses cached chapter audio and only synthesizes missing segments",
+      "Export Storio Audiobook (WAV) from story settings merges all chapter segments into one downloadable file",
+      "Natural speech pacing with pauses between speakers and longer gaps between messages (e.g. director directions → AI reply)",
+      "Director directions use the narrator voice; per-chunk volume normalization keeps character voices closer to the same loudness",
       "MetaChat reply play button for assistant messages",
-      "Listen to Chapter on chapter start banners in reader view",
       "TTS loading feedback: animated spinner, elapsed timer, chunk progress, helper text, and cancel while Gemini synthesizes (10–30s+ for long passages)",
     ],
     fixed: [
       "Gemini TTS reliability: generateContent API path, per-chunk timeouts, retries, and resume after failed podcast audio chunks",
       "Podcast TTS voices stay consistent across chapter sections instead of swapping when a new section opens with the other host",
+      "TTS cache invalidates and re-synthesizes when character voices or speech plans change instead of replaying stale prepared audio",
       "TTS now includes character names for label-only transcript lines (e.g. Jake Peralta: / puts his pen down → spoken as Jake Peralta puts his pen down)",
       "Archive PDF export skips a full re-index when the story index already matches the live message count",
       "Version wiring aligned to 3.0.0 across the app label, changelog, npm metadata, and Android release metadata",
