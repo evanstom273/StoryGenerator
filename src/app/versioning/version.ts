@@ -22,7 +22,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Full-story Listen from the transcript reuses cached chapter audio and only synthesizes missing segments",
       "Export Story Audiobook (WAV) from story settings merges all chapter segments into one downloadable file",
       "Chapter Listen and full-story audiobook playback announce chapter titles in the narrator voice before each chapter body",
-      "Character transcript lines split action and dialogue: asterisk actions are narrated, quoted speech uses each character's voice",
+      "Character speech uses a simple transcript rule: quoted lines use each character's voice; asterisk actions and unquoted prose use the narrator (with character names on action beats)",
       "Director directions use the narrator voice; per-chunk volume normalization keeps character voices closer to the same loudness",
       "MetaChat reply play button for assistant messages",
       "TTS loading feedback: animated spinner, elapsed timer, chunk progress, helper text, and cancel while Gemini synthesizes (10–30s+ for long passages)",
