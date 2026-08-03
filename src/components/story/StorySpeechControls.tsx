@@ -106,7 +106,7 @@ export function FullStoryAudiobookControls({
 		>
 			<div className="min-w-0">
 				<p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-					Storio Audiobook
+					Story Audiobook
 				</p>
 				<p className="text-sm text-ink-muted">
 					{segments.length > 1

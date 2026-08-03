@@ -232,7 +232,7 @@ export function buildStoryAudiobookFilename(storyTitle: string) {
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "")
 		.slice(0, 80);
-	return `${slug || "story"}-storio-audiobook.wav`;
+	return `${slug || "story"}-story-audiobook.wav`;
 }
 
 export async function computeStoryAudiobookPreparedDigest(

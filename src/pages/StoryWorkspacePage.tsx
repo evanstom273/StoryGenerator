@@ -7,6 +7,7 @@ import { StoryArchiveView } from "../components/story/StoryArchiveView";
 import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
 import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
 import { StoryAudioPlayerBar } from "../components/story/StoryAudioPlayerBar";
+import { useGeminiTtsPlayback } from "../app/providers/GeminiTtsPlaybackProvider";
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
 import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
 import { RPCharacterSheetOverlay } from "../components/story/RPCharacterSheetOverlay";
@@ -133,6 +134,13 @@ export function StoryWorkspacePage() {
     textSize,
     setStorySettingsOpen,
   } = useUiPrefs();
+  const { status: ttsPlaybackStatus, activeId: ttsActiveId } = useGeminiTtsPlayback();
+  const audioPlayerVisible =
+    Boolean(ttsActiveId) &&
+    (ttsPlaybackStatus === "loading" ||
+      ttsPlaybackStatus === "ready" ||
+      ttsPlaybackStatus === "playing" ||
+      ttsPlaybackStatus === "error");
   const {
     aiSettings,
     chapters: engineChapters,
@@ -1408,7 +1416,7 @@ export function StoryWorkspacePage() {
         ) : null}
       </div>
 
-      <StoryAudioPlayerBar className="fixed bottom-10 left-0 right-0 z-40 lg:left-[266px]" />
+      <StoryAudioPlayerBar className="fixed bottom-10 left-0 right-0 z-50 lg:left-[266px]" />
       <div
         className={[
           "fixed bottom-0 right-0 z-30 flex items-center justify-between border-t border-divider/[0.3] bg-app will-change-transform px-4 py-2",
@@ -1915,7 +1923,10 @@ export function StoryWorkspacePage() {
         <button
           type="button"
           onClick={handleJumpToLatestChapter}
-          className="fixed bottom-12 left-4 z-40 rounded-full border border-accent/30 bg-app-elevated/95 px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-soft shadow-hero backdrop-blur-sm transition hover:border-accent hover:bg-accent/15 hover:text-ink lg:left-[282px]"
+          className={cn(
+            "fixed left-4 z-40 rounded-full border border-accent/30 bg-app-elevated/95 px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-soft shadow-hero backdrop-blur-sm transition hover:border-accent hover:bg-accent/15 hover:text-ink lg:left-[282px]",
+            audioPlayerVisible ? "bottom-40" : "bottom-12",
+          )}
         >
           Jump to Latest Chapter
         </button>

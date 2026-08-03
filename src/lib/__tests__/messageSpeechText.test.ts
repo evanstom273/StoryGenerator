@@ -62,7 +62,28 @@ describe("messageSpeechText", () => {
 
 		expect(plan?.text.toLowerCase()).toContain("jake");
 		expect(plan?.text).toContain("puts his pen down");
+		expect(plan?.scriptLines[0]?.speaker).toBe("Narrator");
 		expect(plan?.scriptLines[0]?.text).toContain("Jake Peralta puts his pen down");
+	});
+
+	it("reads asterisk actions with the narrator and quoted dialogue with the character voice", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			assistantMessage(
+				"Jake:\n*spins an open pen across his desk.* \"Two weeks is practically tomorrow, Rosa.\"",
+			),
+			{ narrationTts },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{
+				speaker: "Narrator",
+				text: "Jake spins an open pen across his desk.",
+			},
+			{
+				speaker: "Jake",
+				text: "Two weeks is practically tomorrow, Rosa.",
+			},
+		]);
 	});
 
 	it("infers character gender from pronouns in transcript lines", () => {
