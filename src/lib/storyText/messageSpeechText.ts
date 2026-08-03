@@ -11,7 +11,9 @@ import type { CharacterTtsGenderMap, CharacterTtsRegistry } from "../ai/characte
 import {
 	DIRECTOR_TTS_KEY,
 	DIRECTOR_TTS_LABEL,
+	applyCharacterGenderHintForName,
 	ensureCharacterTtsRegistry,
+	inferGenderFromPronounsInText,
 	normalizeCharacterTtsKey,
 	resolveCharacterTtsKey,
 } from "../ai/characterTtsVoices";
@@ -277,6 +279,103 @@ export function collectCharacterTtsCandidatesFromMessages(
 	return candidates;
 }
 
+const NAME_PREFIXED_ACTION_LINE =
+	/^([A-Z][a-zA-Z''-]*(?:\s+[A-Z][a-zA-Z''-]*){0,3})\s+(.+)$/;
+
+function inferGenderHintFromNamePrefixedLine(line: string) {
+	const trimmed = line.trim();
+	const match = trimmed.match(NAME_PREFIXED_ACTION_LINE);
+	if (!match?.[1] || !match[2]) {
+		return null;
+	}
+
+	const name = match[1].trim();
+	const remainder = match[2].trim();
+	if (!name || !remainder) {
+		return null;
+	}
+
+	const gender = inferGenderFromPronounsInText(remainder);
+	if (!gender) {
+		return null;
+	}
+
+	return { name, gender };
+}
+
+function collectGenderHintsFromTextLines(
+	hints: CharacterTtsGenderMap,
+	text: string,
+	speakerLabel?: string | null,
+) {
+	if (speakerLabel && speakerLabel !== NARRATOR_SPEAKER_ALIAS) {
+		const speakerGender = inferGenderFromPronounsInText(text);
+		if (speakerGender) {
+			applyCharacterGenderHintForName(hints, speakerLabel, speakerGender);
+		}
+	}
+
+	for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+		const nameHint = inferGenderHintFromNamePrefixedLine(line);
+		if (nameHint) {
+			applyCharacterGenderHintForName(hints, nameHint.name, nameHint.gender);
+		}
+	}
+}
+
+export function buildCharacterGenderHintsFromMessages(
+	messages: StoryMessage[],
+	playerName?: string | null,
+): CharacterTtsGenderMap {
+	const hints: CharacterTtsGenderMap = {};
+
+	for (const message of messages) {
+		if (isSpeechExcludedMessage(message)) {
+			continue;
+		}
+
+		if (message.role === "user") {
+			if (isDirectorMessage(message)) {
+				continue;
+			}
+
+			const label =
+				message.speakerName?.trim() ||
+				(message.speakerType === "narrator" ? null : playerName?.trim()) ||
+				null;
+			if (label) {
+				collectGenderHintsFromTextLines(hints, message.content, label);
+			}
+
+			const repaired = repairNarratorLabelLines(message.content);
+			const blocks = parseSceneBlocks(repaired);
+			for (const block of blocks) {
+				collectGenderHintsFromTextLines(hints, block.text, block.speakerLabel);
+			}
+			continue;
+		}
+
+		if (message.role !== "assistant") {
+			continue;
+		}
+
+		const sanitized = sanitizeMessageForDisplay({
+			message,
+			playerName,
+		});
+		const repaired = repairNarratorLabelLines(sanitized);
+		const blocks = parseSceneBlocks(repaired);
+
+		for (const block of blocks) {
+			collectGenderHintsFromTextLines(hints, block.text, block.speakerLabel);
+		}
+
+		collectGenderHintsFromTextLines(hints, repaired);
+	}
+
+	return hints;
+}
+
 export function buildStoryMessageSpeechScriptLines(
 	message: StoryMessage,
 	options: {
@@ -384,6 +483,9 @@ function buildCharacterRegistryForMessages(
 	existingRegistry?: CharacterTtsRegistry,
 	characterGenders?: CharacterTtsGenderMap | null,
 ): CharacterTtsRegistry {
+	const messageGenderHints = buildCharacterGenderHintsFromMessages(messages, playerName);
+	const mergedGenderHints = { ...messageGenderHints, ...(characterGenders ?? {}) };
+
 	const candidates = collectCharacterTtsCandidatesFromMessages(messages, playerName);
 	const directorCandidate = candidates.find((entry) => entry.key === DIRECTOR_TTS_KEY);
 	if (!directorCandidate) {
@@ -399,7 +501,7 @@ function buildCharacterRegistryForMessages(
 		characters: candidates,
 		narrationTts,
 		playerName,
-		characterGenders,
+		characterGenders: mergedGenderHints,
 	});
 }
 

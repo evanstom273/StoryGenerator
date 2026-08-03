@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getMessagesForChapterStartingAt } from "../storyText/chapterNavigation";
 import {
+	buildCharacterGenderHintsFromMessages,
 	buildChapterSpeechPlan,
 	buildCharacterTtsRegistryForStory,
 	buildStoryMessageSpeechPlan,
@@ -8,7 +9,10 @@ import {
 	metaChatContentToSpeechText,
 } from "../storyText/messageSpeechText";
 import { normalizeCharacterTtsKey } from "../ai/characterTtsVoices";
-import { resolveGeminiNarrationTtsSettings } from "../ai/geminiTtsVoices";
+import {
+	geminiTtsVoiceMatchesGender,
+	resolveGeminiNarrationTtsSettings,
+} from "../ai/geminiTtsVoices";
 import type { StoryMessage } from "../../types/models";
 
 function assistantMessage(content: string, id = "msg-1", timestamp = "2026-01-01T00:00:00.000Z"): StoryMessage {
@@ -59,6 +63,26 @@ describe("messageSpeechText", () => {
 		expect(plan?.text.toLowerCase()).toContain("jake");
 		expect(plan?.text).toContain("puts his pen down");
 		expect(plan?.scriptLines[0]?.text).toContain("Jake Peralta puts his pen down");
+	});
+
+	it("infers character gender from pronouns in transcript lines", () => {
+		const messages: StoryMessage[] = [
+			assistantMessage("Jake Peralta spins an open pen across his desk.", "a1"),
+			assistantMessage("Rosa:\nShe folds her arms.", "a2"),
+		];
+
+		const hints = buildCharacterGenderHintsFromMessages(messages);
+		expect(hints[normalizeCharacterTtsKey("Jake Peralta")]).toBe("male");
+		expect(hints[normalizeCharacterTtsKey("Jake")]).toBe("male");
+		expect(hints[normalizeCharacterTtsKey("Rosa")]).toBe("female");
+
+		const registry = buildCharacterTtsRegistryForStory(messages, { narrationTts });
+		const jakeVoice = registry.voices[normalizeCharacterTtsKey("Jake Peralta")];
+		const rosaVoice = registry.voices[normalizeCharacterTtsKey("Rosa")];
+		expect(jakeVoice).toBeTruthy();
+		expect(rosaVoice).toBeTruthy();
+		expect(geminiTtsVoiceMatchesGender(jakeVoice!, "male")).toBe(true);
+		expect(geminiTtsVoiceMatchesGender(rosaVoice!, "female")).toBe(true);
 	});
 
 	it("strips markdown from MetaChat content", () => {

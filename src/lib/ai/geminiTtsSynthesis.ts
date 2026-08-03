@@ -46,7 +46,7 @@ function resolveVoiceForSpeaker(
 	return match?.voice ?? speakers[0]?.voice ?? "Iapetus";
 }
 
-function groupScriptLinesBySpeaker(scriptLines: SpeechScriptLine[]) {
+export function groupScriptLinesBySpeaker(scriptLines: SpeechScriptLine[]) {
 	const groups: Array<{ speaker: string; texts: string[] }> = [];
 
 	for (const line of scriptLines) {
@@ -59,6 +59,21 @@ function groupScriptLinesBySpeaker(scriptLines: SpeechScriptLine[]) {
 	}
 
 	return groups;
+}
+
+export function buildGeminiTtsSynthesisSignature(plan: SpeechSynthesisPlan) {
+	if (!plan.scriptLines.length) {
+		const voice = plan.speakers[0]?.voice ?? "Iapetus";
+		return `narrator:${voice}\0${plan.text}`;
+	}
+
+	const groups = groupScriptLinesBySpeaker(plan.scriptLines);
+	return groups
+		.map((group) => {
+			const voice = resolveVoiceForSpeaker(group.speaker, plan.speakers);
+			return `${group.speaker}\0${voice}\0${group.texts.join("\n\n")}`;
+		})
+		.join("\n");
 }
 
 async function synthesizeScriptLineGroups(params: {

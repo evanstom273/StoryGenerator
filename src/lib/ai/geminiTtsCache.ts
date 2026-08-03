@@ -1,4 +1,5 @@
 import type { GeminiTtsModelId } from "./geminiTtsVoices";
+import { buildGeminiTtsSynthesisSignature } from "./geminiTtsSynthesis";
 import {
 	deleteFromStore,
 	getAllFromStore,
@@ -7,7 +8,7 @@ import {
 } from "../idb";
 import type { SpeechSynthesisPlan } from "../storyText/messageSpeechText";
 
-const CACHE_SCHEMA_VERSION = 1;
+const CACHE_SCHEMA_VERSION = 2;
 const MAX_CACHE_ENTRIES = 120;
 
 export type GeminiTtsCacheRecord = {
@@ -43,9 +44,7 @@ export async function computeGeminiTtsCacheDigest(
 	const payload = JSON.stringify({
 		v: CACHE_SCHEMA_VERSION,
 		playId,
-		text: plan.text,
-		multiSpeaker: plan.multiSpeaker,
-		speakers: plan.speakers,
+		synthesisSignature: buildGeminiTtsSynthesisSignature(plan),
 		model,
 	});
 
