@@ -411,6 +411,13 @@ export function StoryTranscriptView({
                   highlight && !chapterStartLabel ? "ring-2 ring-accent/35" : "",
                 )}
               >
+                <div className="flex justify-end">
+                  <StoryMessagePlayButton
+                    message={message}
+                    messages={messages}
+                    playerCharacterName={playerCharacterName}
+                  />
+                </div>
                 <div className="flex items-start gap-3 text-sm leading-7">
                   <div className={tag.tagClass}>{tag.label}</div>
                   <div className={cn("min-w-0 flex-1 space-y-2", tag.contentClass)}>
@@ -459,8 +466,8 @@ export function StoryTranscriptView({
               <div className="flex justify-end">
                 <StoryMessagePlayButton
                   message={message}
+                  messages={messages}
                   playerCharacterName={playerCharacterName}
-                  latestUserMessage={latestUserMessage}
                 />
               </div>
               {blocks.map((block, blockIndex) => {

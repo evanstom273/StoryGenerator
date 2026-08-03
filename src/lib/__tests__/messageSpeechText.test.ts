@@ -3,6 +3,10 @@ import { getMessagesForChapterStartingAt } from "../storyText/chapterNavigation"
 import {
 	buildChapterSpeechPlan,
 	buildStoryMessageSpeechPlan,
+	buildTurnBlockSpeechPlan,
+	getTurnBlockPlayId,
+	getTurnBlockRange,
+	isSpeakableUserMessage,
 	metaChatContentToSpeechText,
 } from "../storyText/messageSpeechText";
 import { resolveGeminiNarrationTtsSettings } from "../ai/geminiTtsVoices";
@@ -65,22 +69,131 @@ describe("messageSpeechText", () => {
 		);
 	});
 
-	it("builds chapter speech from assistant messages only", () => {
+	it("builds player dialogue speech for user messages", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			{
+				id: "u1",
+				storyId: "story-1",
+				role: "user",
+				content: "*leans forward* We need to leave now.",
+				speakerType: "player",
+				timestamp: "2026-01-01T00:00:00.000Z",
+			},
+			{ playerName: "Amy Santiago", narrationTts },
+		);
+
+		expect(plan?.multiSpeaker).toBe(false);
+		expect(plan?.speakers[0]?.voice).toBe(narrationTts.characterVoice);
+		expect(plan?.text.toLowerCase()).toContain("leave");
+	});
+
+	it("skips continue user messages but allows director directions", () => {
+		expect(
+			isSpeakableUserMessage({
+				id: "c1",
+				storyId: "story-1",
+				role: "user",
+				content: "Continue",
+				speakerType: "continue",
+				timestamp: "2026-01-01T00:00:00.000Z",
+			}),
+		).toBe(false);
+		expect(
+			isSpeakableUserMessage({
+				id: "d1",
+				storyId: "story-1",
+				role: "user",
+				content: "Stage a chase scene.",
+				speakerType: "director",
+				timestamp: "2026-01-01T00:00:00.000Z",
+			}),
+		).toBe(true);
+
+		const directorPlan = buildStoryMessageSpeechPlan(
+			{
+				id: "d1",
+				storyId: "story-1",
+				role: "user",
+				content: "Stage a chase scene.",
+				speakerType: "director",
+				timestamp: "2026-01-01T00:00:00.000Z",
+			},
+			{ narrationTts },
+		);
+		expect(directorPlan?.text).toContain("Director:");
+		expect(directorPlan?.text.toLowerCase()).toContain("chase");
+	});
+
+	it("builds turn blocks from player message through the next player message", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "p1",
+				storyId: "story-1",
+				role: "user",
+				content: "Let's go.",
+				speakerType: "player",
+				timestamp: "2026-01-01T00:00:00.000Z",
+			},
+			{
+				id: "d1",
+				storyId: "story-1",
+				role: "user",
+				content: "Make it tense.",
+				speakerType: "director",
+				timestamp: "2026-01-01T00:00:30.000Z",
+			},
+			assistantMessage("They sprinted down the alley.", "a1", "2026-01-01T00:01:00.000Z"),
+			{
+				id: "p2",
+				storyId: "story-1",
+				role: "user",
+				content: "Keep running.",
+				speakerType: "player",
+				timestamp: "2026-01-01T00:02:00.000Z",
+			},
+			assistantMessage("The sirens grew louder.", "a2", "2026-01-01T00:02:30.000Z"),
+		];
+
+		const range = getTurnBlockRange(messages, "a1");
+		expect(range).toEqual({ anchorIndex: 0, endIndex: 3 });
+
+		const plan = buildTurnBlockSpeechPlan(messages, "d1", { narrationTts });
+		expect(plan?.text).toContain("Let's go");
+		expect(plan?.text).toContain("Director:");
+		expect(plan?.text).toContain("sprinted");
+		expect(plan?.text).not.toContain("Keep running");
+		expect(plan?.text).not.toContain("sirens");
+
+		expect(getTurnBlockPlayId(messages, "a1")).toBe("beat-p1");
+		expect(getTurnBlockPlayId(messages, "d1")).toBe("beat-p1");
+		expect(getTurnBlockPlayId(messages, "p2")).toBe("beat-p2");
+	});
+
+	it("builds chapter speech from speakable story messages", () => {
 		const messages: StoryMessage[] = [
 			assistantMessage("Opening narration.", "a1"),
 			{
 				id: "u1",
 				storyId: "story-1",
 				role: "user",
+				content: "Let's get moving.",
+				speakerType: "player",
+				timestamp: "2026-01-01T00:01:00.000Z",
+			},
+			{
+				id: "u2",
+				storyId: "story-1",
+				role: "user",
 				content: "Continue",
 				speakerType: "continue",
-				timestamp: "2026-01-01T00:01:00.000Z",
+				timestamp: "2026-01-01T00:01:30.000Z",
 			},
 			assistantMessage("More narration.", "a2"),
 		];
 
 		const plan = buildChapterSpeechPlan(messages, { narrationTts });
 		expect(plan?.text).toContain("Opening narration.");
+		expect(plan?.text).toContain("get moving");
 		expect(plan?.text).toContain("More narration.");
 		expect(plan?.text).not.toContain("Continue");
 	});

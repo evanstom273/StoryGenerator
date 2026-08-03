@@ -1,5 +1,5 @@
 const DATABASE_NAME = "story-engine-db";
-const DATABASE_VERSION = 8;
+const DATABASE_VERSION = 9;
 
 export type StoreName =
   | "universes"
@@ -18,7 +18,8 @@ export type StoreName =
   | "developerBugs"
   | "developerFeatureRequests"
   | "developerTestingNotes"
-  | "autoBackups";
+  | "autoBackups"
+  | "geminiTtsCache";
 
 let databasePromise: Promise<IDBDatabase> | null = null;
 
@@ -118,6 +119,9 @@ export function openStoryEngineDatabase() {
       const autoBackups = ensureStore("autoBackups", { keyPath: "id" });
       ensureIndex(autoBackups, "createdAt", "createdAt", { unique: false });
 
+      const geminiTtsCache = ensureStore("geminiTtsCache", { keyPath: "id" });
+      ensureIndex(geminiTtsCache, "createdAtMs", "createdAtMs", { unique: false });
+
       const runMigrations = (fromVersion: number, toVersion: number) => {
         if (fromVersion < 2 && toVersion >= 2) {
           return;
@@ -171,6 +175,10 @@ export function openStoryEngineDatabase() {
         }
 
         if (fromVersion < 8 && toVersion >= 8) {
+          return;
+        }
+
+        if (fromVersion < 9 && toVersion >= 9) {
           return;
         }
       };
