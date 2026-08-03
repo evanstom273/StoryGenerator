@@ -126,7 +126,48 @@ export function inferCharacterTtsGenderHint(
 	return undefined;
 }
 
-function addGenderHintForName(
+export function inferGenderFromPronounsInText(text: string): CharacterTtsGenderHint | undefined {
+	const normalized = text.toLowerCase();
+	let maleSignals = 0;
+	let femaleSignals = 0;
+
+	if (/\bhe\b/.test(normalized)) {
+		maleSignals += 1;
+	}
+	if (/\bhis\b/.test(normalized)) {
+		maleSignals += 1;
+	}
+	if (/\bhim\b/.test(normalized)) {
+		maleSignals += 1;
+	}
+	if (/\bhimself\b/.test(normalized)) {
+		maleSignals += 1;
+	}
+
+	if (/\bshe\b/.test(normalized)) {
+		femaleSignals += 1;
+	}
+	if (/\bher\b/.test(normalized)) {
+		femaleSignals += 1;
+	}
+	if (/\bhers\b/.test(normalized)) {
+		femaleSignals += 1;
+	}
+	if (/\bherself\b/.test(normalized)) {
+		femaleSignals += 1;
+	}
+
+	if (maleSignals > 0 && femaleSignals === 0) {
+		return "male";
+	}
+	if (femaleSignals > 0 && maleSignals === 0) {
+		return "female";
+	}
+
+	return undefined;
+}
+
+export function applyCharacterGenderHintForName(
 	hints: CharacterTtsGenderMap,
 	name: string,
 	gender: CharacterTtsGenderHint,
@@ -156,7 +197,7 @@ export function buildCharacterGenderHintsFromStoryState(
 	const playerGender = inferCharacterTtsGenderHint(options?.playerGender, options?.playerPronouns);
 
 	if (playerGender && options?.playerName?.trim()) {
-		addGenderHintForName(hints, options.playerName.trim(), playerGender);
+		applyCharacterGenderHintForName(hints, options.playerName.trim(), playerGender);
 	}
 
 	for (const [canonicalKey, entry] of Object.entries(storyStateData?.characters ?? {})) {
@@ -173,7 +214,7 @@ export function buildCharacterGenderHintsFromStoryState(
 		].filter((name): name is string => Boolean(name?.trim()));
 
 		for (const name of names) {
-			addGenderHintForName(hints, name, gender);
+			applyCharacterGenderHintForName(hints, name, gender);
 		}
 	}
 

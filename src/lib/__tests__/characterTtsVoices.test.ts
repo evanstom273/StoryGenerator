@@ -3,6 +3,7 @@ import {
 	buildCharacterGenderHintsFromStoryState,
 	ensureCharacterTtsRegistry,
 	inferCharacterTtsGenderHint,
+	inferGenderFromPronounsInText,
 	normalizeCharacterTtsKey,
 } from "../ai/characterTtsVoices";
 import {
@@ -72,6 +73,12 @@ describe("characterTtsVoices", () => {
 		expect(rosaVoice).toBeTruthy();
 		expect(geminiTtsVoiceMatchesGender(jakeVoice!, "male")).toBe(true);
 		expect(geminiTtsVoiceMatchesGender(rosaVoice!, "female")).toBe(true);
+	});
+
+	it("infers gender from pronouns in free text", () => {
+		expect(inferGenderFromPronounsInText("spins an open pen across his desk")).toBe("male");
+		expect(inferGenderFromPronounsInText("She folds her arms.")).toBe("female");
+		expect(inferGenderFromPronounsInText("They walked together.")).toBeUndefined();
 	});
 
 	it("infers gender hints from story state character sheets", () => {
