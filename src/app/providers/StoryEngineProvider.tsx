@@ -4969,8 +4969,13 @@ export function StoryEngineProvider({
       },
       async exportStory(storyId, opts) {
         if (opts?.refreshArchiveIfStale) {
-          const storyState = await repository.getStoryState(storyId);
-          const indexStatus = getArchiveIndexStatus(storyState);
+          const [storyState, messages] = await Promise.all([
+            repository.getStoryState(storyId),
+            repository.listStoryMessages(storyId),
+          ]);
+          const indexStatus = getArchiveIndexStatus(storyState, {
+            currentMessageCount: messages.length,
+          });
 
           if (indexStatus.needsRefresh) {
             await runDeepIndexProcess(storyId, {
