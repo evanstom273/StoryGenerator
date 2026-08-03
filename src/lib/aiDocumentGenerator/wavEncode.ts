@@ -55,3 +55,51 @@ export function concatArrayBuffers(parts: ArrayBuffer[]): ArrayBuffer {
 	}
 	return merged.buffer;
 }
+
+export function decodeWavToPcm16(wav: Uint8Array): { pcm: Uint8Array; sampleRate: number } {
+	if (wav.byteLength < 44) {
+		throw new Error("Invalid WAV data.");
+	}
+
+	const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+	const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+	const wave = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
+	if (riff !== "RIFF" || wave !== "WAVE") {
+		throw new Error("Invalid WAV header.");
+	}
+
+	let offset = 12;
+	let sampleRate = 24000;
+	let dataOffset = -1;
+	let dataSize = 0;
+
+	while (offset + 8 <= wav.byteLength) {
+		const chunkId = String.fromCharCode(
+			view.getUint8(offset),
+			view.getUint8(offset + 1),
+			view.getUint8(offset + 2),
+			view.getUint8(offset + 3),
+		);
+		const chunkSize = view.getUint32(offset + 4, true);
+		const chunkStart = offset + 8;
+
+		if (chunkId === "fmt ") {
+			sampleRate = view.getUint32(chunkStart + 4, true);
+		} else if (chunkId === "data") {
+			dataOffset = chunkStart;
+			dataSize = chunkSize;
+			break;
+		}
+
+		offset = chunkStart + chunkSize + (chunkSize % 2);
+	}
+
+	if (dataOffset < 0 || dataSize <= 0) {
+		throw new Error("WAV data chunk missing.");
+	}
+
+	return {
+		pcm: wav.slice(dataOffset, dataOffset + dataSize),
+		sampleRate,
+	};
+}
