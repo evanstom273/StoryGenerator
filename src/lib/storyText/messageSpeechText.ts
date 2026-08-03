@@ -304,6 +304,43 @@ function finalizeSpeechPlan(
 	};
 }
 
+export function formatChapterTitleForSpeech(label: string) {
+	return label.trim().replace(/\s+/g, " ");
+}
+
+export function shouldAnnounceChapterTitle(label: string | null | undefined) {
+	const trimmed = label?.trim();
+	if (!trimmed) {
+		return false;
+	}
+
+	const normalized = trimmed.toLowerCase();
+	return normalized !== "full story";
+}
+
+function prependChapterTitleScriptLines(
+	scriptLines: SpeechScriptLine[],
+	chapterTitle: string | null | undefined,
+): SpeechScriptLine[] {
+	if (!shouldAnnounceChapterTitle(chapterTitle)) {
+		return scriptLines;
+	}
+
+	const titleText = formatChapterTitleForSpeech(chapterTitle!);
+	if (!titleText) {
+		return scriptLines;
+	}
+
+	return [
+		{
+			speaker: NARRATOR_SPEAKER_ALIAS,
+			text: titleText,
+			messageBreakAfter: true,
+		},
+		...scriptLines,
+	];
+}
+
 function buildSpeechPlanFromBlocks(
 	blocks: SceneBlock[],
 	narrationTts: GeminiNarrationTtsSettings,
@@ -700,6 +737,7 @@ export function buildChapterSpeechPlan(
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry?: CharacterTtsRegistry;
 		allStoryMessages?: StoryMessage[];
+		chapterTitle?: string | null;
 	},
 ): SpeechSynthesisPlan | null {
 	const registrySource = options.allStoryMessages ?? messages;
@@ -707,11 +745,18 @@ export function buildChapterSpeechPlan(
 		options.characterRegistry ??
 		buildCharacterRegistryForMessages(registrySource, options.playerName, options.narrationTts);
 
-	return buildSpeechPlanFromMessages(messages, {
+	const basePlan = buildSpeechPlanFromMessages(messages, {
 		playerName: options.playerName,
 		narrationTts: options.narrationTts,
 		characterRegistry,
 	});
+
+	if (!basePlan) {
+		return null;
+	}
+
+	const scriptLines = prependChapterTitleScriptLines(basePlan.scriptLines, options.chapterTitle);
+	return finalizeSpeechPlan(scriptLines, characterRegistry, options.narrationTts);
 }
 
 export function buildCharacterTtsRegistryForStory(

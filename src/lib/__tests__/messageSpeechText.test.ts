@@ -7,6 +7,7 @@ import {
 	buildStoryMessageSpeechPlan,
 	isSpeakableUserMessage,
 	metaChatContentToSpeechText,
+	shouldAnnounceChapterTitle,
 } from "../storyText/messageSpeechText";
 import { normalizeCharacterTtsKey } from "../ai/characterTtsVoices";
 import {
@@ -261,6 +262,34 @@ describe("messageSpeechText", () => {
 		expect(plan?.text).toContain("get moving");
 		expect(plan?.text).toContain("More narration.");
 		expect(plan?.text).not.toContain("Continue");
+	});
+
+	it("announces chapter titles before chapter speech", () => {
+		const plan = buildChapterSpeechPlan([assistantMessage("The rain fell hard.")], {
+			narrationTts,
+			chapterTitle: "Chapter One: The Worst Day",
+		});
+
+		expect(plan?.scriptLines[0]).toEqual({
+			speaker: "Narrator",
+			text: "Chapter One: The Worst Day",
+			messageBreakAfter: true,
+		});
+		expect(plan?.text).toContain("Chapter One: The Worst Day");
+		expect(plan?.text).toContain("rain fell hard");
+	});
+
+	it("does not announce generic full story labels", () => {
+		expect(shouldAnnounceChapterTitle("Full Story")).toBe(false);
+
+		const plan = buildChapterSpeechPlan([assistantMessage("Opening narration.")], {
+			narrationTts,
+			chapterTitle: "Full Story",
+		});
+
+		expect(plan?.scriptLines[0]?.speaker).toBe("Narrator");
+		expect(plan?.scriptLines[0]?.text).toContain("Opening narration");
+		expect(plan?.scriptLines.some((line) => line.text === "Full Story")).toBe(false);
 	});
 });
 

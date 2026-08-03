@@ -21,6 +21,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Prepare-then-play story audio: per-message Play on assistant turns, Listen to Chapter on chapter banners, and a fixed Spotify-style player bar with scrubbing and ±5s skip",
       "Full-story Listen from the transcript reuses cached chapter audio and only synthesizes missing segments",
       "Export Story Audiobook (WAV) from story settings merges all chapter segments into one downloadable file",
+      "Chapter Listen and full-story audiobook playback announce chapter titles in the narrator voice before each chapter body",
       "Character transcript lines split action and dialogue: asterisk actions are narrated, quoted speech uses each character's voice",
       "Director directions use the narrator voice; per-chunk volume normalization keeps character voices closer to the same loudness",
       "MetaChat reply play button for assistant messages",

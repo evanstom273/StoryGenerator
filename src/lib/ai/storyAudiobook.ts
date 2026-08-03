@@ -116,6 +116,7 @@ export function listStoryAudiobookChapterSegments(
 				narrationTts: options.narrationTts,
 				characterRegistry: options.characterRegistry,
 				allStoryMessages: messages,
+				chapterTitle: start.label,
 			});
 
 			if (!plan) {
