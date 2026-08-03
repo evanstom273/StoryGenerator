@@ -87,6 +87,26 @@ describe("messageSpeechText", () => {
 		]);
 	});
 
+	it("narrates stacks-style action beats instead of speaking them in character voice", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			assistantMessage(
+				"Amy:\n*stacks a neat pile of folders on her desk.* \"Jake's timeline is completely nonsensical.\"",
+			),
+			{ narrationTts, playerName: "Jake Peralta" },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{
+				speaker: "Narrator",
+				text: "Amy stacks a neat pile of folders on her desk.",
+			},
+			{
+				speaker: "Amy",
+				text: "Jake's timeline is completely nonsensical.",
+			},
+		]);
+	});
+
 	it("infers character gender from pronouns in transcript lines", () => {
 		const messages: StoryMessage[] = [
 			assistantMessage("Jake Peralta spins an open pen across his desk.", "a1"),

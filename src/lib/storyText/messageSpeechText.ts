@@ -135,11 +135,99 @@ function looksLikeNarratedActionLine(text: string) {
 	return looksLikePhysicalAction(cleaned);
 }
 
+const PHYSICAL_ACTION_VERB_STEMS = [
+	"put",
+	"spin",
+	"fold",
+	"lean",
+	"stare",
+	"look",
+	"step",
+	"walk",
+	"run",
+	"sit",
+	"stand",
+	"turn",
+	"nod",
+	"shrug",
+	"tap",
+	"glance",
+	"gaze",
+	"reach",
+	"open",
+	"close",
+	"pull",
+	"push",
+	"stack",
+	"set",
+	"slide",
+	"shift",
+	"pick",
+	"grab",
+	"hold",
+	"drop",
+	"throw",
+	"catch",
+	"lift",
+	"place",
+	"rest",
+	"settle",
+	"watch",
+	"wait",
+	"sigh",
+	"smile",
+	"frown",
+	"grimace",
+	"wince",
+	"cross",
+	"brush",
+	"wipe",
+	"rub",
+	"pat",
+	"squeeze",
+	"clutch",
+	"grip",
+	"raise",
+	"lower",
+	"bow",
+	"shake",
+	"wave",
+	"point",
+	"gesture",
+];
+
+function containsPhysicalActionLanguage(text: string) {
+	const cleaned = stripActionMarkers(text).toLowerCase();
+	return PHYSICAL_ACTION_VERB_STEMS.some((stem) => new RegExp(`\\b${stem}\\w*\\b`, "i").test(cleaned));
+}
+
 function looksLikePhysicalAction(text: string) {
+	return containsPhysicalActionLanguage(text);
+}
+
+function looksLikeSanitizerWrappedDialogue(text: string) {
 	const cleaned = stripActionMarkers(text).trim();
-	return /^(puts|spins|folds|leans|stares|looks|steps|walks|runs|sits|stands|turns|nods|shrugs|taps|glances|gazes|reaches|opens|closes|pulls|pushes)\b/i.test(
-		cleaned,
-	);
+	if (!cleaned) {
+		return false;
+	}
+
+	if (containsPhysicalActionLanguage(cleaned)) {
+		return false;
+	}
+
+	if (isQuotedDialogue(cleaned)) {
+		return true;
+	}
+
+	if (cleaned.length > 72) {
+		return false;
+	}
+
+	if (!/[.!?]["']?$/.test(cleaned)) {
+		return false;
+	}
+
+	return true;
 }
 
 function looksLikeSpokenDialogue(text: string) {
@@ -174,7 +262,7 @@ function buildSpeechScriptLinesFromCharacterBlock(
 
 	for (const segment of block.segments) {
 		if (segment.type === "action") {
-			if (looksLikeSpokenDialogue(segment.text)) {
+			if (looksLikeSanitizerWrappedDialogue(segment.text)) {
 				const dialogue = stripDialogueQuotes(segment.text);
 				if (dialogue.trim()) {
 					lines.push({ speaker: ttsSpeaker, text: dialogue });
