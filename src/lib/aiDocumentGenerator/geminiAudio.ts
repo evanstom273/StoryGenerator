@@ -1,4 +1,8 @@
-import { GEMINI_TTS_VOICES, generateGeminiMultiSpeakerAudio } from "../ai/geminiTts";
+import { generateGeminiMultiSpeakerAudio } from "../ai/geminiTts";
+import {
+	resolveGeminiPodcastTtsSettings,
+	type GeminiPodcastTtsSettings,
+} from "../ai/geminiTtsVoices";
 import { isGenerationFailureError } from "../ai/errors";
 import {
 	buildGeminiTtsInput,
@@ -136,7 +140,9 @@ export async function generateGeminiPodcastAudioFromMarkdown(params: {
 	onProgress?: (message: string) => void;
 	onChunkComplete?: (state: GeminiPodcastAudioChunkProgress) => void;
 	resume?: GeminiPodcastAudioResumeState;
+	tts?: Partial<GeminiPodcastTtsSettings>;
 }) {
+	const ttsSettings = resolveGeminiPodcastTtsSettings(params.tts);
 	const dialogue = extractPodcastDialogueFromMarkdown(params.markdown);
 	if (!dialogue) {
 		throw new Error(
@@ -171,10 +177,11 @@ export async function generateGeminiPodcastAudioFromMarkdown(params: {
 					apiKey: params.apiKey,
 					input: buildGeminiTtsInput(chunk.script, chunk.hostOne, chunk.hostTwo),
 					speakers: [
-						{ name: chunk.hostOne, voice: GEMINI_TTS_VOICES.hostA },
-						{ name: chunk.hostTwo, voice: GEMINI_TTS_VOICES.hostB },
+						{ name: chunk.hostOne, voice: ttsSettings.hostOneVoice },
+						{ name: chunk.hostTwo, voice: ttsSettings.hostTwoVoice },
 					],
 					signal: params.signal,
+					model: ttsSettings.model,
 				});
 				break;
 			} catch (error) {
