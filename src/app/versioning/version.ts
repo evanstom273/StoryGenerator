@@ -20,7 +20,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "In-app Gemini story narration with persistent per-character voices, gender-matched assignment from story state, player sheets, and pronouns in transcript text",
       "Prepare-then-play story audio: per-message Play on assistant turns, Listen to Chapter on chapter banners, and a fixed Spotify-style player bar with scrubbing and ±5s skip",
       "Full-story Listen from the transcript reuses cached chapter audio and only synthesizes missing segments",
-      "Export Storio Audiobook (WAV) from story settings merges all chapter segments into one downloadable file",
+      "Export Story Audiobook (WAV) from story settings merges all chapter segments into one downloadable file",
       "Natural speech pacing with pauses between speakers and longer gaps between messages (e.g. director directions → AI reply)",
       "Director directions use the narrator voice; per-chunk volume normalization keeps character voices closer to the same loudness",
       "MetaChat reply play button for assistant messages",

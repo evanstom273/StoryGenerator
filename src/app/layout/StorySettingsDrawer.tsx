@@ -563,7 +563,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     }
   }
 
-  async function handleExportStorioAudiobook() {
+  async function handleExportStoryAudiobook() {
     if (!story || !playerCharacter) {
       return;
     }
@@ -577,7 +577,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     showError(null);
     showNotice(null);
     setIsExportingAudiobook(true);
-    setExportStage("Preparing Storio audiobook…");
+    setExportStage("Preparing story audiobook…");
 
     try {
       const messages = getMessagesForStory(story.id);
@@ -623,9 +623,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         wavBuffer,
         "audio/wav",
       );
-      showNotice("Storio audiobook exported.");
+      showNotice("Story audiobook exported.");
     } catch (error) {
-      showError(error instanceof Error ? error.message : "Unable to export Storio audiobook.");
+      showError(error instanceof Error ? error.message : "Unable to export story audiobook.");
     } finally {
       setIsExportingAudiobook(false);
       setExportStage(null);
@@ -1194,11 +1194,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <Button
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
-                    onClick={() => void handleExportStorioAudiobook()}
+                    onClick={() => void handleExportStoryAudiobook()}
                     disabled={!!exportStage || isExportingSupportBundle || isExportingAudiobook}
                   >
                     <DownloadIcon className="h-4 w-4" />
-                    {isExportingAudiobook ? "Exporting audiobook…" : "Export Storio Audiobook (WAV)"}
+                    {isExportingAudiobook ? "Exporting audiobook…" : "Export Story Audiobook (WAV)"}
                   </Button>
                   <Button
                     variant="secondary"
