@@ -17,6 +17,7 @@ const initialFormState = {
   playerCharacterId: "",
   currentSummary: "",
   matureFictionMode: true,
+  rpMode: true,
 };
 
 const initialQuickCharacterState: PlayerCharacterDraft = {
@@ -280,6 +281,7 @@ export function StoryCreatePage() {
             playerCharacterId: resolvedPlayerCharacterId,
             currentSummary: formState.currentSummary.trim(),
             matureFictionMode: formState.matureFictionMode,
+            rpMode: formState.rpMode,
           });
 
       if (!isDerivedMode && protagonistMode === "quick") {
@@ -829,23 +831,39 @@ export function StoryCreatePage() {
             )}
 
             {!isDerivedMode ? (
-              <Field
-                label="Mature fiction (non-graphic)"
-                hint="Defaults to on for new stories"
-              >
-                <SelectInput
-                  value={formState.matureFictionMode ? "on" : "off"}
-                  onChange={(event) =>
-                    setFormState((currentState) => ({
-                      ...currentState,
-                      matureFictionMode: event.target.value === "on",
-                    }))
-                  }
+              <div className="grid gap-6 md:grid-cols-2">
+                <Field
+                  label="Mature fiction (non-graphic)"
+                  hint="Defaults to on for new stories"
                 >
-                  <option value="on">On</option>
-                  <option value="off">Off</option>
-                </SelectInput>
-              </Field>
+                  <SelectInput
+                    value={formState.matureFictionMode ? "on" : "off"}
+                    onChange={(event) =>
+                      setFormState((currentState) => ({
+                        ...currentState,
+                        matureFictionMode: event.target.value === "on",
+                      }))
+                    }
+                  >
+                    <option value="on">On</option>
+                    <option value="off">Off</option>
+                  </SelectInput>
+                </Field>
+                <Field label="RP mode" hint="Track HP, currency, and core stats">
+                  <SelectInput
+                    value={formState.rpMode ? "on" : "off"}
+                    onChange={(event) =>
+                      setFormState((currentState) => ({
+                        ...currentState,
+                        rpMode: event.target.value === "on",
+                      }))
+                    }
+                  >
+                    <option value="on">On</option>
+                    <option value="off">Off</option>
+                  </SelectInput>
+                </Field>
+              </div>
             ) : null}
           </div>
 
