@@ -1,12 +1,7 @@
 import type { StoryMessage } from "../../types/models";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
-import {
-	buildChapterSpeechPlan,
-	buildTurnBlockSpeechPlan,
-	getTurnBlockPlayId,
-	isSpeechExcludedMessage,
-} from "../../lib/storyText/messageSpeechText";
+import { buildChapterSpeechPlan } from "../../lib/storyText/messageSpeechText";
 import { getMessagesForChapterStartingAt } from "../../lib/storyText/chapterNavigation";
 import { cn } from "../../utils/cn";
 import { MessagePlayButton } from "./MessagePlayButton";
@@ -58,35 +53,4 @@ export function ChapterListenBanner({
 			</div>
 		</div>
 	);
-}
-
-interface StoryMessagePlayButtonProps {
-	message: StoryMessage;
-	messages: StoryMessage[];
-	playerCharacterName: string;
-}
-
-export function StoryMessagePlayButton({
-	message,
-	messages,
-	playerCharacterName,
-}: StoryMessagePlayButtonProps) {
-	const { aiSettings } = useStoryEngine();
-	const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
-
-	if (message.role === "system" || isSpeechExcludedMessage(message)) {
-		return null;
-	}
-
-	const plan = buildTurnBlockSpeechPlan(messages, message.id, {
-		playerName: playerCharacterName,
-		narrationTts,
-	});
-	const playId = getTurnBlockPlayId(messages, message.id);
-
-	if (!plan || !playId) {
-		return null;
-	}
-
-	return <MessagePlayButton playId={playId} plan={plan} />;
 }

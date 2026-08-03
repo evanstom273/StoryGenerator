@@ -3,9 +3,6 @@ import { getMessagesForChapterStartingAt } from "../storyText/chapterNavigation"
 import {
 	buildChapterSpeechPlan,
 	buildStoryMessageSpeechPlan,
-	buildTurnBlockSpeechPlan,
-	getTurnBlockPlayId,
-	getTurnBlockRange,
 	isSpeakableUserMessage,
 	metaChatContentToSpeechText,
 } from "../storyText/messageSpeechText";
@@ -124,7 +121,7 @@ describe("messageSpeechText", () => {
 		expect(directorPlan?.text.toLowerCase()).toContain("chase");
 	});
 
-	it("builds turn blocks from player message through the next player message", () => {
+	it("builds chapter speech with player, director, and multi-voice narration", () => {
 		const messages: StoryMessage[] = [
 			{
 				id: "p1",
@@ -142,7 +139,7 @@ describe("messageSpeechText", () => {
 				speakerType: "director",
 				timestamp: "2026-01-01T00:00:30.000Z",
 			},
-			assistantMessage("They sprinted down the alley.", "a1", "2026-01-01T00:01:00.000Z"),
+			assistantMessage("They sprinted down the alley.\n\nMarcus: Hurry up!", "a1", "2026-01-01T00:01:00.000Z"),
 			{
 				id: "p2",
 				storyId: "story-1",
@@ -154,19 +151,15 @@ describe("messageSpeechText", () => {
 			assistantMessage("The sirens grew louder.", "a2", "2026-01-01T00:02:30.000Z"),
 		];
 
-		const range = getTurnBlockRange(messages, "a1");
-		expect(range).toEqual({ anchorIndex: 0, endIndex: 3 });
-
-		const plan = buildTurnBlockSpeechPlan(messages, "d1", { narrationTts });
+		const chapterSlice = messages.slice(0, 3);
+		const plan = buildChapterSpeechPlan(chapterSlice, { narrationTts });
+		expect(plan?.multiSpeaker).toBe(true);
 		expect(plan?.text).toContain("Let's go");
 		expect(plan?.text).toContain("Director:");
 		expect(plan?.text).toContain("sprinted");
+		expect(plan?.text).toContain("Marcus");
 		expect(plan?.text).not.toContain("Keep running");
 		expect(plan?.text).not.toContain("sirens");
-
-		expect(getTurnBlockPlayId(messages, "a1")).toBe("beat-p1");
-		expect(getTurnBlockPlayId(messages, "d1")).toBe("beat-p1");
-		expect(getTurnBlockPlayId(messages, "p2")).toBe("beat-p2");
 	});
 
 	it("builds chapter speech from speakable story messages", () => {

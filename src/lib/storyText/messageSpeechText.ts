@@ -35,45 +35,6 @@ export function isSpeechExcludedMessage(message: StoryMessage) {
 	);
 }
 
-/** Player messages that start a listenable turn block (player message → next player message). */
-export function isTurnBlockAnchor(message: StoryMessage) {
-	if (message.role !== "user") {
-		return false;
-	}
-
-	if (isSpeechExcludedMessage(message) || isDirectorMessage(message)) {
-		return false;
-	}
-
-	return Boolean(message.content?.trim());
-}
-
-export function getTurnBlockRange(messages: StoryMessage[], messageId: string) {
-	const messageIndex = messages.findIndex((message) => message.id === messageId);
-	if (messageIndex < 0) {
-		return null;
-	}
-
-	let anchorIndex = messageIndex;
-	while (anchorIndex > 0 && !isTurnBlockAnchor(messages[anchorIndex]!)) {
-		anchorIndex -= 1;
-	}
-
-	if (!isTurnBlockAnchor(messages[anchorIndex]!)) {
-		anchorIndex = 0;
-		while (anchorIndex < messageIndex && isSpeechExcludedMessage(messages[anchorIndex]!)) {
-			anchorIndex += 1;
-		}
-	}
-
-	let endIndex = anchorIndex + 1;
-	while (endIndex < messages.length && !isTurnBlockAnchor(messages[endIndex]!)) {
-		endIndex += 1;
-	}
-
-	return { anchorIndex, endIndex };
-}
-
 export function resolveLatestUserMessageBefore(messages: StoryMessage[], beforeIndex: number) {
 	for (let index = beforeIndex - 1; index >= 0; index -= 1) {
 		const message = messages[index]!;
@@ -299,23 +260,17 @@ export function buildStoryMessageSpeechPlan(
 	return buildSpeechPlanFromBlocks(blocks, options.narrationTts);
 }
 
-export function buildTurnBlockSpeechPlan(
+function buildSpeechPlanFromMessages(
 	messages: StoryMessage[],
-	messageId: string,
 	options: {
 		playerName?: string | null;
 		narrationTts: GeminiNarrationTtsSettings;
 	},
 ): SpeechSynthesisPlan | null {
-	const range = getTurnBlockRange(messages, messageId);
-	if (!range) {
-		return null;
-	}
-
 	const parts: string[] = [];
 	let hasCharacterDialogue = false;
 
-	for (let index = range.anchorIndex; index < range.endIndex; index += 1) {
+	for (let index = 0; index < messages.length; index += 1) {
 		const message = messages[index]!;
 		if (isSpeechExcludedMessage(message)) {
 			continue;
@@ -363,15 +318,6 @@ export function buildTurnBlockSpeechPlan(
 	};
 }
 
-export function getTurnBlockPlayId(messages: StoryMessage[], messageId: string) {
-	const range = getTurnBlockRange(messages, messageId);
-	if (!range) {
-		return null;
-	}
-
-	return `beat-${messages[range.anchorIndex]!.id}`;
-}
-
 export function buildChapterSpeechPlan(
 	messages: StoryMessage[],
 	options: {
@@ -379,27 +325,7 @@ export function buildChapterSpeechPlan(
 		narrationTts: GeminiNarrationTtsSettings;
 	},
 ): SpeechSynthesisPlan | null {
-	const parts: string[] = [];
-
-	for (const message of messages) {
-		const plan = buildStoryMessageSpeechPlan(message, {
-			playerName: options.playerName,
-			narrationTts: options.narrationTts,
-		});
-		if (plan?.text.trim()) {
-			parts.push(plan.text.trim());
-		}
-	}
-
-	if (!parts.length) {
-		return null;
-	}
-
-	return {
-		text: parts.join("\n\n"),
-		speakers: [{ name: "Narrator", voice: options.narrationTts.voice }],
-		multiSpeaker: false,
-	};
+	return buildSpeechPlanFromMessages(messages, options);
 }
 
 export function metaChatContentToSpeechText(markdown: string) {
