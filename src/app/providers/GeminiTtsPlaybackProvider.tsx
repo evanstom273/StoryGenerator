@@ -46,6 +46,7 @@ interface GeminiTtsPlaybackContextValue {
 	getLoadingDetail: (playId: string) => GeminiTtsLoadingDetail | null;
 	prepareSpeechPlan: (playId: string, plan: SpeechSynthesisPlan) => Promise<void>;
 	playPreparedSpeech: (playId: string) => Promise<void>;
+	invalidatePreparedSpeechIfStale: (playId: string, plan: SpeechSynthesisPlan) => Promise<void>;
 	stop: () => void;
 	hasGeminiKey: boolean;
 }
@@ -65,6 +66,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const objectUrlRef = useRef<string | null>(null);
 	const preparedRef = useRef<Map<string, PreparedSpeechAudio>>(new Map());
+	const preparedDigestRef = useRef<Map<string, string>>(new Map());
 	const abortRef = useRef<AbortController | null>(null);
 	const [state, setState] = useState<GeminiTtsPlaybackState>(IDLE_STATE);
 
@@ -80,6 +82,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		prepared.audio.src = "";
 		URL.revokeObjectURL(prepared.objectUrl);
 		preparedRef.current.delete(playId);
+		preparedDigestRef.current.delete(playId);
 	}, []);
 
 	const cleanupActiveAudio = useCallback(() => {
@@ -129,7 +132,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	}, [cleanupActiveAudio, releasePreparedAudio]);
 
 	const loadPreparedSpeech = useCallback(
-		(playId: string, wavBuffer: ArrayBuffer | Uint8Array) => {
+		(playId: string, wavBuffer: ArrayBuffer | Uint8Array, digest: string) => {
 			releasePreparedAudio(playId);
 
 			const wavBytes = wavBuffer instanceof Uint8Array ? wavBuffer : new Uint8Array(wavBuffer);
@@ -138,6 +141,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			const audio = new Audio(url);
 
 			preparedRef.current.set(playId, { audio, objectUrl: url });
+			preparedDigestRef.current.set(playId, digest);
 		},
 		[releasePreparedAudio],
 	);
@@ -204,6 +208,30 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		[cleanupActiveAudio],
 	);
 
+	const invalidatePreparedSpeechIfStale = useCallback(
+		async (playId: string, plan: SpeechSynthesisPlan) => {
+			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
+			const digest = await computeGeminiTtsCacheDigest(playId, plan, narrationTts.model);
+			const preparedDigest = preparedDigestRef.current.get(playId);
+
+			if (!preparedDigest || preparedDigest === digest) {
+				return;
+			}
+
+			releasePreparedAudio(playId);
+			cleanupActiveAudio();
+
+			setState((current) => {
+				if (current.activeId !== playId) {
+					return current;
+				}
+
+				return IDLE_STATE;
+			});
+		},
+		[aiSettings, cleanupActiveAudio, releasePreparedAudio],
+	);
+
 	const prepareSpeechPlan = useCallback(
 		async (playId: string, plan: SpeechSynthesisPlan) => {
 			const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
@@ -218,6 +246,9 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				return;
 			}
 
+			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
+			const cacheDigest = await computeGeminiTtsCacheDigest(playId, plan, narrationTts.model);
+
 			if (state.activeId === playId && state.status === "loading") {
 				stop();
 				return;
@@ -228,7 +259,11 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				return;
 			}
 
-			if (state.activeId === playId && state.status === "ready") {
+			if (
+				state.activeId === playId &&
+				state.status === "ready" &&
+				preparedDigestRef.current.get(playId) === cacheDigest
+			) {
 				return;
 			}
 
@@ -236,9 +271,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			cleanupActiveAudio();
 			const controller = new AbortController();
 			abortRef.current = controller;
-			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
 			const startedAtMs = Date.now();
-			const cacheDigest = await computeGeminiTtsCacheDigest(playId, plan, narrationTts.model);
 
 			setState({
 				activeId: playId,
@@ -263,7 +296,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				});
 
 				try {
-					loadPreparedSpeech(playId, cachedWav);
+					loadPreparedSpeech(playId, cachedWav, cacheDigest);
 					if (!controller.signal.aborted) {
 						setState({
 							activeId: playId,
@@ -319,7 +352,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				}
 
 				await writeGeminiTtsCache(cacheDigest, playId, wavBuffer);
-				loadPreparedSpeech(playId, wavBuffer);
+				loadPreparedSpeech(playId, wavBuffer, cacheDigest);
 
 				setState({
 					activeId: playId,
@@ -380,6 +413,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		getLoadingDetail,
 		prepareSpeechPlan,
 		playPreparedSpeech,
+		invalidatePreparedSpeechIfStale,
 		stop,
 		hasGeminiKey,
 	};

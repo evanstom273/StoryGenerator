@@ -78,6 +78,7 @@ export function MessagePlayButton({ playId, plan, className, label = "Play" }: M
 		getLoadingDetail,
 		prepareSpeechPlan,
 		playPreparedSpeech,
+		invalidatePreparedSpeechIfStale,
 		stop,
 		hasGeminiKey,
 	} = useGeminiTtsPlayback();
@@ -90,6 +91,14 @@ export function MessagePlayButton({ playId, plan, className, label = "Play" }: M
 	const isReady = status === "ready";
 	const missingKeyHint = !hasGeminiKey ? "Add a Gemini API key in Settings → AI" : undefined;
 	const disabled = !plan || !hasGeminiKey;
+
+	useEffect(() => {
+		if (!plan) {
+			return;
+		}
+
+		void invalidatePreparedSpeechIfStale(playId, plan);
+	}, [invalidatePreparedSpeechIfStale, plan, playId]);
 
 	useEffect(() => {
 		if (!loadingDetail) {
