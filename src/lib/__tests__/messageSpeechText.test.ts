@@ -3,6 +3,7 @@ import { getMessagesForChapterStartingAt } from "../storyText/chapterNavigation"
 import {
 	buildChapterSpeechPlan,
 	buildStoryMessageSpeechPlan,
+	isSpeakableUserMessage,
 	metaChatContentToSpeechText,
 } from "../storyText/messageSpeechText";
 import { resolveGeminiNarrationTtsSettings } from "../ai/geminiTtsVoices";
@@ -65,22 +66,72 @@ describe("messageSpeechText", () => {
 		);
 	});
 
-	it("builds chapter speech from assistant messages only", () => {
+	it("builds player dialogue speech for user messages", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			{
+				id: "u1",
+				storyId: "story-1",
+				role: "user",
+				content: "*leans forward* We need to leave now.",
+				speakerType: "player",
+				timestamp: "2026-01-01T00:00:00.000Z",
+			},
+			{ playerName: "Amy Santiago", narrationTts },
+		);
+
+		expect(plan?.multiSpeaker).toBe(false);
+		expect(plan?.speakers[0]?.voice).toBe(narrationTts.characterVoice);
+		expect(plan?.text.toLowerCase()).toContain("leave");
+	});
+
+	it("skips continue and director user messages", () => {
+		expect(
+			isSpeakableUserMessage({
+				id: "c1",
+				storyId: "story-1",
+				role: "user",
+				content: "Continue",
+				speakerType: "continue",
+				timestamp: "2026-01-01T00:00:00.000Z",
+			}),
+		).toBe(false);
+		expect(
+			isSpeakableUserMessage({
+				id: "d1",
+				storyId: "story-1",
+				role: "user",
+				content: "Stage a chase scene.",
+				speakerType: "director",
+				timestamp: "2026-01-01T00:00:00.000Z",
+			}),
+		).toBe(false);
+	});
+
+	it("builds chapter speech from speakable story messages", () => {
 		const messages: StoryMessage[] = [
 			assistantMessage("Opening narration.", "a1"),
 			{
 				id: "u1",
 				storyId: "story-1",
 				role: "user",
+				content: "Let's get moving.",
+				speakerType: "player",
+				timestamp: "2026-01-01T00:01:00.000Z",
+			},
+			{
+				id: "u2",
+				storyId: "story-1",
+				role: "user",
 				content: "Continue",
 				speakerType: "continue",
-				timestamp: "2026-01-01T00:01:00.000Z",
+				timestamp: "2026-01-01T00:01:30.000Z",
 			},
 			assistantMessage("More narration.", "a2"),
 		];
 
 		const plan = buildChapterSpeechPlan(messages, { narrationTts });
 		expect(plan?.text).toContain("Opening narration.");
+		expect(plan?.text).toContain("get moving");
 		expect(plan?.text).toContain("More narration.");
 		expect(plan?.text).not.toContain("Continue");
 	});

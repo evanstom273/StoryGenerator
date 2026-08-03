@@ -8,6 +8,12 @@ import {
 	type ReactNode,
 } from "react";
 import { useStoryEngine } from "./StoryEngineProvider";
+import {
+	computeGeminiTtsCacheDigest,
+	getGeminiTtsMemoryCache,
+	readGeminiTtsCache,
+	writeGeminiTtsCache,
+} from "../../lib/ai/geminiTtsCache";
 import { synthesizeGeminiSpeechPlan } from "../../lib/ai/geminiTtsSynthesis";
 import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
 import type { SpeechSynthesisPlan } from "../../lib/storyText/messageSpeechText";
@@ -83,6 +89,43 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		};
 	}, [cleanupAudio]);
 
+	const playWavBuffer = useCallback(
+		async (playId: string, wavBuffer: ArrayBuffer | Uint8Array) => {
+			cleanupAudio();
+			const wavBytes = wavBuffer instanceof Uint8Array ? wavBuffer : new Uint8Array(wavBuffer);
+			const blob = new Blob([Uint8Array.from(wavBytes)], { type: "audio/wav" });
+			const url = URL.createObjectURL(blob);
+			objectUrlRef.current = url;
+			const audio = new Audio(url);
+			audioRef.current = audio;
+
+			audio.onended = () => {
+				cleanupAudio();
+				setState(IDLE_STATE);
+			};
+			audio.onerror = () => {
+				cleanupAudio();
+				setState({
+					activeId: playId,
+					status: "error",
+					errorMessage: "Unable to play synthesized audio.",
+					loadingMessage: null,
+					loadingStartedAtMs: null,
+				});
+			};
+
+			await audio.play();
+			setState({
+				activeId: playId,
+				status: "playing",
+				errorMessage: null,
+				loadingMessage: null,
+				loadingStartedAtMs: null,
+			});
+		},
+		[cleanupAudio],
+	);
+
 	const playSpeechPlan = useCallback(
 		async (playId: string, plan: SpeechSynthesisPlan) => {
 			const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
@@ -112,6 +155,39 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			abortRef.current = controller;
 			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
 			const startedAtMs = Date.now();
+			const cacheDigest = await computeGeminiTtsCacheDigest(playId, plan, narrationTts.model);
+
+			const cachedWav =
+				getGeminiTtsMemoryCache(cacheDigest) ?? (await readGeminiTtsCache(cacheDigest));
+
+			if (cachedWav && !controller.signal.aborted) {
+				setState({
+					activeId: playId,
+					status: "loading",
+					errorMessage: null,
+					loadingMessage: "Loading cached audio…",
+					loadingStartedAtMs: startedAtMs,
+				});
+
+				try {
+					await playWavBuffer(playId, cachedWav);
+				} catch {
+					if (!controller.signal.aborted) {
+						setState({
+							activeId: playId,
+							status: "error",
+							errorMessage: "Unable to play cached audio.",
+							loadingMessage: null,
+							loadingStartedAtMs: null,
+						});
+					}
+				}
+
+				if (abortRef.current === controller) {
+					abortRef.current = null;
+				}
+				return;
+			}
 
 			setState({
 				activeId: playId,
@@ -148,6 +224,8 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					return;
 				}
 
+				await writeGeminiTtsCache(cacheDigest, playId, wavBuffer);
+
 				setState((current) => {
 					if (current.activeId !== playId) {
 						return current;
@@ -158,36 +236,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					};
 				});
 
-				cleanupAudio();
-				const blob = new Blob([wavBuffer], { type: "audio/wav" });
-				const url = URL.createObjectURL(blob);
-				objectUrlRef.current = url;
-				const audio = new Audio(url);
-				audioRef.current = audio;
-
-				audio.onended = () => {
-					cleanupAudio();
-					setState(IDLE_STATE);
-				};
-				audio.onerror = () => {
-					cleanupAudio();
-					setState({
-						activeId: playId,
-						status: "error",
-						errorMessage: "Unable to play synthesized audio.",
-						loadingMessage: null,
-						loadingStartedAtMs: null,
-					});
-				};
-
-				await audio.play();
-				setState({
-					activeId: playId,
-					status: "playing",
-					errorMessage: null,
-					loadingMessage: null,
-					loadingStartedAtMs: null,
-				});
+				await playWavBuffer(playId, wavBuffer);
 			} catch (error) {
 				if (controller.signal.aborted) {
 					return;
@@ -206,7 +255,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				}
 			}
 		},
-		[aiSettings, cleanupAudio, state.activeId, state.status, stop],
+		[aiSettings, playWavBuffer, state.activeId, state.status, stop],
 	);
 
 	const getItemStatus = useCallback(

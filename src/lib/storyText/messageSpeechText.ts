@@ -7,6 +7,9 @@ import {
 } from "./parseSceneBlocks";
 import { sanitizeMessageForDisplay } from "./transcriptSanitizer";
 import type { GeminiNarrationTtsSettings } from "../ai/geminiTtsVoices";
+import { isAuthorDirectiveMessage } from "./authorDirectives";
+import { isContinueMessage } from "./continueMode";
+import { isDirectorMessage } from "./directorMode";
 
 export interface SpeechSynthesisPlan {
 	text: string;
@@ -66,32 +69,29 @@ function formatBlockTextForSpeech(block: SceneBlock) {
 	return formatCharacterBlockForSpeech(block.speakerLabel!, block.text);
 }
 
-export function buildStoryMessageSpeechPlan(
-	message: StoryMessage,
-	options: {
-		playerName?: string | null;
-		latestUserMessage?: string | null;
-		narrationTts: GeminiNarrationTtsSettings;
-	},
+function buildSpeechPlanFromBlocks(
+	blocks: SceneBlock[],
+	narrationTts: GeminiNarrationTtsSettings,
+	options?: { defaultCharacterLabel?: string | null },
 ): SpeechSynthesisPlan | null {
-	if (message.role !== "assistant") {
-		return null;
-	}
-
-	const sanitized = sanitizeMessageForDisplay({
-		message,
-		playerName: options.playerName,
-		latestUserMessage: options.latestUserMessage,
-	});
-	const repaired = repairNarratorLabelLines(sanitized);
-	const blocks = parseSceneBlocks(repaired);
 	const scriptLines: string[] = [];
 	const narrationLines: string[] = [];
 	let hasCharacterDialogue = false;
+	const defaultCharacterLabel = options?.defaultCharacterLabel?.trim() || "Character";
 
 	for (const block of blocks) {
-		const isNarrator = !block.speakerLabel || block.speakerLabel === "Narrator";
-		const speechText = formatBlockTextForSpeech(block);
+		let isNarrator = !block.speakerLabel || block.speakerLabel === "Narrator";
+		let speakerLabel = block.speakerLabel;
+
+		if (!isNarrator && !speakerLabel) {
+			speakerLabel = defaultCharacterLabel;
+			isNarrator = false;
+		}
+
+		const speechBlock: SceneBlock = speakerLabel
+			? { ...block, speakerLabel }
+			: block;
+		const speechText = formatBlockTextForSpeech(speechBlock);
 		if (!speechText.trim()) {
 			continue;
 		}
@@ -109,8 +109,8 @@ export function buildStoryMessageSpeechPlan(
 		return null;
 	}
 
-	const narratorVoice = options.narrationTts.voice;
-	const characterVoice = options.narrationTts.characterVoice;
+	const narratorVoice = narrationTts.voice;
+	const characterVoice = narrationTts.characterVoice;
 
 	if (!hasCharacterDialogue) {
 		const plainText = narrationLines.join("\n\n");
@@ -132,6 +132,93 @@ export function buildStoryMessageSpeechPlan(
 	};
 }
 
+export function isSpeakableUserMessage(message: StoryMessage) {
+	if (message.role !== "user") {
+		return false;
+	}
+
+	if (
+		isContinueMessage(message) ||
+		isDirectorMessage(message) ||
+		isAuthorDirectiveMessage(message) ||
+		message.speakerType === "system" ||
+		message.speakerType === "canon"
+	) {
+		return false;
+	}
+
+	return Boolean(message.content?.trim());
+}
+
+export function buildStoryMessageSpeechPlan(
+	message: StoryMessage,
+	options: {
+		playerName?: string | null;
+		latestUserMessage?: string | null;
+		narrationTts: GeminiNarrationTtsSettings;
+	},
+): SpeechSynthesisPlan | null {
+	if (message.role === "user") {
+		if (!isSpeakableUserMessage(message)) {
+			return null;
+		}
+
+		const rawContent = message.content.trim();
+		const defaultCharacterLabel =
+			message.speakerName?.trim() || options.playerName?.trim() || "Player";
+
+		if (message.speakerType === "narrator") {
+			const text = formatNarratorBlockForDisplay(rawContent);
+			if (!text.trim()) {
+				return null;
+			}
+
+			return {
+				text,
+				speakers: [{ name: "Narrator", voice: options.narrationTts.voice }],
+				multiSpeaker: false,
+			};
+		}
+
+		const repaired = repairNarratorLabelLines(rawContent);
+		const blocks = parseSceneBlocks(repaired);
+		const hasSpeakerLabels = blocks.some(
+			(block) => block.speakerLabel && block.speakerLabel !== "Narrator",
+		);
+
+		if (!hasSpeakerLabels && blocks.length <= 1) {
+			const speechText = formatCharacterBlockForSpeech(defaultCharacterLabel, rawContent);
+			if (!speechText.trim()) {
+				return null;
+			}
+
+			return {
+				text: speechText,
+				speakers: [{ name: "Narrator", voice: options.narrationTts.characterVoice }],
+				multiSpeaker: false,
+			};
+		}
+
+		return buildSpeechPlanFromBlocks(blocks, options.narrationTts, {
+			defaultCharacterLabel,
+		});
+	}
+
+	if (message.role !== "assistant") {
+		return null;
+	}
+
+	const sanitized = sanitizeMessageForDisplay({
+		message,
+		playerName: options.playerName,
+		latestUserMessage: options.latestUserMessage,
+	});
+	const repaired = repairNarratorLabelLines(sanitized);
+	const blocks = parseSceneBlocks(repaired);
+
+	return buildSpeechPlanFromBlocks(blocks, options.narrationTts);
+}
+
 export function buildChapterSpeechPlan(
 	messages: StoryMessage[],
 	options: {
@@ -142,10 +229,6 @@ export function buildChapterSpeechPlan(
 	const parts: string[] = [];
 
 	for (const message of messages) {
-		if (message.role !== "assistant") {
-			continue;
-		}
-
 		const plan = buildStoryMessageSpeechPlan(message, {
 			playerName: options.playerName,
 			narrationTts: options.narrationTts,

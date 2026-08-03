@@ -294,7 +294,7 @@ export function StoryMessageBubble({
           </div>
           <div className="flex items-center gap-2">
             <div className="text-xs text-ink-muted">{formatDateTime(message.timestamp)}</div>
-            {message.role === "assistant" ? (
+            {message.role === "assistant" || message.role === "user" ? (
               <StoryMessagePlayButton
                 message={message}
                 playerCharacterName={playerCharacterName}
@@ -340,7 +340,7 @@ export function StoryMessageBubble({
               )}
         </div>
         <div className="mt-2 flex gap-2 group-hover:hidden">
-          {message.role === "assistant" ? (
+          {message.role === "assistant" || message.role === "user" ? (
             <StoryMessagePlayButton
               message={message}
               playerCharacterName={playerCharacterName}

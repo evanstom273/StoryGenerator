@@ -71,16 +71,13 @@ export function StoryMessagePlayButton({
 }: StoryMessagePlayButtonProps) {
 	const { aiSettings } = useStoryEngine();
 	const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
-	const plan =
-		message.role === "assistant"
-			? buildStoryMessageSpeechPlan(message, {
-					playerName: playerCharacterName,
-					latestUserMessage,
-					narrationTts,
-				})
-			: null;
+	const plan = buildStoryMessageSpeechPlan(message, {
+		playerName: playerCharacterName,
+		latestUserMessage,
+		narrationTts,
+	});
 
-	if (message.role !== "assistant") {
+	if (!plan) {
 		return null;
 	}
 
