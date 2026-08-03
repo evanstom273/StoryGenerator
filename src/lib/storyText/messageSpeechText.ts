@@ -24,6 +24,7 @@ import { isDirectorMessage } from "./directorMode";
 export interface SpeechScriptLine {
 	speaker: string;
 	text: string;
+	messageBreakAfter?: boolean;
 }
 
 export interface SpeechSynthesisPlan {
@@ -529,7 +530,12 @@ function buildSpeechPlanFromMessages(
 		});
 
 		if (lines.length) {
-			scriptLines.push(...lines);
+			for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+				const line = lines[lineIndex]!;
+				scriptLines.push(
+					lineIndex === lines.length - 1 ? { ...line, messageBreakAfter: true } : line,
+				);
+			}
 		}
 	}
 

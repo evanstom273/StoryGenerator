@@ -1,10 +1,19 @@
 import { generateGeminiMultiSpeakerAudio } from "./geminiTts";
 import type { GeminiTtsModelId } from "./geminiTtsVoices";
-import { concatPcm16, encodePcm16ToWav } from "../aiDocumentGenerator/wavEncode";
+import {
+	concatPcm16,
+	createSilencePcm16,
+	encodePcm16ToWav,
+	normalizePcm16Loudness,
+} from "../aiDocumentGenerator/wavEncode";
 import type { SpeechScriptLine, SpeechSynthesisPlan } from "../storyText/messageSpeechText";
 
 const MAX_TTS_CHARS = 4500;
 const NARRATOR_SPEAKER_ALIAS = "Narrator";
+export const GEMINI_TTS_SAMPLE_RATE = 24000;
+export const SPEECH_GROUP_GAP_MS = 400;
+export const SPEECH_MESSAGE_GAP_MS = 1000;
+export const SPEECH_CHUNK_GAP_MS = 300;
 
 function splitTextByLength(text: string, maxChars: number) {
 	if (text.length <= maxChars) {
@@ -46,15 +55,26 @@ function resolveVoiceForSpeaker(
 	return match?.voice ?? speakers[0]?.voice ?? "Iapetus";
 }
 
-export function groupScriptLinesBySpeaker(scriptLines: SpeechScriptLine[]) {
-	const groups: Array<{ speaker: string; texts: string[] }> = [];
+export interface SpeechScriptLineGroup {
+	speaker: string;
+	texts: string[];
+	messageBreakAfter?: boolean;
+}
+
+export function groupScriptLinesBySpeaker(scriptLines: SpeechScriptLine[]): SpeechScriptLineGroup[] {
+	const groups: SpeechScriptLineGroup[] = [];
 
 	for (const line of scriptLines) {
 		const last = groups[groups.length - 1];
-		if (last?.speaker === line.speaker) {
+		if (last?.speaker === line.speaker && !last.messageBreakAfter) {
 			last.texts.push(line.text);
+			last.messageBreakAfter = line.messageBreakAfter;
 		} else {
-			groups.push({ speaker: line.speaker, texts: [line.text] });
+			groups.push({
+				speaker: line.speaker,
+				texts: [line.text],
+				messageBreakAfter: line.messageBreakAfter,
+			});
 		}
 	}
 
@@ -74,6 +94,16 @@ export function buildGeminiTtsSynthesisSignature(plan: SpeechSynthesisPlan) {
 			return `${group.speaker}\0${voice}\0${group.texts.join("\n\n")}`;
 		})
 		.join("\n");
+}
+
+function appendSpeechGap(
+	pcmParts: Uint8Array[],
+	gapMs: number,
+	sampleRate = GEMINI_TTS_SAMPLE_RATE,
+) {
+	if (gapMs > 0) {
+		pcmParts.push(createSilencePcm16(gapMs, sampleRate));
+	}
 }
 
 async function synthesizeScriptLineGroups(params: {
@@ -106,7 +136,12 @@ async function synthesizeScriptLineGroups(params: {
 			signal: params.signal,
 		});
 
-		pcmParts.push(pcm);
+		pcmParts.push(normalizePcm16Loudness(pcm));
+
+		if (index < groups.length - 1) {
+			const gapMs = group.messageBreakAfter ? SPEECH_MESSAGE_GAP_MS : SPEECH_GROUP_GAP_MS;
+			appendSpeechGap(pcmParts, gapMs);
+		}
 	}
 
 	return encodePcm16ToWav(concatPcm16(pcmParts));
@@ -143,7 +178,11 @@ export async function synthesizeGeminiSpeechPlan(params: {
 			signal: params.signal,
 		});
 
-		pcmParts.push(pcm);
+		pcmParts.push(normalizePcm16Loudness(pcm));
+
+		if (index < chunks.length - 1) {
+			appendSpeechGap(pcmParts, SPEECH_CHUNK_GAP_MS);
+		}
 	}
 
 	return encodePcm16ToWav(concatPcm16(pcmParts));

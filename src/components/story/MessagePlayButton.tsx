@@ -9,6 +9,7 @@ interface MessagePlayButtonProps {
 	plan: SpeechSynthesisPlan | null;
 	className?: string;
 	label?: string;
+	playerTitle?: string;
 }
 
 function PlayIcon({ className }: { className?: string }) {
@@ -72,7 +73,13 @@ function formatElapsedSeconds(startedAtMs: number) {
 	return `${minutes}:${remainder.toString().padStart(2, "0")}`;
 }
 
-export function MessagePlayButton({ playId, plan, className, label = "Play" }: MessagePlayButtonProps) {
+export function MessagePlayButton({
+	playId,
+	plan,
+	className,
+	label = "Play",
+	playerTitle,
+}: MessagePlayButtonProps) {
 	const {
 		getItemStatus,
 		getLoadingDetail,
@@ -159,7 +166,7 @@ export function MessagePlayButton({ playId, plan, className, label = "Play" }: M
 					if (!plan) {
 						return;
 					}
-					void prepareSpeechPlan(playId, plan);
+					void prepareSpeechPlan(playId, plan, { title: playerTitle ?? label });
 				}}
 			>
 				{isLoading ? (

@@ -14,6 +14,7 @@ import {
 	readGeminiTtsCache,
 	writeGeminiTtsCache,
 } from "../../lib/ai/geminiTtsCache";
+import { synthesizeStoryAudiobookWav, type StoryAudiobookChapterSegment, computeStoryAudiobookPreparedDigest } from "../../lib/ai/storyAudiobook";
 import { synthesizeGeminiSpeechPlan } from "../../lib/ai/geminiTtsSynthesis";
 import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
 import type { SpeechSynthesisPlan } from "../../lib/storyText/messageSpeechText";
@@ -26,6 +27,9 @@ interface GeminiTtsPlaybackState {
 	errorMessage: string | null;
 	loadingMessage: string | null;
 	loadingStartedAtMs: number | null;
+	playerTitle: string | null;
+	currentTimeSec: number;
+	durationSec: number;
 }
 
 export interface GeminiTtsLoadingDetail {
@@ -42,10 +46,27 @@ interface GeminiTtsPlaybackContextValue {
 	activeId: string | null;
 	status: GeminiTtsPlaybackStatus;
 	errorMessage: string | null;
+	playerTitle: string | null;
+	currentTimeSec: number;
+	durationSec: number;
+	isPaused: boolean;
 	getItemStatus: (playId: string) => GeminiTtsPlaybackStatus;
 	getLoadingDetail: (playId: string) => GeminiTtsLoadingDetail | null;
-	prepareSpeechPlan: (playId: string, plan: SpeechSynthesisPlan) => Promise<void>;
+	prepareSpeechPlan: (
+		playId: string,
+		plan: SpeechSynthesisPlan,
+		options?: { title?: string },
+	) => Promise<void>;
+	prepareStoryAudiobook: (
+		playId: string,
+		segments: StoryAudiobookChapterSegment[],
+		title: string,
+	) => Promise<void>;
 	playPreparedSpeech: (playId: string) => Promise<void>;
+	togglePlaybackPause: () => Promise<void>;
+	seekTo: (seconds: number) => void;
+	skipForward: (seconds?: number) => void;
+	skipBackward: (seconds?: number) => void;
 	invalidatePreparedSpeechIfStale: (playId: string, plan: SpeechSynthesisPlan) => Promise<void>;
 	stop: () => void;
 	hasGeminiKey: boolean;
@@ -59,6 +80,9 @@ const IDLE_STATE: GeminiTtsPlaybackState = {
 	errorMessage: null,
 	loadingMessage: null,
 	loadingStartedAtMs: null,
+	playerTitle: null,
+	currentTimeSec: 0,
+	durationSec: 0,
 };
 
 export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode }) {
@@ -93,6 +117,57 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		objectUrlRef.current = null;
 	}, []);
 
+	const attachAudioHandlers = useCallback(
+		(audio: HTMLAudioElement, playId: string) => {
+			const syncTimeline = () => {
+				setState((current) => {
+					if (current.activeId !== playId) {
+						return current;
+					}
+
+					return {
+						...current,
+						currentTimeSec: audio.currentTime,
+						durationSec: Number.isFinite(audio.duration) ? audio.duration : current.durationSec,
+					};
+				});
+			};
+
+			audio.onloadedmetadata = syncTimeline;
+			audio.ontimeupdate = syncTimeline;
+			audio.onended = () => {
+				cleanupActiveAudio();
+				setState((current) => {
+					if (current.activeId !== playId) {
+						return current;
+					}
+
+					return {
+						...current,
+						status: "ready",
+						currentTimeSec: Number.isFinite(audio.duration) ? audio.duration : current.currentTimeSec,
+						loadingMessage: null,
+						loadingStartedAtMs: null,
+					};
+				});
+			};
+			audio.onerror = () => {
+				cleanupActiveAudio();
+				setState({
+					activeId: playId,
+					status: "error",
+					errorMessage: "Unable to play synthesized audio.",
+					loadingMessage: null,
+					loadingStartedAtMs: null,
+					playerTitle: state.playerTitle,
+					currentTimeSec: 0,
+					durationSec: 0,
+				});
+			};
+		},
+		[cleanupActiveAudio, state.playerTitle],
+	);
+
 	const stop = useCallback(() => {
 		const wasLoading = state.status === "loading";
 		const activeId = state.activeId;
@@ -114,12 +189,23 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				errorMessage: null,
 				loadingMessage: null,
 				loadingStartedAtMs: null,
+				playerTitle: state.playerTitle,
+				currentTimeSec: audioRef.current?.currentTime ?? state.currentTimeSec,
+				durationSec: state.durationSec,
 			});
 			return;
 		}
 
 		setState(IDLE_STATE);
-	}, [cleanupActiveAudio, releasePreparedAudio, state.activeId, state.status]);
+	}, [
+		cleanupActiveAudio,
+		releasePreparedAudio,
+		state.activeId,
+		state.currentTimeSec,
+		state.durationSec,
+		state.playerTitle,
+		state.status,
+	]);
 
 	useEffect(() => {
 		return () => {
@@ -139,11 +225,12 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			const blob = new Blob([Uint8Array.from(wavBytes)], { type: "audio/wav" });
 			const url = URL.createObjectURL(blob);
 			const audio = new Audio(url);
+			attachAudioHandlers(audio, playId);
 
 			preparedRef.current.set(playId, { audio, objectUrl: url });
 			preparedDigestRef.current.set(playId, digest);
 		},
-		[releasePreparedAudio],
+		[attachAudioHandlers, releasePreparedAudio],
 	);
 
 	const playPreparedSpeech = useCallback(
@@ -156,6 +243,9 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					errorMessage: "Audio is not ready yet. Prepare playback first.",
 					loadingMessage: null,
 					loadingStartedAtMs: null,
+					playerTitle: state.playerTitle,
+					currentTimeSec: 0,
+					durationSec: 0,
 				});
 				return;
 			}
@@ -163,37 +253,22 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			cleanupActiveAudio();
 			audioRef.current = prepared.audio;
 			objectUrlRef.current = prepared.objectUrl;
-
-			prepared.audio.onended = () => {
-				cleanupActiveAudio();
-				setState({
-					activeId: playId,
-					status: "ready",
-					errorMessage: null,
-					loadingMessage: null,
-					loadingStartedAtMs: null,
-				});
-			};
-			prepared.audio.onerror = () => {
-				cleanupActiveAudio();
-				setState({
-					activeId: playId,
-					status: "error",
-					errorMessage: "Unable to play synthesized audio.",
-					loadingMessage: null,
-					loadingStartedAtMs: null,
-				});
-			};
+			attachAudioHandlers(prepared.audio, playId);
 
 			try {
 				await prepared.audio.play();
-				setState({
+				setState((current) => ({
+					...current,
 					activeId: playId,
 					status: "playing",
 					errorMessage: null,
 					loadingMessage: null,
 					loadingStartedAtMs: null,
-				});
+					currentTimeSec: prepared.audio.currentTime,
+					durationSec: Number.isFinite(prepared.audio.duration)
+						? prepared.audio.duration
+						: current.durationSec,
+				}));
 			} catch {
 				cleanupActiveAudio();
 				setState({
@@ -202,10 +277,73 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					errorMessage: "Unable to start playback.",
 					loadingMessage: null,
 					loadingStartedAtMs: null,
+					playerTitle: state.playerTitle,
+					currentTimeSec: 0,
+					durationSec: 0,
 				});
 			}
 		},
-		[cleanupActiveAudio],
+		[attachAudioHandlers, cleanupActiveAudio, state.playerTitle],
+	);
+
+	const togglePlaybackPause = useCallback(async () => {
+		const audio = audioRef.current;
+		const playId = state.activeId;
+		if (!audio || !playId) {
+			if (playId && state.status === "ready") {
+				await playPreparedSpeech(playId);
+			}
+			return;
+		}
+
+		if (audio.paused) {
+			try {
+				await audio.play();
+				setState((current) => ({ ...current, status: "playing" }));
+			} catch {
+				/* ignore */
+			}
+			return;
+		}
+
+		audio.pause();
+		setState((current) => ({ ...current, status: "playing" }));
+	}, [playPreparedSpeech, state.activeId, state.status]);
+
+	const seekTo = useCallback(
+		(seconds: number) => {
+			const audio = audioRef.current ?? preparedRef.current.get(state.activeId ?? "")?.audio;
+			if (!audio || !Number.isFinite(seconds)) {
+				return;
+			}
+
+			const clamped = Math.max(0, Math.min(audio.duration || seconds, seconds));
+			audio.currentTime = clamped;
+			setState((current) => ({ ...current, currentTimeSec: clamped }));
+		},
+		[state.activeId],
+	);
+
+	const skipForward = useCallback(
+		(seconds = 5) => {
+			const audio = audioRef.current ?? preparedRef.current.get(state.activeId ?? "")?.audio;
+			if (!audio) {
+				return;
+			}
+			seekTo(audio.currentTime + seconds);
+		},
+		[seekTo, state.activeId],
+	);
+
+	const skipBackward = useCallback(
+		(seconds = 5) => {
+			const audio = audioRef.current ?? preparedRef.current.get(state.activeId ?? "")?.audio;
+			if (!audio) {
+				return;
+			}
+			seekTo(audio.currentTime - seconds);
+		},
+		[seekTo, state.activeId],
 	);
 
 	const invalidatePreparedSpeechIfStale = useCallback(
@@ -233,7 +371,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	);
 
 	const prepareSpeechPlan = useCallback(
-		async (playId: string, plan: SpeechSynthesisPlan) => {
+		async (playId: string, plan: SpeechSynthesisPlan, options?: { title?: string }) => {
 			const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
 			if (!apiKey) {
 				setState({
@@ -242,6 +380,9 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					errorMessage: "Add a Gemini API key in Settings → AI to play audio.",
 					loadingMessage: null,
 					loadingStartedAtMs: null,
+					playerTitle: options?.title ?? null,
+					currentTimeSec: 0,
+					durationSec: 0,
 				});
 				return;
 			}
@@ -279,6 +420,9 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				errorMessage: null,
 				loadingMessage: "Preparing voice synthesis…",
 				loadingStartedAtMs: startedAtMs,
+				playerTitle: options?.title ?? state.playerTitle,
+				currentTimeSec: 0,
+				durationSec: 0,
 			});
 
 			const cachedWav =
@@ -304,6 +448,9 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 							errorMessage: null,
 							loadingMessage: null,
 							loadingStartedAtMs: null,
+							playerTitle: options?.title ?? state.playerTitle,
+							currentTimeSec: 0,
+							durationSec: 0,
 						});
 					}
 				} catch {
@@ -314,6 +461,9 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 							errorMessage: "Unable to load cached audio.",
 							loadingMessage: null,
 							loadingStartedAtMs: null,
+							playerTitle: options?.title ?? null,
+							currentTimeSec: 0,
+							durationSec: 0,
 						});
 					}
 				}
@@ -360,6 +510,9 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					errorMessage: null,
 					loadingMessage: null,
 					loadingStartedAtMs: null,
+					playerTitle: options?.title ?? state.playerTitle,
+					currentTimeSec: 0,
+					durationSec: 0,
 				});
 			} catch (error) {
 				if (controller.signal.aborted) {
@@ -372,6 +525,135 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 						error instanceof Error ? error.message : "Unable to synthesize speech audio.",
 					loadingMessage: null,
 					loadingStartedAtMs: null,
+					playerTitle: options?.title ?? null,
+					currentTimeSec: 0,
+					durationSec: 0,
+				});
+			} finally {
+				if (abortRef.current === controller) {
+					abortRef.current = null;
+				}
+			}
+		},
+		[aiSettings, cleanupActiveAudio, loadPreparedSpeech, state.activeId, state.playerTitle, state.status, stop],
+	);
+
+	const prepareStoryAudiobook = useCallback(
+		async (playId: string, segments: StoryAudiobookChapterSegment[], title: string) => {
+			const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
+			if (!apiKey) {
+				setState({
+					activeId: playId,
+					status: "error",
+					errorMessage: "Add a Gemini API key in Settings → AI to play audio.",
+					loadingMessage: null,
+					loadingStartedAtMs: null,
+					playerTitle: title,
+					currentTimeSec: 0,
+					durationSec: 0,
+				});
+				return;
+			}
+
+			if (!segments.length) {
+				setState({
+					activeId: playId,
+					status: "error",
+					errorMessage: "No speakable story content for audiobook playback.",
+					loadingMessage: null,
+					loadingStartedAtMs: null,
+					playerTitle: title,
+					currentTimeSec: 0,
+					durationSec: 0,
+				});
+				return;
+			}
+
+			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
+			const cacheDigest = await computeStoryAudiobookPreparedDigest(playId, segments, narrationTts.model);
+
+			if (state.activeId === playId && state.status === "loading") {
+				stop();
+				return;
+			}
+
+			if (
+				state.activeId === playId &&
+				state.status === "ready" &&
+				preparedDigestRef.current.get(playId) === cacheDigest
+			) {
+				return;
+			}
+
+			abortRef.current?.abort();
+			cleanupActiveAudio();
+			const controller = new AbortController();
+			abortRef.current = controller;
+			const startedAtMs = Date.now();
+
+			setState({
+				activeId: playId,
+				status: "loading",
+				errorMessage: null,
+				loadingMessage: "Preparing story audiobook…",
+				loadingStartedAtMs: startedAtMs,
+				playerTitle: title,
+				currentTimeSec: 0,
+				durationSec: 0,
+			});
+
+			try {
+				const wavBuffer = await synthesizeStoryAudiobookWav({
+					apiKey,
+					segments,
+					model: narrationTts.model,
+					signal: controller.signal,
+					onProgress: (message) => {
+						if (controller.signal.aborted) {
+							return;
+						}
+						setState((current) => {
+							if (current.activeId !== playId || current.status !== "loading") {
+								return current;
+							}
+							return {
+								...current,
+								loadingMessage: message,
+								loadingStartedAtMs: current.loadingStartedAtMs ?? startedAtMs,
+							};
+						});
+					},
+				});
+
+				if (controller.signal.aborted) {
+					return;
+				}
+
+				loadPreparedSpeech(playId, wavBuffer, cacheDigest);
+				setState({
+					activeId: playId,
+					status: "ready",
+					errorMessage: null,
+					loadingMessage: null,
+					loadingStartedAtMs: null,
+					playerTitle: title,
+					currentTimeSec: 0,
+					durationSec: 0,
+				});
+			} catch (error) {
+				if (controller.signal.aborted) {
+					return;
+				}
+				setState({
+					activeId: playId,
+					status: "error",
+					errorMessage:
+						error instanceof Error ? error.message : "Unable to synthesize story audiobook.",
+					loadingMessage: null,
+					loadingStartedAtMs: null,
+					playerTitle: title,
+					currentTimeSec: 0,
+					durationSec: 0,
 				});
 			} finally {
 				if (abortRef.current === controller) {
@@ -405,14 +687,26 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		[state.activeId, state.loadingMessage, state.loadingStartedAtMs, state.status],
 	);
 
+	const isPaused =
+		state.status === "playing" && Boolean(audioRef.current?.paused || !audioRef.current);
+
 	const value: GeminiTtsPlaybackContextValue = {
 		activeId: state.activeId,
 		status: state.status,
 		errorMessage: state.errorMessage,
+		playerTitle: state.playerTitle,
+		currentTimeSec: state.currentTimeSec,
+		durationSec: state.durationSec,
+		isPaused,
 		getItemStatus,
 		getLoadingDetail,
 		prepareSpeechPlan,
+		prepareStoryAudiobook,
 		playPreparedSpeech,
+		togglePlaybackPause,
+		seekTo,
+		skipForward,
+		skipBackward,
 		invalidatePreparedSpeechIfStale,
 		stop,
 		hasGeminiKey,

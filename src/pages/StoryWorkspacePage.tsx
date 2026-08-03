@@ -6,6 +6,7 @@ import { Field, SelectInput, TextAreaInput, TextInput } from "../components/form
 import { StoryArchiveView } from "../components/story/StoryArchiveView";
 import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
 import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
+import { StoryAudioPlayerBar } from "../components/story/StoryAudioPlayerBar";
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
 import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
 import { RPCharacterSheetOverlay } from "../components/story/RPCharacterSheetOverlay";
@@ -1407,6 +1408,7 @@ export function StoryWorkspacePage() {
         ) : null}
       </div>
 
+      <StoryAudioPlayerBar className="fixed bottom-10 left-0 right-0 z-40 lg:left-[266px]" />
       <div
         className={[
           "fixed bottom-0 right-0 z-30 flex items-center justify-between border-t border-divider/[0.3] bg-app will-change-transform px-4 py-2",
@@ -1526,6 +1528,7 @@ export function StoryWorkspacePage() {
             <StoryTranscriptView
               messages={messages}
               playerCharacterName={activePlayerCharacter.name}
+              storyTitle={activeStory.title}
               chapters={storyChapters}
               highlightedMessageId={highlightedMessageId}
               rpConfig={activeStory.rpMode && activeStory.rpConfig ? activeStory.rpConfig : undefined}

@@ -5,6 +5,16 @@ import { Button } from "../../components/ui/Button";
 import { MarkdownText } from "../../components/ui/MarkdownText";
 import { Panel } from "../../components/ui/Panel";
 import { downloadFile } from "../../lib/download";
+import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
+import {
+	buildCharacterGenderHintsFromStoryState,
+} from "../../lib/ai/characterTtsVoices";
+import {
+	buildStoryAudiobookFilename,
+	listStoryAudiobookChapterSegments,
+	synthesizeStoryAudiobookWav,
+} from "../../lib/ai/storyAudiobook";
+import { buildCharacterTtsRegistryForStory } from "../../lib/storyText/messageSpeechText";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
 import { serializeStoryExport } from "../../lib/storyExport";
 import { buildStorySupportBundleZip } from "../../lib/supportBundle";
@@ -13,7 +23,14 @@ import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/stor
 import { RelationshipOverviewList } from "../../components/story/RelationshipOverviewList";
 import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
-import type { AIProviderType, AutoIndexInterval, AutoIndexMode, ExportFormat, RelationshipIndexEntry } from "../../types/models";
+import type {
+	AIProviderType,
+	AutoIndexInterval,
+	AutoIndexMode,
+	ExportFormat,
+	RelationshipIndexEntry,
+	StoryStateData,
+} from "../../types/models";
 import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useTheme } from "../theming/ThemeContext";
@@ -165,6 +182,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     getPlayerCharacterById,
     getMessagesForStory,
     getChaptersForStory,
+    getStoryCharacterTtsRegistry,
     exportStory,
     fetchStoryState,
     loadStoryRelationships,
@@ -200,6 +218,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   });
   const { themeKey } = useTheme();
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
+  const [isExportingAudiobook, setIsExportingAudiobook] = useState(false);
   const [exportStage, setExportStage] = useState<string | null>(null);
   const [isSavingStory, setIsSavingStory] = useState(false);
   const [aiProviderType, setAiProviderType] = useState<AIProviderType>(
@@ -541,6 +560,75 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     } finally {
       setExportStage(null);
       showNotice(null);
+    }
+  }
+
+  async function handleExportStorioAudiobook() {
+    if (!story || !playerCharacter) {
+      return;
+    }
+
+    const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
+    if (!apiKey) {
+      showError("Add a Gemini API key in Settings → AI to export audiobook audio.");
+      return;
+    }
+
+    showError(null);
+    showNotice(null);
+    setIsExportingAudiobook(true);
+    setExportStage("Preparing Storio audiobook…");
+
+    try {
+      const messages = getMessagesForStory(story.id);
+      const chapters = getChaptersForStory(story.id);
+      const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
+      const existingRegistry = getStoryCharacterTtsRegistry(story.id);
+      const characterGenders = buildCharacterGenderHintsFromStoryState(
+        storyStateData as StoryStateData | null,
+        {
+          playerName: playerCharacter.name,
+          playerGender: playerCharacter.gender,
+          playerPronouns: playerCharacter.pronouns,
+        },
+      );
+      const characterRegistry = buildCharacterTtsRegistryForStory(messages, {
+        playerName: playerCharacter.name,
+        narrationTts,
+        existingRegistry,
+        characterGenders,
+      });
+      const segments = listStoryAudiobookChapterSegments(messages, {
+        playerName: playerCharacter.name,
+        narrationTts,
+        characterRegistry,
+        chapters,
+      });
+
+      if (!segments.length) {
+        showError("No speakable story content for audiobook export.");
+        return;
+      }
+
+      const wavBuffer = await synthesizeStoryAudiobookWav({
+        apiKey,
+        segments,
+        model: narrationTts.model,
+        onProgress: (message) => setExportStage(message),
+      });
+
+      setExportStage("Saving WAV…");
+      await downloadFile(
+        buildStoryAudiobookFilename(story.title),
+        wavBuffer,
+        "audio/wav",
+      );
+      showNotice("Storio audiobook exported.");
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Unable to export Storio audiobook.");
+    } finally {
+      setIsExportingAudiobook(false);
+      setExportStage(null);
     }
   }
 
@@ -1102,6 +1190,15 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   >
                     <DownloadIcon className="h-4 w-4" />
                     Export PDF
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-[8px]"
+                    onClick={() => void handleExportStorioAudiobook()}
+                    disabled={!!exportStage || isExportingSupportBundle || isExportingAudiobook}
+                  >
+                    <DownloadIcon className="h-4 w-4" />
+                    {isExportingAudiobook ? "Exporting audiobook…" : "Export Storio Audiobook (WAV)"}
                   </Button>
                   <Button
                     variant="secondary"

@@ -8,7 +8,7 @@ import {
 } from "../idb";
 import type { SpeechSynthesisPlan } from "../storyText/messageSpeechText";
 
-const CACHE_SCHEMA_VERSION = 2;
+const CACHE_SCHEMA_VERSION = 3;
 const MAX_CACHE_ENTRIES = 120;
 
 export type GeminiTtsCacheRecord = {
@@ -58,6 +58,33 @@ export async function computeGeminiTtsCacheDigest(
 	}
 
 	return fallbackDigest(payload);
+}
+
+export async function computeGeminiTtsPlanCacheDigest(
+	plan: SpeechSynthesisPlan,
+	model: GeminiTtsModelId,
+) {
+	const payload = JSON.stringify({
+		v: CACHE_SCHEMA_VERSION,
+		synthesisSignature: buildGeminiTtsSynthesisSignature(plan),
+		model,
+	});
+
+	if (typeof crypto !== "undefined" && crypto.subtle?.digest) {
+		const bytes = new TextEncoder().encode(payload);
+		const digest = await crypto.subtle.digest("SHA-256", bytes);
+		const hex = Array.from(new Uint8Array(digest))
+			.map((byte) => byte.toString(16).padStart(2, "0"))
+			.join("");
+		return hex;
+	}
+
+	return fallbackDigest(payload);
+}
+
+export async function readGeminiTtsCacheForPlan(plan: SpeechSynthesisPlan, model: GeminiTtsModelId) {
+	const digest = await computeGeminiTtsPlanCacheDigest(plan, model);
+	return getGeminiTtsMemoryCache(digest) ?? (await readGeminiTtsCache(digest));
 }
 
 export function getGeminiTtsMemoryCache(digest: string) {

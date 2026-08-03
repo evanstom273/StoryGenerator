@@ -9,11 +9,12 @@ import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
-import { ChapterListenBanner } from "./StorySpeechControls";
+import { ChapterListenBanner, FullStoryAudiobookControls } from "./StorySpeechControls";
 
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
   playerCharacterName: string;
+  storyTitle?: string;
   chapters?: StoryChapter[];
   className?: string;
   highlightedMessageId?: string | null;
@@ -274,6 +275,7 @@ function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
 export function StoryTranscriptView({
   messages,
   playerCharacterName,
+  storyTitle = "Story",
   chapters,
   className,
   highlightedMessageId,
@@ -296,6 +298,12 @@ export function StoryTranscriptView({
   }
   return (
     <div className={cn("space-y-6", className)}>
+      <FullStoryAudiobookControls
+        messages={messages}
+        playerCharacterName={playerCharacterName}
+        storyTitle={storyTitle}
+        chapters={chapters}
+      />
       {messages.map((message, messageIndex) => {
         const highlight = highlightedMessageId === message.id;
         const chapterEndLabel = chapterEndByMessageId.get(message.id);

@@ -310,14 +310,7 @@ export function ensureCharacterTtsRegistry(params: {
 		}
 
 		if (key === DIRECTOR_TTS_KEY) {
-			const directorVoice = pickVoiceForCharacterKey(
-				key,
-				usedVoices,
-				params.narrationTts.voice,
-				genderHint,
-			);
-			voices[key] = directorVoice;
-			usedVoices.add(directorVoice);
+			voices[key] = params.narrationTts.voice;
 			continue;
 		}
 
