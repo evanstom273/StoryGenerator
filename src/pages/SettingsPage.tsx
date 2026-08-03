@@ -16,8 +16,18 @@ import type { AIProviderType } from "../types/models";
 import { getProviderDefaultModel, getProviderModels, getValidModel } from "../lib/ai/models";
 import { downloadFile } from "../lib/download";
 import {
-	listAutoBackupRecords,
+	AUTO_BACKUP_INTERVAL_OPTIONS_HOURS,
+	formatNextAutoBackupLabel,
+	getAutoBackupScheduleState,
+	readAutoBackupIntervalHours,
 	readAutoBackupLastRunAt,
+	writeAutoBackupIntervalHours,
+	type AutoBackupIntervalHours,
+	type AutoBackupScheduleState,
+} from "../lib/autoBackupSchedule";
+import {
+	AUTO_BACKUP_KEEP_LATEST,
+	listAutoBackupRecords,
 	type AutoBackupRecord,
 } from "../lib/autoBackupStorage";
 import { serializeStoryExport } from "../lib/storyExport";
@@ -107,6 +117,12 @@ export function SettingsPage() {
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [autoBackups, setAutoBackups] = useState<AutoBackupRecord[]>([]);
+  const [backupIntervalHours, setBackupIntervalHours] = useState<AutoBackupIntervalHours>(() =>
+    readAutoBackupIntervalHours(),
+  );
+  const [autoBackupSchedule, setAutoBackupSchedule] = useState<AutoBackupScheduleState>(() =>
+    getAutoBackupScheduleState(),
+  );
   const [itemExportType, setItemExportType] = useState<
     "universe" | "playerCharacter" | "story"
   >("story");
@@ -560,6 +576,20 @@ export function SettingsPage() {
   }, [activeTab]);
 
   useEffect(() => {
+    if (activeTab !== "data") {
+      return;
+    }
+
+    setAutoBackupSchedule(getAutoBackupScheduleState());
+
+    const intervalId = window.setInterval(() => {
+      setAutoBackupSchedule(getAutoBackupScheduleState());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeTab, backupIntervalHours]);
+
+  useEffect(() => {
     const tab = searchParams.get("tab");
     if (tab === "tutorial") {
       setActiveTab("tutorial");
@@ -826,15 +856,49 @@ export function SettingsPage() {
               Automatic Backups
             </div>
             <p className="mt-2 text-[13px] leading-6 text-ink-muted">
-              When your workspace changes, an automatic backup runs about every 12 hours. On
+              When your workspace changes, an automatic backup runs on your chosen schedule. On
               Android you get a share prompt; on web/PWA the app keeps the last five copies locally
               and triggers a download so you can save the file.
             </p>
-            {readAutoBackupLastRunAt() ? (
-              <p className="mt-2 text-[11px] text-ink-muted">
-                Last automatic backup: {formatDateTime(new Date(readAutoBackupLastRunAt()!).toISOString())}
-              </p>
-            ) : null}
+            <div className="mt-4 space-y-3">
+              <Field label="Backup interval">
+                <SelectInput
+                  value={String(backupIntervalHours)}
+                  onChange={(event) => {
+                    const hours = Number(event.target.value);
+                    if (!AUTO_BACKUP_INTERVAL_OPTIONS_HOURS.includes(hours as AutoBackupIntervalHours)) {
+                      return;
+                    }
+                    writeAutoBackupIntervalHours(hours as AutoBackupIntervalHours);
+                    setBackupIntervalHours(hours as AutoBackupIntervalHours);
+                    setAutoBackupSchedule(getAutoBackupScheduleState());
+                  }}
+                >
+                  {AUTO_BACKUP_INTERVAL_OPTIONS_HOURS.map((hours) => (
+                    <option key={hours} value={hours}>
+                      Every {hours} hours
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+              <div className="rounded-[8px] border border-divider/[0.35] bg-panel-muted/40 px-3.5 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
+                  Next automatic backup
+                </div>
+                <div className="mt-1 text-[13px] font-medium text-ink-soft">
+                  {formatNextAutoBackupLabel(autoBackupSchedule)}
+                </div>
+                <div className="mt-2 text-[11px] text-ink-muted">
+                  {autoBackups.length} of {AUTO_BACKUP_KEEP_LATEST} stored locally
+                </div>
+                {readAutoBackupLastRunAt() ? (
+                  <div className="mt-1 text-[11px] text-ink-muted">
+                    Last automatic backup:{" "}
+                    {formatDateTime(new Date(readAutoBackupLastRunAt()!).toISOString())}
+                  </div>
+                ) : null}
+              </div>
+            </div>
             {autoBackups.length ? (
               <div className="mt-4 space-y-2">
                 {autoBackups.map((record) => (
