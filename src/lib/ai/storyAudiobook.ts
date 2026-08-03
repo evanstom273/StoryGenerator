@@ -1,6 +1,7 @@
 import type { GeminiTtsModelId } from "./geminiTtsVoices";
 import {
 	buildGeminiTtsSynthesisSignature,
+	SPEECH_MESSAGE_GAP_MS,
 	synthesizeGeminiSpeechPlan,
 } from "./geminiTtsSynthesis";
 import {
@@ -15,8 +16,10 @@ import type { CharacterTtsRegistry } from "./characterTtsVoices";
 import type { GeminiNarrationTtsSettings } from "./geminiTtsVoices";
 import {
 	concatPcm16,
+	createSilencePcm16,
 	decodeWavToPcm16,
 	encodePcm16ToWav,
+	normalizePcm16Loudness,
 } from "../aiDocumentGenerator/wavEncode";
 import {
 	getMessagesForChapterStartingAt,
@@ -211,7 +214,12 @@ export async function synthesizeStoryAudiobookWav(params: {
 			}
 		}
 
-		pcmParts.push(decodeWavToPcm16(wavBytes).pcm);
+		const decoded = decodeWavToPcm16(wavBytes);
+		pcmParts.push(normalizePcm16Loudness(decoded.pcm));
+
+		if (index < params.segments.length - 1) {
+			pcmParts.push(createSilencePcm16(SPEECH_MESSAGE_GAP_MS, decoded.sampleRate));
+		}
 	}
 
 	return encodePcm16ToWav(concatPcm16(pcmParts));

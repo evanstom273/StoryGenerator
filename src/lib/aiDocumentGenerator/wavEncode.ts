@@ -34,6 +34,52 @@ export function encodePcm16ToWav(
 	return buffer;
 }
 
+export function createSilencePcm16(durationMs: number, sampleRate = 24000): Uint8Array {
+	const sampleCount = Math.max(0, Math.round((durationMs / 1000) * sampleRate));
+	return new Uint8Array(sampleCount * 2);
+}
+
+export function normalizePcm16Loudness(pcm: Uint8Array, targetRms = 4000): Uint8Array {
+	if (pcm.byteLength < 2) {
+		return pcm;
+	}
+
+	const inputView = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+	const sampleCount = pcm.byteLength / 2;
+	let sumSquares = 0;
+	let peak = 0;
+
+	for (let index = 0; index < sampleCount; index += 1) {
+		const sample = inputView.getInt16(index * 2, true);
+		sumSquares += sample * sample;
+		const absolute = Math.abs(sample);
+		if (absolute > peak) {
+			peak = absolute;
+		}
+	}
+
+	const rms = Math.sqrt(sumSquares / sampleCount);
+	if (rms < 1) {
+		return pcm;
+	}
+
+	let gain = targetRms / rms;
+	if (peak > 0) {
+		gain = Math.min(gain, (32767 * 0.98) / peak);
+	}
+
+	const normalized = new Uint8Array(pcm.byteLength);
+	const outputView = new DataView(normalized.buffer);
+
+	for (let index = 0; index < sampleCount; index += 1) {
+		const scaled = Math.round(inputView.getInt16(index * 2, true) * gain);
+		const clamped = Math.max(-32768, Math.min(32767, scaled));
+		outputView.setInt16(index * 2, clamped, true);
+	}
+
+	return normalized;
+}
+
 export function concatPcm16(parts: Uint8Array[]): Uint8Array {
 	const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
 	const merged = new Uint8Array(total);

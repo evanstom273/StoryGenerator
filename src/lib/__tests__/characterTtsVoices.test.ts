@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildCharacterGenderHintsFromStoryState,
+	DIRECTOR_TTS_KEY,
 	ensureCharacterTtsRegistry,
 	inferCharacterTtsGenderHint,
 	inferGenderFromPronounsInText,
@@ -73,6 +74,15 @@ describe("characterTtsVoices", () => {
 		expect(rosaVoice).toBeTruthy();
 		expect(geminiTtsVoiceMatchesGender(jakeVoice!, "male")).toBe(true);
 		expect(geminiTtsVoiceMatchesGender(rosaVoice!, "female")).toBe(true);
+	});
+
+	it("uses the narrator voice for director directions", () => {
+		const registry = ensureCharacterTtsRegistry({
+			characters: [{ key: DIRECTOR_TTS_KEY, label: "Director" }],
+			narrationTts,
+		});
+
+		expect(registry.voices[DIRECTOR_TTS_KEY]).toBe(narrationTts.voice);
 	});
 
 	it("infers gender from pronouns in free text", () => {

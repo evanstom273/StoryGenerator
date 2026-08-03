@@ -144,6 +144,9 @@ describe("messageSpeechText", () => {
 		);
 		expect(directorPlan?.scriptLines[0]?.speaker).toBe("Director");
 		expect(directorPlan?.text.toLowerCase()).toContain("chase");
+		expect(directorPlan?.speakers.find((speaker) => speaker.name === "Director")?.voice).toBe(
+			narrationTts.voice,
+		);
 	});
 
 	it("uses per-character speaker labels when registry is provided", () => {
@@ -207,6 +210,7 @@ describe("messageSpeechText", () => {
 		expect(plan?.text).toContain("Marcus");
 		expect(plan?.text).not.toContain("Keep running");
 		expect(plan?.text).not.toContain("sirens");
+		expect(plan?.scriptLines.filter((line) => line.messageBreakAfter)).toHaveLength(3);
 	});
 
 	it("builds chapter speech from speakable story messages", () => {
