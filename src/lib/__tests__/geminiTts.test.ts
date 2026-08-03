@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+	decodeGeminiGenerateContentAudioToPcm,
 	decodeGeminiInteractionAudioToPcm,
 	extractGeminiInteractionAudioPayload,
+	type GeminiGenerateContentPayload,
 	type GeminiInteractionPayload,
 } from "../ai/geminiTts";
 
@@ -56,6 +58,27 @@ describe("geminiTts", () => {
 		};
 
 		expect(decodeGeminiInteractionAudioToPcm(payload)).toEqual(pcm);
+	});
+
+	it("reads audio from generateContent inlineData", () => {
+		const pcm = new Uint8Array([10, 11, 12]);
+		const payload: GeminiGenerateContentPayload = {
+			candidates: [
+				{
+					content: {
+						parts: [
+							{
+								inlineData: {
+									data: encodeBytesToBase64(pcm),
+								},
+							},
+						],
+					},
+				},
+			],
+		};
+
+		expect(decodeGeminiGenerateContentAudioToPcm(payload)).toEqual(pcm);
 	});
 
 	it("extracts pcm from wav payloads", () => {
