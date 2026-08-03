@@ -7,6 +7,8 @@ import { isGenerationFailureError } from "../ai/errors";
 import {
 	buildGeminiTtsInput,
 	extractPodcastDialogueFromMarkdown,
+	normalizePodcastScript,
+	resolvePodcastHosts,
 } from "./podcastScript";
 import { concatPcm16, encodePcm16ToWav } from "./wavEncode";
 
@@ -96,17 +98,31 @@ function splitDialogueIntoChunks(dialogue: {
 	}));
 }
 
+function buildNormalizedPodcastDialogue(
+	script: string,
+	hosts: { hostOne: string; hostTwo: string },
+) {
+	return {
+		hostOne: hosts.hostOne,
+		hostTwo: hosts.hostTwo,
+		script: normalizePodcastScript(script, hosts.hostOne, hosts.hostTwo),
+	};
+}
+
 export function planGeminiPodcastTtsChunks(markdown: string) {
 	const dialogue = extractPodcastDialogueFromMarkdown(markdown);
 	if (!dialogue) {
 		return [];
 	}
 
+	const hosts = resolvePodcastHosts(markdown);
 	const sections = splitMarkdownByChapterSections(markdown);
 	const chunks: GeminiPodcastTtsChunk[] = [];
 
 	if (sections.length <= 1) {
-		return splitDialogueIntoChunks(dialogue);
+		return splitDialogueIntoChunks(
+			buildNormalizedPodcastDialogue(dialogue.script, hosts),
+		);
 	}
 
 	for (const section of sections) {
@@ -114,10 +130,16 @@ export function planGeminiPodcastTtsChunks(markdown: string) {
 		if (!sectionDialogue?.script.trim()) {
 			continue;
 		}
-		chunks.push(...splitDialogueIntoChunks(sectionDialogue));
+		chunks.push(
+			...splitDialogueIntoChunks(
+				buildNormalizedPodcastDialogue(sectionDialogue.script, hosts),
+			),
+		);
 	}
 
-	return chunks.length ? chunks : splitDialogueIntoChunks(dialogue);
+	return chunks.length
+		? chunks
+		: splitDialogueIntoChunks(buildNormalizedPodcastDialogue(dialogue.script, hosts));
 }
 
 function shouldRetryChunkError(error: unknown, signal?: AbortSignal) {

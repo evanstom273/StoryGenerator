@@ -1,3 +1,5 @@
+import { PODCAST_HOST_ALEX, PODCAST_HOST_SAM } from "./podcastPrompt";
+
 function parseSpeakerLine(line: string) {
 	const boldMatch = line.match(/^\*\*(.+?):\*\*\s*(.*)$/);
 	if (boldMatch) {
@@ -12,11 +14,89 @@ function parseSpeakerLine(line: string) {
 	return null;
 }
 
+function equalsIgnoreCase(left: string, right: string) {
+	return left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0;
+}
+
+function collectSpeakerNames(markdown: string) {
+	const names: string[] = [];
+	const seen = new Set<string>();
+
+	for (const line of markdown.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("|") || trimmed.startsWith("---")) {
+			continue;
+		}
+		if (trimmed.startsWith("*") && trimmed.endsWith("*") && !trimmed.includes(":")) {
+			continue;
+		}
+
+		const parsed = parseSpeakerLine(trimmed);
+		if (!parsed?.text) {
+			continue;
+		}
+
+		const key = parsed.speaker.toLowerCase();
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		names.push(parsed.speaker);
+	}
+
+	return names;
+}
+
+function findSpeakerName(names: string[], target: string) {
+	return names.find((name) => equalsIgnoreCase(name, target));
+}
+
+export function resolvePodcastHosts(markdown: string) {
+	const speakers = collectSpeakerNames(markdown);
+	const sam = findSpeakerName(speakers, PODCAST_HOST_SAM);
+	const alex = findSpeakerName(speakers, PODCAST_HOST_ALEX);
+
+	if (sam && alex) {
+		return { hostOne: sam, hostTwo: alex };
+	}
+
+	const dialogue = extractPodcastDialogueFromMarkdown(markdown);
+	if (dialogue) {
+		return { hostOne: dialogue.hostOne, hostTwo: dialogue.hostTwo };
+	}
+
+	return { hostOne: PODCAST_HOST_SAM, hostTwo: PODCAST_HOST_ALEX };
+}
+
+export function normalizePodcastScript(script: string, hostOne: string, hostTwo: string) {
+	return script
+		.split("\n")
+		.map((line) => {
+			const parsed = parseSpeakerLine(line);
+			if (!parsed) {
+				return line;
+			}
+
+			let speaker = parsed.speaker;
+			if (equalsIgnoreCase(speaker, hostOne) || equalsIgnoreCase(speaker, PODCAST_HOST_SAM)) {
+				speaker = hostOne;
+			} else if (
+				equalsIgnoreCase(speaker, hostTwo) ||
+				equalsIgnoreCase(speaker, PODCAST_HOST_ALEX)
+			) {
+				speaker = hostTwo;
+			}
+
+			return `${speaker}: ${parsed.text}`;
+		})
+		.join("\n");
+}
+
 export function extractPodcastDialogueFromMarkdown(markdown: string) {
 	const lines = markdown.split("\n");
 	const dialogueLines: string[] = [];
-	let hostOne = "Sam";
-	let hostTwo = "Alex";
+	let hostOne = PODCAST_HOST_SAM;
+	let hostTwo = PODCAST_HOST_ALEX;
 
 	for (const line of lines) {
 		const trimmed = line.trim();
@@ -46,7 +126,7 @@ export function extractPodcastDialogueFromMarkdown(markdown: string) {
 
 		if (dialogueLines.length === 0) {
 			hostOne = speaker;
-		} else if (dialogueLines.length === 1 && speaker !== hostOne) {
+		} else if (dialogueLines.length === 1 && !equalsIgnoreCase(speaker, hostOne)) {
 			hostTwo = speaker;
 		}
 
