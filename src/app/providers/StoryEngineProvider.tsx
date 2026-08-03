@@ -39,6 +39,15 @@ import {
 import {
   buildUniverseBlueprintSystemPrompt,
 } from "../../lib/ai/universeGenerator";
+import {
+  buildAiDocumentMessages,
+} from "../../lib/aiDocumentGenerator/buildPrompt";
+import {
+  buildAiDocumentFilename,
+  getAiDocumentPreset,
+  type AiDocumentPresetId,
+} from "../../lib/aiDocumentGenerator/presets";
+import { buildSourceMaterialFromStoryBundle } from "../../lib/aiDocumentGenerator/sourceMaterial";
 import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "../../lib/ai/json";
 import { buildMatureFictionPolicyBlock } from "../../lib/ai/matureFictionPolicy";
 import {
@@ -236,6 +245,16 @@ interface StoryEngineContextValue {
     genreTheme?: string;
     tone?: string;
   }>;
+  generateAiDocument: (input: {
+    source:
+      | { type: "story"; storyId: string; label: string }
+      | { type: "upload"; text: string; label: string };
+    presetId: AiDocumentPresetId;
+    customPrompt?: string;
+    signal?: AbortSignal;
+    onChunk?: (chunk: string) => void;
+    onChunkReset?: () => void;
+  }) => Promise<{ markdown: string; filename: string }>;
   deleteUniverse: (id: string) => Promise<GuardedDeleteResult>;
   createPlayerCharacter: (draft: PlayerCharacterDraft) => Promise<PlayerCharacter>;
   promoteStoryPlayerCharacter: (storyId: string) => Promise<PlayerCharacter>;
@@ -3251,6 +3270,96 @@ export function StoryEngineProvider({
           description: typeof description === "string" && description.trim() ? description.trim() : undefined,
           genreTheme: typeof genreTheme === "string" && genreTheme.trim() ? genreTheme.trim() : undefined,
           tone: typeof tone === "string" && tone.trim() ? tone.trim() : undefined,
+        };
+      },
+      async generateAiDocument(input) {
+        const settings = await getNormalizedAISettings();
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings before generating documents.");
+        }
+
+        const providerType = settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(providerType);
+        const provider = createAIProvider(providerType);
+        const preset = getAiDocumentPreset(input.presetId);
+
+        let sourceMaterial = "";
+        let sourceLabel = "";
+        let storyTitle: string | undefined;
+
+        if (input.source.type === "story") {
+          const bundle = await repository.getStoryExportBundle(input.source.storyId);
+          if (!bundle) {
+            throw new Error("Story not found.");
+          }
+          sourceMaterial = buildSourceMaterialFromStoryBundle(bundle);
+          sourceLabel = input.source.label.trim() || bundle.story.title;
+          storyTitle = bundle.story.title;
+        } else {
+          sourceMaterial = input.source.text;
+          sourceLabel = input.source.label.trim() || "Uploaded export";
+        }
+
+        if (!sourceMaterial.trim()) {
+          throw new Error("Source material is empty.");
+        }
+
+        const messages = buildAiDocumentMessages({
+          preset,
+          customPrompt: input.customPrompt,
+          sourceLabel,
+          sourceMaterial,
+        });
+
+        let streamedDraft = "";
+        const onChunk =
+          input.onChunk ??
+          ((chunk: string) => {
+            streamedDraft += chunk;
+          });
+        const onChunkReset =
+          input.onChunkReset ??
+          (() => {
+            streamedDraft = "";
+          });
+
+        let response: GenerateResponseResult;
+        try {
+          response = await generateResponseWithRetry({
+            providerType,
+            provider,
+            apiKey,
+            model,
+            messages,
+            maxTokens: 12000,
+            temperature: 0.35,
+            signal: input.signal,
+            onChunk,
+            onChunkReset,
+            debugTrace: {
+              traceId: makeGenerationAuditTraceId("other"),
+              mode: "other",
+              stage: "ai-document",
+            },
+          });
+        } catch (error) {
+          rethrowUserFacingGenerationError(error, providerType);
+        }
+
+        const markdown = (response.content.trim() || streamedDraft.trim());
+        if (!markdown) {
+          rethrowUserFacingGenerationError(
+            createAIGenerationError(
+              "validation",
+              "Document generator returned empty output.",
+            ),
+            providerType,
+          );
+        }
+
+        return {
+          markdown,
+          filename: buildAiDocumentFilename(preset.filenameStem, storyTitle),
         };
       },
       async deleteUniverse(id) {

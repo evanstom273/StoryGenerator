@@ -34,6 +34,7 @@ import { serializeStoryExport } from "../lib/storyExport";
 import { formatDateTime } from "../lib/dates";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 import { TutorialSettingsTab } from "../components/settings/TutorialSettingsTab";
+import { AiDocumentGeneratorTab } from "../components/settings/AiDocumentGeneratorTab";
 import { ThemePicker } from "../components/settings/ThemePicker";
 
 function sanitizeFileStem(value: string) {
@@ -563,7 +564,9 @@ export function SettingsPage() {
     }
   }
 
-  const [activeTab, setActiveTab] = useState<"theme" | "ai" | "data" | "storage" | "tutorial">("theme");
+  const [activeTab, setActiveTab] = useState<
+    "theme" | "ai" | "data" | "storage" | "tutorial" | "documents"
+  >("theme");
 
   useEffect(() => {
     if (activeTab !== "data") {
@@ -593,6 +596,8 @@ export function SettingsPage() {
     const tab = searchParams.get("tab");
     if (tab === "tutorial") {
       setActiveTab("tutorial");
+    } else if (tab === "documents") {
+      setActiveTab("documents");
     }
   }, [searchParams]);
 
@@ -602,6 +607,7 @@ export function SettingsPage() {
     { id: "data" as const, label: "Data" },
     { id: "storage" as const, label: "Storage" },
     { id: "tutorial" as const, label: "Tutorial" },
+    { id: "documents" as const, label: "AI Documents" },
   ];
 
   return (
@@ -1165,6 +1171,8 @@ export function SettingsPage() {
       )}
 
       {activeTab === "tutorial" && <TutorialSettingsTab />}
+
+      {activeTab === "documents" && <AiDocumentGeneratorTab />}
     </div>
   );
 }
