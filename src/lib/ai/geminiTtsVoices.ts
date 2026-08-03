@@ -18,6 +18,7 @@ export interface GeminiTtsVoiceOption {
 	label: string;
 	description: string;
 	group: GeminiTtsVoiceGroup;
+	gender: "male" | "female";
 }
 
 export const GEMINI_TTS_VOICE_GROUP_LABELS: Record<GeminiTtsVoiceGroup, string> = {
@@ -30,36 +31,36 @@ export const GEMINI_TTS_VOICE_GROUP_LABELS: Record<GeminiTtsVoiceGroup, string> 
 };
 
 export const GEMINI_TTS_VOICE_CATALOG: GeminiTtsVoiceOption[] = [
-	{ id: "Aoede", label: "Aoede", description: "Breezy, natural — audiobooks", group: "narration" },
-	{ id: "Charon", label: "Charon", description: "Informative, clear — news", group: "news" },
-	{ id: "Schedar", label: "Schedar", description: "Even, measured tone", group: "narration" },
-	{ id: "Enceladus", label: "Enceladus", description: "Calm, authoritative", group: "narration" },
-	{ id: "Leda", label: "Leda", description: "Warm, conversational", group: "podcast" },
-	{ id: "Callirrhoe", label: "Callirrhoe", description: "Easy-going", group: "podcast" },
-	{ id: "Achird", label: "Achird", description: "Friendly", group: "podcast" },
-	{ id: "Zubenelgenubi", label: "Zubenelgenubi", description: "Casual", group: "podcast" },
-	{ id: "Vindemiatrix", label: "Vindemiatrix", description: "Gentle", group: "warm" },
-	{ id: "Sulafat", label: "Sulafat", description: "Warm", group: "warm" },
-	{ id: "Achernar", label: "Achernar", description: "Soft", group: "warm" },
-	{ id: "Despina", label: "Despina", description: "Smooth", group: "warm" },
-	{ id: "Algieba", label: "Algieba", description: "Smooth", group: "warm" },
-	{ id: "Rasalgethi", label: "Rasalgethi", description: "Informative", group: "news" },
-	{ id: "Sadaltager", label: "Sadaltager", description: "Knowledgeable", group: "news" },
-	{ id: "Sadachbia", label: "Sadachbia", description: "Lively, professional", group: "news" },
-	{ id: "Iapetus", label: "Iapetus", description: "Clear", group: "news" },
-	{ id: "Erinome", label: "Erinome", description: "Clear", group: "news" },
-	{ id: "Puck", label: "Puck", description: "Upbeat, energetic", group: "expressive" },
-	{ id: "Fenrir", label: "Fenrir", description: "Excitable, dynamic", group: "expressive" },
-	{ id: "Zephyr", label: "Zephyr", description: "Bright, cheerful", group: "expressive" },
-	{ id: "Laomedeia", label: "Laomedeia", description: "Upbeat", group: "expressive" },
-	{ id: "Autonoe", label: "Autonoe", description: "Bright", group: "expressive" },
-	{ id: "Pulcherrima", label: "Pulcherrima", description: "Forward", group: "expressive" },
-	{ id: "Kore", label: "Kore", description: "Firm, confident", group: "other" },
-	{ id: "Orus", label: "Orus", description: "Firm", group: "other" },
-	{ id: "Alnilam", label: "Alnilam", description: "Firm", group: "other" },
-	{ id: "Gacrux", label: "Gacrux", description: "Mature", group: "other" },
-	{ id: "Umbriel", label: "Umbriel", description: "Easy-going", group: "other" },
-	{ id: "Algenib", label: "Algenib", description: "Gravelly", group: "other" },
+	{ id: "Aoede", label: "Aoede", description: "Breezy, natural — audiobooks", group: "narration", gender: "female" },
+	{ id: "Charon", label: "Charon", description: "Informative, clear — news", group: "news", gender: "male" },
+	{ id: "Schedar", label: "Schedar", description: "Even, measured tone", group: "narration", gender: "male" },
+	{ id: "Enceladus", label: "Enceladus", description: "Calm, authoritative", group: "narration", gender: "male" },
+	{ id: "Leda", label: "Leda", description: "Warm, conversational", group: "podcast", gender: "female" },
+	{ id: "Callirrhoe", label: "Callirrhoe", description: "Easy-going", group: "podcast", gender: "female" },
+	{ id: "Achird", label: "Achird", description: "Friendly", group: "podcast", gender: "male" },
+	{ id: "Zubenelgenubi", label: "Zubenelgenubi", description: "Casual", group: "podcast", gender: "male" },
+	{ id: "Vindemiatrix", label: "Vindemiatrix", description: "Gentle", group: "warm", gender: "female" },
+	{ id: "Sulafat", label: "Sulafat", description: "Warm", group: "warm", gender: "female" },
+	{ id: "Achernar", label: "Achernar", description: "Soft", group: "warm", gender: "female" },
+	{ id: "Despina", label: "Despina", description: "Smooth", group: "warm", gender: "female" },
+	{ id: "Algieba", label: "Algieba", description: "Smooth", group: "warm", gender: "male" },
+	{ id: "Rasalgethi", label: "Rasalgethi", description: "Informative", group: "news", gender: "male" },
+	{ id: "Sadaltager", label: "Sadaltager", description: "Knowledgeable", group: "news", gender: "male" },
+	{ id: "Sadachbia", label: "Sadachbia", description: "Lively, professional", group: "news", gender: "male" },
+	{ id: "Iapetus", label: "Iapetus", description: "Clear", group: "news", gender: "male" },
+	{ id: "Erinome", label: "Erinome", description: "Clear", group: "news", gender: "female" },
+	{ id: "Puck", label: "Puck", description: "Upbeat, energetic", group: "expressive", gender: "male" },
+	{ id: "Fenrir", label: "Fenrir", description: "Excitable, dynamic", group: "expressive", gender: "male" },
+	{ id: "Zephyr", label: "Zephyr", description: "Bright, cheerful", group: "expressive", gender: "female" },
+	{ id: "Laomedeia", label: "Laomedeia", description: "Upbeat", group: "expressive", gender: "female" },
+	{ id: "Autonoe", label: "Autonoe", description: "Bright", group: "expressive", gender: "female" },
+	{ id: "Pulcherrima", label: "Pulcherrima", description: "Forward", group: "expressive", gender: "female" },
+	{ id: "Kore", label: "Kore", description: "Firm, confident", group: "other", gender: "female" },
+	{ id: "Orus", label: "Orus", description: "Firm", group: "other", gender: "male" },
+	{ id: "Alnilam", label: "Alnilam", description: "Firm", group: "other", gender: "male" },
+	{ id: "Gacrux", label: "Gacrux", description: "Mature", group: "other", gender: "female" },
+	{ id: "Umbriel", label: "Umbriel", description: "Easy-going", group: "other", gender: "male" },
+	{ id: "Algenib", label: "Algenib", description: "Gravelly", group: "other", gender: "male" },
 ];
 
 export const GEMINI_TTS_VOICE_IDS = GEMINI_TTS_VOICE_CATALOG.map((voice) => voice.id);
@@ -124,6 +125,18 @@ export function resolveGeminiPodcastTtsSettings(
 
 export function getGeminiTtsVoiceOption(voiceId: string) {
 	return GEMINI_TTS_VOICE_CATALOG.find((voice) => voice.id === voiceId);
+}
+
+export function getGeminiTtsVoiceGender(voiceId: string): "male" | "female" | undefined {
+	return getGeminiTtsVoiceOption(voiceId)?.gender;
+}
+
+export function getGeminiTtsVoiceIdsForGender(gender: "male" | "female") {
+	return GEMINI_TTS_VOICE_CATALOG.filter((voice) => voice.gender === gender).map((voice) => voice.id);
+}
+
+export function geminiTtsVoiceMatchesGender(voiceId: string, gender: "male" | "female") {
+	return getGeminiTtsVoiceGender(voiceId) === gender;
 }
 
 export const DEFAULT_GEMINI_NARRATION_VOICE = "Iapetus";

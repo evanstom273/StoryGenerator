@@ -7,7 +7,7 @@ import {
 } from "./parseSceneBlocks";
 import { sanitizeMessageForDisplay } from "./transcriptSanitizer";
 import type { GeminiNarrationTtsSettings } from "../ai/geminiTtsVoices";
-import type { CharacterTtsRegistry } from "../ai/characterTtsVoices";
+import type { CharacterTtsGenderMap, CharacterTtsRegistry } from "../ai/characterTtsVoices";
 import {
 	DIRECTOR_TTS_KEY,
 	DIRECTOR_TTS_LABEL,
@@ -70,7 +70,7 @@ function formatCharacterDialogueForSpeech(speakerLabel: string, text: string) {
 		return cleaned;
 	}
 
-	return cleaned;
+	return `${speakerLabel.trim()} ${cleaned}`;
 }
 
 function stripActionMarkers(text: string) {
@@ -382,6 +382,7 @@ function buildCharacterRegistryForMessages(
 	playerName: string | null | undefined,
 	narrationTts: GeminiNarrationTtsSettings,
 	existingRegistry?: CharacterTtsRegistry,
+	characterGenders?: CharacterTtsGenderMap | null,
 ): CharacterTtsRegistry {
 	const candidates = collectCharacterTtsCandidatesFromMessages(messages, playerName);
 	const directorCandidate = candidates.find((entry) => entry.key === DIRECTOR_TTS_KEY);
@@ -398,6 +399,7 @@ function buildCharacterRegistryForMessages(
 		characters: candidates,
 		narrationTts,
 		playerName,
+		characterGenders,
 	});
 }
 
@@ -459,6 +461,7 @@ export function buildCharacterTtsRegistryForStory(
 		playerName?: string | null;
 		narrationTts: GeminiNarrationTtsSettings;
 		existingRegistry?: CharacterTtsRegistry;
+		characterGenders?: CharacterTtsGenderMap | null;
 	},
 ): CharacterTtsRegistry {
 	return buildCharacterRegistryForMessages(
@@ -466,6 +469,7 @@ export function buildCharacterTtsRegistryForStory(
 		options.playerName,
 		options.narrationTts,
 		options.existingRegistry,
+		options.characterGenders,
 	);
 }
 

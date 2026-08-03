@@ -73,14 +73,21 @@ function formatElapsedSeconds(startedAtMs: number) {
 }
 
 export function MessagePlayButton({ playId, plan, className, label = "Play" }: MessagePlayButtonProps) {
-	const { getItemStatus, getLoadingDetail, playSpeechPlan, stop, hasGeminiKey } =
-		useGeminiTtsPlayback();
+	const {
+		getItemStatus,
+		getLoadingDetail,
+		prepareSpeechPlan,
+		playPreparedSpeech,
+		stop,
+		hasGeminiKey,
+	} = useGeminiTtsPlayback();
 	const status = getItemStatus(playId);
 	const loadingDetail = getLoadingDetail(playId);
 	const [elapsedLabel, setElapsedLabel] = useState("0s");
 
 	const isPlaying = status === "playing";
 	const isLoading = status === "loading";
+	const isReady = status === "ready";
 	const missingKeyHint = !hasGeminiKey ? "Add a Gemini API key in Settings → AI" : undefined;
 	const disabled = !plan || !hasGeminiKey;
 
@@ -100,6 +107,14 @@ export function MessagePlayButton({ playId, plan, className, label = "Play" }: M
 		? `${loadingDetail.message.replace(/…$/, "")} · ${elapsedLabel}`
 		: "Synthesizing voice…";
 
+	const buttonLabel = isPlaying
+		? "Stop"
+		: isLoading
+			? "Cancel"
+			: isReady
+				? "Play"
+				: label;
+
 	return (
 		<div className={cn("flex flex-col items-end gap-1", className)}>
 			<Button
@@ -108,7 +123,7 @@ export function MessagePlayButton({ playId, plan, className, label = "Play" }: M
 				variant="ghost"
 				className={cn(
 					isLoading && "animate-pulse border border-accent/30 bg-accent/10",
-					isPlaying && "border border-accent/20 bg-accent/5",
+					(isPlaying || isReady) && "border border-accent/20 bg-accent/5",
 				)}
 				disabled={disabled}
 				title={missingKeyHint}
@@ -119,17 +134,23 @@ export function MessagePlayButton({ playId, plan, className, label = "Play" }: M
 						? "Stop audio"
 						: isLoading
 							? `Cancel voice synthesis (${elapsedLabel})`
-							: label
+							: isReady
+								? "Play prepared audio"
+								: label
 				}
 				onClick={() => {
 					if (isLoading || isPlaying) {
 						stop();
 						return;
 					}
+					if (isReady) {
+						void playPreparedSpeech(playId);
+						return;
+					}
 					if (!plan) {
 						return;
 					}
-					void playSpeechPlan(playId, plan);
+					void prepareSpeechPlan(playId, plan);
 				}}
 			>
 				{isLoading ? (
@@ -139,9 +160,7 @@ export function MessagePlayButton({ playId, plan, className, label = "Play" }: M
 				) : (
 					<PlayIcon />
 				)}
-				<span className="hidden sm:inline">
-					{isPlaying ? "Stop" : isLoading ? "Cancel" : label}
-				</span>
+				<span className="hidden sm:inline">{buttonLabel}</span>
 			</Button>
 			{isLoading ? (
 				<div
@@ -152,6 +171,11 @@ export function MessagePlayButton({ playId, plan, className, label = "Play" }: M
 					<span className="mt-0.5 block text-ink-muted">
 						Gemini is generating audio — long messages can take 30s+
 					</span>
+				</div>
+			) : null}
+			{isReady && !isPlaying ? (
+				<div className="text-right text-[10px] text-accent-soft" role="status">
+					Ready — press Play to start
 				</div>
 			) : null}
 			{isPlaying ? (

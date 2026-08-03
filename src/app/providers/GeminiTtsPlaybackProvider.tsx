@@ -18,7 +18,7 @@ import { synthesizeGeminiSpeechPlan } from "../../lib/ai/geminiTtsSynthesis";
 import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
 import type { SpeechSynthesisPlan } from "../../lib/storyText/messageSpeechText";
 
-export type GeminiTtsPlaybackStatus = "idle" | "loading" | "playing" | "error";
+export type GeminiTtsPlaybackStatus = "idle" | "loading" | "ready" | "playing" | "error";
 
 interface GeminiTtsPlaybackState {
 	activeId: string | null;
@@ -33,13 +33,19 @@ export interface GeminiTtsLoadingDetail {
 	startedAtMs: number;
 }
 
+interface PreparedSpeechAudio {
+	audio: HTMLAudioElement;
+	objectUrl: string;
+}
+
 interface GeminiTtsPlaybackContextValue {
 	activeId: string | null;
 	status: GeminiTtsPlaybackStatus;
 	errorMessage: string | null;
 	getItemStatus: (playId: string) => GeminiTtsPlaybackStatus;
 	getLoadingDetail: (playId: string) => GeminiTtsLoadingDetail | null;
-	playSpeechPlan: (playId: string, plan: SpeechSynthesisPlan) => Promise<void>;
+	prepareSpeechPlan: (playId: string, plan: SpeechSynthesisPlan) => Promise<void>;
+	playPreparedSpeech: (playId: string) => Promise<void>;
 	stop: () => void;
 	hasGeminiKey: boolean;
 }
@@ -58,53 +64,114 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	const { aiSettings } = useStoryEngine();
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const objectUrlRef = useRef<string | null>(null);
+	const preparedRef = useRef<Map<string, PreparedSpeechAudio>>(new Map());
 	const abortRef = useRef<AbortController | null>(null);
 	const [state, setState] = useState<GeminiTtsPlaybackState>(IDLE_STATE);
 
 	const hasGeminiKey = Boolean(aiSettings?.apiKeys?.gemini?.trim());
 
-	const cleanupAudio = useCallback(() => {
+	const releasePreparedAudio = useCallback((playId: string) => {
+		const prepared = preparedRef.current.get(playId);
+		if (!prepared) {
+			return;
+		}
+
+		prepared.audio.pause();
+		prepared.audio.src = "";
+		URL.revokeObjectURL(prepared.objectUrl);
+		preparedRef.current.delete(playId);
+	}, []);
+
+	const cleanupActiveAudio = useCallback(() => {
 		if (audioRef.current) {
 			audioRef.current.pause();
-			audioRef.current.src = "";
 			audioRef.current = null;
 		}
-		if (objectUrlRef.current) {
-			URL.revokeObjectURL(objectUrlRef.current);
-			objectUrlRef.current = null;
-		}
+		objectUrlRef.current = null;
 	}, []);
 
 	const stop = useCallback(() => {
+		const wasLoading = state.status === "loading";
+		const activeId = state.activeId;
+
 		abortRef.current?.abort();
 		abortRef.current = null;
-		cleanupAudio();
+		cleanupActiveAudio();
+
+		if (wasLoading && activeId) {
+			releasePreparedAudio(activeId);
+			setState(IDLE_STATE);
+			return;
+		}
+
+		if (state.status === "playing" && activeId && preparedRef.current.has(activeId)) {
+			setState({
+				activeId,
+				status: "ready",
+				errorMessage: null,
+				loadingMessage: null,
+				loadingStartedAtMs: null,
+			});
+			return;
+		}
+
 		setState(IDLE_STATE);
-	}, [cleanupAudio]);
+	}, [cleanupActiveAudio, releasePreparedAudio, state.activeId, state.status]);
 
 	useEffect(() => {
 		return () => {
 			abortRef.current?.abort();
-			cleanupAudio();
+			cleanupActiveAudio();
+			for (const playId of preparedRef.current.keys()) {
+				releasePreparedAudio(playId);
+			}
 		};
-	}, [cleanupAudio]);
+	}, [cleanupActiveAudio, releasePreparedAudio]);
 
-	const playWavBuffer = useCallback(
-		async (playId: string, wavBuffer: ArrayBuffer | Uint8Array) => {
-			cleanupAudio();
+	const loadPreparedSpeech = useCallback(
+		(playId: string, wavBuffer: ArrayBuffer | Uint8Array) => {
+			releasePreparedAudio(playId);
+
 			const wavBytes = wavBuffer instanceof Uint8Array ? wavBuffer : new Uint8Array(wavBuffer);
 			const blob = new Blob([Uint8Array.from(wavBytes)], { type: "audio/wav" });
 			const url = URL.createObjectURL(blob);
-			objectUrlRef.current = url;
 			const audio = new Audio(url);
-			audioRef.current = audio;
 
-			audio.onended = () => {
-				cleanupAudio();
-				setState(IDLE_STATE);
+			preparedRef.current.set(playId, { audio, objectUrl: url });
+		},
+		[releasePreparedAudio],
+	);
+
+	const playPreparedSpeech = useCallback(
+		async (playId: string) => {
+			const prepared = preparedRef.current.get(playId);
+			if (!prepared) {
+				setState({
+					activeId: playId,
+					status: "error",
+					errorMessage: "Audio is not ready yet. Prepare playback first.",
+					loadingMessage: null,
+					loadingStartedAtMs: null,
+				});
+				return;
+			}
+
+			cleanupActiveAudio();
+			audioRef.current = prepared.audio;
+			objectUrlRef.current = prepared.objectUrl;
+
+			prepared.audio.onended = () => {
+				cleanupActiveAudio();
+				setState({
+					activeId: playId,
+					status: "ready",
+					errorMessage: null,
+					loadingMessage: null,
+					loadingStartedAtMs: null,
+				});
 			};
-			audio.onerror = () => {
-				cleanupAudio();
+			prepared.audio.onerror = () => {
+				cleanupActiveAudio();
 				setState({
 					activeId: playId,
 					status: "error",
@@ -114,19 +181,30 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				});
 			};
 
-			await audio.play();
-			setState({
-				activeId: playId,
-				status: "playing",
-				errorMessage: null,
-				loadingMessage: null,
-				loadingStartedAtMs: null,
-			});
+			try {
+				await prepared.audio.play();
+				setState({
+					activeId: playId,
+					status: "playing",
+					errorMessage: null,
+					loadingMessage: null,
+					loadingStartedAtMs: null,
+				});
+			} catch {
+				cleanupActiveAudio();
+				setState({
+					activeId: playId,
+					status: "error",
+					errorMessage: "Unable to start playback.",
+					loadingMessage: null,
+					loadingStartedAtMs: null,
+				});
+			}
 		},
-		[cleanupAudio],
+		[cleanupActiveAudio],
 	);
 
-	const playSpeechPlan = useCallback(
+	const prepareSpeechPlan = useCallback(
 		async (playId: string, plan: SpeechSynthesisPlan) => {
 			const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
 			if (!apiKey) {
@@ -140,43 +218,67 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				return;
 			}
 
-			if (state.activeId === playId && state.status === "playing") {
-				stop();
-				return;
-			}
-
 			if (state.activeId === playId && state.status === "loading") {
 				stop();
 				return;
 			}
 
-			stop();
+			if (state.activeId === playId && state.status === "playing") {
+				stop();
+				return;
+			}
+
+			if (state.activeId === playId && state.status === "ready") {
+				return;
+			}
+
+			abortRef.current?.abort();
+			cleanupActiveAudio();
 			const controller = new AbortController();
 			abortRef.current = controller;
 			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
 			const startedAtMs = Date.now();
 			const cacheDigest = await computeGeminiTtsCacheDigest(playId, plan, narrationTts.model);
 
+			setState({
+				activeId: playId,
+				status: "loading",
+				errorMessage: null,
+				loadingMessage: "Preparing voice synthesis…",
+				loadingStartedAtMs: startedAtMs,
+			});
+
 			const cachedWav =
 				getGeminiTtsMemoryCache(cacheDigest) ?? (await readGeminiTtsCache(cacheDigest));
 
 			if (cachedWav && !controller.signal.aborted) {
-				setState({
-					activeId: playId,
-					status: "loading",
-					errorMessage: null,
-					loadingMessage: "Loading cached audio…",
-					loadingStartedAtMs: startedAtMs,
+				setState((current) => {
+					if (current.activeId !== playId || controller.signal.aborted) {
+						return current;
+					}
+					return {
+						...current,
+						loadingMessage: "Loading cached audio…",
+					};
 				});
 
 				try {
-					await playWavBuffer(playId, cachedWav);
+					loadPreparedSpeech(playId, cachedWav);
+					if (!controller.signal.aborted) {
+						setState({
+							activeId: playId,
+							status: "ready",
+							errorMessage: null,
+							loadingMessage: null,
+							loadingStartedAtMs: null,
+						});
+					}
 				} catch {
 					if (!controller.signal.aborted) {
 						setState({
 							activeId: playId,
 							status: "error",
-							errorMessage: "Unable to play cached audio.",
+							errorMessage: "Unable to load cached audio.",
 							loadingMessage: null,
 							loadingStartedAtMs: null,
 						});
@@ -188,14 +290,6 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				}
 				return;
 			}
-
-			setState({
-				activeId: playId,
-				status: "loading",
-				errorMessage: null,
-				loadingMessage: "Preparing voice synthesis…",
-				loadingStartedAtMs: startedAtMs,
-			});
 
 			try {
 				const wavBuffer = await synthesizeGeminiSpeechPlan({
@@ -225,18 +319,15 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				}
 
 				await writeGeminiTtsCache(cacheDigest, playId, wavBuffer);
+				loadPreparedSpeech(playId, wavBuffer);
 
-				setState((current) => {
-					if (current.activeId !== playId) {
-						return current;
-					}
-					return {
-						...current,
-						loadingMessage: "Starting playback…",
-					};
+				setState({
+					activeId: playId,
+					status: "ready",
+					errorMessage: null,
+					loadingMessage: null,
+					loadingStartedAtMs: null,
 				});
-
-				await playWavBuffer(playId, wavBuffer);
 			} catch (error) {
 				if (controller.signal.aborted) {
 					return;
@@ -255,7 +346,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				}
 			}
 		},
-		[aiSettings, playWavBuffer, state.activeId, state.status, stop],
+		[aiSettings, cleanupActiveAudio, loadPreparedSpeech, state.activeId, state.status, stop],
 	);
 
 	const getItemStatus = useCallback(
@@ -287,7 +378,8 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		errorMessage: state.errorMessage,
 		getItemStatus,
 		getLoadingDetail,
-		playSpeechPlan,
+		prepareSpeechPlan,
+		playPreparedSpeech,
 		stop,
 		hasGeminiKey,
 	};

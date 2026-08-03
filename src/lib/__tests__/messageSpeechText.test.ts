@@ -58,7 +58,7 @@ describe("messageSpeechText", () => {
 
 		expect(plan?.text.toLowerCase()).toContain("jake");
 		expect(plan?.text).toContain("puts his pen down");
-		expect(plan?.text).toMatch(/Jake Peralta:/i);
+		expect(plan?.scriptLines[0]?.text).toContain("Jake Peralta puts his pen down");
 	});
 
 	it("strips markdown from MetaChat content", () => {
