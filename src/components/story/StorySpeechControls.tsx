@@ -1,6 +1,8 @@
 import type { StoryChapter, StoryMessage } from "../../types/models";
+import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { useStorySpeechSetup } from "../../hooks/useStorySpeechSetup";
 import { listStoryAudiobookChapterSegments } from "../../lib/ai/storyAudiobook";
+import { clampAudiobookParallelChapters } from "../../lib/ai/storyAudiobookParallel";
 import { buildChapterSpeechPlan } from "../../lib/storyText/messageSpeechText";
 import { getMessagesForChapterStartingAt } from "../../lib/storyText/chapterNavigation";
 import { cn } from "../../utils/cn";
@@ -76,10 +78,9 @@ export function FullStoryAudiobookControls({
 	chapters,
 	className,
 }: FullStoryAudiobookControlsProps) {
-	const { narrationTts, storyId, characterRegistry, hasGeminiKey } = useStorySpeechSetup(
-		messages,
-		playerCharacterName,
-	);
+	const { narrationTts, storyId, characterRegistry, hasGeminiKey, audiobookParallelChapters } =
+		useStorySpeechSetup(messages, playerCharacterName);
+	const { getStoryAIConfig } = useStoryEngine();
 	const { prepareStoryAudiobook, getItemStatus, getLoadingDetail, playPreparedSpeech, stop } =
 		useGeminiTtsPlayback();
 
@@ -131,7 +132,18 @@ export function FullStoryAudiobookControls({
 						void playPreparedSpeech(playId);
 						return;
 					}
-					void prepareStoryAudiobook(playId, segments, storyTitle);
+					void (async () => {
+						let parallel = audiobookParallelChapters;
+						if (storyId) {
+							const config = await getStoryAIConfig(storyId);
+							parallel = clampAudiobookParallelChapters(
+								config?.audiobookParallelChapters ?? parallel,
+							);
+						}
+						void prepareStoryAudiobook(playId, segments, storyTitle, {
+							parallelChapters: parallel,
+						});
+					})();
 				}}
 			>
 				{isLoading

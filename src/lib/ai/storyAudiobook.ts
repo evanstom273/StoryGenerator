@@ -31,6 +31,7 @@ import {
 	type SpeechSynthesisPlan,
 } from "../storyText/messageSpeechText";
 import type { StoryChapter, StoryMessage } from "../../types/models";
+import { clampAudiobookParallelChapters } from "./storyAudiobookParallel";
 
 export interface StoryAudiobookChapterSegment {
 	id: string;
@@ -154,72 +155,115 @@ async function loadChapterWavFromCache(
 	return null;
 }
 
+async function synthesizeChapterSegmentWav(params: {
+	apiKey: string;
+	segment: StoryAudiobookChapterSegment;
+	model: GeminiTtsModelId;
+	signal?: AbortSignal;
+	onProgress?: (message: string) => void;
+}) {
+	if (params.signal?.aborted) {
+		throw new DOMException("Aborted", "AbortError");
+	}
+
+	let wavBytes: Uint8Array | null = null;
+	const cached = await loadChapterWavFromCache(
+		params.segment.playId,
+		params.segment.plan,
+		params.model,
+	);
+	if (cached) {
+		wavBytes = cached.wav;
+	}
+
+	if (!wavBytes) {
+		const synthesized = await synthesizeGeminiSpeechPlan({
+			apiKey: params.apiKey,
+			plan: params.segment.plan,
+			model: params.model,
+			signal: params.signal,
+			onProgress: (message) => {
+				params.onProgress?.(`${params.segment.label}: ${message}`);
+			},
+		});
+
+		wavBytes = new Uint8Array(synthesized);
+		const playDigest = await computeGeminiTtsCacheDigest(
+			params.segment.playId,
+			params.segment.plan,
+			params.model,
+		);
+		await writeGeminiTtsCache(playDigest, params.segment.playId, wavBytes);
+
+		const planDigest = await computeGeminiTtsPlanCacheDigest(params.segment.plan, params.model);
+		if (planDigest !== playDigest) {
+			await writeGeminiTtsCache(planDigest, params.segment.playId, wavBytes);
+		}
+	}
+
+	return wavBytes;
+}
+
 export async function synthesizeStoryAudiobookWav(params: {
 	apiKey: string;
 	segments: StoryAudiobookChapterSegment[];
 	model: GeminiTtsModelId;
+	parallelChapters?: number;
 	signal?: AbortSignal;
 	onProgress?: (message: string) => void;
 }): Promise<ArrayBuffer> {
+	const parallelChapters = clampAudiobookParallelChapters(params.parallelChapters);
 	const pcmParts: Uint8Array[] = [];
+	const segmentCount = params.segments.length;
 
-	for (let index = 0; index < params.segments.length; index += 1) {
+	for (let batchStart = 0; batchStart < segmentCount; batchStart += parallelChapters) {
 		if (params.signal?.aborted) {
 			throw new DOMException("Aborted", "AbortError");
 		}
 
-		const segment = params.segments[index]!;
-		const chapterLabel = segment.label;
+		const batch = params.segments.slice(batchStart, batchStart + parallelChapters);
+		const batchLabels = batch.map((segment) => segment.label).join(" · ");
+
 		params.onProgress?.(
-			params.segments.length > 1
-				? `Preparing ${chapterLabel} (${index + 1}/${params.segments.length})…`
+			segmentCount > 1
+				? `Preparing ${batchLabels} (${Math.min(batchStart + batch.length, segmentCount)}/${segmentCount})…`
 				: "Preparing audiobook…",
 		);
 
-		let wavBytes: Uint8Array | null = null;
-		const cached = await loadChapterWavFromCache(segment.playId, segment.plan, params.model);
-		if (cached) {
-			wavBytes = cached.wav;
-		}
+		const wavResults = await Promise.all(
+			batch.map(async (segment, batchIndex) => {
+				const segmentIndex = batchStart + batchIndex;
+				const chapterLabel = segment.label;
 
-		if (!wavBytes) {
-			params.onProgress?.(
-				params.segments.length > 1
-					? `Synthesizing ${chapterLabel} (${index + 1}/${params.segments.length})…`
-					: "Synthesizing audiobook…",
-			);
+				params.onProgress?.(
+					segmentCount > 1
+						? `Synthesizing ${chapterLabel} (${segmentIndex + 1}/${segmentCount})…`
+						: "Synthesizing audiobook…",
+				);
 
-			const synthesized = await synthesizeGeminiSpeechPlan({
-				apiKey: params.apiKey,
-				plan: segment.plan,
-				model: params.model,
-				signal: params.signal,
-				onProgress: (message) => {
-					params.onProgress?.(
-						params.segments.length > 1 ? `${chapterLabel}: ${message}` : message,
-					);
-				},
-			});
+				const wavBytes = await synthesizeChapterSegmentWav({
+					apiKey: params.apiKey,
+					segment,
+					model: params.model,
+					signal: params.signal,
+					onProgress: (message) => {
+						params.onProgress?.(
+							segmentCount > 1 ? `${chapterLabel}: ${message}` : message,
+						);
+					},
+				});
 
-			wavBytes = new Uint8Array(synthesized);
-			const playDigest = await computeGeminiTtsCacheDigest(
-				segment.playId,
-				segment.plan,
-				params.model,
-			);
-			await writeGeminiTtsCache(playDigest, segment.playId, wavBytes);
+				return { segmentIndex, wavBytes };
+			}),
+		);
 
-			const planDigest = await computeGeminiTtsPlanCacheDigest(segment.plan, params.model);
-			if (planDigest !== playDigest) {
-				await writeGeminiTtsCache(planDigest, segment.playId, wavBytes);
+		for (const result of wavResults.sort((left, right) => left.segmentIndex - right.segmentIndex)) {
+			const decoded = decodeWavToPcm16(result.wavBytes);
+			pcmParts.push(normalizePcm16Loudness(decoded.pcm));
+
+			if (result.segmentIndex < segmentCount - 1) {
+				pcmParts.push(createSilencePcm16(SPEECH_MESSAGE_GAP_MS, decoded.sampleRate));
 			}
-		}
-
-		const decoded = decodeWavToPcm16(wavBytes);
-		pcmParts.push(normalizePcm16Loudness(decoded.pcm));
-
-		if (index < params.segments.length - 1) {
-			pcmParts.push(createSilencePcm16(SPEECH_MESSAGE_GAP_MS, decoded.sampleRate));
 		}
 	}
 

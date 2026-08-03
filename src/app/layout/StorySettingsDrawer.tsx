@@ -14,6 +14,11 @@ import {
 	listStoryAudiobookChapterSegments,
 	synthesizeStoryAudiobookWav,
 } from "../../lib/ai/storyAudiobook";
+import {
+	clampAudiobookParallelChapters,
+	DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
+	MAX_AUDIOBOOK_PARALLEL_CHAPTERS,
+} from "../../lib/ai/storyAudiobookParallel";
 import { buildCharacterTtsRegistryForStory } from "../../lib/storyText/messageSpeechText";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
 import { serializeStoryExport } from "../../lib/storyExport";
@@ -228,6 +233,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     aiSettings?.defaultModels?.[aiSettings?.activeProviderType ?? "openai"] ??
       getProviderDefaultModel(aiSettings?.activeProviderType ?? "openai"),
   );
+  const [audiobookParallelChapters, setAudiobookParallelChapters] = useState(
+    DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
+  );
   const [isSavingAI, setIsSavingAI] = useState(false);
   const [isPromotingCharacter, setIsPromotingCharacter] = useState(false);
   const [isCleanupConfirmOpen, setIsCleanupConfirmOpen] = useState(false);
@@ -413,6 +421,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
         setAiProviderType(providerType);
         setAiModel(model);
+        setAudiobookParallelChapters(
+          clampAudiobookParallelChapters(config?.audiobookParallelChapters),
+        );
       })
       .catch(() => {
         if (cancelled) {
@@ -425,6 +436,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           aiSettings?.defaultModels?.[providerType]?.trim() ||
             getProviderDefaultModel(providerType),
         );
+        setAudiobookParallelChapters(DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS);
       });
 
     return () => {
@@ -614,6 +626,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         apiKey,
         segments,
         model: narrationTts.model,
+        parallelChapters: audiobookParallelChapters,
         onProgress: (message) => setExportStage(message),
       });
 
@@ -708,6 +721,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         storyId: story.id,
         providerType: aiProviderType,
         model: aiModel,
+        audiobookParallelChapters,
       });
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to save story AI settings.");
@@ -966,6 +980,31 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                         </option>
                       ))}
                     </select>
+                  </label>
+
+                  <label className="block space-y-2">
+                    <div className="flex items-center justify-between gap-3 text-xs text-ink-muted">
+                      <span>Audiobook parallel chapters</span>
+                      <span className="font-medium text-ink">{audiobookParallelChapters}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={MAX_AUDIOBOOK_PARALLEL_CHAPTERS}
+                      step={1}
+                      className="h-1.5 w-full cursor-pointer accent-accent"
+                      value={audiobookParallelChapters}
+                      disabled={isReadOnly}
+                      onChange={(event) =>
+                        setAudiobookParallelChapters(
+                          clampAudiobookParallelChapters(Number.parseInt(event.target.value, 10)),
+                        )
+                      }
+                    />
+                    <p className="text-[11px] leading-5 text-ink-muted">
+                      How many chapters Story Engine synthesizes at once for full-story listen and
+                      audiobook export. Cached chapters are still reused.
+                    </p>
                   </label>
 
                   <Button type="submit" className="w-full" disabled={isSavingAI || isReadOnly}>

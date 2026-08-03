@@ -61,6 +61,7 @@ interface GeminiTtsPlaybackContextValue {
 		playId: string,
 		segments: StoryAudiobookChapterSegment[],
 		title: string,
+		options?: { parallelChapters?: number },
 	) => Promise<void>;
 	playPreparedSpeech: (playId: string) => Promise<void>;
 	togglePlaybackPause: () => Promise<void>;
@@ -539,7 +540,12 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	);
 
 	const prepareStoryAudiobook = useCallback(
-		async (playId: string, segments: StoryAudiobookChapterSegment[], title: string) => {
+		async (
+			playId: string,
+			segments: StoryAudiobookChapterSegment[],
+			title: string,
+			options?: { parallelChapters?: number },
+		) => {
 			const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
 			if (!apiKey) {
 				setState({
@@ -607,6 +613,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					apiKey,
 					segments,
 					model: narrationTts.model,
+					parallelChapters: options?.parallelChapters,
 					signal: controller.signal,
 					onProgress: (message) => {
 						if (controller.signal.aborted) {
