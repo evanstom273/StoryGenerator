@@ -64,44 +64,95 @@ export function resolveLatestUserMessageBefore(messages: StoryMessage[], beforeI
 	return null;
 }
 
-function formatCharacterDialogueForSpeech(speakerLabel: string, text: string) {
-	const cleaned = stripActionMarkers(text);
-	if (!cleaned) {
-		return "";
-	}
-
-	if (speakerNameAlreadyPrefixesText(speakerLabel, cleaned)) {
-		return cleaned;
-	}
-
-	return `${speakerLabel.trim()} ${cleaned}`;
-}
-
 function stripActionMarkers(text: string) {
 	return text.replace(/\*([^*]+)\*/g, "$1").replace(/\s+/g, " ").trim();
 }
 
-function isQuotedDialogue(text: string) {
-	const trimmed = text.trim();
-	return /^["“‘'„]/.test(trimmed);
-}
+const DIALOGUE_QUOTE_PAIRS: Array<{ open: string; close: string }> = [
+	{ open: '"', close: '"' },
+	{ open: "“", close: "”" },
+	{ open: "‘", close: "’" },
+];
 
-function stripDialogueQuotes(text: string) {
-	let trimmed = text.trim();
-	const pairs: Array<[string, string]> = [
-		['"', '"'],
-		["“", "”"],
-		["‘", "’"],
-		["'", "'"],
-	];
+type CharacterSpeechPart = { kind: "dialogue" | "narration"; text: string };
 
-	for (const [open, close] of pairs) {
-		if (trimmed.startsWith(open) && trimmed.endsWith(close) && trimmed.length > open.length + close.length) {
-			return trimmed.slice(open.length, trimmed.length - close.length).trim();
+function findNextQuoteOpen(text: string, fromIndex: number) {
+	let bestIndex = -1;
+	let bestPair: { open: string; close: string } | null = null;
+
+	for (const pair of DIALOGUE_QUOTE_PAIRS) {
+		const index = text.indexOf(pair.open, fromIndex);
+		if (index >= 0 && (bestIndex < 0 || index < bestIndex)) {
+			bestIndex = index;
+			bestPair = pair;
 		}
 	}
 
-	return stripActionMarkers(trimmed);
+	if (bestIndex < 0 || !bestPair) {
+		return null;
+	}
+
+	return { index: bestIndex, pair: bestPair };
+}
+
+function appendUnquotedNarration(parts: CharacterSpeechPart[], text: string) {
+	const narration = stripActionMarkers(text);
+	if (narration) {
+		parts.push({ kind: "narration", text: narration });
+	}
+}
+
+function appendQuotedAndUnquotedSpeechParts(parts: CharacterSpeechPart[], text: string) {
+	let cursor = 0;
+
+	while (cursor < text.length) {
+		while (cursor < text.length && /\s/.test(text[cursor]!)) {
+			cursor += 1;
+		}
+
+		if (cursor >= text.length) {
+			break;
+		}
+
+		const quote = findNextQuoteOpen(text, cursor);
+		if (!quote || quote.index > cursor) {
+			const unquotedEnd = quote?.index ?? text.length;
+			appendUnquotedNarration(parts, text.slice(cursor, unquotedEnd));
+			cursor = unquotedEnd;
+			if (!quote) {
+				break;
+			}
+		}
+
+		const dialogueStart = quote.index + quote.pair.open.length;
+		const closeIndex = text.indexOf(quote.pair.close, dialogueStart);
+		if (closeIndex < 0) {
+			appendUnquotedNarration(parts, text.slice(cursor));
+			break;
+		}
+
+		const dialogue = text.slice(dialogueStart, closeIndex).trim();
+		if (dialogue) {
+			parts.push({ kind: "dialogue", text: dialogue });
+		}
+
+		cursor = closeIndex + quote.pair.close.length;
+	}
+}
+
+function parseCharacterBlockSpeechParts(text: string): CharacterSpeechPart[] {
+	const parts: CharacterSpeechPart[] = [];
+
+	for (const segment of parseActionSegments(text)) {
+		if (segment.type === "action") {
+			appendUnquotedNarration(parts, segment.text);
+			continue;
+		}
+
+		appendQuotedAndUnquotedSpeechParts(parts, segment.text);
+	}
+
+	return parts;
 }
 
 function formatCharacterActionForNarratorSpeech(speakerLabel: string, text: string) {
@@ -117,52 +168,6 @@ function formatCharacterActionForNarratorSpeech(speakerLabel: string, text: stri
 	return `${speakerLabel.trim()} ${cleaned}`;
 }
 
-function looksLikeNarratedActionLine(text: string) {
-	const cleaned = stripActionMarkers(text);
-	if (!cleaned) {
-		return false;
-	}
-
-	if (looksLikeSpokenDialogue(cleaned)) {
-		return false;
-	}
-
-	const firstChar = cleaned[0];
-	if (firstChar && firstChar === firstChar.toLowerCase() && firstChar !== firstChar.toUpperCase()) {
-		return true;
-	}
-
-	return looksLikePhysicalAction(cleaned);
-}
-
-function looksLikePhysicalAction(text: string) {
-	const cleaned = stripActionMarkers(text).trim();
-	return /^(puts|spins|folds|leans|stares|looks|steps|walks|runs|sits|stands|turns|nods|shrugs|taps|glances|gazes|reaches|opens|closes|pulls|pushes)\b/i.test(
-		cleaned,
-	);
-}
-
-function looksLikeSpokenDialogue(text: string) {
-	const cleaned = stripActionMarkers(text).trim();
-	if (!cleaned) {
-		return false;
-	}
-
-	if (isQuotedDialogue(cleaned)) {
-		return true;
-	}
-
-	if (cleaned.length > 120) {
-		return false;
-	}
-
-	if (!/[.!?]["']?$/.test(cleaned)) {
-		return false;
-	}
-
-	return !looksLikePhysicalAction(cleaned);
-}
-
 function buildSpeechScriptLinesFromCharacterBlock(
 	speakerLabel: string,
 	block: SceneBlock,
@@ -170,56 +175,16 @@ function buildSpeechScriptLinesFromCharacterBlock(
 ): SpeechScriptLine[] {
 	const lines: SpeechScriptLine[] = [];
 	const ttsSpeaker = resolveTtsSpeakerLabel(speakerLabel, characterRegistry);
-	const hasActionSegment = block.segments.some((segment) => segment.type === "action");
 
-	for (const segment of block.segments) {
-		if (segment.type === "action") {
-			if (looksLikeSpokenDialogue(segment.text)) {
-				const dialogue = stripDialogueQuotes(segment.text);
-				if (dialogue.trim()) {
-					lines.push({ speaker: ttsSpeaker, text: dialogue });
-				}
-				continue;
-			}
-
-			const narrated = formatCharacterActionForNarratorSpeech(speakerLabel, segment.text);
-			if (narrated.trim()) {
-				lines.push({ speaker: NARRATOR_SPEAKER_ALIAS, text: narrated });
-			}
+	for (const part of parseCharacterBlockSpeechParts(block.text)) {
+		if (part.kind === "dialogue") {
+			lines.push({ speaker: ttsSpeaker, text: part.text });
 			continue;
 		}
 
-		const rawText = segment.text.trim();
-		if (!rawText) {
-			continue;
-		}
-
-		if (isQuotedDialogue(rawText) || (hasActionSegment && !looksLikeNarratedActionLine(rawText))) {
-			const dialogue = stripDialogueQuotes(rawText);
-			if (dialogue.trim()) {
-				lines.push({ speaker: ttsSpeaker, text: dialogue });
-			}
-			continue;
-		}
-
-		if (looksLikeNarratedActionLine(rawText)) {
-			const narrated = formatCharacterActionForNarratorSpeech(speakerLabel, rawText);
-			if (narrated.trim()) {
-				lines.push({ speaker: NARRATOR_SPEAKER_ALIAS, text: narrated });
-			}
-			continue;
-		}
-
-		const dialogue = stripActionMarkers(rawText);
-		if (dialogue.trim()) {
-			lines.push({ speaker: ttsSpeaker, text: dialogue });
-		}
-	}
-
-	if (!lines.length && block.text.trim()) {
-		const speechText = formatCharacterDialogueForSpeech(speakerLabel, block.text);
-		if (speechText.trim()) {
-			lines.push({ speaker: ttsSpeaker, text: speechText });
+		const narrated = formatCharacterActionForNarratorSpeech(speakerLabel, part.text);
+		if (narrated.trim()) {
+			lines.push({ speaker: NARRATOR_SPEAKER_ALIAS, text: narrated });
 		}
 	}
 
@@ -302,6 +267,43 @@ function finalizeSpeechPlan(
 		speakers,
 		multiSpeaker: hasCharacterDialogue,
 	};
+}
+
+export function formatChapterTitleForSpeech(label: string) {
+	return label.trim().replace(/\s+/g, " ");
+}
+
+export function shouldAnnounceChapterTitle(label: string | null | undefined) {
+	const trimmed = label?.trim();
+	if (!trimmed) {
+		return false;
+	}
+
+	const normalized = trimmed.toLowerCase();
+	return normalized !== "full story";
+}
+
+function prependChapterTitleScriptLines(
+	scriptLines: SpeechScriptLine[],
+	chapterTitle: string | null | undefined,
+): SpeechScriptLine[] {
+	if (!shouldAnnounceChapterTitle(chapterTitle)) {
+		return scriptLines;
+	}
+
+	const titleText = formatChapterTitleForSpeech(chapterTitle!);
+	if (!titleText) {
+		return scriptLines;
+	}
+
+	return [
+		{
+			speaker: NARRATOR_SPEAKER_ALIAS,
+			text: titleText,
+			messageBreakAfter: true,
+		},
+		...scriptLines,
+	];
 }
 
 function buildSpeechPlanFromBlocks(
@@ -700,6 +702,7 @@ export function buildChapterSpeechPlan(
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry?: CharacterTtsRegistry;
 		allStoryMessages?: StoryMessage[];
+		chapterTitle?: string | null;
 	},
 ): SpeechSynthesisPlan | null {
 	const registrySource = options.allStoryMessages ?? messages;
@@ -707,11 +710,18 @@ export function buildChapterSpeechPlan(
 		options.characterRegistry ??
 		buildCharacterRegistryForMessages(registrySource, options.playerName, options.narrationTts);
 
-	return buildSpeechPlanFromMessages(messages, {
+	const basePlan = buildSpeechPlanFromMessages(messages, {
 		playerName: options.playerName,
 		narrationTts: options.narrationTts,
 		characterRegistry,
 	});
+
+	if (!basePlan) {
+		return null;
+	}
+
+	const scriptLines = prependChapterTitleScriptLines(basePlan.scriptLines, options.chapterTitle);
+	return finalizeSpeechPlan(scriptLines, characterRegistry, options.narrationTts);
 }
 
 export function buildCharacterTtsRegistryForStory(

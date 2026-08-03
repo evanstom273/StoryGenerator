@@ -7,6 +7,7 @@ import {
 	buildStoryMessageSpeechPlan,
 	isSpeakableUserMessage,
 	metaChatContentToSpeechText,
+	shouldAnnounceChapterTitle,
 } from "../storyText/messageSpeechText";
 import { normalizeCharacterTtsKey } from "../ai/characterTtsVoices";
 import {
@@ -41,7 +42,9 @@ describe("messageSpeechText", () => {
 
 	it("uses narrator and character voices for mixed dialogue", () => {
 		const plan = buildStoryMessageSpeechPlan(
-			assistantMessage("The alley was empty.\n\nMarcus: We need to move.\n\nHe ran north."),
+			assistantMessage(
+				"The alley was empty.\n\nMarcus: *checks the corner.* \"We need to move.\"\n\nHe ran north.",
+			),
 			{ narrationTts },
 		);
 
@@ -50,8 +53,23 @@ describe("messageSpeechText", () => {
 			narrationTts.voice,
 		);
 		expect(plan?.scriptLines.some((line) => line.speaker === "Marcus")).toBe(true);
+		expect(plan?.scriptLines.some((line) => line.speaker === "Narrator" && line.text.includes("checks the corner"))).toBe(
+			true,
+		);
 		expect(plan?.text).toContain("Marcus:");
 		expect(plan?.text).toContain("We need to move");
+	});
+
+	it("treats quoted speech as dialogue and everything else as narration", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			assistantMessage('Marcus: *draws his sidearm.* "We need to move."'),
+			{ narrationTts },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{ speaker: "Narrator", text: "Marcus draws his sidearm." },
+			{ speaker: "Marcus", text: "We need to move." },
+		]);
 	});
 
 	it("includes character names for label-only transcript lines", () => {
@@ -82,6 +100,26 @@ describe("messageSpeechText", () => {
 			{
 				speaker: "Jake",
 				text: "Two weeks is practically tomorrow, Rosa.",
+			},
+		]);
+	});
+
+	it("narrates stacks-style action beats instead of speaking them in character voice", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			assistantMessage(
+				"Amy:\n*stacks a neat pile of folders on her desk.* \"Jake's timeline is completely nonsensical.\"",
+			),
+			{ narrationTts, playerName: "Jake Peralta" },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{
+				speaker: "Narrator",
+				text: "Amy stacks a neat pile of folders on her desk.",
+			},
+			{
+				speaker: "Amy",
+				text: "Jake's timeline is completely nonsensical.",
 			},
 		]);
 	});
@@ -118,7 +156,7 @@ describe("messageSpeechText", () => {
 				id: "u1",
 				storyId: "story-1",
 				role: "user",
-				content: "*leans forward* We need to leave now.",
+				content: "*leans forward* \"We need to leave now.\"",
 				speakerType: "player",
 				timestamp: "2026-01-01T00:00:00.000Z",
 			},
@@ -127,7 +165,12 @@ describe("messageSpeechText", () => {
 
 		expect(plan?.multiSpeaker).toBe(true);
 		expect(plan?.speakers.some((speaker) => speaker.name === "Amy Santiago")).toBe(true);
-		expect(plan?.text.toLowerCase()).toContain("leave");
+		expect(plan?.scriptLines.some((line) => line.speaker === "Narrator" && line.text.includes("leans forward"))).toBe(
+			true,
+		);
+		expect(plan?.scriptLines.some((line) => line.speaker === "Amy Santiago" && line.text.includes("leave"))).toBe(
+			true,
+		);
 	});
 
 	it("skips continue user messages but allows director directions", () => {
@@ -172,7 +215,7 @@ describe("messageSpeechText", () => {
 
 	it("uses per-character speaker labels when registry is provided", () => {
 		const messages: StoryMessage[] = [
-			assistantMessage("Rosa: We need to move.\n\nAmy: Copy that.", "a1"),
+			assistantMessage("Rosa: \"We need to move.\"\n\nAmy: *Copy that.*", "a1"),
 		];
 		const registry = buildCharacterTtsRegistryForStory(messages, {
 			playerName: "Jake Peralta",
@@ -184,9 +227,10 @@ describe("messageSpeechText", () => {
 		});
 
 		expect(plan?.scriptLines.some((line) => line.speaker === "Rosa")).toBe(true);
-		expect(plan?.scriptLines.some((line) => line.speaker === "Amy")).toBe(true);
+		expect(plan?.scriptLines.some((line) => line.speaker === "Narrator" && line.text.includes("Copy that"))).toBe(
+			true,
+		);
 		expect(plan?.speakers.some((speaker) => speaker.name === "Rosa")).toBe(true);
-		expect(plan?.speakers.some((speaker) => speaker.name === "Amy")).toBe(true);
 		expect(plan?.speakers.find((speaker) => speaker.name === "Rosa")?.voice).toBe(
 			registry.voices[normalizeCharacterTtsKey("Rosa")],
 		);
@@ -198,7 +242,7 @@ describe("messageSpeechText", () => {
 				id: "p1",
 				storyId: "story-1",
 				role: "user",
-				content: "Let's go.",
+				content: "\"Let's go.\"",
 				speakerType: "player",
 				timestamp: "2026-01-01T00:00:00.000Z",
 			},
@@ -210,7 +254,11 @@ describe("messageSpeechText", () => {
 				speakerType: "director",
 				timestamp: "2026-01-01T00:00:30.000Z",
 			},
-			assistantMessage("They sprinted down the alley.\n\nMarcus: Hurry up!", "a1", "2026-01-01T00:01:00.000Z"),
+			assistantMessage(
+				"They sprinted down the alley.\n\nMarcus: *glances back.* \"Hurry up!\"",
+				"a1",
+				"2026-01-01T00:01:00.000Z",
+			),
 			{
 				id: "p2",
 				storyId: "story-1",
@@ -261,6 +309,34 @@ describe("messageSpeechText", () => {
 		expect(plan?.text).toContain("get moving");
 		expect(plan?.text).toContain("More narration.");
 		expect(plan?.text).not.toContain("Continue");
+	});
+
+	it("announces chapter titles before chapter speech", () => {
+		const plan = buildChapterSpeechPlan([assistantMessage("The rain fell hard.")], {
+			narrationTts,
+			chapterTitle: "Chapter One: The Worst Day",
+		});
+
+		expect(plan?.scriptLines[0]).toEqual({
+			speaker: "Narrator",
+			text: "Chapter One: The Worst Day",
+			messageBreakAfter: true,
+		});
+		expect(plan?.text).toContain("Chapter One: The Worst Day");
+		expect(plan?.text).toContain("rain fell hard");
+	});
+
+	it("does not announce generic full story labels", () => {
+		expect(shouldAnnounceChapterTitle("Full Story")).toBe(false);
+
+		const plan = buildChapterSpeechPlan([assistantMessage("Opening narration.")], {
+			narrationTts,
+			chapterTitle: "Full Story",
+		});
+
+		expect(plan?.scriptLines[0]?.speaker).toBe("Narrator");
+		expect(plan?.scriptLines[0]?.text).toContain("Opening narration");
+		expect(plan?.scriptLines.some((line) => line.text === "Full Story")).toBe(false);
 	});
 });
 

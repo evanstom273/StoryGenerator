@@ -33,6 +33,7 @@ export function ChapterListenBanner({
 		narrationTts,
 		characterRegistry,
 		allStoryMessages: messages,
+		chapterTitle: label,
 	});
 
 	return (
