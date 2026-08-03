@@ -44,7 +44,19 @@ describe("messageSpeechText", () => {
 			{ name: "Character", voice: narrationTts.characterVoice },
 		]);
 		expect(plan?.text).toContain("Narrator:");
-		expect(plan?.text).toContain("Character:");
+		expect(plan?.text).toContain("Character: Marcus");
+		expect(plan?.text).toContain("We need to move");
+	});
+
+	it("includes character names for label-only transcript lines", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			assistantMessage("Jake Peralta:\nputs his pen down"),
+			{ narrationTts },
+		);
+
+		expect(plan?.text.toLowerCase()).toContain("jake");
+		expect(plan?.text).toContain("puts his pen down");
+		expect(plan?.text).not.toMatch(/Character: puts his pen down/i);
 	});
 
 	it("strips markdown from MetaChat content", () => {

@@ -1,5 +1,10 @@
 import type { StoryMessage } from "../../types/models";
-import { parseSceneBlocks } from "./parseSceneBlocks";
+import {
+	formatNarratorBlockForDisplay,
+	parseSceneBlocks,
+	repairNarratorLabelLines,
+	type SceneBlock,
+} from "./parseSceneBlocks";
 import { sanitizeMessageForDisplay } from "./transcriptSanitizer";
 import type { GeminiNarrationTtsSettings } from "../ai/geminiTtsVoices";
 
@@ -9,12 +14,56 @@ export interface SpeechSynthesisPlan {
 	multiSpeaker: boolean;
 }
 
+const CHARACTER_SPEAKER_ALIAS = "Character";
+
 function stripActionMarkers(text: string) {
 	return text.replace(/\*([^*]+)\*/g, "$1").replace(/\s+/g, " ").trim();
 }
 
 function buildSpeakerScriptLine(speaker: string, text: string) {
 	return `${speaker}: ${stripActionMarkers(text)}`;
+}
+
+function speakerNameAlreadyPrefixesText(speakerLabel: string, text: string) {
+	const cleaned = stripActionMarkers(text);
+	if (!cleaned) {
+		return true;
+	}
+
+	const lowerText = cleaned.toLowerCase();
+	const normalizedSpeaker = speakerLabel.trim();
+	if (!normalizedSpeaker) {
+		return false;
+	}
+
+	if (lowerText.startsWith(normalizedSpeaker.toLowerCase())) {
+		return true;
+	}
+
+	const firstToken = normalizedSpeaker.split(/\s+/)[0] ?? "";
+	return firstToken.length > 1 && lowerText.startsWith(firstToken.toLowerCase());
+}
+
+function formatCharacterBlockForSpeech(speakerLabel: string, text: string) {
+	const cleaned = stripActionMarkers(text);
+	if (!cleaned) {
+		return "";
+	}
+
+	if (speakerNameAlreadyPrefixesText(speakerLabel, cleaned)) {
+		return cleaned;
+	}
+
+	return `${speakerLabel.trim()} ${cleaned}`;
+}
+
+function formatBlockTextForSpeech(block: SceneBlock) {
+	const isNarrator = !block.speakerLabel || block.speakerLabel === "Narrator";
+	if (isNarrator) {
+		return formatNarratorBlockForDisplay(block.text);
+	}
+
+	return formatCharacterBlockForSpeech(block.speakerLabel!, block.text);
 }
 
 export function buildStoryMessageSpeechPlan(
@@ -34,22 +83,25 @@ export function buildStoryMessageSpeechPlan(
 		playerName: options.playerName,
 		latestUserMessage: options.latestUserMessage,
 	});
-	const blocks = parseSceneBlocks(sanitized);
+	const repaired = repairNarratorLabelLines(sanitized);
+	const blocks = parseSceneBlocks(repaired);
 	const scriptLines: string[] = [];
+	const narrationLines: string[] = [];
 	let hasCharacterDialogue = false;
 
 	for (const block of blocks) {
 		const isNarrator = !block.speakerLabel || block.speakerLabel === "Narrator";
-		const text = stripActionMarkers(block.text);
-		if (!text) {
+		const speechText = formatBlockTextForSpeech(block);
+		if (!speechText.trim()) {
 			continue;
 		}
 
 		if (isNarrator) {
-			scriptLines.push(buildSpeakerScriptLine("Narrator", block.text));
+			narrationLines.push(speechText);
+			scriptLines.push(buildSpeakerScriptLine("Narrator", speechText));
 		} else {
 			hasCharacterDialogue = true;
-			scriptLines.push(buildSpeakerScriptLine("Character", block.text));
+			scriptLines.push(buildSpeakerScriptLine(CHARACTER_SPEAKER_ALIAS, speechText));
 		}
 	}
 
@@ -61,10 +113,7 @@ export function buildStoryMessageSpeechPlan(
 	const characterVoice = options.narrationTts.characterVoice;
 
 	if (!hasCharacterDialogue) {
-		const plainText = blocks
-			.map((block) => stripActionMarkers(block.text))
-			.filter(Boolean)
-			.join("\n\n");
+		const plainText = narrationLines.join("\n\n");
 
 		return {
 			text: plainText,
@@ -77,7 +126,7 @@ export function buildStoryMessageSpeechPlan(
 		text: scriptLines.join("\n"),
 		speakers: [
 			{ name: "Narrator", voice: narratorVoice },
-			{ name: "Character", voice: characterVoice },
+			{ name: CHARACTER_SPEAKER_ALIAS, voice: characterVoice },
 		],
 		multiSpeaker: true,
 	};
