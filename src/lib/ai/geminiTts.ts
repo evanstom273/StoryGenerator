@@ -2,8 +2,10 @@ import { normalizeAIError } from "./errors";
 
 const GEMINI_TTS_MODEL = "gemini-3.1-flash-tts-preview";
 const GEMINI_TTS_FALLBACK_MODEL = "gemini-2.5-flash-preview-tts";
-const TTS_REQUEST_TIMEOUT_MS = 180_000;
-const TTS_ATTEMPTS_PER_MODEL = 3;
+const TTS_REQUEST_TIMEOUT_MS = 300_000;
+const TTS_REQUEST_TIMEOUT_BASE_MS = 120_000;
+const TTS_REQUEST_TIMEOUT_PER_CHAR_MS = 12;
+const TTS_ATTEMPTS_PER_MODEL = 4;
 
 export const GEMINI_TTS_VOICES = {
 	hostA: "Kore",
@@ -258,6 +260,13 @@ async function requestGeminiTtsGenerateContent(params: {
 	};
 }
 
+function resolveTtsRequestTimeoutMs(inputLength: number) {
+	const cappedChars = Math.min(inputLength, 8000);
+	const scaled =
+		TTS_REQUEST_TIMEOUT_BASE_MS + cappedChars * TTS_REQUEST_TIMEOUT_PER_CHAR_MS;
+	return Math.min(TTS_REQUEST_TIMEOUT_MS, Math.max(TTS_REQUEST_TIMEOUT_BASE_MS, scaled));
+}
+
 export async function generateGeminiMultiSpeakerAudio(params: {
 	apiKey: string;
 	input: string;
@@ -275,7 +284,8 @@ export async function generateGeminiMultiSpeakerAudio(params: {
 		}
 	}
 
-	const timeoutId = window.setTimeout(() => controller.abort(), TTS_REQUEST_TIMEOUT_MS);
+	const timeoutMs = resolveTtsRequestTimeoutMs(params.input.length);
+	const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 	const safeKey = params.apiKey.replace(/[^\x00-\xFF]/g, "");
 	const primaryModel = params.model ?? GEMINI_TTS_MODEL;
 	const models =
