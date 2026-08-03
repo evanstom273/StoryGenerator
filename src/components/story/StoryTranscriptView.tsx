@@ -414,8 +414,8 @@ export function StoryTranscriptView({
                 <div className="flex justify-end">
                   <StoryMessagePlayButton
                     message={message}
+                    messages={messages}
                     playerCharacterName={playerCharacterName}
-                    latestUserMessage={latestUserMessage}
                   />
                 </div>
                 <div className="flex items-start gap-3 text-sm leading-7">
@@ -466,8 +466,8 @@ export function StoryTranscriptView({
               <div className="flex justify-end">
                 <StoryMessagePlayButton
                   message={message}
+                  messages={messages}
                   playerCharacterName={playerCharacterName}
-                  latestUserMessage={latestUserMessage}
                 />
               </div>
               {blocks.map((block, blockIndex) => {

@@ -4,6 +4,7 @@ import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks, formatNarratorBlockForDisplay } from "../../lib/storyText/parseSceneBlocks";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
+import { resolveLatestUserMessageBefore } from "../../lib/storyText/messageSpeechText";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { cn } from "../../utils/cn";
@@ -12,8 +13,8 @@ import { StoryMessagePlayButton } from "./StorySpeechControls";
 
 interface StoryMessageBubbleProps {
   message: StoryMessage;
+  messages: StoryMessage[];
   playerCharacterName: string;
-  latestUserMessage?: string | null;
   onEdit: (message: StoryMessage) => void;
   onQuickEdit?: (message: StoryMessage) => void;
   onRegenerate?: (message: StoryMessage) => void;
@@ -152,8 +153,8 @@ function resolveAvatarClass(label: string, speakerType: StoryMessageSpeakerType 
 
 export function StoryMessageBubble({
   message,
+  messages,
   playerCharacterName,
-  latestUserMessage,
   onEdit,
   onQuickEdit,
   onRegenerate,
@@ -191,6 +192,10 @@ export function StoryMessageBubble({
       : message.speakerType === "narrator"
         ? "border-white/8 bg-white/[0.02]"
         : "border-transparent bg-transparent";
+
+  const messageIndex = messages.findIndex((entry) => entry.id === message.id);
+  const latestUserMessage =
+    messageIndex > 0 ? resolveLatestUserMessageBefore(messages, messageIndex) : null;
 
   const sanitizedContent =
     message.role === "assistant"
@@ -297,8 +302,8 @@ export function StoryMessageBubble({
             {message.role === "assistant" || message.role === "user" ? (
               <StoryMessagePlayButton
                 message={message}
+                messages={messages}
                 playerCharacterName={playerCharacterName}
-                latestUserMessage={latestUserMessage}
               />
             ) : null}
             <div className="hidden items-center gap-1 opacity-0 transition group-hover:flex group-hover:opacity-100">
@@ -343,8 +348,8 @@ export function StoryMessageBubble({
           {message.role === "assistant" || message.role === "user" ? (
             <StoryMessagePlayButton
               message={message}
+              messages={messages}
               playerCharacterName={playerCharacterName}
-              latestUserMessage={latestUserMessage}
             />
           ) : null}
           <Button
