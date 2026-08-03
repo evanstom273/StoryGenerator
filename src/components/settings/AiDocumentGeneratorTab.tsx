@@ -12,27 +12,45 @@ import {
 	getAiDocumentPreset,
 	type AiDocumentPresetId,
 } from "../../lib/aiDocumentGenerator/presets";
+import type { AiDocumentOutputFormat, AiDocumentStructure } from "../../lib/aiDocumentGenerator/types";
 import { readUploadedSourceFile } from "../../lib/aiDocumentGenerator/sourceMaterial";
 
 type SourceMode = "library" | "upload";
 
 export function AiDocumentGeneratorTab() {
-	const { stories, generateAiDocument } = useStoryEngine();
+	const { stories, aiSettings, generateAiDocument } = useStoryEngine();
 	const [sourceMode, setSourceMode] = useState<SourceMode>("library");
 	const [storyId, setStoryId] = useState("");
 	const [uploadFile, setUploadFile] = useState<File | null>(null);
-	const [presetId, setPresetId] = useState<AiDocumentPresetId>("story-summary");
+	const [presetId, setPresetId] = useState<AiDocumentPresetId>("podcast-chapter-breakdown");
+	const [structure, setStructure] = useState<AiDocumentStructure>("chapter-by-chapter");
+	const [outputFormat, setOutputFormat] = useState<AiDocumentOutputFormat>("markdown");
 	const [customPrompt, setCustomPrompt] = useState("");
 	const [statusMessage, setStatusMessage] = useState<string | null>(null);
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 	const [isGenerating, setIsGenerating] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
 
+	const selectedPreset = getAiDocumentPreset(presetId);
+	const hasGeminiKey = Boolean(aiSettings?.apiKeys?.gemini?.trim());
+
 	useEffect(() => {
 		if (!storyId && stories[0]?.id) {
 			setStoryId(stories[0].id);
 		}
 	}, [storyId, stories]);
+
+	useEffect(() => {
+		if (selectedPreset.defaultStructure) {
+			setStructure(selectedPreset.defaultStructure);
+		}
+	}, [presetId, selectedPreset.defaultStructure]);
+
+	useEffect(() => {
+		if (!selectedPreset.supportsGeminiTts && outputFormat === "gemini-audio-wav") {
+			setOutputFormat("markdown");
+		}
+	}, [outputFormat, selectedPreset.supportsGeminiTts]);
 
 	async function handleGenerate() {
 		setErrorMessage(null);
@@ -50,6 +68,11 @@ export function AiDocumentGeneratorTab() {
 
 		if (presetId === AI_DOCUMENT_CUSTOM_PRESET_ID && !customPrompt.trim()) {
 			setErrorMessage("Describe the custom document you want generated.");
+			return;
+		}
+
+		if (outputFormat === "gemini-audio-wav" && !hasGeminiKey) {
+			setErrorMessage("Add a Gemini API key in Settings → AI to generate podcast audio.");
 			return;
 		}
 
@@ -81,16 +104,23 @@ export function AiDocumentGeneratorTab() {
 				};
 			}
 
-			setStatusMessage("Generating document…");
+			setStatusMessage(
+				outputFormat === "gemini-audio-wav"
+					? "Generating document and Gemini audio…"
+					: "Generating document…",
+			);
 
 			const result = await generateAiDocument({
 				source,
 				presetId,
 				customPrompt: presetId === AI_DOCUMENT_CUSTOM_PRESET_ID ? customPrompt : undefined,
+				structure,
+				outputFormat,
 				signal: controller.signal,
+				onProgress: (message) => setStatusMessage(message),
 			});
 
-			await downloadFile(result.filename, result.markdown, "text/markdown");
+			await downloadFile(result.filename, result.content, result.mimeType);
 			setStatusMessage(`Downloaded ${result.filename}`);
 		} catch (error) {
 			if (isGenerationFailureError(error)) {
@@ -116,6 +146,8 @@ export function AiDocumentGeneratorTab() {
 		abortRef.current?.abort();
 	}
 
+	const outputExtension = outputFormat === "gemini-audio-wav" ? "wav" : "md";
+
 	return (
 		<div className="space-y-6">
 			<Panel variant="flat">
@@ -123,9 +155,9 @@ export function AiDocumentGeneratorTab() {
 					AI Document Generator
 				</div>
 				<p className="mt-2 text-[13px] leading-6 text-ink-muted">
-					Generate brand-new Markdown companion documents about a story. This tool is read-only — it
-					does not modify stories, archives, indexes, or exports. Standard JSON, Markdown, TXT, and
-					PDF exports remain unchanged.
+					Generate companion documents about a story — chapter-by-chapter podcast breakdowns,
+					thematic discussions, guides, and more. Optionally export podcast audio with Gemini TTS.
+					Read-only: stories, archives, and exports are never modified.
 				</p>
 			</Panel>
 
@@ -182,17 +214,55 @@ export function AiDocumentGeneratorTab() {
 					</div>
 
 					<div className="space-y-4">
-						<Field label="Document type">
-							<SelectInput
-								value={presetId}
-								onChange={(event) => setPresetId(event.target.value as AiDocumentPresetId)}
-								disabled={isGenerating}
+						<div className="grid gap-6 md:grid-cols-2">
+							<Field label="Document type">
+								<SelectInput
+									value={presetId}
+									onChange={(event) => setPresetId(event.target.value as AiDocumentPresetId)}
+									disabled={isGenerating}
+								>
+									{AI_DOCUMENT_PRESETS.map((preset) => (
+										<option key={preset.id} value={preset.id}>{preset.displayName}</option>
+									))}
+								</SelectInput>
+							</Field>
+							<Field label="Structure">
+								<SelectInput
+									value={structure}
+									onChange={(event) =>
+										setStructure(event.target.value as AiDocumentStructure)
+									}
+									disabled={isGenerating}
+								>
+									<option value="chapter-by-chapter">Chapter-by-chapter breakdown</option>
+									<option value="single">Single document</option>
+								</SelectInput>
+							</Field>
+						</div>
+
+						{selectedPreset.supportsGeminiTts ? (
+							<Field
+								label="Output"
+								hint={
+									hasGeminiKey
+										? "Gemini audio uses your Gemini API key"
+										: "Add a Gemini API key in Settings → AI for audio"
+								}
 							>
-								{AI_DOCUMENT_PRESETS.map((preset) => (
-									<option key={preset.id} value={preset.id}>{preset.displayName}</option>
-								))}
-							</SelectInput>
-						</Field>
+								<SelectInput
+									value={outputFormat}
+									onChange={(event) =>
+										setOutputFormat(event.target.value as AiDocumentOutputFormat)
+									}
+									disabled={isGenerating || (!hasGeminiKey && outputFormat === "markdown")}
+								>
+									<option value="markdown">Markdown document</option>
+									<option value="gemini-audio-wav" disabled={!hasGeminiKey}>
+										Gemini podcast audio (WAV)
+									</option>
+								</SelectInput>
+							</Field>
+						) : null}
 
 						{presetId === AI_DOCUMENT_CUSTOM_PRESET_ID ? (
 							<Field label="Custom instructions" hint="Describe the document to generate">
@@ -200,15 +270,20 @@ export function AiDocumentGeneratorTab() {
 									value={customPrompt}
 									onChange={(event) => setCustomPrompt(event.target.value)}
 									disabled={isGenerating}
-									placeholder="Example: A bullet-point production bible for adapting this story as a limited series."
+									placeholder="Example: A chapter-by-chapter podcast recap with a summary table at the end."
 								/>
 							</Field>
 						) : (
 							<div className="rounded-[8px] border border-divider/[0.35] bg-panel-muted/40 px-3.5 py-3 text-[12px] leading-6 text-ink-muted">
-								{getAiDocumentPreset(presetId).displayName} — output file:{" "}
+								{selectedPreset.displayName} — output:{" "}
 								<span className="font-medium text-ink-soft">
-									{buildAiDocumentFilename(getAiDocumentPreset(presetId).filenameStem)}
+									{buildAiDocumentFilename(selectedPreset.filenameStem, undefined, outputExtension)}
 								</span>
+								{structure === "chapter-by-chapter" ? (
+									<span className="block mt-1 text-[11px]">
+										Generates each chapter section separately, then summary, themes, and open questions.
+									</span>
+								) : null}
 							</div>
 						)}
 					</div>
