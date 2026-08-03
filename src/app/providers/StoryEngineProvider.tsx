@@ -79,6 +79,8 @@ import type {
   AIProvider,
   GenerateResponseResult,
 } from "../../lib/ai/types";
+import { fetchAIQuotaSnapshot } from "../../lib/ai/quota";
+import type { AIQuotaSnapshot } from "../../lib/ai/quota";
 import { getArchiveIndexStatus } from "../../lib/archiveIndexing";
 import {
   createSequelStoryStateData,
@@ -397,6 +399,10 @@ interface StoryEngineContextValue {
     defaultModels?: Partial<Record<AIProviderType, string>>;
   }) => Promise<AISettings>;
   validateAIConnection: (providerType?: AIProviderType) => Promise<void>;
+  getAIQuotaSnapshot: (input: {
+    providerType: AIProviderType;
+    model: string;
+  }) => Promise<AIQuotaSnapshot>;
   getStoryAIConfig: (storyId: string) => Promise<StoryAIConfig | null>;
   saveStoryAIConfig: (next: {
     storyId: string;
@@ -5169,6 +5175,15 @@ export function StoryEngineProvider({
         const { apiKey, model } = await resolveAIProfile(resolvedProviderType);
         const provider = createAIProvider(resolvedProviderType);
         await provider.validateConnection(apiKey, model);
+      },
+      async getAIQuotaSnapshot(input) {
+        const settings = await getNormalizedAISettings();
+        if (!settings) {
+          return fetchAIQuotaSnapshot(input.providerType, input.model, "");
+        }
+
+        const apiKey = settings.apiKeys?.[input.providerType]?.trim() ?? "";
+        return fetchAIQuotaSnapshot(input.providerType, input.model, apiKey);
       },
       getStoryAIConfig(storyId) {
         return repository.getStoryAIConfig(storyId);

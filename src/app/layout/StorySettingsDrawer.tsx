@@ -11,6 +11,7 @@ import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { RelationshipOverviewList } from "../../components/story/RelationshipOverviewList";
+import { StoryAIQuotaPanel } from "../../components/story/StoryAIQuotaPanel";
 import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
 import type { AIProviderType, AutoIndexInterval, AutoIndexMode, ExportFormat, RelationshipIndexEntry } from "../../types/models";
@@ -879,6 +880,12 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       ))}
                     </select>
                   </label>
+
+                  <StoryAIQuotaPanel
+                    providerType={aiProviderType}
+                    model={aiModel}
+                    enabled={storySettingsOpen}
+                  />
 
                   <Button type="submit" className="w-full" disabled={isSavingAI || isReadOnly}>
                     {isSavingAI ? "Saving..." : "Save AI Settings"}
