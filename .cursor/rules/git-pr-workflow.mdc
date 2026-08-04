@@ -1,0 +1,39 @@
+---
+description: Git branch and PR workflow — new branch after merge, never pile onto merged branches
+alwaysApply: true
+---
+
+# Git branch and PR workflow
+
+Follow these rules on every task unless the user explicitly overrides them in the current message.
+
+## After a PR is merged
+
+- Treat the feature branch as **closed**. Do not commit, push, or open new PRs on that branch.
+- Do not "continue" work on a branch whose PR has already been merged to `main` (or the base branch).
+
+## Starting new work
+
+1. `git fetch origin main`
+2. Check out and update `main`: `git checkout main && git pull origin main`
+3. Create a **new** branch from `main`:
+   - Prefix: `cursor/`
+   - Suffix: `-e62f`
+   - Example: `cursor/guided-director-beat-polish-e62f`
+4. One focused change set → one branch → one PR.
+
+## While a PR is open (not merged)
+
+- It is fine to add commits to the **same** branch to address review or fix CI on that PR.
+- Once the user merges the PR (or says it is merged), stop using that branch immediately.
+
+## PR hygiene
+
+- Do not reopen merged PRs for follow-up work; open a new PR from a new branch.
+- Prefer updating an open PR on its branch over creating duplicate PRs for the same work.
+- After merge conflicts with `main`, resolve on the **current** open PR branch if that PR is still open; if the PR was already merged, use a **new** branch from `main` instead.
+
+## Cloud / agent defaults
+
+- Do not assume an old branch name from context is still the right place to work.
+- Before committing, confirm the branch is appropriate: new work = new branch off latest `main`.

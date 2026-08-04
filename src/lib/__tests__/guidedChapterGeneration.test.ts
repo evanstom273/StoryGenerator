@@ -29,7 +29,7 @@ describe("guidedChapterGeneration", () => {
 		expect(plan?.chapters[1]?.scenesPerChapter).toBe(1);
 	});
 
-	it("blocks workspace generation while a chapter is still open", () => {
+	it("blocks workspace generation while the open chapter has no playable content", () => {
 		const messages: StoryMessage[] = [
 			{
 				id: "m1",
@@ -45,8 +45,33 @@ describe("guidedChapterGeneration", () => {
 
 		expect(canGenerateGuidedChaptersAtWorkspace(messages, chapters)).toEqual({
 			ok: false,
-			reason: "Finish or end the current chapter before generating new chapters.",
+			reason: "Play at least one scene in the current chapter before generating new chapters.",
 		});
+	});
+
+	it("allows workspace generation after AI-played chapter one without a formal chapter end", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "m1",
+				storyId: "s1",
+				role: "system",
+				content: "Chapter I.",
+				timestamp: "2026-01-01T00:00:00.000Z",
+				speakerType: "system",
+				chapterBoundary: { kind: "start", label: "Chapter I" },
+			},
+			{
+				id: "m2",
+				storyId: "s1",
+				role: "assistant",
+				content: "The shuttle doors hiss open onto the docking bay.",
+				timestamp: "2026-01-01T00:01:00.000Z",
+				speakerType: "narrator",
+			},
+		];
+		const chapters: StoryChapter[] = [];
+
+		expect(canGenerateGuidedChaptersAtWorkspace(messages, chapters)).toEqual({ ok: true });
 	});
 
 	it("allows eligible stories for guided generation", () => {

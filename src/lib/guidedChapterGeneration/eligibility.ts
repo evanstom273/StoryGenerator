@@ -1,5 +1,8 @@
 import type { Story, StoryChapter, StoryMessage } from "../../types/models";
-import { hasActiveOpenChapter } from "../storyText/chapterNavigation";
+import {
+	hasActiveOpenChapter,
+	hasSubstantiveContentInOpenChapter,
+} from "../storyText/chapterNavigation";
 
 export function isStoryEligibleForGuidedGeneration(story: Story | null | undefined): boolean {
 	if (!story) {
@@ -21,11 +24,16 @@ export function canGenerateGuidedChaptersAtWorkspace(
 	messages: StoryMessage[],
 	chapters: StoryChapter[],
 ): { ok: true } | { ok: false; reason: string } {
-	if (hasActiveOpenChapter(messages, chapters)) {
-		return {
-			ok: false,
-			reason: "Finish or end the current chapter before generating new chapters.",
-		};
+	if (!hasActiveOpenChapter(messages, chapters)) {
+		return { ok: true };
 	}
-	return { ok: true };
+
+	if (hasSubstantiveContentInOpenChapter(messages, chapters)) {
+		return { ok: true };
+	}
+
+	return {
+		ok: false,
+		reason: "Play at least one scene in the current chapter before generating new chapters.",
+	};
 }

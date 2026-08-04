@@ -56,6 +56,8 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Guided chapter generation maintains a per-chapter continuity ledger (docking bays, shuttles, meeting locations) so later beats do not contradict earlier assignments",
       "Guided Director beats use first-name staging, reject truncated model output, fix malformed endings, and require proper speaker headers during guided narration",
       "Workspace guided chapter generation references the last closed chapter transcript and archive summary so new chapters continue realistically from where the story left off",
+      "Workspace Generate Chapters is available for AI-started stories once chapter one has playable content, even without a formal chapter end",
+      "Generate Chapters action lives in the chat composer beside Send, Clear, and Generate Response",
       "Story settings background jobs label guided chapter generation separately from indexing",
       "Story export downloads include a local-time timestamp in the filename",
       "Archive Markdown table of contents uses explicit section anchors so links work in common Markdown viewers",
