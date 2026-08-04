@@ -61,20 +61,41 @@ function extractDirectorBeatField(content: string): string | null {
 	return null;
 }
 
+function trimStagingAtWordBoundary(text: string, maxLength: number): string {
+	const normalized = text.replace(/\s+/g, " ").trim();
+	if (normalized.length <= maxLength) {
+		return normalized;
+	}
+
+	const clipped = normalized.slice(0, maxLength);
+	const lastSpace = clipped.lastIndexOf(" ");
+	return (lastSpace > 40 ? clipped.slice(0, lastSpace) : clipped).trim();
+}
+
 function buildFallbackDirectorBeat(params: {
 	sceneOverview?: string;
 	chapterOverview: string;
 	sceneIndex: number;
 }): string {
 	const scenePlan = params.sceneOverview?.trim() || params.chapterOverview.trim();
-	const snippet = scenePlan.replace(/\s+/g, " ").trim().slice(0, 120);
-	const staging = snippet || `Scene ${params.sceneIndex} continues.`;
+	const firstSentence = scenePlan.match(/^[\s\S]*?[.!?](?:\s|$)/)?.[0]?.trim() ?? scenePlan;
+	const staging = trimStagingAtWordBoundary(firstSentence, 320);
+	if (!staging) {
+		return `*Scene ${params.sceneIndex} continues.*`;
+	}
+
 	const cleaned = staging.replace(/^\*+|\*+$/g, "").trim();
 	const polished = polishDirectorBeatStaging(cleaned);
 	if (polished) {
 		return polished;
 	}
+
 	const withPeriod = cleaned.endsWith(".") ? cleaned : `${cleaned}.`;
+	const repolished = polishDirectorBeatStaging(withPeriod);
+	if (repolished) {
+		return repolished;
+	}
+
 	return `*${withPeriod}*`;
 }
 
@@ -100,6 +121,7 @@ export async function generateDirectorBeat(params: {
 		"- Output ONE complete sentence inside asterisks in directorBeat. No 'Director:' prefix.",
 		"- Write the full staging note as one finished sentence. End with a single period. No trailing commas.",
 		"- FIRST NAMES ONLY: Kelly, Alara, Ed, Gordon, Claire, Bortus. Never write Lt., Dr., Commander, Captain, or full names like Alara Kitan.",
+		"- If many characters are present, use a group phrase (the squad, the senior staff) instead of listing every name — never end mid-name or mid-list.",
 		"- Stage what happens in THIS scene beat only — who gathers and what they discuss, not a script.",
 		"- Do not repeat prior scenes; advance the chapter overview.",
 		"- Use exact cast from the scene plan. Never substitute canon characters when the plan names someone else.",
@@ -137,7 +159,7 @@ export async function generateDirectorBeat(params: {
 				{ role: "system", content: system },
 				{ role: "user", content: user },
 			],
-			maxTokens: 512,
+			maxTokens: 1024,
 			temperature: 0.4,
 			jsonMode: true,
 		});
