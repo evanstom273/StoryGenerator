@@ -66,4 +66,39 @@ describe("storyStateV2 indexing merge", () => {
 			canon: ["Jamie is a wizard detective."],
 		});
 	});
+
+	it("replaces status bullets when incremental parse returns updated live state", () => {
+		const previous = {
+			updatedAt: "2026-01-01T00:00:00.000Z",
+			characters: {
+				"Charles Boyle": {
+					canonicalName: "Charles Boyle",
+					statusBullets: [
+						"Leaning over his desk eagerly watching the clock",
+						"Waiting for Wands at Four to begin",
+					],
+				},
+			},
+			worldFacts: [],
+			unresolvedThreads: [],
+		};
+
+		const incoming = {
+			updatedAt: "2026-01-02T00:00:00.000Z",
+			characters: {
+				"Charles Boyle": {
+					canonicalName: "Charles Boyle",
+					statusBullets: ["Transfigured into a plump brown hen by Jamie's Pullus spell"],
+				},
+			},
+			worldFacts: [],
+			unresolvedThreads: [],
+		};
+
+		const merged = mergeStoryStateForIndexing(previous, incoming, undefined);
+
+		expect(merged.characters?.["Charles Boyle"]?.statusBullets).toEqual([
+			"Transfigured into a plump brown hen by Jamie's Pullus spell",
+		]);
+	});
 });
