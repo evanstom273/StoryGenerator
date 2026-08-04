@@ -43,6 +43,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Indexing prompts now require richer NPC descriptions, transcript-backed world facts, and deduped relationship history; archive PDF transcript uses per-speaker blocks",
       "Per-message deep indexing no longer overwrites story memory with empty defaults when the model omits fields in a single-message response",
       "Story state counter sync and author-directive updates preserve existing indexes and rpStats instead of resetting to an empty shell",
+      "Major indexed characters now receive tracked status for archive/UI; ensemble casts get statusBullets for each on-screen character, with relationship-backed fallbacks when the model omits them",
       "Archive PDF export skips a full re-index when the story index already matches the live message count",
       "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",
       "Version wiring aligned to 3.0.0 across the app label, changelog, npm metadata, and Android release metadata",

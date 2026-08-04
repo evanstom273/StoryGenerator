@@ -6,10 +6,11 @@ import type {
 } from "../types/models";
 import { safeParseJsonObject } from "./ai/json";
 import {
-  buildCharacterAllowlist,
-  mergePerTurnRelationshipFields,
-  reconcileRelationshipEntries,
+	buildCharacterAllowlist,
+	mergePerTurnRelationshipFields,
+	reconcileRelationshipEntries,
 } from "./relationshipIndex";
+import { ensureIndexedCharacterStatus } from "./characterStatus";
 
 export function safeParseStoryStateData(json: string): StoryStateData | null {
   const parsed = safeParseJsonObject<StoryStateDataV2>(json.trim());
@@ -234,6 +235,54 @@ export function mergeStoryIndexesIncremental(
   } satisfies StoryIndexesV2;
 }
 
+function mergeCharacterStateMaps(
+	previous?: StoryStateData["characters"],
+	incoming?: StoryStateData["characters"],
+): StoryStateData["characters"] {
+	const prev =
+		previous && typeof previous === "object" && !Array.isArray(previous) ? previous : {};
+	const inc =
+		incoming && typeof incoming === "object" && !Array.isArray(incoming) ? incoming : {};
+	if (!Object.keys(prev).length && !Object.keys(inc).length) {
+		return {};
+	}
+
+	const merged: StoryStateData["characters"] = { ...prev };
+	for (const [name, entry] of Object.entries(inc)) {
+		if (!name.trim() || !entry || typeof entry !== "object") {
+			continue;
+		}
+		const existing = merged[name] ?? {};
+		const mergedBullets = mergeStringArrayPreserve(
+			(existing as { statusBullets?: string[] }).statusBullets,
+			(entry as { statusBullets?: string[] }).statusBullets,
+		);
+		const mergedTransient = mergeStringArrayPreserve(
+			(existing as { characterStateTransient?: string[] }).characterStateTransient,
+			(entry as { characterStateTransient?: string[] }).characterStateTransient,
+		);
+		const mergedStrengths = mergeStringArrayPreserve(
+			(existing as { strengths?: string[] }).strengths,
+			(entry as { strengths?: string[] }).strengths,
+		);
+		const mergedWeaknesses = mergeStringArrayPreserve(
+			(existing as { weaknesses?: string[] }).weaknesses,
+			(entry as { weaknesses?: string[] }).weaknesses,
+		);
+
+		merged[name] = {
+			...existing,
+			...entry,
+			...(mergedBullets ? { statusBullets: mergedBullets } : {}),
+			...(mergedTransient ? { characterStateTransient: mergedTransient } : {}),
+			...(mergedStrengths ? { strengths: mergedStrengths } : {}),
+			...(mergedWeaknesses ? { weaknesses: mergedWeaknesses } : {}),
+		};
+	}
+
+	return merged;
+}
+
 export function mergeStoryStateForIndexing(
   previous: StoryStateDataV2,
   incoming: StoryStateDataV2,
@@ -263,13 +312,7 @@ export function mergeStoryStateForIndexing(
     ...incoming,
     memoryArchitectureVersion: "2.0",
     updatedAt: incoming.updatedAt ?? previous.updatedAt,
-    characters: (mergeRecordPreserve(
-      previous.characters as Record<string, unknown> | undefined,
-      incoming.characters as Record<string, unknown> | undefined,
-    ) ??
-      previous.characters ??
-      incoming.characters ??
-      {}) as StoryStateData["characters"],
+    characters: mergeCharacterStateMaps(previous.characters, incoming.characters),
     worldFacts:
       mergeStringArrayPreserve(previous.worldFacts, incoming.worldFacts) ??
       previous.worldFacts ??
@@ -627,7 +670,9 @@ export function finalizeStoryStateForSave(params: {
           lastIndexedMessageCount: params.totalMessages,
         }, { indexedAt: params.now, memoryArchitectureVersion: "2.0" });
 
-  return JSON.stringify(stamped);
+  const withStatus = ensureIndexedCharacterStatus(stamped, { playerName: params.playerName });
+
+  return JSON.stringify(withStatus);
 }
 
 function trimStringArray(value: unknown, maxItems = 12): string[] | undefined {

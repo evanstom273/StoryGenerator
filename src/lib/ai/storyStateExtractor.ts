@@ -163,6 +163,8 @@ export function buildStoryStateExtractionPrompt({
       "- Use npcs to track recurring NPCs and what they remember.",
       "- NPC registry quality: indexes.characters.description, npcs.description, and characters.status/statusBullets must be specific and story-useful — never bare job titles or one-word labels.",
       "- For every NPC who appears or is clearly referenced in the transcript segment, update characters, npcs, and indexes.characters with role, manner, motive or agenda, ties to the player, and current story-relevant status when the transcript supports it.",
+      "- REQUIRED: every major or recurring character in indexes.characters who speaks or acts in the transcript MUST also have a characters.<name> entry with 1-4 statusBullets describing their current mood, posture, agenda, or story-relevant condition in this scene. Do not limit status tracking to the player and one supervisor — ensemble casts need status for each on-screen major character (e.g. the full squad, not just Jamie and Holt).",
+      "- statusBullets capture live scene state (waiting anxiously, disappointed, enforcing safety, etc.). indexes.characters.description captures stable role and characterization. Do not leave major speakers with registry descriptions but empty statusBullets.",
       "- Recurring or major NPC descriptions should be at least two substantive sentences when enough transcript evidence exists. Minor NPCs may be shorter but still concrete.",
       "- Use characters.status or statusBullets for live NPC conditions: injured, grieving, suspicious, hiding something, allied, hostile, captive, disguised, etc.",
       "- indexes.characters.description should match the same depth as the characters/npcs entry for that person, not a stripped-down label.",

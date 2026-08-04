@@ -4,6 +4,7 @@ import type { StoryMessage, StoryStateDataV2 } from "../../types/models";
 import { sortByTimestampAsc } from "../dates";
 import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storyStateExtractor";
 import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing } from "../storyStateV2";
+import { ensureIndexedCharacterStatus } from "../characterStatus";
 import { AIError } from "./errors";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
 import { getIndexingRequestConfig } from "./models";
@@ -274,11 +275,14 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     playerName: playerCharacter.name,
     universeImportedCharacters,
   });
-  const finalState = withIndexedMetadata({
-    ...currentState,
-    memoryArchitectureVersion: "2.0",
-    ...(finalIndexes ? { indexes: finalIndexes } : {}),
-  });
+  const finalState = ensureIndexedCharacterStatus(
+    withIndexedMetadata({
+      ...currentState,
+      memoryArchitectureVersion: "2.0",
+      ...(finalIndexes ? { indexes: finalIndexes } : {}),
+    }),
+    { playerName: playerCharacter.name },
+  );
   const finalJson = JSON.stringify(finalState);
 
   return {
