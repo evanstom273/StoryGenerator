@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canGenerateGuidedChaptersAtWorkspace, isStoryEligibleForGuidedGeneration } from "../guidedChapterGeneration/eligibility";
 import { normalizeGuidedChapterPlan } from "../guidedChapterGeneration/planGeneration";
+import { parseSceneOverviews, resolveScenesForChapter } from "../guidedChapterGeneration/parsePlanText";
 import { getGuidedChapterProgressPercent } from "../guidedChapterGeneration/guidedGenerationProgress";
 import type { Story, StoryChapter, StoryMessage } from "../../types/models";
 
@@ -97,5 +98,18 @@ describe("guidedChapterGeneration", () => {
 		});
 
 		expect(beat).toBe("*Kelly steps onto the shuttle deck.*");
+	});
+
+	it("parses Scene I / Scene II blocks from chapter overview", () => {
+		const overview =
+			"Scene I: Jamie meets Cmdr Grayson (Kelly) in her office.\nScene II: Jamie tours the bridge with Malloy.";
+		const scenes = parseSceneOverviews(overview);
+		expect(scenes).toEqual([
+			"Jamie meets Cmdr Grayson (Kelly) in her office.",
+			"Jamie tours the bridge with Malloy.",
+		]);
+		const resolved = resolveScenesForChapter(overview, 3);
+		expect(resolved.sceneCount).toBe(2);
+		expect(resolved.scenes[0]).toContain("Kelly");
 	});
 });

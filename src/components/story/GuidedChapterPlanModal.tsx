@@ -202,7 +202,7 @@ export function GuidedChapterPlanModal(props: {
 					</div>
 
 					<div className="mt-6 min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
-						<Field label="Overall direction" hint="Required">
+						<Field label="Overall direction" hint="Required · e.g. Chapter I: Jamie arrives aboard">
 							<TextAreaInput
 								value={overallDirection}
 								onChange={(event) => setOverallDirection(event.target.value)}
@@ -250,7 +250,7 @@ export function GuidedChapterPlanModal(props: {
 								>
 									<div className="text-sm font-semibold text-ink">{chapter.label}</div>
 									<div className="mt-4 grid gap-4 lg:grid-cols-[1fr_140px]">
-										<Field label="Chapter overview" hint="Required">
+										<Field label="Chapter overview" hint="Required · use Scene I:, Scene II:, … for each beat">
 											<TextAreaInput
 												value={chapter.overview}
 												onChange={(event) =>
@@ -262,7 +262,7 @@ export function GuidedChapterPlanModal(props: {
 														),
 													)
 												}
-												placeholder="Key beats and outcomes for this chapter only."
+												placeholder="Scene I: Jamie meets Cmdr Grayson (Kelly) in her office.\nScene II: ..."
 											/>
 										</Field>
 										<Field label="Scenes per chapter" hint={`${GUIDED_CHAPTER_MIN_SCENES}–${GUIDED_CHAPTER_MAX_SCENES}`}>

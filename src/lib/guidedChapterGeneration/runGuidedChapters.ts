@@ -13,6 +13,7 @@ import {
 } from "./chapterLabels";
 import { generateDirectorBeat } from "./directorBeat";
 import type { AIProvider } from "../ai/types";
+import { parseOverallChapterDirections, resolveScenesForChapter, stripChapterHeadingPrefix } from "./parsePlanText";
 
 export type GuidedChapterProgressChapter = {
 	label: string;
@@ -32,6 +33,7 @@ export type GuidedChapterSendContext = {
 	overallDirection?: string;
 	chapterOverview?: string;
 	chapterLabel?: string;
+	sceneOverview?: string;
 };
 
 type SendChatMessageFn = (
@@ -98,12 +100,23 @@ export async function runGuidedChapterGeneration(params: {
 		});
 	};
 
+	const chapterDirections = parseOverallChapterDirections(plan.overallDirection ?? "");
+
 	for (let chapterIndex = 0; chapterIndex < plan.chapters.length; chapterIndex += 1) {
 		if (params.signal?.aborted) {
 			throw new Error("Guided chapter generation aborted.");
 		}
 
-		const chapter = plan.chapters[chapterIndex]!;
+		const rawChapter = plan.chapters[chapterIndex]!;
+		const normalizedChapter = stripChapterHeadingPrefix(rawChapter.label, rawChapter.overview);
+		const chapter = {
+			...rawChapter,
+			label: normalizedChapter.label || rawChapter.label,
+			overview:
+				chapterDirections[normalizedChapter.label] ||
+				normalizedChapter.overview ||
+				rawChapter.overview,
+		};
 		const chapterContext: GuidedChapterSendContext = {
 			overallDirection: plan.overallDirection,
 			chapterOverview: chapter.overview,
@@ -113,13 +126,21 @@ export async function runGuidedChapterGeneration(params: {
 		chapterStatuses[chapterIndex]!.status = "active";
 		report("generating", chapterIndex + 1, `Starting ${chapter.label}…`, chapter.label);
 
-		await saveChapterStartSystemMessage(params.repository, storyId, chapter.label);
-		if (params.onTranscriptChange) {
-			await params.onTranscriptChange();
+		const shouldPostChapterStart =
+			params.entry === "workspace" || (params.entry === "story_history" && chapterIndex > 0);
+
+		if (shouldPostChapterStart) {
+			await saveChapterStartSystemMessage(params.repository, storyId, chapter.label);
+			if (params.onTranscriptChange) {
+				await params.onTranscriptChange();
+			}
 		}
 
-		const scenes = Math.max(1, Math.min(10, chapter.scenesPerChapter));
-		for (let sceneIndex = 0; sceneIndex < scenes; sceneIndex += 1) {
+		const { scenes, sceneCount } = resolveScenesForChapter(
+			chapter.overview,
+			chapter.scenesPerChapter,
+		);
+		for (let sceneIndex = 0; sceneIndex < sceneCount; sceneIndex += 1) {
 			if (params.signal?.aborted) {
 				throw new Error("Guided chapter generation aborted.");
 			}
@@ -127,9 +148,15 @@ export async function runGuidedChapterGeneration(params: {
 			report(
 				"generating",
 				chapterIndex + 1,
-				`${chapter.label}: scene ${sceneIndex + 1}/${scenes}`,
+				`${chapter.label}: scene ${sceneIndex + 1}/${sceneCount}`,
 				chapter.label,
 			);
+
+			const sceneOverview = scenes[sceneIndex] ?? chapter.overview;
+			const sceneContext: GuidedChapterSendContext = {
+				...chapterContext,
+				sceneOverview,
+			};
 
 			const directorBeat = await generateDirectorBeat({
 				provider: params.provider,
@@ -137,8 +164,9 @@ export async function runGuidedChapterGeneration(params: {
 				model: params.model,
 				chapterLabel: chapter.label,
 				chapterOverview: chapter.overview,
+				sceneOverview,
 				sceneIndex: sceneIndex + 1,
-				sceneCount: scenes,
+				sceneCount,
 				overallDirection: plan.overallDirection,
 				playerName,
 			});
@@ -147,7 +175,7 @@ export async function runGuidedChapterGeneration(params: {
 				signal: params.signal,
 				guidedGenerationInternal: true,
 				directorStagingNote: directorBeat,
-				guidedChapterContext: chapterContext,
+				guidedChapterContext: sceneContext,
 				onChunk: params.onStreamingChunk,
 				onChunkReset: params.onStreamingReset,
 			});
@@ -160,7 +188,7 @@ export async function runGuidedChapterGeneration(params: {
 					break;
 				}
 				const assistantWords = last.content.split(/\s+/).filter(Boolean).length;
-				if (assistantWords >= 80 || sceneIndex === scenes - 1) {
+				if (assistantWords >= 80 || sceneIndex === sceneCount - 1) {
 					break;
 				}
 				await params.sendChatMessage(storyId, "Continue", {

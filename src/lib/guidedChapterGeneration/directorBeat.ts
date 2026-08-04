@@ -29,6 +29,7 @@ export async function generateDirectorBeat(params: {
 	model: string;
 	chapterLabel: string;
 	chapterOverview: string;
+	sceneOverview?: string;
 	sceneIndex: number;
 	sceneCount: number;
 	overallDirection?: string;
@@ -43,16 +44,21 @@ export async function generateDirectorBeat(params: {
 		"- The AI narrator will realize the scene; include cast participation and player character actions when needed.",
 		"- Do not repeat prior scenes; advance the chapter overview.",
 		"- Keep under 120 words.",
-		"- Use exact names from the overall direction. Never substitute canon characters when the direction names someone else.",
+		"- Use exact names from the overall direction and scene plan. Never substitute canon characters when the plan names someone else (e.g. use Kelly Grayson, not Alara Kitan).",
+		"- If the scene plan names who appears, those are the required cast for this beat.",
 	].join("\n");
 
+	const scenePlan = params.sceneOverview?.trim() || params.chapterOverview.trim();
 	const user = [
 		`Player character: ${params.playerName}`,
 		`Chapter: ${params.chapterLabel}`,
 		`Scene ${params.sceneIndex} of ${params.sceneCount}`,
 		"",
-		"Chapter overview:",
-		params.chapterOverview.trim(),
+		"This scene plan (mandatory):",
+		scenePlan.trim(),
+		params.chapterOverview.trim() && scenePlan.trim() !== params.chapterOverview.trim()
+			? `\n\nFull chapter overview:\n${params.chapterOverview.trim()}`
+			: "",
 		params.overallDirection?.trim()
 			? `\n\nOverall direction:\n${params.overallDirection.trim()}`
 			: "",

@@ -116,6 +116,7 @@ export interface BuildStoryChatContextInput {
     overallDirection?: string;
     chapterOverview?: string;
     chapterLabel?: string;
+    sceneOverview?: string;
   };
   rpStats?: RpStats | null;
   rpConfig?: RpConfig | null;
@@ -497,6 +498,9 @@ export function buildStoryChatContext({
       guidedChapterContext?.chapterOverview?.trim()
         ? `Chapter overview:\n${guidedChapterContext.chapterOverview.trim()}`
         : "",
+      guidedChapterContext?.sceneOverview?.trim()
+        ? `This scene plan (mandatory):\n${guidedChapterContext.sceneOverview.trim()}`
+        : "",
     ].filter(Boolean);
     if (!parts.length) {
       return "";
@@ -504,7 +508,8 @@ export function buildStoryChatContext({
     return [
       "Guided chapter generation constraints:",
       ...parts,
-      "Honor every name, alias, and spelling above. Do not substitute canon characters when the direction names someone else.",
+      "Honor every name, alias, and spelling above. If the plan says Kelly Grayson (or Kelly), do NOT substitute Alara Kitan or other canon Security chiefs.",
+      "Only introduce characters named in the plan for this scene unless the transcript already established them.",
       "Never prefix narration lines with 'Narrator:' inside your reply — the transcript parser adds speaker labels.",
     ].join("\n\n");
   })();
