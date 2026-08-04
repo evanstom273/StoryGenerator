@@ -9,8 +9,8 @@ import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices"
 import {
 	buildCharacterGenderHintsFromStoryState,
 } from "../../lib/ai/characterTtsVoices";
+import { createStoryExportFilename, buildStoryAudiobookFilename } from "../../lib/exportFilename";
 import {
-	buildStoryAudiobookFilename,
 	listStoryAudiobookChapterSegments,
 	synthesizeStoryAudiobookWav,
 } from "../../lib/ai/storyAudiobook";
@@ -75,24 +75,6 @@ function reportArchivePdfDebug(args: {
     }),
   }).catch(() => {});
   // #endregion
-}
-
-function createExportFilename(title: string, format: ExportFormat) {
-  const sanitizedTitle = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  const suffix = format === "archive_pdf" || format === "markdown" ? "-archive" : "";
-  const extension =
-    format === "json"
-      ? "json"
-      : format === "markdown"
-        ? "md"
-        : format === "pdf" || format === "archive_pdf"
-          ? "pdf"
-          : "txt";
-  return `${sanitizedTitle || "story-engine-story"}${suffix}.${extension}`;
 }
 
 function trimStringList(value: unknown, maxItems: number) {
@@ -547,7 +529,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       });
       // #endregion
       setExportStage(stages[stages.length - 1]);
-      await downloadFile(createExportFilename(story.title, format), content, mimeType);
+      await downloadFile(createStoryExportFilename(story.title, format), content, mimeType);
       // #region debug-point archive-pdf-no-op:download-ok
       reportArchivePdfDebug({
         hypothesisId: "D",

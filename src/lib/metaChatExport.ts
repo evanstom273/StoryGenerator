@@ -1,8 +1,11 @@
 import { jsPDF } from "jspdf";
 import type { StoryMetaMessage } from "../types/models";
 import { formatDateTime } from "./dates";
+import { createMetaChatExportFilename } from "./exportFilename";
 
 export type MetaChatExportFormat = "json" | "markdown" | "txt" | "pdf";
+
+export { createMetaChatExportFilename };
 
 type MetaChatExportPayload = {
   storyTitle: string;
@@ -12,15 +15,6 @@ type MetaChatExportPayload = {
 
 function getMetaChatSpeakerLabel(message: StoryMetaMessage) {
   return message.role === "assistant" ? "MetaChat" : message.role === "system" ? "System" : "You";
-}
-
-export function createMetaChatExportFilename(title: string, format: MetaChatExportFormat) {
-  const sanitizedTitle = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  const extension = format === "markdown" ? "md" : format;
-  return `${sanitizedTitle || "story-engine"}-meta-chat.${extension}`;
 }
 
 function toJson(payload: MetaChatExportPayload) {

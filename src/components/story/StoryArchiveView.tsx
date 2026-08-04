@@ -95,7 +95,7 @@ export function StoryArchiveView({
     return () => {
       cancelled = true;
     };
-  }, [fetchStoryState, storyId]);
+  }, [fetchStoryState, storyId, rebuildStatus, relationshipsRefreshKey]);
 
   useEffect(() => {
     let cancelled = false;

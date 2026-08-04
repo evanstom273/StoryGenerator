@@ -292,15 +292,7 @@ export async function synthesizeStoryAudiobookWav(params: {
 	return encodePcm16ToWav(concatPcm16(pcmParts));
 }
 
-export function buildStoryAudiobookFilename(storyTitle: string) {
-	const slug = storyTitle
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 80);
-	return `${slug || "story"}-story-audiobook.wav`;
-}
+export { buildStoryAudiobookFilename } from "../exportFilename";
 
 export async function computeStoryAudiobookPreparedDigest(
 	playId: string,

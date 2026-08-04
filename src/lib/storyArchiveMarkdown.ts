@@ -1,5 +1,5 @@
 import type { StoryExportBundle } from "../types/models";
-import { buildStoryArchiveContent } from "./storyArchiveContent";
+import { buildStoryArchiveContent, type StoryArchiveContent } from "./storyArchiveContent";
 
 function escapeMarkdownInline(value: string): string {
 	return value.replace(/\r\n/g, "\n").trim();
@@ -9,11 +9,32 @@ function formatEvidenceSuffix(evidence: string): string {
 	return evidence ? ` ${evidence}` : "";
 }
 
-function section(title: string, body: string): string {
+function markdownHeadingId(title: string): string {
+	return title
+		.trim()
+		.toLowerCase()
+		.replace(/[^\w\s-]/g, "")
+		.replace(/\s+/g, "-")
+		.replace(/-+/g, "-")
+		.replace(/^-+|-+$/g, "");
+}
+
+type ArchiveMarkdownSection = {
+	id: string;
+	title: string;
+	body: string;
+};
+
+function sectionBlock(id: string, title: string, body: string): ArchiveMarkdownSection | null {
 	if (!body.trim()) {
-		return "";
+		return null;
 	}
-	return `## ${title}\n\n${body.trim()}\n`;
+
+	return {
+		id,
+		title,
+		body: `<a id="${id}"></a>\n\n## ${title}\n\n${body.trim()}\n`,
+	};
 }
 
 function bulletList(items: string[]): string {
@@ -32,37 +53,24 @@ function numberedList(rows: Array<{ text: string; evidence: string }>): string {
 		.join("\n");
 }
 
-function buildTableOfContents(content: ReturnType<typeof buildStoryArchiveContent>): string {
-	const links: string[] = [
-		"- [Metadata](#metadata)",
-		"- [Story Summary](#story-summary)",
-		"- [Transcript](#transcript)",
-	];
-	if (content.characters.length) {
-		links.push("- [Characters](#characters)");
-	}
-	if (content.relationships.length) {
-		links.push("- [Relationships](#relationships)");
-	}
-	if (content.worldFacts.length) {
-		links.push("- [World Facts](#world-facts)");
-	}
-	if (content.openThreads.length) {
-		links.push("- [Active Threads](#active-threads)");
-	}
-	if (content.significantMemories.length) {
-		links.push("- [Significant Memories](#significant-memories)");
-	}
-	if (content.locations.length) {
-		links.push("- [Locations](#locations)");
-	}
-	if (content.chapters.length) {
-		links.push("- [Chapters](#chapters)");
-	}
-	return `## Contents\n\n${links.join("\n")}`;
+function buildTableOfContents(sections: ArchiveMarkdownSection[]): string {
+	const links = sections.map((section) => `- [${section.title}](#${section.id})`);
+	return `<a id="contents"></a>\n\n## Contents\n\n${links.join("\n")}`;
 }
 
-function buildMetadataSection(content: ReturnType<typeof buildStoryArchiveContent>): string {
+function hasSummaryContent(content: StoryArchiveContent): boolean {
+	const { premise, protagonistFocus, currentSituation, recentDevelopments, fallbackSummary } =
+		content.summary;
+	return Boolean(
+		premise ||
+			protagonistFocus ||
+			currentSituation ||
+			recentDevelopments.length ||
+			fallbackSummary,
+	);
+}
+
+function buildMetadataBody(content: StoryArchiveContent): string {
 	const lines = [
 		`| Field | Value |`,
 		`| --- | --- |`,
@@ -77,10 +85,10 @@ function buildMetadataSection(content: ReturnType<typeof buildStoryArchiveConten
 		lines.push(`| Indexed messages | ${content.metadata.indexedMessages} |`);
 	}
 	lines.push(`| Transcript messages | ${content.metadata.transcriptMessages} |`);
-	return section("Metadata", lines.join("\n"));
+	return lines.join("\n");
 }
 
-function buildSummarySection(content: ReturnType<typeof buildStoryArchiveContent>): string {
+function buildSummaryBody(content: StoryArchiveContent): string {
 	const blocks: string[] = [];
 	const { premise, protagonistFocus, currentSituation, recentDevelopments, fallbackSummary } =
 		content.summary;
@@ -100,12 +108,12 @@ function buildSummarySection(content: ReturnType<typeof buildStoryArchiveContent
 	if (!blocks.length && fallbackSummary) {
 		blocks.push(escapeMarkdownInline(fallbackSummary));
 	}
-	return section("Story Summary", blocks.join("\n\n"));
+	return blocks.join("\n\n");
 }
 
-function buildTranscriptSection(content: ReturnType<typeof buildStoryArchiveContent>): string {
+function buildTranscriptBody(content: StoryArchiveContent): string {
 	if (!content.transcript.length) {
-		return section("Transcript", "_No conversation history yet._");
+		return "_No conversation history yet._";
 	}
 
 	const lines: string[] = [];
@@ -139,127 +147,143 @@ function buildTranscriptSection(content: ReturnType<typeof buildStoryArchiveCont
 		appendChapterEnd(lastMessageNumber);
 	}
 
-	return section("Transcript", lines.join("\n\n"));
+	return lines.join("\n\n");
 }
 
-function buildCharactersSection(content: ReturnType<typeof buildStoryArchiveContent>): string {
+function buildCharactersBody(content: StoryArchiveContent): string {
 	if (!content.characters.length) {
 		return "";
 	}
 
-	const blocks = content.characters.map((entry) => {
-		const meta: string[] = [];
-		if (entry.aliases.length) {
-			meta.push(`**Aliases:** ${entry.aliases.join(", ")}`);
-		}
-		if (entry.firstSeenMessage) {
-			meta.push(`**First seen:** Message ${entry.firstSeenMessage}`);
-		}
-		if (entry.lastSeenMessage) {
-			meta.push(`**Last seen:** Message ${entry.lastSeenMessage}`);
-		}
-		if (entry.evidence) {
-			meta.push(`**Evidence:** ${entry.evidence}`);
-		}
+	return content.characters
+		.map((entry) => {
+			const meta: string[] = [];
+			if (entry.aliases.length) {
+				meta.push(`**Aliases:** ${entry.aliases.join(", ")}`);
+			}
+			if (entry.firstSeenMessage) {
+				meta.push(`**First seen:** Message ${entry.firstSeenMessage}`);
+			}
+			if (entry.lastSeenMessage) {
+				meta.push(`**Last seen:** Message ${entry.lastSeenMessage}`);
+			}
+			if (entry.evidence) {
+				meta.push(`**Evidence:** ${entry.evidence}`);
+			}
 
-		const parts = [`### ${entry.name}`];
-		if (entry.description) {
-			parts.push(escapeMarkdownInline(entry.description));
-		}
-		if (entry.statusLines.length) {
-			parts.push(`**Status**\n\n${bulletList(entry.statusLines)}`);
-		}
-		if (meta.length) {
-			parts.push(meta.join("\n"));
-		}
-		return parts.join("\n\n");
-	});
-
-	return section("Characters", blocks.join("\n\n---\n\n"));
+			const parts = [`### ${entry.name}`];
+			if (entry.description) {
+				parts.push(escapeMarkdownInline(entry.description));
+			}
+			if (entry.statusLines.length) {
+				parts.push(`**Status**\n\n${bulletList(entry.statusLines)}`);
+			}
+			if (meta.length) {
+				parts.push(meta.join("\n"));
+			}
+			return parts.join("\n\n");
+		})
+		.join("\n\n---\n\n");
 }
 
-function buildRelationshipsSection(content: ReturnType<typeof buildStoryArchiveContent>): string {
+function buildRelationshipsBody(content: StoryArchiveContent): string {
 	if (!content.relationships.length) {
 		return "";
 	}
 
-	const blocks = content.relationships.map((entry) => {
-		const parts = [`### ${entry.a} ↔ ${entry.b}`];
-		if (entry.tier && entry.tier !== "stranger") {
-			parts.push(`**Tier:** ${entry.tier.charAt(0).toUpperCase()}${entry.tier.slice(1)}`);
-		}
-		if (entry.summary) {
-			parts.push(escapeMarkdownInline(entry.summary));
-		}
-		if (entry.history.length) {
-			parts.push(
-				entry.history.map((beat, index) => `${index + 1}. ${beat}`).join("\n"),
-			);
-		}
-		if (entry.evidence) {
-			parts.push(`**Evidence:** ${entry.evidence}`);
-		}
-		return parts.join("\n\n");
-	});
-
-	return section("Relationships", blocks.join("\n\n---\n\n"));
+	return content.relationships
+		.map((entry) => {
+			const parts = [`### ${entry.a} ↔ ${entry.b}`];
+			if (entry.tier && entry.tier !== "stranger") {
+				parts.push(`**Tier:** ${entry.tier.charAt(0).toUpperCase()}${entry.tier.slice(1)}`);
+			}
+			if (entry.summary) {
+				parts.push(escapeMarkdownInline(entry.summary));
+			}
+			if (entry.history.length) {
+				parts.push(entry.history.map((beat, index) => `${index + 1}. ${beat}`).join("\n"));
+			}
+			if (entry.evidence) {
+				parts.push(`**Evidence:** ${entry.evidence}`);
+			}
+			return parts.join("\n\n");
+		})
+		.join("\n\n---\n\n");
 }
 
-function buildLocationsSection(content: ReturnType<typeof buildStoryArchiveContent>): string {
+function buildLocationsBody(content: StoryArchiveContent): string {
 	if (!content.locations.length) {
 		return "";
 	}
 
-	const blocks = content.locations.map((entry) => {
-		const parts = [`### ${entry.name}`];
-		if (entry.description) {
-			parts.push(escapeMarkdownInline(entry.description));
-		}
-		if (entry.evidence) {
-			parts.push(`**Evidence:** ${entry.evidence}`);
-		}
-		return parts.join("\n\n");
-	});
-
-	return section("Locations", blocks.join("\n\n"));
+	return content.locations
+		.map((entry) => {
+			const parts = [`### ${entry.name}`];
+			if (entry.description) {
+				parts.push(escapeMarkdownInline(entry.description));
+			}
+			if (entry.evidence) {
+				parts.push(`**Evidence:** ${entry.evidence}`);
+			}
+			return parts.join("\n\n");
+		})
+		.join("\n\n");
 }
 
-function buildChaptersSection(content: ReturnType<typeof buildStoryArchiveContent>): string {
+function buildChaptersBody(content: StoryArchiveContent): string {
 	if (!content.chapters.length) {
 		return "";
 	}
 
-	const blocks = content.chapters.map((chapter) => {
-		const parts = [`### ${chapter.label}`];
-		if (chapter.endsAtIndex) {
-			parts.push(`**Ends at message:** ${chapter.endsAtIndex}`);
-		}
-		if (chapter.summary) {
-			parts.push(chapter.summary);
-		}
-		return parts.join("\n\n");
-	});
+	return content.chapters
+		.map((chapter) => {
+			const parts = [`### ${chapter.label}`];
+			if (chapter.endsAtIndex) {
+				parts.push(`**Ends at message:** ${chapter.endsAtIndex}`);
+			}
+			if (chapter.summary) {
+				parts.push(chapter.summary);
+			}
+			return parts.join("\n\n");
+		})
+		.join("\n\n---\n\n");
+}
 
-	return section("Chapters", blocks.join("\n\n---\n\n"));
+function buildArchiveMarkdownSections(content: StoryArchiveContent): ArchiveMarkdownSection[] {
+	const sections: ArchiveMarkdownSection[] = [];
+
+	const push = (title: string, body: string) => {
+		const block = sectionBlock(markdownHeadingId(title), title, body);
+		if (block) {
+			sections.push(block);
+		}
+	};
+
+	push("Metadata", buildMetadataBody(content));
+	if (hasSummaryContent(content)) {
+		push("Story Summary", buildSummaryBody(content));
+	}
+	push("Transcript", buildTranscriptBody(content));
+	push("Characters", buildCharactersBody(content));
+	push("Relationships", buildRelationshipsBody(content));
+	push("World Facts", numberedList(content.worldFacts));
+	push("Active Threads", numberedList(content.openThreads));
+	push("Significant Memories", numberedList(content.significantMemories));
+	push("Locations", buildLocationsBody(content));
+	push("Chapters", buildChaptersBody(content));
+
+	return sections;
 }
 
 export function serializeStoryArchiveMarkdown(bundle: StoryExportBundle): string {
 	const content = buildStoryArchiveContent(bundle);
+	const sections = buildArchiveMarkdownSections(content);
 
-	const sections = [
+	const blocks = [
 		`# ${content.title}`,
-		buildTableOfContents(content),
-		buildMetadataSection(content),
-		buildSummarySection(content),
-		buildTranscriptSection(content),
-		buildCharactersSection(content),
-		buildRelationshipsSection(content),
-		section("World Facts", numberedList(content.worldFacts)),
-		section("Active Threads", numberedList(content.openThreads)),
-		section("Significant Memories", numberedList(content.significantMemories)),
-		buildLocationsSection(content),
-		buildChaptersSection(content),
-	].filter((block) => block.trim());
+		buildTableOfContents(sections),
+		...sections.map((section) => section.body),
+	];
 
-	return `${sections.join("\n\n")}\n`;
+	return `${blocks.join("\n\n")}\n`;
 }
