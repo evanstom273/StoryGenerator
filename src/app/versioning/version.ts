@@ -48,6 +48,8 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Character status bullets now replace prior live-state bullets on each index update instead of accumulating stale conditions from earlier beats",
       "Archive PDF export skips a full re-index when the story index already matches the live message count",
       "Markdown export now mirrors the archive PDF (summary, transcript, characters, relationships, world facts, threads, memories, locations, and chapters) with a navigable table of contents",
+      "Guided chapter generation: optional Story History when creating a story and a Generate Chapters workspace action between closed chapters (Director beats, narration, chapter ends, incremental indexing per chapter)",
+      "Guided chapter planner modal with overall direction, chapter count, per-chapter overviews, scenes-per-chapter, and optional AI chapter-plan generation",
       "Story export downloads include a local-time timestamp in the filename",
       "Archive Markdown table of contents uses explicit section anchors so links work in common Markdown viewers",
       "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",

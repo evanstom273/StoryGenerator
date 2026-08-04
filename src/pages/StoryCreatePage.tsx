@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
@@ -9,6 +9,9 @@ import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import type { AIProviderType, PlayerCharacterDraft } from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
+import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
+import { resolveUpcomingChapterLabels } from "../lib/guidedChapterGeneration/chapterLabels";
+import type { GuidedChapterPlan } from "../lib/guidedChapterGeneration/types";
 
 const initialFormState = {
   title: "",
@@ -51,6 +54,7 @@ export function StoryCreatePage() {
     getStoryAIConfig,
     getStoryById,
     getUniverseById,
+    generateGuidedChapterPlan,
     universes,
     getPlayerCharactersForUniverse,
     saveStoryAIConfig,
@@ -76,6 +80,31 @@ export function StoryCreatePage() {
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [storyHistoryEnabled, setStoryHistoryEnabled] = useState(false);
+  const [storyHistoryPlan, setStoryHistoryPlan] = useState<GuidedChapterPlan | null>(null);
+  const [showStoryHistoryModal, setShowStoryHistoryModal] = useState(false);
+  const resolveCreateChapterLabels = useCallback(
+    (count: number) => resolveUpcomingChapterLabels([], [], count),
+    [],
+  );
+  const selectedUniverseName = useMemo(() => {
+    const selectedIds =
+      formState.universeIds.length > 0
+        ? formState.universeIds
+        : formState.universeId
+          ? [formState.universeId]
+          : [];
+    return selectedIds
+      .map((universeId) => getUniverseById(universeId)?.name)
+      .filter(Boolean)
+      .join(", ");
+  }, [formState.universeId, formState.universeIds, getUniverseById]);
+  const selectedPlayerName = useMemo(() => {
+    if (protagonistMode === "quick") {
+      return quickCharacterState.name.trim();
+    }
+    return getPlayerCharacterById(formState.playerCharacterId)?.name ?? "Player";
+  }, [formState.playerCharacterId, getPlayerCharacterById, protagonistMode, quickCharacterState.name]);
   const sourceMode = branchFromId ? "branch" : sequelToId ? "sequel" : null;
   const sourceStory = sourceMode
     ? getStoryById(sourceMode === "branch" ? branchFromId : sequelToId)
@@ -224,6 +253,11 @@ export function StoryCreatePage() {
       return;
     }
 
+    if (storyHistoryEnabled && !storyHistoryPlan) {
+      setErrorMessage("Configure the generated story history plan before creating the story.");
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -282,6 +316,19 @@ export function StoryCreatePage() {
             currentSummary: formState.currentSummary.trim(),
             matureFictionMode: formState.matureFictionMode,
             rpMode: formState.rpMode,
+            guidedStoryHistory:
+              storyHistoryEnabled && storyHistoryPlan
+                ? {
+                    enabled: true,
+                    overallDirection: storyHistoryPlan.overallDirection,
+                    chapterCount: storyHistoryPlan.chapters.length,
+                    chapters: storyHistoryPlan.chapters.map((chapter) => ({
+                      label: chapter.label,
+                      overview: chapter.overview,
+                      scenesPerChapter: chapter.scenesPerChapter,
+                    })),
+                  }
+                : undefined,
           });
 
       if (!isDerivedMode && protagonistMode === "quick") {
@@ -865,6 +912,41 @@ export function StoryCreatePage() {
                 </Field>
               </div>
             ) : null}
+
+            {!isDerivedMode ? (
+              <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]" padding="lg">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                  Story History
+                </div>
+                <p className="mt-3 text-sm leading-7 text-ink-muted">
+                  Optionally generate backstory chapters before play begins. Story Engine stages Director beats,
+                  narrates scenes, indexes each chapter, then inserts a divider and opens the playable chapter.
+                </p>
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Button
+                    type="button"
+                    variant={storyHistoryEnabled ? "secondary" : "ghost"}
+                    onClick={() => {
+                      setStoryHistoryEnabled((current) => {
+                        if (current) {
+                          setStoryHistoryPlan(null);
+                        }
+                        return !current;
+                      });
+                    }}
+                  >
+                    {storyHistoryEnabled ? "Story history enabled" : "Enable story history"}
+                  </Button>
+                  {storyHistoryEnabled ? (
+                    <Button type="button" variant="secondary" onClick={() => setShowStoryHistoryModal(true)}>
+                      {storyHistoryPlan
+                        ? `Plan ready · ${storyHistoryPlan.chapters.length} chapters`
+                        : "Configure Story History"}
+                    </Button>
+                  ) : null}
+                </div>
+              </Panel>
+            ) : null}
           </div>
 
           {errorMessage ? (
@@ -896,6 +978,30 @@ export function StoryCreatePage() {
           </div>
         </form>
       </Panel>
+
+      <GuidedChapterPlanModal
+        open={showStoryHistoryModal}
+        onClose={() => setShowStoryHistoryModal(false)}
+        title="Plan generated story history"
+        description="These chapters become canon backstory before the playable story begins at the next chapter banner."
+        submitLabel="Save Story History Plan"
+        initialOverallDirection={formState.currentSummary}
+        resolveChapterLabels={resolveCreateChapterLabels}
+        onGeneratePlan={async ({ overallDirection, chapterLabels }) => {
+          const plan = await generateGuidedChapterPlan({
+            overallDirection,
+            chapterLabels,
+            universeName: selectedUniverseName || "Universe",
+            playerName: selectedPlayerName,
+            currentSituation: formState.currentSummary.trim() || undefined,
+          });
+          return plan?.chapters ?? null;
+        }}
+        onSubmit={async (plan) => {
+          setStoryHistoryPlan(plan);
+          setStoryHistoryEnabled(true);
+        }}
+      />
     </div>
   );
 }

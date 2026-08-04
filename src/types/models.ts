@@ -25,6 +25,7 @@ export type BackgroundJobStatus =
   | "cancelled";
 export type BackgroundJobType =
   | "story_index"
+  | "guided_chapter_generate"
   | "metachat_generate"
   | "story_export"
   | "story_archive_export";
@@ -218,6 +219,11 @@ export interface Story {
   accentThemeKey?: string;
   accentThemeCustom?: string;
   currentSummary: string;
+  guidedGenerationMeta?: {
+    historyChapterCount?: number;
+    historyDividerMessageId?: string;
+    lastGuidedBatchAt?: Timestamp;
+  };
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -345,6 +351,15 @@ export interface BackgroundJob {
     metaChatOpenOnComplete?: boolean;
     metaChatReferences?: MetaChatReference[];
     exportFormat?: ExportFormat;
+    guidedEntry?: "story_history" | "workspace";
+    guidedPlan?: {
+      overallDirection?: string;
+      chapters: Array<{
+        label: string;
+        overview: string;
+        scenesPerChapter: number;
+      }>;
+    };
   };
   result?: {
     messageId?: EntityId;
@@ -677,6 +692,16 @@ export interface StoryDraft {
   accentThemeKey?: string;
   accentThemeCustom?: string;
   currentSummary: string;
+  guidedStoryHistory?: {
+    enabled: boolean;
+    overallDirection?: string;
+    chapterCount?: number;
+    chapters?: Array<{
+      label?: string;
+      overview: string;
+      scenesPerChapter: number;
+    }>;
+  };
 }
 
 export interface StoryMessageDraft {
