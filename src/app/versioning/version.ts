@@ -39,7 +39,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "TTS cache invalidates and re-synthesizes when character voices or speech plans change instead of replaying stale prepared audio",
       "TTS now includes character names for label-only transcript lines (e.g. Jake Peralta: / puts his pen down → spoken as Jake Peralta puts his pen down)",
       "Deep indexing and incremental index updates now process the transcript one message at a time (instead of 40-message batches) for finer continuity extraction",
-      "Indexing UI matches TTS synthesis feedback: elapsed timer, animated progress bar, cancel control, and collapsible chapter-review list during deep indexing",
+      "Indexing prompts now require richer NPC descriptions, transcript-backed world facts, and deduped relationship history; archive PDF transcript uses per-speaker blocks",
       "Archive PDF export skips a full re-index when the story index already matches the live message count",
       "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",
       "Version wiring aligned to 3.0.0 across the app label, changelog, npm metadata, and Android release metadata",

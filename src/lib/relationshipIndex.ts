@@ -257,16 +257,109 @@ function mergeHistory(
 	left: RelationshipHistoryEntry[] | undefined,
 	right: RelationshipHistoryEntry[] | undefined,
 ): RelationshipHistoryEntry[] | undefined {
-	const combined = [...(left ?? []), ...(right ?? [])];
-	if (!combined.length) return undefined;
-	const seen = new Set<string>();
-	const deduped = combined.filter((h) => {
-		const key = h.summary.toLowerCase().trim();
-		if (seen.has(key)) return false;
-		seen.add(key);
+	return mergeRelationshipHistory(left, right);
+}
+
+function tokenizeHistorySummary(summary: string) {
+	return summary
+		.toLowerCase()
+		.replace(/[^\w\s]/g, " ")
+		.split(/\s+/)
+		.filter((word) => word.length > 3);
+}
+
+function historySummariesSimilar(left: string, right: string) {
+	const normalizedLeft = left.toLowerCase().trim();
+	const normalizedRight = right.toLowerCase().trim();
+	if (!normalizedLeft || !normalizedRight) {
+		return false;
+	}
+	if (normalizedLeft === normalizedRight) {
 		return true;
+	}
+	if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) {
+		return true;
+	}
+
+	// Same beat when both describe approving/sanctioning the player's demonstrations.
+	const demoBeat = /\bdemonstrat/i;
+	const approvalBeat = /\b(sanction|approved|authorized|permit)/i;
+	if (
+		demoBeat.test(normalizedLeft) &&
+		demoBeat.test(normalizedRight) &&
+		(/\b(jamie|wands)\b/.test(normalizedLeft) || approvalBeat.test(normalizedLeft)) &&
+		(/\b(jamie|wands)\b/.test(normalizedRight) || approvalBeat.test(normalizedRight))
+	) {
+		return true;
+	}
+
+	// Same beat when both describe rushing back for Wands at Four (or similar event).
+	if (
+		/\bwands\b/.test(normalizedLeft) &&
+		/\bwands\b/.test(normalizedRight) &&
+		/\b(back|rush|hurried|return|early|miss)\b/.test(normalizedLeft) &&
+		/\b(back|rush|hurried|return|early|miss)\b/.test(normalizedRight)
+	) {
+		return true;
+	}
+
+	const leftTokens = tokenizeHistorySummary(normalizedLeft);
+	const rightTokenSet = new Set(tokenizeHistorySummary(normalizedRight));
+	const overlap = leftTokens.filter((word) => rightTokenSet.has(word));
+	const minTokenCount = Math.min(leftTokens.length, rightTokenSet.size);
+	if (minTokenCount === 0) {
+		return false;
+	}
+
+	return overlap.length >= Math.min(3, Math.ceil(minTokenCount * 0.6));
+}
+
+export function mergeRelationshipHistory(
+	left: RelationshipHistoryEntry[] | undefined,
+	right: RelationshipHistoryEntry[] | undefined,
+): RelationshipHistoryEntry[] | undefined {
+	const combined = [...(left ?? []), ...(right ?? [])];
+	if (!combined.length) {
+		return undefined;
+	}
+
+	const deduped: RelationshipHistoryEntry[] = [];
+	for (const entry of combined) {
+		const summary = entry.summary.trim();
+		if (!summary) {
+			continue;
+		}
+
+		const duplicateIndex = deduped.findIndex((existing) =>
+			historySummariesSimilar(existing.summary, summary),
+		);
+		if (duplicateIndex < 0) {
+			deduped.push({ ...entry, summary });
+			continue;
+		}
+
+		const existing = deduped[duplicateIndex]!;
+		const preferIncoming =
+			(typeof entry.messageNumber === "number" && !existing.messageNumber) ||
+			(typeof entry.messageNumber === "number" &&
+				typeof existing.messageNumber === "number" &&
+				entry.messageNumber >= existing.messageNumber);
+		if (preferIncoming) {
+			deduped[duplicateIndex] = {
+				...existing,
+				...entry,
+				summary,
+			};
+		}
+	}
+
+	deduped.sort((leftEntry, rightEntry) => {
+		const leftNumber = leftEntry.messageNumber ?? 0;
+		const rightNumber = rightEntry.messageNumber ?? 0;
+		return rightNumber - leftNumber;
 	});
-	return deduped.slice(0, 5);
+
+	return deduped.slice(0, 3);
 }
 
 export function resolveMergedTier(left?: RelationshipTier, right?: RelationshipTier): RelationshipTier {

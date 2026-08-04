@@ -45,6 +45,33 @@ describe("relationshipIndex", () => {
 		expect(merged?.[0]?.trust).toBe(70);
 	});
 
+	it("merges near-duplicate relationship history beats", () => {
+		const merged = mergeRelationshipEntries(
+			{
+				a: "Jamie Potter",
+				b: "Raymond Holt",
+				tier: "ally",
+				history: [
+					{ summary: "Holt rushed back from a meeting to ensure he doesn't miss Wands at Four.", messageNumber: 5 },
+				],
+			},
+			{
+				a: "Jamie Potter",
+				b: "Raymond Holt",
+				tier: "ally",
+				history: [
+					{ summary: "Holt hurried back early from One Police Plaza to avoid missing Wands at Four.", messageNumber: 5 },
+					{ summary: "Holt sanctioned Jamie's Friday magic demonstrations in the bullpen.", messageNumber: 3 },
+					{ summary: "Approved Jamie's Wands at Four demonstrations.", messageNumber: 3 },
+				],
+			},
+		);
+
+		expect(merged.history?.length).toBeLessThanOrEqual(3);
+		expect(merged.history?.length).toBe(2);
+		expect(merged.history?.[0]?.summary.toLowerCase()).toContain("one police plaza");
+	});
+
 	it("resolveMergedTier prefers specific tiers over stranger", () => {
 		expect(resolveMergedTier("stranger", "confidant")).toBe("confidant");
 		expect(resolveMergedTier("mentor", "friend")).toBe("mentor");
