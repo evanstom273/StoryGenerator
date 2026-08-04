@@ -9,7 +9,6 @@ import { cn } from "../../utils/cn";
 import { MessagePlayButton } from "./MessagePlayButton";
 import { useGeminiTtsPlayback } from "../../app/providers/GeminiTtsPlaybackProvider";
 import { Button } from "../ui/Button";
-import { AudiobookChapterProgressList } from "./AudiobookChapterProgressList";
 
 interface ChapterListenBannerProps {
 	messageId: string;
@@ -82,7 +81,7 @@ export function FullStoryAudiobookControls({
 	const { narrationTts, storyId, characterRegistry, hasGeminiKey, audiobookParallelChapters } =
 		useStorySpeechSetup(messages, playerCharacterName);
 	const { getStoryAIConfig } = useStoryEngine();
-	const { prepareStoryAudiobook, getItemStatus, getLoadingDetail, playPreparedSpeech, stop } =
+	const { prepareStoryAudiobook, getItemStatus, playPreparedSpeech, stop, cancelStoryAudiobookPreparation } =
 		useGeminiTtsPlayback();
 
 	const segments = listStoryAudiobookChapterSegments(messages, {
@@ -94,7 +93,6 @@ export function FullStoryAudiobookControls({
 
 	const playId = storyId ? `story-audiobook-${storyId}` : "story-audiobook";
 	const status = getItemStatus(playId);
-	const loadingDetail = getLoadingDetail(playId);
 	const isLoading = status === "loading";
 	const isReady = status === "ready";
 	const isPlaying = status === "playing";
@@ -103,12 +101,11 @@ export function FullStoryAudiobookControls({
 	return (
 		<div
 			className={cn(
-				"flex flex-col gap-3 rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3",
+				"flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3",
 				className,
 			)}
 		>
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="min-w-0">
+			<div className="min-w-0">
 					<p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
 						Story Audiobook
 					</p>
@@ -126,7 +123,11 @@ export function FullStoryAudiobookControls({
 				disabled={disabled}
 				aria-busy={isLoading}
 				onClick={() => {
-					if (isLoading || isPlaying) {
+					if (isLoading) {
+						cancelStoryAudiobookPreparation(playId);
+						return;
+					}
+					if (isPlaying) {
 						stop();
 						return;
 					}
@@ -156,10 +157,6 @@ export function FullStoryAudiobookControls({
 							? "Play story"
 							: "Listen to full story"}
 			</Button>
-			</div>
-			{isLoading && loadingDetail?.audiobookProgress ? (
-				<AudiobookChapterProgressList progress={loadingDetail.audiobookProgress} />
-			) : null}
 		</div>
 	);
 }
