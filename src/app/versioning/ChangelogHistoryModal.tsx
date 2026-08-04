@@ -3,7 +3,12 @@ import { Panel } from "../../components/ui/Panel";
 import { Button } from "../../components/ui/Button";
 import { SelectInput } from "../../components/forms/Fields";
 import { cn } from "../../utils/cn";
-import { exportChangelog, sortVersionsDesc, type ChangelogExportFormat } from "./changelogExport";
+import {
+  exportChangelog,
+  formatChangelogReleaseLabel,
+  sortVersionsDesc,
+  type ChangelogExportFormat,
+} from "./changelogExport";
 import { APP_NAME, APP_VERSION, CHANGELOG, type ChangelogEntry } from "./version";
 
 function VersionEntry({
@@ -36,6 +41,11 @@ function VersionEntry({
           <div className="text-sm font-semibold text-ink">
             {APP_NAME} v{version}
           </div>
+          {formatChangelogReleaseLabel(entry.releasedAt) ? (
+            <div className="mt-1 text-xs text-ink-muted">
+              {formatChangelogReleaseLabel(entry.releasedAt)}
+            </div>
+          ) : null}
           <div className="mt-1 text-sm text-ink-muted">{entry.title}</div>
         </div>
         <div className="shrink-0 text-xs text-ink-muted">{expanded ? "▾" : "▸"}</div>

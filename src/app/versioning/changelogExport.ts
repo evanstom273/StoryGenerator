@@ -17,6 +17,24 @@ function parseSemver(version: string) {
   };
 }
 
+export function formatChangelogReleaseLabel(releasedAt: string | undefined): string | null {
+	if (!releasedAt?.trim()) {
+		return null;
+	}
+	const parsed = new Date(releasedAt);
+	if (Number.isNaN(parsed.getTime())) {
+		return `Released: ${releasedAt.trim()}`;
+	}
+	return `Released: ${parsed.toLocaleString(undefined, {
+		year: "numeric",
+		month: "short",
+		day: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
+		timeZoneName: "short",
+	})}`;
+}
+
 export function sortVersionsDesc(versions: string[]) {
   return [...versions].sort((left, right) => {
     const a = parseSemver(left);
@@ -37,6 +55,11 @@ function formatEntryMarkdown(version: string, entry: ChangelogEntry) {
   const blocks: string[] = [];
   blocks.push(`## ${APP_NAME} v${version}`);
   blocks.push("");
+  const releaseLabel = formatChangelogReleaseLabel(entry.releasedAt);
+  if (releaseLabel) {
+    blocks.push(`_${releaseLabel}_`);
+    blocks.push("");
+  }
   blocks.push(`_${entry.title}_`);
   blocks.push("");
 
@@ -60,6 +83,10 @@ function formatEntryText(version: string, entry: ChangelogEntry) {
 
   const blocks: string[] = [];
   blocks.push(`${APP_NAME} v${version}`);
+  const releaseLabel = formatChangelogReleaseLabel(entry.releasedAt);
+  if (releaseLabel) {
+    blocks.push(releaseLabel);
+  }
   blocks.push(entry.title);
   blocks.push("");
 
@@ -138,6 +165,10 @@ export function serializeChangelogPdf(entries: Record<string, ChangelogEntry>): 
   for (const version of versions) {
     const entry = entries[version]!;
     writeHeading(`v${version}`, 14);
+    const releaseLabel = formatChangelogReleaseLabel(entry.releasedAt);
+    if (releaseLabel) {
+      writeParagraph(releaseLabel, 10, "normal");
+    }
     writeParagraph(entry.title, 11, "italic");
 
     const sections: Array<[string, string[] | undefined]> = [
