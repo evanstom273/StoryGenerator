@@ -338,6 +338,41 @@ describe("messageSpeechText", () => {
 		expect(plan?.scriptLines[0]?.text).toContain("Opening narration");
 		expect(plan?.scriptLines.some((line) => line.text === "Full Story")).toBe(false);
 	});
+
+	it("keeps asterisks inside quoted dialogue on the character voice (Ellie burp story)", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			assistantMessage(
+				'Ellie: *gestures emphatically with a french fry.* "So then Mr. Henderson goes — \'Class, silence!\' — *.except his mic was still plugged into the cafeteria speaker system, so the entire middle school heard him burp right into the microphone!*"',
+			),
+			{ narrationTts },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{
+				speaker: "Narrator",
+				text: "Ellie gestures emphatically with a french fry.",
+			},
+			{
+				speaker: "Ellie",
+				text:
+					"So then Mr. Henderson goes — 'Class, silence!' — except his mic was still plugged into the cafeteria speaker system, so the entire middle school heard him burp right into the microphone!",
+			},
+		]);
+	});
+
+	it("reads colon dialogue in character voice without wrapping as action", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			assistantMessage('Amy: "He said it plain: we are not doing this."'),
+			{ narrationTts, playerName: "Jake Peralta" },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{
+				speaker: "Amy",
+				text: "He said it plain: we are not doing this.",
+			},
+		]);
+	});
 });
 
 describe("getMessagesForChapterStartingAt", () => {

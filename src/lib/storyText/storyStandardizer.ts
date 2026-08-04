@@ -1,3 +1,9 @@
+import {
+  normalizeQuotedDialogueContent,
+  splitDialogueQuoteRegions,
+} from "./dialogueQuoteRegions";
+import { parseActionSegments } from "./parseActionSegments";
+
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -217,6 +223,13 @@ function wrapDialogue(value: string) {
   return `"${trimmed}"`;
 }
 
+const PSEUDO_SPEAKER_COLON_FRAGMENT =
+  /^[A-Za-z][a-zA-Z''-]*(?:\s+[A-Za-z][a-zA-Z''-]*){0,3}:\s*$/;
+
+function isPseudoSpeakerColonFragment(value: string) {
+  return PSEUDO_SPEAKER_COLON_FRAGMENT.test(value.trim());
+}
+
 
 export type StoryFormatIssue = {
   code: string;
@@ -420,41 +433,13 @@ export function standardizeAssistantStoryText(args: {
     speakerSegments.push(wrapDialogue(dialogue));
   }
 
-  function pushSpeakerContent(raw: string) {
+  function pushUnquotedSpeakerContent(raw: string) {
     const trimmed = raw.trim();
     if (!trimmed) {
       return;
     }
 
-    if (trimmed.includes('"')) {
-      const pattern = /(\*[^*]{2,}\*|"[^"]+")/g;
-      let lastIndex = 0;
-      let match: RegExpExecArray | null = null;
-      while ((match = pattern.exec(trimmed))) {
-        const between = trimmed.slice(lastIndex, match.index).trim();
-        if (between && /[A-Za-z0-9]/.test(between)) {
-          if (looksLikeDialogue(between)) {
-            pushSpeakerDialogue(between);
-          } else {
-            pushSpeakerAction(between);
-          }
-        }
-        const segment = match[1] ?? "";
-        if (segment.startsWith("*")) {
-          pushSpeakerAction(segment);
-        } else {
-          pushSpeakerDialogue(segment);
-        }
-        lastIndex = pattern.lastIndex;
-      }
-      const tail = trimmed.slice(lastIndex).trim();
-      if (tail && /[A-Za-z0-9]/.test(tail)) {
-        if (looksLikeDialogue(tail)) {
-          pushSpeakerDialogue(tail);
-        } else {
-          pushSpeakerAction(tail);
-        }
-      }
+    if (isPseudoSpeakerColonFragment(trimmed)) {
       return;
     }
 
@@ -466,26 +451,47 @@ export function standardizeAssistantStoryText(args: {
         pushSpeakerAction(action);
       }
       if (tail) {
-        if (looksLikeDialogue(tail)) {
-          pushSpeakerDialogue(tail);
-        } else {
-          pushSpeakerAction(tail);
-        }
+        pushUnquotedSpeakerContent(tail);
       }
       return;
     }
 
-    if (trimmed.includes("*")) {
-      pushSpeakerAction(trimmed);
+    for (const segment of parseActionSegments(trimmed)) {
+      if (segment.type === "action") {
+        pushSpeakerAction(segment.text);
+        continue;
+      }
+
+      const text = segment.text.trim();
+      if (!text || isPseudoSpeakerColonFragment(text)) {
+        continue;
+      }
+
+      if (looksLikeDialogue(text)) {
+        pushSpeakerDialogue(text);
+      } else {
+        pushSpeakerAction(text);
+      }
+    }
+  }
+
+  function pushSpeakerContent(raw: string) {
+    const trimmed = raw.trim();
+    if (!trimmed) {
       return;
     }
 
-    if (looksLikeDialogue(trimmed)) {
-      pushSpeakerDialogue(trimmed);
-      return;
-    }
+    for (const region of splitDialogueQuoteRegions(trimmed)) {
+      if (region.kind === "quoted") {
+        const dialogue = sanitizeDialogueContent(normalizeQuotedDialogueContent(region.text));
+        if (dialogue) {
+          speakerSegments.push(wrapDialogue(dialogue));
+        }
+        continue;
+      }
 
-    pushSpeakerAction(trimmed);
+      pushUnquotedSpeakerContent(region.text);
+    }
   }
 
   for (const rawLine of lines) {

@@ -1,6 +1,10 @@
 import type { StoryMessage } from "../../types/models";
 import { isDeniedSpeakerLabel } from "../relationshipIndex";
 import { standardizeAssistantStoryText } from "./storyStandardizer";
+import {
+  normalizeQuotedDialogueContent,
+  splitDialogueQuoteRegions,
+} from "./dialogueQuoteRegions";
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -212,7 +216,7 @@ function formatInlineSpeakerText(remainder: string) {
   const actionPart = trimmed.slice(0, quoteIndex).trim();
   const dialoguePart = trimmed.slice(quoteIndex).trim();
   const parts: string[] = [];
-  if (actionPart) {
+  if (actionPart && !/^[A-Za-z][a-zA-Z''-]*(?:\s+[A-Za-z][a-zA-Z''-]*){0,3}:\s*$/i.test(actionPart)) {
     parts.push(wrapAsAction(actionPart));
   }
   if (dialoguePart) {
@@ -572,7 +576,8 @@ function fixBareNameHeaders(text: string): string {
 }
 
 // Casual speech-transition colons → em dash, and colon-before-action → em dash
-const FILLER_COLON_RE = /\b(like|i mean|you know|and like|but like|so like|i guess|anyway|honestly|seriously|genuinely|basically|literally):\s+/gi;
+const FILLER_COLON_RE =
+  /\b(like|well|look|listen|see|right|okay|i mean|you know|and like|but like|so like|i guess|anyway|honestly|seriously|genuinely|basically|literally):\s+/gi;
 
 function fixDialogueColons(text: string): string {
   const lines = normalizeNewlines(text).split("\n");
@@ -598,6 +603,24 @@ function fixDialogueColons(text: string): string {
 // Ensure action beats end with a period
 function ensureActionPeriods(text: string): string {
   return text.replace(/\*([^*\n]+[^.!?,*\n])\*/g, "*$1.*");
+}
+
+function repairQuotedDialogueMarkers(text: string) {
+  let rebuilt = "";
+
+  for (const region of splitDialogueQuoteRegions(text)) {
+    if (region.kind === "quoted") {
+      const cleaned = normalizeQuotedDialogueContent(region.text);
+      if (cleaned) {
+        rebuilt += `"${cleaned}"`;
+      }
+      continue;
+    }
+
+    rebuilt += region.text;
+  }
+
+  return rebuilt;
 }
 
 function normalizeTranscriptWhitespace(text: string) {
@@ -694,7 +717,8 @@ export function sanitizeAssistantTranscript(args: {
   const markdownStripped = stripMarkdownArtifacts(narratorStripped.text);
   const bareNamesFixed = fixBareNameHeaders(markdownStripped.text);
   const dialogueColonsFixed = fixDialogueColons(bareNamesFixed);
-  const actionPeriodsFixed = ensureActionPeriods(dialogueColonsFixed);
+  const quotedDialogueRepaired = repairQuotedDialogueMarkers(dialogueColonsFixed);
+  const actionPeriodsFixed = ensureActionPeriods(quotedDialogueRepaired);
   const normalizedActions = normalizeThirdPersonActions(actionPeriodsFixed, args.playerName);
   const emphasisStripped = stripInlineAsteriskEmphasis(normalizedActions);
   const narrationRepaired = repairUnlabelledNarration(emphasisStripped);
