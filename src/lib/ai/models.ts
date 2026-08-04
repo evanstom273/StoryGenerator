@@ -92,3 +92,25 @@ const DEFAULT_STREAM_CONFIG: ModelStreamConfig = {
 export function getModelStreamConfig(model: string): ModelStreamConfig {
   return MODEL_STREAM_CONFIG[model] ?? DEFAULT_STREAM_CONFIG;
 }
+
+export interface IndexingRequestConfig {
+  timeoutMs: number;
+  maxAttempts: number;
+  maxTokens: number;
+}
+
+const INDEXING_REQUEST_CONFIG: Partial<Record<string, IndexingRequestConfig>> = {
+  "gemini-3.1-pro-preview": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
+  "gemini-3.6-flash": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
+  "gemini-2.5-pro": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
+};
+
+const DEFAULT_INDEXING_CONFIG: IndexingRequestConfig = {
+  timeoutMs: 180_000,
+  maxAttempts: 3,
+  maxTokens: 16_384,
+};
+
+export function getIndexingRequestConfig(model: string): IndexingRequestConfig {
+  return INDEXING_REQUEST_CONFIG[model] ?? DEFAULT_INDEXING_CONFIG;
+}

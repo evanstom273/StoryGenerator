@@ -29,7 +29,7 @@ import {
   buildStoryChatContext,
   buildStorySummaryContext,
 } from "../../lib/ai/contextBuilder";
-import { getValidModel, getModelStreamConfig } from "../../lib/ai/models";
+import { getValidModel, getIndexingRequestConfig, getModelStreamConfig } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
 import { buildPlayerAssistContext } from "../../lib/ai/playerAssistContext";
 import {
@@ -672,6 +672,7 @@ async function generateResponseWithRetry(params: {
   jsonMode?: boolean;
   signal?: AbortSignal;
   maxAttempts?: number;
+  timeoutMs?: number;
   onChunk?: (chunk: string) => void;
   onChunkReset?: () => void;
   debugTrace?: {
@@ -684,7 +685,11 @@ async function generateResponseWithRetry(params: {
 }) {
   const isStreaming = !!params.onChunk;
   const streamConfig = isStreaming ? getModelStreamConfig(params.model) : null;
-  const maxAttempts = streamConfig?.maxAttempts ?? (params.maxAttempts ?? AI_MAX_ATTEMPTS);
+  const indexingConfig = !isStreaming ? getIndexingRequestConfig(params.model) : null;
+  const maxAttempts =
+    streamConfig?.maxAttempts ?? params.maxAttempts ?? indexingConfig?.maxAttempts ?? AI_MAX_ATTEMPTS;
+  const requestTimeoutMs =
+    params.timeoutMs ?? streamConfig?.totalTimeoutMs ?? indexingConfig?.timeoutMs;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -723,7 +728,7 @@ async function generateResponseWithRetry(params: {
         temperature: params.temperature,
         jsonMode: params.jsonMode,
         signal: params.signal,
-        timeoutMs: streamConfig?.totalTimeoutMs,
+        timeoutMs: requestTimeoutMs,
         idleTimeoutMs: streamConfig?.idleTimeoutMs,
         onChunk: params.onChunk,
       });
@@ -1304,6 +1309,7 @@ async function rebuildChapterArchiveSummaries(params: {
       .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
       .join("\n");
 
+    const chapterIndexingConfig = getIndexingRequestConfig(params.model);
     const chapterSummaryText = (
       await generateResponseWithRetry({
         providerType: params.providerType,
@@ -1311,6 +1317,8 @@ async function rebuildChapterArchiveSummaries(params: {
         apiKey: params.apiKey,
         model: params.model,
         signal: params.signal,
+        timeoutMs: chapterIndexingConfig.timeoutMs,
+        maxAttempts: chapterIndexingConfig.maxAttempts,
         messages: [
           { role: "system", content: chapterPrompt },
           { role: "system", content: `Context:\n${contextBlock}` },

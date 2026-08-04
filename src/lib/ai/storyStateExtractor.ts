@@ -70,6 +70,7 @@ export function buildStoryStateExtractionPrompt({
   existingStateJson,
   messageNumberStart,
   messageNumberTotal,
+  perMessageIndexing,
 }: {
   playerName: string;
   playerCharacter?: PlayerCharacter | null;
@@ -78,6 +79,7 @@ export function buildStoryStateExtractionPrompt({
   existingStateJson?: string;
   messageNumberStart?: number;
   messageNumberTotal?: number;
+  perMessageIndexing?: boolean;
 }): AIChatMessage[] {
   const system = normalizeWhitespace(
     [
@@ -159,6 +161,17 @@ export function buildStoryStateExtractionPrompt({
       "- relationshipState should be a consolidated set of relationship facts that affect future behavior.",
       "- Use relationships for structured relationship metrics between characters (including recurring NPCs).",
       "- Use npcs to track recurring NPCs and what they remember.",
+      "- NPC registry quality: indexes.characters.description, npcs.description, and characters.status/statusBullets must be specific and story-useful — never bare job titles or one-word labels.",
+      "- For every NPC who appears or is clearly referenced in the transcript segment, update characters, npcs, and indexes.characters with role, manner, motive or agenda, ties to the player, and current story-relevant status when the transcript supports it.",
+      "- Recurring or major NPC descriptions should be at least two substantive sentences when enough transcript evidence exists. Minor NPCs may be shorter but still concrete.",
+      "- Use characters.status or statusBullets for live NPC conditions: injured, grieving, suspicious, hiding something, allied, hostile, captive, disguised, etc.",
+      "- indexes.characters.description should match the same depth as the characters/npcs entry for that person, not a stripped-down label.",
+      ...(perMessageIndexing
+        ? [
+            "- You are processing ONE new transcript message at a time in chronological order. Merge incremental changes into existing story-state; do not discard prior canon.",
+            "- Focus evidence and updates on entities touched in this message, but preserve all previously established characters, NPCs, threads, and facts.",
+          ]
+        : []),
       "- Use locations to track important recurring places.",
       "- World facts are setting-level truths, institutions, wars, laws, disasters, political situations, and external constraints. Do not put personal character conditions in worldFacts.",
       "- Personal conditions belong in the relevant character entry, not in worldFacts. Example: 'Lyra is permanently blind' is character status, while 'the poison causes permanent blindness' is a world fact only if the transcript explicitly establishes it as a general rule.",
