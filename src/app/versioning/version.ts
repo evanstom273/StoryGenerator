@@ -28,6 +28,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Locked prequel stories can still change the audiobook parallel-chapters slider without unlocking story model settings",
       "Character speech uses a simple transcript rule: quoted lines use each character's voice; asterisk actions and unquoted prose use the narrator (with character names on action beats); asterisks inside quotes are treated as dialogue, not actions",
       "Transcript sanitization retroactively cleans malformed markers inside quoted dialogue (e.g. *.except) when viewing or playing locked stories without editing messages",
+      "Full-story audiobook chapter synthesis progress lives in the playback bar (collapsible); chapter Listen works while the rest of the story prepares in the background",
       "Director directions use the narrator voice; per-chunk volume normalization keeps character voices closer to the same loudness",
       "MetaChat reply play button for assistant messages",
       "TTS loading feedback: animated spinner, elapsed timer, chunk progress, helper text, and cancel while Gemini synthesizes (10–30s+ for long passages)",

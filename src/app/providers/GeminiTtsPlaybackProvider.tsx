@@ -40,6 +40,13 @@ export interface GeminiTtsLoadingDetail {
 	audiobookProgress?: StoryAudiobookProgress;
 }
 
+export interface BackgroundAudiobookJob {
+	playId: string;
+	playerTitle: string;
+	startedAtMs: number;
+	progress: StoryAudiobookProgress | null;
+}
+
 interface PreparedSpeechAudio {
 	audio: HTMLAudioElement;
 	objectUrl: string;
@@ -55,6 +62,8 @@ interface GeminiTtsPlaybackContextValue {
 	isPaused: boolean;
 	getItemStatus: (playId: string) => GeminiTtsPlaybackStatus;
 	getLoadingDetail: (playId: string) => GeminiTtsLoadingDetail | null;
+	backgroundAudiobookJob: BackgroundAudiobookJob | null;
+	cancelStoryAudiobookPreparation: (playId: string) => void;
 	prepareSpeechPlan: (
 		playId: string,
 		plan: SpeechSynthesisPlan,
@@ -97,7 +106,10 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	const preparedRef = useRef<Map<string, PreparedSpeechAudio>>(new Map());
 	const preparedDigestRef = useRef<Map<string, string>>(new Map());
 	const abortRef = useRef<AbortController | null>(null);
+	const audiobookAbortRef = useRef<AbortController | null>(null);
 	const [state, setState] = useState<GeminiTtsPlaybackState>(IDLE_STATE);
+	const [backgroundAudiobookJob, setBackgroundAudiobookJob] =
+		useState<BackgroundAudiobookJob | null>(null);
 
 	const hasGeminiKey = Boolean(aiSettings?.apiKeys?.gemini?.trim());
 
@@ -214,9 +226,28 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		state.status,
 	]);
 
+	const cancelStoryAudiobookPreparation = useCallback(
+		(playId: string) => {
+			if (backgroundAudiobookJob?.playId !== playId) {
+				return;
+			}
+
+			audiobookAbortRef.current?.abort();
+			audiobookAbortRef.current = null;
+			setBackgroundAudiobookJob(null);
+
+			if (state.activeId === playId && state.status === "loading") {
+				releasePreparedAudio(playId);
+				setState(IDLE_STATE);
+			}
+		},
+		[backgroundAudiobookJob, releasePreparedAudio, state.activeId, state.status],
+	);
+
 	useEffect(() => {
 		return () => {
 			abortRef.current?.abort();
+			audiobookAbortRef.current?.abort();
 			cleanupActiveAudio();
 			for (const playId of preparedRef.current.keys()) {
 				releasePreparedAudio(playId);
@@ -595,8 +626,11 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
 			const cacheDigest = await computeStoryAudiobookPreparedDigest(playId, segments, narrationTts.model);
 
-			if (state.activeId === playId && state.status === "loading") {
-				stop();
+			if (
+				(state.activeId === playId && state.status === "loading") ||
+				(backgroundAudiobookJob?.playId === playId && audiobookAbortRef.current)
+			) {
+				cancelStoryAudiobookPreparation(playId);
 				return;
 			}
 
@@ -611,8 +645,16 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			abortRef.current?.abort();
 			cleanupActiveAudio();
 			const controller = new AbortController();
-			abortRef.current = controller;
+			audiobookAbortRef.current?.abort();
+			audiobookAbortRef.current = controller;
 			const startedAtMs = Date.now();
+
+			setBackgroundAudiobookJob({
+				playId,
+				playerTitle: title,
+				startedAtMs,
+				progress: null,
+			});
 
 			setState({
 				activeId: playId,
@@ -637,6 +679,9 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 						if (controller.signal.aborted) {
 							return;
 						}
+						setBackgroundAudiobookJob((current) =>
+							current?.playId === playId ? { ...current, progress } : current,
+						);
 						setState((current) => {
 							if (current.activeId !== playId || current.status !== "loading") {
 								return current;
@@ -656,54 +701,95 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				}
 
 				loadPreparedSpeech(playId, wavBuffer, cacheDigest);
-				setState({
-					activeId: playId,
-					status: "ready",
-					errorMessage: null,
-					loadingMessage: null,
-					loadingAudiobookProgress: null,
-					loadingStartedAtMs: null,
-					playerTitle: title,
-					currentTimeSec: 0,
-					durationSec: 0,
+				setBackgroundAudiobookJob(null);
+
+				setState((current) => {
+					if (current.activeId !== playId) {
+						return current;
+					}
+
+					return {
+						activeId: playId,
+						status: "ready",
+						errorMessage: null,
+						loadingMessage: null,
+						loadingAudiobookProgress: null,
+						loadingStartedAtMs: null,
+						playerTitle: title,
+						currentTimeSec: 0,
+						durationSec: 0,
+					};
 				});
 			} catch (error) {
 				if (controller.signal.aborted) {
 					return;
 				}
-				setState({
-					activeId: playId,
-					status: "error",
-					errorMessage:
-						error instanceof Error ? error.message : "Unable to synthesize story audiobook.",
-					loadingMessage: null,
-					loadingAudiobookProgress: null,
-					loadingStartedAtMs: null,
-					playerTitle: title,
-					currentTimeSec: 0,
-					durationSec: 0,
+				setBackgroundAudiobookJob(null);
+				setState((current) => {
+					if (current.activeId !== playId) {
+						return current;
+					}
+
+					return {
+						activeId: playId,
+						status: "error",
+						errorMessage:
+							error instanceof Error ? error.message : "Unable to synthesize story audiobook.",
+						loadingMessage: null,
+						loadingAudiobookProgress: null,
+						loadingStartedAtMs: null,
+						playerTitle: title,
+						currentTimeSec: 0,
+						durationSec: 0,
+					};
 				});
 			} finally {
-				if (abortRef.current === controller) {
-					abortRef.current = null;
+				if (audiobookAbortRef.current === controller) {
+					audiobookAbortRef.current = null;
 				}
 			}
 		},
-		[aiSettings, cleanupActiveAudio, loadPreparedSpeech, state.activeId, state.status, stop],
+		[
+			aiSettings,
+			backgroundAudiobookJob,
+			cancelStoryAudiobookPreparation,
+			cleanupActiveAudio,
+			loadPreparedSpeech,
+			state.activeId,
+			state.status,
+		],
 	);
 
 	const getItemStatus = useCallback(
 		(playId: string): GeminiTtsPlaybackStatus => {
+			if (backgroundAudiobookJob?.playId === playId && audiobookAbortRef.current) {
+				return "loading";
+			}
+
 			if (state.activeId !== playId) {
+				if (preparedRef.current.has(playId)) {
+					return "ready";
+				}
 				return "idle";
 			}
 			return state.status;
 		},
-		[state.activeId, state.status],
+		[backgroundAudiobookJob, state.activeId, state.status],
 	);
 
 	const getLoadingDetail = useCallback(
 		(playId: string): GeminiTtsLoadingDetail | null => {
+			if (backgroundAudiobookJob?.playId === playId && audiobookAbortRef.current) {
+				return {
+					message:
+						backgroundAudiobookJob.progress?.summary ??
+						state.loadingMessage ??
+						"Preparing story audiobook…",
+					startedAtMs: backgroundAudiobookJob.startedAtMs,
+					audiobookProgress: backgroundAudiobookJob.progress ?? undefined,
+				};
+			}
+
 			if (state.activeId !== playId || state.status !== "loading") {
 				return null;
 			}
@@ -714,6 +800,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			};
 		},
 		[
+			backgroundAudiobookJob,
 			state.activeId,
 			state.loadingAudiobookProgress,
 			state.loadingMessage,
@@ -735,6 +822,8 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		isPaused,
 		getItemStatus,
 		getLoadingDetail,
+		backgroundAudiobookJob,
+		cancelStoryAudiobookPreparation,
 		prepareSpeechPlan,
 		prepareStoryAudiobook,
 		playPreparedSpeech,
