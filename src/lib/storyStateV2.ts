@@ -60,6 +60,264 @@ export function safeParseStoryStateData(json: string): StoryStateData | null {
   return parsed as StoryStateData;
 }
 
+/** Lenient parse for persistence paths — preserves indexes, rpStats, etc. when V2 validation fails. */
+export function coercePartialStoryState(json: string): StoryStateData | null {
+  const parsed = safeParseJsonObject<StoryStateData>(json.trim());
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+
+  return {
+    ...parsed,
+    updatedAt:
+      typeof parsed.updatedAt === "string" && parsed.updatedAt.trim()
+        ? parsed.updatedAt
+        : new Date().toISOString(),
+    characters:
+      parsed.characters && typeof parsed.characters === "object" && !Array.isArray(parsed.characters)
+        ? parsed.characters
+        : {},
+    worldFacts: Array.isArray(parsed.worldFacts) ? parsed.worldFacts : [],
+    unresolvedThreads: Array.isArray(parsed.unresolvedThreads) ? parsed.unresolvedThreads : [],
+  };
+}
+
+export function parseStoryStateJson(json: string): StoryStateDataV2 {
+  const strict = safeParseStoryStateData(json);
+  if (strict) {
+    return normalizeStoryStateToV2(strict);
+  }
+  const coerced = coercePartialStoryState(json);
+  if (coerced) {
+    return normalizeStoryStateToV2(coerced);
+  }
+  return normalizeStoryStateToV2(null);
+}
+
+function mergeStringArrayPreserve(previous?: string[], incoming?: string[]): string[] | undefined {
+  const prev = Array.isArray(previous)
+    ? previous.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+  const inc = Array.isArray(incoming)
+    ? incoming.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+  if (inc.length === 0) {
+    return prev.length ? prev.map((entry) => entry.trim()) : undefined;
+  }
+
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const entry of [...prev, ...inc]) {
+    const trimmed = entry.trim();
+    const key = trimmed.toLowerCase();
+    if (!trimmed || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(trimmed);
+  }
+  return merged.length ? merged : undefined;
+}
+
+function mergeRecordPreserve<T extends Record<string, unknown>>(
+  previous?: T,
+  incoming?: T,
+): T | undefined {
+  const prev =
+    previous && typeof previous === "object" && !Array.isArray(previous) ? previous : ({} as T);
+  const inc =
+    incoming && typeof incoming === "object" && !Array.isArray(incoming) ? incoming : ({} as T);
+  if (Object.keys(inc).length === 0) {
+    return Object.keys(prev).length ? prev : undefined;
+  }
+  return { ...prev, ...inc };
+}
+
+type IndexedEvidenceRow = {
+  fact?: string;
+  moment?: string;
+  thread?: string;
+  evidence?: { messageNumbers?: number[] };
+  sourceLabel?: string;
+  sourceUrl?: string;
+};
+
+function mergeIndexedEvidenceRows(
+  previous: IndexedEvidenceRow[] | undefined,
+  incoming: IndexedEvidenceRow[] | undefined,
+  keyField: "fact" | "moment" | "thread",
+  maxItems = 30,
+): IndexedEvidenceRow[] | undefined {
+  const prev = Array.isArray(previous) ? previous : [];
+  const inc = Array.isArray(incoming) ? incoming : [];
+  if (inc.length === 0) {
+    return prev.length ? prev : undefined;
+  }
+
+  const byKey = new Map<string, IndexedEvidenceRow>();
+  for (const row of prev) {
+    const key = typeof row[keyField] === "string" ? row[keyField]!.trim().toLowerCase() : "";
+    if (key) {
+      byKey.set(key, row);
+    }
+  }
+  for (const row of inc) {
+    const key = typeof row[keyField] === "string" ? row[keyField]!.trim().toLowerCase() : "";
+    if (!key) {
+      continue;
+    }
+    const existing = byKey.get(key);
+    byKey.set(
+      key,
+      existing
+        ? {
+            ...existing,
+            ...row,
+            evidence: mergeEvidence(existing.evidence, row.evidence),
+          }
+        : row,
+    );
+  }
+
+  const merged = Array.from(byKey.values()).slice(-maxItems);
+  return merged.length ? merged : undefined;
+}
+
+export function mergeStoryIndexesIncremental(
+  previous: StoryIndexesV2 | undefined,
+  incoming: StoryIndexesV2 | undefined,
+  totalMessages: number,
+): StoryIndexesV2 | undefined {
+  if (!previous && !incoming) {
+    return undefined;
+  }
+
+  const prev = previous ?? {};
+  const inc = incoming ?? {};
+
+  const mergeEntities = (
+    left?: StoryIndexesV2["characters"],
+    right?: StoryIndexesV2["characters"],
+  ) => {
+    if (!left && !right) {
+      return undefined;
+    }
+    const { merged } = reconcileIndexedEntities({ ...(left ?? {}), ...(right ?? {}) });
+    return merged;
+  };
+
+  const messageCount = totalMessages > 0 ? totalMessages : inc.messageCount ?? prev.messageCount;
+
+  return {
+    ...prev,
+    ...inc,
+    ...(messageCount ? { messageCount } : {}),
+    messageNumberingVersion: "1.0",
+    ...(mergeEntities(prev.characters, inc.characters)
+      ? { characters: mergeEntities(prev.characters, inc.characters) }
+      : {}),
+    ...(mergeEntities(prev.locations, inc.locations)
+      ? { locations: mergeEntities(prev.locations, inc.locations) }
+      : {}),
+    ...(mergeEntities(prev.items, inc.items) ? { items: mergeEntities(prev.items, inc.items) } : {}),
+    ...(mergeEntities(prev.factions, inc.factions)
+      ? { factions: mergeEntities(prev.factions, inc.factions) }
+      : {}),
+    worldFacts: mergeIndexedEvidenceRows(prev.worldFacts, inc.worldFacts, "fact") as StoryIndexesV2["worldFacts"],
+    significantMemories: mergeIndexedEvidenceRows(
+      prev.significantMemories,
+      inc.significantMemories,
+      "moment",
+      50,
+    ) as StoryIndexesV2["significantMemories"],
+    openThreads: mergeIndexedEvidenceRows(prev.openThreads, inc.openThreads, "thread", 20) as StoryIndexesV2["openThreads"],
+  } satisfies StoryIndexesV2;
+}
+
+export function mergeStoryStateForIndexing(
+  previous: StoryStateDataV2,
+  incoming: StoryStateDataV2,
+  indexes: StoryIndexesV2 | undefined,
+): StoryStateDataV2 {
+  const mergedSummaries = {
+    ...(previous.summaries ?? {}),
+    ...(incoming.summaries ?? {}),
+  };
+  const recentDevelopments = mergeStringArrayPreserve(
+    previous.summaries?.recentDevelopments,
+    incoming.summaries?.recentDevelopments,
+  );
+  if (recentDevelopments) {
+    mergedSummaries.recentDevelopments = recentDevelopments;
+  }
+  const characterSummaries = {
+    ...(previous.summaries?.characterSummaries ?? {}),
+    ...(incoming.summaries?.characterSummaries ?? {}),
+  };
+  if (Object.keys(characterSummaries).length) {
+    mergedSummaries.characterSummaries = characterSummaries;
+  }
+
+  return {
+    ...previous,
+    ...incoming,
+    memoryArchitectureVersion: "2.0",
+    updatedAt: incoming.updatedAt ?? previous.updatedAt,
+    characters: (mergeRecordPreserve(
+      previous.characters as Record<string, unknown> | undefined,
+      incoming.characters as Record<string, unknown> | undefined,
+    ) ??
+      previous.characters ??
+      incoming.characters ??
+      {}) as StoryStateData["characters"],
+    worldFacts:
+      mergeStringArrayPreserve(previous.worldFacts, incoming.worldFacts) ??
+      previous.worldFacts ??
+      incoming.worldFacts ??
+      [],
+    unresolvedThreads:
+      mergeStringArrayPreserve(previous.unresolvedThreads, incoming.unresolvedThreads) ??
+      previous.unresolvedThreads ??
+      incoming.unresolvedThreads ??
+      [],
+    significantMemories: mergeStringArrayPreserve(
+      previous.significantMemories,
+      incoming.significantMemories,
+    ),
+    relationshipState: mergeStringArrayPreserve(
+      previous.relationshipState,
+      incoming.relationshipState,
+    ),
+    sceneState: mergeStringArrayPreserve(previous.sceneState, incoming.sceneState),
+    npcs: mergeRecordPreserve(
+      previous.npcs as Record<string, unknown> | undefined,
+      incoming.npcs as Record<string, unknown> | undefined,
+    ) as StoryStateDataV2["npcs"],
+    locations: mergeRecordPreserve(
+      previous.locations as Record<string, unknown> | undefined,
+      incoming.locations as Record<string, unknown> | undefined,
+    ) as StoryStateDataV2["locations"],
+    relationships: mergeRecordPreserve(
+      previous.relationships as Record<string, unknown> | undefined,
+      incoming.relationships as Record<string, unknown> | undefined,
+    ) as StoryStateDataV2["relationships"],
+    summaries: Object.keys(mergedSummaries).length ? mergedSummaries : previous.summaries,
+    scene: { ...(previous.scene ?? {}), ...(incoming.scene ?? {}) },
+    threads: { ...(previous.threads ?? {}), ...(incoming.threads ?? {}) },
+    authorDirectives: incoming.authorDirectives ?? previous.authorDirectives,
+    rpStats: incoming.rpStats ?? previous.rpStats,
+    indexes,
+    indexedAt: previous.indexedAt,
+    lastIndexedAt: previous.lastIndexedAt,
+    lastDeepIndexedAt: previous.lastDeepIndexedAt,
+    lastAutoDeepIndexedAt: previous.lastAutoDeepIndexedAt,
+    lastIndexedMessageCount: previous.lastIndexedMessageCount,
+    lastDeepIndexedMessageCount: previous.lastDeepIndexedMessageCount,
+    lastAutoDeepIndexedMessageCount: previous.lastAutoDeepIndexedMessageCount,
+    messagesSinceDeepIndexUpdate: previous.messagesSinceDeepIndexUpdate,
+  };
+}
+
 export function normalizeStoryStateToV2(data: StoryStateData | null): StoryStateDataV2 {
   if (!data) {
     return { memoryArchitectureVersion: "2.0" };

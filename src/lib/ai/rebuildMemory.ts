@@ -3,7 +3,7 @@ import type { AIProvider, AIChatMessage } from "./types";
 import type { StoryMessage, StoryStateDataV2 } from "../../types/models";
 import { sortByTimestampAsc } from "../dates";
 import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storyStateExtractor";
-import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata } from "../storyStateV2";
+import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing } from "../storyStateV2";
 import { AIError } from "./errors";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
 import { getIndexingRequestConfig } from "./models";
@@ -235,14 +235,11 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
     const normalized = normalizeStoryStateToV2(parsed);
 
-    // Merge relationships across chunks — each chunk only sees its own messages
-    // in the transcript, so without accumulation, earlier chunks' relationship
-    // data would be overwritten and lost.
+    const mergedIndexes = mergeStoryIndexesIncremental(currentState.indexes, normalized.indexes, total);
     const previousRelationships = currentState.indexes?.relationships ?? [];
     const newRelationships = normalized.indexes?.relationships ?? [];
     const combinedIndexes = {
-      ...(currentState.indexes ?? {}),
-      ...(normalized.indexes ?? {}),
+      ...(mergedIndexes ?? currentState.indexes ?? {}),
       messageCount: total,
       messageNumberingVersion: "1.0" as const,
       relationships: [...previousRelationships, ...newRelationships],
@@ -252,11 +249,11 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       universeImportedCharacters,
     });
 
-    currentState = {
-      ...normalized,
-      memoryArchitectureVersion: "2.0",
-      indexes: reconciledIndexes ?? combinedIndexes,
-    };
+    currentState = mergeStoryStateForIndexing(
+      currentState,
+      normalized,
+      reconciledIndexes ?? combinedIndexes,
+    );
 
     processed += chunk.length;
     onProgress?.({
