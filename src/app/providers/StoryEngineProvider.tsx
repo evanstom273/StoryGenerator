@@ -91,6 +91,10 @@ import {
 } from "../../lib/storyStateV2";
 import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
 import {
+	buildInitialChapterReviewProgress,
+	selectChaptersForArchiveRebuild,
+} from "../../lib/ai/storyIndexingProgress";
+import {
   formatStoryLongTermMemoryForPrompt,
   formatStorySceneStateForPrompt,
 } from "../../lib/ai/storyStateExtractor";
@@ -219,6 +223,16 @@ interface StoryEngineContextValue {
     message?: string;
     error?: string;
     warning?: string;
+    startedAtMs?: number;
+    stage?: "loading" | "messages" | "chapter-boundaries" | "chapter-reviews" | "saving-state";
+    chapterReviews?: Array<{
+      label: string;
+      displayLabel: string;
+      status: "pending" | "active" | "done";
+      startedAtMs?: number;
+      completedAtMs?: number;
+    }>;
+    jobId?: string;
   };
   jobNotice?: {
     id: string;
@@ -387,6 +401,7 @@ interface StoryEngineContextValue {
     opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean },
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
   cancelBackgroundJob: (jobId: string) => Promise<BackgroundJob | null>;
+  cancelStoryIndexing: (storyId: string) => Promise<void>;
   dismissJobNotice: () => void;
   importUniverseExport: (
     bundle: UniverseExportBundleV1,
@@ -2270,12 +2285,32 @@ export function StoryEngineProvider({
     [],
   );
 
+  const cancelStoryIndexing = useCallback(
+    async (storyId: string) => {
+      rebuildAbortRef.current?.abort();
+
+      const jobs = await repository.listBackgroundJobs();
+      const activeJob = jobs.find(
+        (job) =>
+          job.type === "story_index" &&
+          job.storyId === storyId &&
+          (job.status === "queued" || job.status === "running"),
+      );
+
+      if (activeJob) {
+        await cancelBackgroundJob(activeJob.id);
+      }
+    },
+    [cancelBackgroundJob, repository],
+  );
+
   const runDeepIndexProcess = useCallback(
     async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean; jobId?: string }) => {
       rebuildAbortRef.current?.abort();
       const controller = new AbortController();
       rebuildAbortRef.current = controller;
       const signal = opts?.signal ?? controller.signal;
+      const indexingStartedAtMs = Date.now();
 
       // #region debug-point job-cancel-timeout:deep-index-start
       reportJobDebug({
@@ -2297,6 +2332,9 @@ export function StoryEngineProvider({
         processedMessages: 0,
         totalMessages: 0,
         message: "Loading story...",
+        startedAtMs: indexingStartedAtMs,
+        stage: "loading",
+        jobId: opts?.jobId,
       });
 
       try {
@@ -2332,7 +2370,10 @@ export function StoryEngineProvider({
           phase: "extracting",
           processedMessages: 0,
           totalMessages: allMessages.length,
-          message: `Re-indexing… 0/${allMessages.length} messages`,
+          message: `Indexing message 0/${allMessages.length}…`,
+          startedAtMs: indexingStartedAtMs,
+          stage: "messages",
+          jobId: opts?.jobId,
         });
 
         const result = await rebuildStoryMemoryAndIndexes({
@@ -2366,10 +2407,13 @@ export function StoryEngineProvider({
               return {
                 ...current,
                 phase: "extracting",
+                stage: "messages",
                 processedMessages: processed,
                 totalMessages: total,
                 message,
                 warning: warning ?? current.warning,
+                startedAtMs: current.startedAtMs ?? indexingStartedAtMs,
+                jobId: opts?.jobId ?? current.jobId,
               };
             });
             // Mirror progress into the DB job record so the job card shows live status
@@ -2406,6 +2450,7 @@ export function StoryEngineProvider({
             ? {
                 ...current,
                 phase: "saving",
+                stage: "saving-state",
                 message: "Saving indexed state...",
               }
             : current,
@@ -2478,6 +2523,7 @@ export function StoryEngineProvider({
             ? {
                 ...current,
                 phase: "saving",
+                stage: "chapter-boundaries",
                 message: "Rebuilding chapter boundaries...",
               }
             : current,
@@ -2490,13 +2536,23 @@ export function StoryEngineProvider({
           existingChapters: storedChapters,
         });
 
-        if (rebuiltChapters.length) {
+        const chaptersToRebuild = selectChaptersForArchiveRebuild(
+          rebuiltChapters,
+          opts?.incremental ?? false,
+          previousDeepIndexedMessageCount,
+        );
+
+        if (chaptersToRebuild.length) {
           setRebuildStatus((current) =>
             current && current.storyId === storyId
               ? {
                   ...current,
                   phase: "saving",
-                  message: "Rebuilding chapter reviews...",
+                  stage: "chapter-reviews",
+                  processedMessages: 0,
+                  totalMessages: chaptersToRebuild.length,
+                  message: `Rebuilding chapter reviews… 0/${chaptersToRebuild.length}`,
+                  chapterReviews: buildInitialChapterReviewProgress(chaptersToRebuild),
                 }
               : current,
           );
@@ -2516,16 +2572,59 @@ export function StoryEngineProvider({
             incremental: opts?.incremental ?? false,
             previousDeepIndexedMessageCount,
             onProgress: ({ processed, total, label }) => {
-              setRebuildStatus((current) =>
-                current && current.storyId === storyId
-                  ? {
-                      ...current,
-                      phase: "saving",
-                      message: `Rebuilding chapter reviews… ${processed}/${total} (${label})`,
-                    }
-                  : current,
-              );
+              const nowMs = Date.now();
+              setRebuildStatus((current) => {
+                if (!current || current.storyId !== storyId) {
+                  return current;
+                }
+
+                const chapterReviews = (current.chapterReviews ?? []).map((chapter, index) => {
+                  if (index < processed - 1) {
+                    return {
+                      ...chapter,
+                      status: "done" as const,
+                      completedAtMs: chapter.completedAtMs ?? nowMs,
+                    };
+                  }
+
+                  if (index === processed - 1) {
+                    return {
+                      ...chapter,
+                      status: "active" as const,
+                      startedAtMs: chapter.startedAtMs ?? nowMs,
+                    };
+                  }
+
+                  return chapter;
+                });
+
+                return {
+                  ...current,
+                  phase: "saving",
+                  stage: "chapter-reviews",
+                  processedMessages: processed,
+                  totalMessages: total,
+                  message: `Rebuilding chapter reviews… ${processed}/${total} (${label})`,
+                  chapterReviews,
+                };
+              });
             },
+          });
+
+          setRebuildStatus((current) => {
+            if (!current || current.storyId !== storyId || !current.chapterReviews?.length) {
+              return current;
+            }
+
+            const nowMs = Date.now();
+            return {
+              ...current,
+              chapterReviews: current.chapterReviews.map((chapter) => ({
+                ...chapter,
+                status: "done",
+                completedAtMs: chapter.completedAtMs ?? nowMs,
+              })),
+            };
           });
         }
 
@@ -2581,6 +2680,7 @@ export function StoryEngineProvider({
           processedMessages: allMessages.length,
           totalMessages: allMessages.length,
           message: summaryLine,
+          startedAtMs: indexingStartedAtMs,
         });
 
         return summaryLine;
@@ -5143,6 +5243,7 @@ export function StoryEngineProvider({
       },
       queueStoryIndexJob,
       cancelBackgroundJob,
+      cancelStoryIndexing,
       dismissJobNotice() {
         setJobNotice(null);
       },

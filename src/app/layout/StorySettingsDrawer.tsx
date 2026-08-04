@@ -28,6 +28,7 @@ import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { RelationshipOverviewList } from "../../components/story/RelationshipOverviewList";
 import { AudiobookChapterProgressList } from "../../components/story/AudiobookChapterProgressList";
+import { IndexingProgressPanel } from "../../components/story/IndexingProgressPanel";
 import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
 import type {
@@ -201,6 +202,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     saveStoryAIConfig,
     queueStoryIndexJob,
     cancelBackgroundJob,
+    cancelStoryIndexing,
     backgroundJobs,
     dismissJobNotice,
     jobNotice,
@@ -1320,55 +1322,17 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     </div>
                   ) : null}
                   {rebuildInfo ? (
-                    <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm">
-                      {rebuildInfo.phase === "error" ? (
-                        <div className="space-y-1">
-                          <div className="font-medium text-rose-300">Re-index failed</div>
-                          <div className="text-xs text-rose-300/80">{rebuildInfo.error || "An unknown error occurred."}</div>
-                        </div>
-                      ) : rebuildInfo.phase === "done" ? (
-                        <div className="space-y-1">
-                          <div className="text-emerald-300">✓ {rebuildInfo.message || "Re-index complete."}</div>
-                          {rebuildInfo.warning && (
-                            <div className="text-xs text-amber-300/80">⚠ {rebuildInfo.warning}</div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <div className="text-ink-soft">
-                            {rebuildInfo.message ||
-                              `Re-indexing… ${rebuildInfo.processedMessages}/${rebuildInfo.totalMessages} messages`}
-                          </div>
-                          {rebuildInfo.totalMessages > 0 && (
-                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
-                              <div
-                                className="h-full rounded-full bg-violet-400/70 transition-all duration-500"
-                                style={{
-                                  width: `${Math.max(
-                                    4,
-                                    Math.round(
-                                      (rebuildInfo.processedMessages / rebuildInfo.totalMessages) * 100,
-                                    ),
-                                  )}%`,
-                                }}
-                              />
-                            </div>
-                          )}
-                          {rebuildInfo.totalMessages > 0 && (
-                            <div className="text-xs text-ink-muted">
-                              {rebuildInfo.processedMessages} / {rebuildInfo.totalMessages} messages
-                            </div>
-                          )}
-                          {rebuildInfo.warning && (
-                            <div className="text-xs text-amber-300/80">⚠ {rebuildInfo.warning}</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <IndexingProgressPanel
+                      status={rebuildInfo}
+                      onCancel={() => void cancelStoryIndexing(story!.id)}
+                    />
                   ) : null}
-                  {storyJobs.length ? (
+                  {storyJobs.filter((job) => job.type !== "story_index").length ? (
                     <div className="space-y-2">
-                      {storyJobs.slice(0, 6).map((job) => (
+                      {storyJobs
+                        .filter((job) => job.type !== "story_index")
+                        .slice(0, 6)
+                        .map((job) => (
                         <div
                           key={job.id}
                           className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted"
