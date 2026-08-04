@@ -1,6 +1,7 @@
 import { Button } from "../../components/ui/Button";
 import { Panel } from "../../components/ui/Panel";
 import { cn } from "../../utils/cn";
+import { formatChangelogReleaseLabel } from "./changelogExport";
 import type { ChangelogEntry } from "./version";
 
 export function ChangelogModal({
@@ -51,6 +52,11 @@ export function ChangelogModal({
                     <div className="text-sm font-semibold text-ink">
                       v{release.version} · {release.entry.title}
                     </div>
+                    {formatChangelogReleaseLabel(release.entry.releasedAt) ? (
+                      <div className="mt-1 text-xs text-ink-muted">
+                        {formatChangelogReleaseLabel(release.entry.releasedAt)}
+                      </div>
+                    ) : null}
 
                     {release.entry.fixed?.length ? (
                       <div className="mt-4">

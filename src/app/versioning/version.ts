@@ -1,73 +1,75 @@
 export type ChangelogEntry = {
   title: string;
+  releasedAt?: string;
   added?: string[];
   fixed?: string[];
   knownIssues?: string[];
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "3.0.0";
+export const APP_VERSION = "3.1.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "3.1.0": {
+    title: "Guided Chapter Generation, Story Audiobook & Archive Export",
+    releasedAt: "2026-08-04T13:05:59+00:00",
+    added: [
+      "Guided chapter generation: optional Story History when creating a story; background jobs stage Director beats, narrate scenes, end each chapter, and run incremental indexing per chapter",
+      "Generate Chapters in the story workspace chat composer beside Send, Clear, and Generate Response",
+      "Guided chapter planner modal with overall direction, chapter count, per-chapter overviews, scenes-per-chapter, and optional AI chapter-plan generation",
+      "Guided generation streams in the workspace with visible Director staging lines, chapter banners, collapsible progress, and cancel",
+      "Story History layout: divider between generated backstory and the playable chapter; supports Chapter I: / Scene I: scene planning text",
+      "Per-chapter continuity ledger during guided generation (docking bays, shuttles, meeting locations, and similar scene assignments)",
+      "Workspace Generate Chapters continues from the last closed chapter transcript and archive summary in existing stories",
+      "AI-started stories can use Generate Chapters after chapter one has playable content, even without a formal chapter end",
+      "Story settings background jobs label guided chapter generation separately from indexing",
+      "In-app story audiobook: persistent per-character voices, per-message Play, Listen to Chapter on banners, fixed player bar with scrubbing and ±5s skip",
+      "Full-story Listen from the transcript and Export Story Audiobook (WAV) from story settings",
+      "Per-story parallel chapter audiobook synthesis (1–5) with per-chapter progress timers and checkmarks",
+      "Chapter playback announces chapter titles in the narrator voice before each chapter body",
+      "Character TTS rules: quoted dialogue uses character voices; actions and narrator prose use the narrator (Player RP: first-person actions in character voice)",
+      "Collapsible full-story audiobook preparation progress in the playback bar; Listen to Chapter while remaining segments synthesize in the background",
+      "Transcript sanitization for malformed markers inside quoted dialogue when viewing or playing locked stories",
+      "Director directions use the narrator voice; per-chunk volume normalization keeps character voices closer to the same loudness",
+      "Locked prequel stories can adjust audiobook parallel-chapters without unlocking story model settings",
+      "Archive-equivalent Markdown export with navigable table of contents (mirrors archive PDF sections)",
+      "Per-message deep indexing processes one transcript message at a time for finer continuity extraction",
+      "Deep indexing progress UI with elapsed timer, animated progress bar, cancel control, and collapsible chapter-review list",
+      "Richer indexing output: transcript-backed NPC descriptions, world facts, deduped relationship history, and ensemble cast status bullets",
+      "Story export filenames include a local-time timestamp",
+      "Changelog history and exports show a Released timestamp for every version",
+    ],
+    fixed: [
+      "Version wiring aligned to 3.1.0 across the app label, changelog, npm metadata, and Android release metadata",
+    ],
+    knownIssues: [],
+  },
   "3.0.0": {
-    title: "AI Documents, Story Audiobook & Gemini Narration",
+    title: "AI Documents, Gemini TTS & In-App Narration",
+    releasedAt: "2026-08-03T21:25:59+00:00",
     added: [
       "AI Document Generator (Settings → AI Documents): companion documents from library stories or uploaded exports — podcast chapter breakdowns, thematic discussions, guides, and custom prompts",
       "Chapter-by-chapter document generation with long-form Sam & Alex podcast prompts (personalities, variable chapter depth, rolling context, Final Thoughts epilogue)",
       "Gemini TTS podcast audio export (WAV) from generated Markdown, plus Audio from Markdown to synthesize WAV without re-running document generation",
       "Gemini TTS voice catalog: 30 prebuilt narrators with grouped pickers for Sam/Alex podcast export and separate story/MetaChat narration settings",
       "TTS model selection (Gemini 3.1 Flash TTS with automatic 2.5 fallback)",
-      "In-app Gemini story narration with persistent per-character voices, gender-matched assignment from story state, player sheets, and pronouns in transcript text",
-      "Prepare-then-play story audio: per-message Play on assistant turns, Listen to Chapter on chapter banners, and a fixed Spotify-style player bar with scrubbing and ±5s skip",
-      "Full-story Listen from the transcript reuses cached chapter audio and only synthesizes missing segments",
-      "Export Story Audiobook (WAV) from story settings merges all chapter segments into one downloadable file",
-      "Chapter Listen and full-story audiobook playback announce chapter titles in the narrator voice before each chapter body",
-      "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",
-      "Per-story audiobook parallel chapter setting (1–5) speeds full-story listen and export by synthesizing multiple chapters at once",
-      "Audiobook synthesis shows per-chapter progress with elapsed timers and checkmarks when each chapter finishes (including parallel batches)",
-      "Locked prequel stories can still change the audiobook parallel-chapters slider without unlocking story model settings",
-      "Character speech uses a simple transcript rule: quoted lines use each character's voice; asterisk actions and unquoted prose use the narrator (with character names on action beats); asterisks inside quotes are treated as dialogue, not actions",
-      "Transcript sanitization retroactively cleans malformed markers inside quoted dialogue (e.g. *.except) when viewing or playing locked stories without editing messages",
-      "Full-story audiobook chapter synthesis progress lives in the playback bar (collapsible); chapter Listen works while the rest of the story prepares in the background",
-      "Director directions use the narrator voice; per-chunk volume normalization keeps character voices closer to the same loudness",
+      "In-app Gemini TTS playback: play/stop on every assistant story message (chrome and reader modes)",
       "MetaChat reply play button for assistant messages",
+      "Listen to Chapter on chapter start banners in reader view",
       "TTS loading feedback: animated spinner, elapsed timer, chunk progress, helper text, and cancel while Gemini synthesizes (10–30s+ for long passages)",
     ],
     fixed: [
       "Gemini TTS reliability: generateContent API path, per-chunk timeouts, retries, and resume after failed podcast audio chunks",
       "Podcast TTS voices stay consistent across chapter sections instead of swapping when a new section opens with the other host",
-      "TTS cache invalidates and re-synthesizes when character voices or speech plans change instead of replaying stale prepared audio",
       "TTS now includes character names for label-only transcript lines (e.g. Jake Peralta: / puts his pen down → spoken as Jake Peralta puts his pen down)",
-      "Deep indexing and incremental index updates now process the transcript one message at a time (instead of 40-message batches) for finer continuity extraction",
-      "Indexing UI matches TTS synthesis feedback: elapsed timer, animated progress bar, cancel control, and collapsible chapter-review list during deep indexing",
-      "Indexing prompts now require richer NPC descriptions, transcript-backed world facts, and deduped relationship history; archive PDF transcript uses per-speaker blocks",
-      "Per-message deep indexing no longer overwrites story memory with empty defaults when the model omits fields in a single-message response",
-      "Story state counter sync and author-directive updates preserve existing indexes and rpStats instead of resetting to an empty shell",
-      "Major indexed characters now receive tracked status for archive/UI; ensemble casts get statusBullets for each on-screen character, with relationship-backed fallbacks when the model omits them",
-      "Open threads are retired when the transcript resolves them; status bullets and world facts dedupe repeated phrasing (e.g. duplicate Wands at Four / wand serial facts)",
-      "Character status bullets now replace prior live-state bullets on each index update instead of accumulating stale conditions from earlier beats",
       "Archive PDF export skips a full re-index when the story index already matches the live message count",
-      "Markdown export now mirrors the archive PDF (summary, transcript, characters, relationships, world facts, threads, memories, locations, and chapters) with a navigable table of contents",
-      "Guided chapter generation: optional Story History when creating a story and a Generate Chapters workspace action between closed chapters (Director beats, narration, chapter ends, incremental indexing per chapter)",
-      "Guided chapter planner modal with overall direction, chapter count, per-chapter overviews, scenes-per-chapter, and optional AI chapter-plan generation",
-      "Guided generation streams assistant replies in the workspace and posts visible Director staging lines plus chapter banners as system messages",
-      "Story History layout: history divider sits between generated history and the playable chapter; supports Chapter I: / Scene I: planning text",
-      "Guided chapter Director beat parsing retries malformed JSON and falls back to the scene plan instead of failing the whole job",
-      "Guided chapter generation maintains a per-chapter continuity ledger (docking bays, shuttles, meeting locations) so later beats do not contradict earlier assignments",
-      "Guided Director beats use first-name staging, reject truncated model output, fix malformed endings, and require proper speaker headers during guided narration",
-      "Workspace guided chapter generation references the last closed chapter transcript and archive summary so new chapters continue realistically from where the story left off",
-      "Workspace Generate Chapters is available for AI-started stories once chapter one has playable content, even without a formal chapter end",
-      "Generate Chapters action lives in the chat composer beside Send, Clear, and Generate Response",
-      "Story settings background jobs label guided chapter generation separately from indexing",
-      "Story export downloads include a local-time timestamp in the filename",
-      "Archive Markdown table of contents uses explicit section anchors so links work in common Markdown viewers",
-      "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",
       "Version wiring aligned to 3.0.0 across the app label, changelog, npm metadata, and Android release metadata",
     ],
     knownIssues: [],
   },
   "2.7.0": {
     title: "Chapter Jump + Onboarding Tutorial",
+    releasedAt: "2026-07-30T21:34:21+00:00",
     added: [
       "Jump to Latest Chapter button in the story workspace scrolls to the current chapter header when multiple chapters exist",
       "Tutorial tab in Settings with a full onboarding guide for new users covering setup, workspace controls, chapters, RP mode, MetaChat, and backups",
@@ -81,6 +83,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.6.0": {
     title: "Transcript Command System",
+    releasedAt: "2026-07-27T02:52:43+00:00",
     added: [
       "Director: can now be written directly in the transcript as an out-of-character scene-direction command, letting the AI stage and play out a scene while temporarily controlling all characters, including the player character, for that reply only",
       "Continue and Continue. now work as transcript control commands, with or without surrounding asterisks, telling the AI to keep the current scene unfolding naturally without requiring fresh player dialogue or placeholder actions",
@@ -99,6 +102,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.5.1": {
     title: "Ending Flow + Chapter Review Rebuild",
+    releasedAt: "2026-07-26T03:46:52+00:00",
     added: [
       "Typing The End in story chat now functions as a final ending marker and offers a direct Create Sequel prompt",
       "MetaChat @ references now support live autocomplete suggestions while typing, with tap-to-insert and partial-name matching",
@@ -111,6 +115,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.5.0": {
     title: "Ensemble Storytelling + MetaChat Evolution",
+    releasedAt: "2026-07-26T02:52:26+00:00",
     added: [
       "Narration guidance now supports ensemble scenes where supporting characters can joke, disagree, plan, gossip, and react without forcing the player character to be the center of every exchange",
       "MetaChat now supports additive @Story, @Character, and @Universe references so story conversations can compare outside canon context without replacing the active story",
@@ -124,6 +129,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.0.0": {
     title: "Initial Release",
+    releasedAt: "2026-06-02T03:23:55+01:00",
     added: [
       "Universes, Player Characters, and Stories",
       "Story workspace with reader mode and transcript formatting",
@@ -136,6 +142,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.0.1": {
     title: "Bug Fixes & Quality",
+    releasedAt: "2026-06-02T03:23:55+01:00",
     added: [
       "Android back navigation handling",
       "Player character species field",
@@ -153,6 +160,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.1.0": {
     title: "Theme System Foundations",
+    releasedAt: "2026-06-02T03:23:55+01:00",
     added: [
       "Theme architecture (ThemeProvider + CSS variables)",
       "Theme selection in Settings",
@@ -163,6 +171,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.2.0": {
     title: "UI Polish Pass",
+    releasedAt: "2026-06-02T03:23:55+01:00",
     added: [
       "Neutral workspace surfaces and dividers (consistent across themes)",
       "Stronger theme identity in card borders, badges, focus and hover states",
@@ -173,12 +182,14 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.2.1": {
     title: "Changelog Hotfix",
+    releasedAt: "2026-06-02T03:32:40+01:00",
     added: [],
     fixed: ["Fix changelog history scrolling"],
     knownIssues: [],
   },
   "1.2.2": {
     title: "Summary & Story State Hotfix",
+    releasedAt: "2026-06-04T02:36:17+01:00",
     added: [],
     fixed: [
       "PDF/Markdown/TXT/JSON exports now show the latest available summary even when story.currentSummary is empty",
@@ -188,6 +199,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.3.0": {
     title: "Memory Architecture v2 Schema (Phase 1)",
+    releasedAt: "2026-06-04T02:36:17+01:00",
     added: [
       "Story state now supports optional v2 schema fields (indexes, scene snapshot, threads, indexing metadata)",
       "Story state saves include memory architecture metadata for future transcript-first indexing",
@@ -198,6 +210,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.4.0": {
     title: "Memory Rebuild Engine (Phase 2)",
+    releasedAt: "2026-06-04T02:36:17+01:00",
     added: [
       "Rebuild Memory & Indexes pipeline (chunked transcript-first rebuild with progress)",
       "Story Settings drawer action to rebuild memory and update story state safely",
@@ -207,6 +220,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.5.0": {
     title: "AI-Assisted Index System (Phase 3)",
+    releasedAt: "2026-06-04T02:36:17+01:00",
     added: [
       "Transcript-stable message numbering for index evidence references",
       "Indexes section populated during rebuild (entities, facts, threads, memories, relationships with evidence)",
@@ -216,6 +230,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.6.0": {
     title: "Incremental Indexing & Evidence Viewer (Phase 4)",
+    releasedAt: "2026-06-04T02:36:17+01:00",
     added: [
       "Automatic light indexing every 5 messages and deep re-index every 20 messages",
       "Story Settings Index / Archive viewer (threads, facts, characters, locations, relationships)",
@@ -226,12 +241,14 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.6.1": {
     title: "Memory & Indexes Hotfix",
+    releasedAt: "2026-06-04T02:36:17+01:00",
     added: [],
     fixed: ["Fix crash when rebuilding memory & indexes (defensive array checks in index sanitiser)"],
     knownIssues: [],
   },
   "1.7.0": {
     title: "Deep Indexing + PDF Metadata (Phase 5)",
+    releasedAt: "2026-06-04T02:36:17+01:00",
     added: [
       "Deep-only automatic indexing every 20 messages (light indexing removed)",
       "Manual Re-index action in Story Settings",
@@ -242,6 +259,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.8.0": {
     title: "Archive PDF Export (Phase 6)",
+    releasedAt: "2026-06-04T02:36:17+01:00",
     added: [
       "New Archive PDF export (metadata + indexes/registries + evidence + numbered transcript)",
     ],
@@ -250,6 +268,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.8.1": {
     title: "Transcript & PDF Formatting Fixes",
+    releasedAt: "2026-06-04T02:52:12+01:00",
     added: [],
     fixed: [
       "Transcript mode is now script-like with speaker tags on every line (no giant player banner)",
@@ -260,6 +279,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.9.0": {
     title: "Theme-Accented UX Polish",
+    releasedAt: "2026-06-04T03:14:35+01:00",
     added: [
       "Player speaker tags now follow the active theme accent (matches NPC/canon tags)",
       "Top-left logo is clickable and returns to the homepage",
@@ -270,6 +290,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.10.0": {
     title: "Theme System 2.0",
+    releasedAt: "2026-06-04T03:46:30+01:00",
     added: [
       "Theme ids migrated: Purple → Amethyst, Gold → Copper",
       "New themes: Emerald, Azure, Crimson, Silver",
@@ -283,6 +304,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.11.0": {
     title: "UX Cleanup",
+    releasedAt: "2026-06-04T05:15:33+01:00",
     added: [],
     fixed: [
       "Removed the redundant show/hide sidebar button (Story Settings controls the sidebar)",
@@ -292,6 +314,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.12.0": {
     title: "Edit / Regenerate Last AI Message",
+    releasedAt: "2026-06-05T18:54:59+01:00",
     added: [
       "Edit the last assistant message in-place (quick fix modal)",
       "Regenerate the last assistant message (re-run AI for the last turn)",
@@ -301,6 +324,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.13.0": {
     title: "Character Concepts + Quick Protagonists",
+    releasedAt: "2026-06-05T18:54:59+01:00",
     added: [
       "Player characters now support a Character Concept field",
       "Generate character details from concept (and regenerate individual fields)",
@@ -311,6 +335,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.14.0": {
     title: "Reliability + Identity + Android Auto Backup",
+    releasedAt: "2026-06-07T21:18:38+01:00",
     added: [
       "Automatic story-state refresh when the active protagonist identity changes",
       "Relationship indexes now merge by character pair and show dynamic metrics (trust/loyalty/tension/etc.)",
@@ -325,6 +350,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.14.1": {
     title: "Cleanup & Promotion Hotfix",
+    releasedAt: "2026-06-07T21:58:19+01:00",
     added: ["Story Settings tool: Cleanup Duplicates (merge likely duplicate characters and repoint stories)"],
     fixed: [
       "Promoting a Quick Character no longer creates duplicates (promotion converts the existing record in-place)",
@@ -334,6 +360,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.14.2": {
     title: "Auto Indexing Consistency Hotfix",
+    releasedAt: "2026-06-07T22:28:55+01:00",
     added: [],
     fixed: [
       "Automatic story-state updates now run the same full deep indexing pipeline as manual Re-indexing for consistent results",
@@ -342,6 +369,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.15.0": {
     title: "Universe Packs + Archive UX + Support Bundle + Additive Assist",
+    releasedAt: "2026-06-09T04:18:17+01:00",
     added: [
       "Universe Form 2.0 (structured fields with Randomise / Fill with AI / Clear)",
       "Universe Packs: universe export now produces a versioned universe_pack bundle, and new stories bind to a universe snapshot to prevent canon drift",
@@ -354,6 +382,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.16.0": {
     title: "Universe Blueprint UX + Collaboration + Archive Quality",
+    releasedAt: "2026-06-09T23:13:31+01:00",
     added: [
       "Universe creation now supports the referenced/custom blueprint workflow with separate Concept and Description fields",
       "Archive view now surfaces Story Premise, Protagonist Focus, Current Situation, Recent Developments, and Character Status",
@@ -373,6 +402,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.17.0": {
     title: "Indexing Independence + Canon Consistency",
+    releasedAt: "2026-06-10T05:19:04+01:00",
     added: [
       "Automatic indexing can now be configured per story with Disabled, 5, 10, 15, and 20 message intervals",
       "Story Settings now includes an Automatic Indexing selector for per-story auto-index cadence",
@@ -389,6 +419,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.18.0": {
     title: "Usability + Narrative Intelligence Upgrade",
+    releasedAt: "2026-06-11T22:37:14+01:00",
     added: [
       "Archive PDF exports now re-index first, stay transcript-first, and include chapter summaries",
       "Story view now supports quicker daily use with theme switching, MetaChat, story archiving, and chapter-aware indexing",
@@ -405,6 +436,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.18.1": {
     title: "Mature Fiction Context + Android Sync Hotfix",
+    releasedAt: "2026-06-13T04:48:26+01:00",
     added: [
       "Story generation now uses a shared mature-fiction policy block that better recognises police, detective, military, action, fantasy, and psychological-drama storytelling as legitimate narrative context",
       "Player Assist now follows the same mature-fiction and narrative-parity rules as the main narrator, so suggested turns are less likely to get over-sanitised",
@@ -421,6 +453,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.18.2": {
     title: "Fictional Injury Input Context Hotfix",
+    releasedAt: "2026-06-20T01:31:51+01:00",
     added: [
       "Story input safety now analyses fictional-roleplay cues and recent canon context when a player writes about injury, pain, hospitals, trauma, or recovery",
       "The latest player turn is now sent to the model with clearer in-story labelling so ordinary first-person aftermath prose reads more obviously as fiction",
@@ -436,6 +469,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.19.0": {
     title: "Editorial UI Redesign + MetaChat Full-Screen",
+    releasedAt: "2026-06-21T00:53:33+00:00",
     added: [
       "Full editorial dark-theme redesign: all panels, cards, forms, and drawers now match the homepage's near-black aesthetic with subtle border treatment",
       "MetaChat moved from a squashed sidebar popup to a full-screen overlay accessible via a new robot icon in the story toolbar",
@@ -454,6 +488,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "1.18.3": {
     title: "Background Jobs + Persistent MetaChat + Multi-Source Universes",
+    releasedAt: "2026-06-20T01:31:51+01:00",
     added: [
       "Long-running story indexing now runs as a persistent background job with queued/running/complete/failed/cancelled states",
       "MetaChat drafts now persist when you leave the overlay, and MetaChat replies can complete as background jobs",
@@ -468,6 +503,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.1.0": {
     title: "RP Mode — Time, Money & Transaction Intelligence",
+    releasedAt: "2026-06-22T23:58:42+00:00",
     added: [
       "In-story time tracking: set a starting date/time and the clock advances automatically after each scene",
       "Per-message time chips in the transcript show when the in-story time changed",
@@ -488,6 +524,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.4.1": {
     title: "Branch Story + Editor Stability",
+    releasedAt: "2026-07-26T00:52:38+00:00",
     added: [
       "Story settings now include a Branch Story action that forks the current transcript, context, index, summaries, and AI configuration into an editable alternate timeline",
       "Branch creation opens a dedicated flow that keeps the original story editable while preserving parent/child lineage between the source and the new branch",
@@ -500,6 +537,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.4.0": {
     title: "Create Sequel + Canon Lineage",
+    releasedAt: "2026-07-25T11:54:52+00:00",
     added: [
       "Stories now support a first-class Create Sequel flow that starts a fresh transcript while inheriting distilled canon from the source story",
       "Story creation can now open in sequel mode with the source story, universe, protagonist, and prior summary preloaded for continuity",
@@ -513,6 +551,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.3.0": {
     title: "Response Variant Cycling + Streaming Improvements",
+    releasedAt: "2026-07-13T21:37:42+00:00",
     added: [
       "Regenerating the last AI message now creates a new candidate instead of silently overwriting — the previous response is preserved",
       "Response X of Y counter with Previous / Next buttons lets you cycle between all generated candidates for the current turn",
@@ -532,6 +571,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.2.6": {
     title: "MetaChat Error Visibility",
+    releasedAt: "2026-07-11T16:31:55+01:00",
     fixed: [
       "Failed MetaChat replies were invisible — if the AI call failed (API error, safety refusal, context too large), the user's message would appear but no reply or error was shown, making MetaChat appear broken. Failed jobs now surface their error message in the overlay with a Retry button.",
     ],
@@ -539,6 +579,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.2.5": {
     title: "Speaker Attribution Hotfix",
+    releasedAt: "2026-07-11T15:16:03+00:00",
     fixed: [
       "\"As Jamie:\" and similar narrative transition phrases (\"As\", \"With\", \"After\", \"While\", etc.) were being treated as speaker labels, causing the following prose to appear under the wrong character. The parser now rejects any label whose first word is a narrative transition word, and the AI is explicitly instructed never to use \"As [Name]:\" as a speaker prefix.",
     ],
@@ -546,6 +587,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.2.4": {
     title: "Update Index & Narrator Attribution Fixes",
+    releasedAt: "2026-07-11T15:02:48+00:00",
     fixed: [
       "Update index (incremental) was completing instantly without doing any work — the indexer was using the lightweight message counter (bumped after every AI turn) as its starting point, so it always saw 0 new messages. It now uses the actual last AI deep-index checkpoint",
       "Third-person prose describing multiple characters (e.g. \"Jake does X while Amy does Y\") was being written as an action beat inside the first character's block. The output format instructions now explicitly require any prose that mentions another character's actions to be placed in a Narrator: block",
@@ -554,6 +596,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.2.3": {
     title: "Gemini Formatting Fixes & Writing Quality",
+    releasedAt: "2026-07-11T14:48:53+00:00",
     fixed: [
       "Trailing _ characters at the end of narrator paragraphs — Gemini wraps narrator text in _italic_ markdown; the italic-stripping regex now handles passages of any length, and any stray underscore delimiter left over is removed as a second pass",
       "Duplicate character speech blocks — if the model emits two consecutive blocks for the same speaker separated by a blank line, they are now merged into a single bubble instead of appearing as two",
@@ -564,6 +607,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.2.2": {
     title: "Time System Rework & Story Text Fixes",
+    releasedAt: "2026-07-05T18:38:23+00:00",
     added: [
       "/time command: type /time +2h, /time +30m, /time +3d, /time +1w in any message to advance the in-story clock by an exact amount — the command is stripped before the AI sees it",
       "Natural language time phrases in messages (e.g. \"2 hours later\", \"skip 3 days\") are now detected and applied as exact arithmetic rather than AI estimation",
@@ -582,6 +626,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.2.1": {
     title: "Bulk Delete, Recurring Event Fix & Countdown",
+    releasedAt: "2026-06-23T06:38:28+00:00",
     added: [
       "Danger Zone section in Settings → Storage: bulk delete all stories (with full cascade), all characters, or all universes — each requires typing a confirmation phrase",
       "Recurring event rows now show a countdown to the next trigger (e.g. \"in 8 days\", \"in 4h\", \"due soon\")",
@@ -595,6 +640,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.2.0": {
     title: "Dice Roll System for RP Mode",
+    releasedAt: "2026-06-23T04:49:01+00:00",
     added: [
       "Optional dice roll system for RP mode: write [roll] or [roll str/dex/con/int/wis/cha] in a message to trigger a d12 skill check; AI selects the stat automatically if not specified",
       "Dice modifiers (-2 to +2) per stat (STR/DEX/CON/INT/WIS/CHA) configurable in Character Sheet Settings",
@@ -612,6 +658,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
   },
   "2.0.0": {
     title: "RP Mode — Relationships, AI Stat Integration & Export",
+    releasedAt: "2026-06-22T16:34:44+00:00",
     added: [
       "Relationship system overhaul: AI-extracted tiers (stranger through nemesis/lover/family), dynamic trust/tension metrics, key turning-point history, and NPC relationship chips in the workspace toolbar",
       "RP Mode: HP, currency, and core stat tracking (STR/DEX/CON/INT/WIS/CHA) with manual editing, stat changelog, and live gold display in the story toolbar",
