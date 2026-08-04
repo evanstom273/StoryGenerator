@@ -85,6 +85,7 @@ import {
   createSequelStoryStateData,
   normalizeStoryStateToV2,
   finalizeStoryStateForSave,
+  parseStoryStateJson,
   reconcileStoryIndexes,
   safeParseStoryStateData,
   withIndexedMetadata,
@@ -3189,7 +3190,7 @@ export function StoryEngineProvider({
       const now = new Date().toISOString();
       const nextStateJson = JSON.stringify(
         applyAuthorDirectivesToStoryState(
-          safeParseStoryStateData(existingState?.stateJson ?? ""),
+          parseStoryStateJson(existingState?.stateJson ?? ""),
           storyMessages,
         ),
       );
@@ -6907,8 +6908,11 @@ export function StoryEngineProvider({
             const baseParsed = latestStoryState?.stateJson
               ? safeParseStoryStateData(latestStoryState.stateJson)
               : null;
+            const preservedState = latestStoryState?.stateJson?.trim()
+              ? parseStoryStateJson(latestStoryState.stateJson)
+              : normalizeStoryStateToV2(null);
 
-            const baseState = normalizeStoryStateToV2(baseParsed);
+            const baseState = baseParsed ? normalizeStoryStateToV2(baseParsed) : preservedState;
             const lastDeepMessageCount =
               baseState.lastDeepIndexedMessageCount ??
               baseState.lastIndexedMessageCount ??
@@ -6931,45 +6935,20 @@ export function StoryEngineProvider({
                   playerName: playerCharacter.name,
                   universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
                 });
-                // Preserve rpStats from raw state when safeParseStoryStateData returns null
-                const rawRpStatsForCounter = (() => {
-                  if (baseParsed) return undefined; // handled via baseState spread
-                  try {
-                    const raw = JSON.parse(latestStoryState?.stateJson ?? "{}") as Record<string, unknown>;
-                    return raw?.rpStats as RpStats | undefined;
-                  } catch { return undefined; }
-                })();
 
                 const patched = withIndexedMetadata(
-                  baseParsed
-                    ? {
-                        ...baseState,
-                        memoryArchitectureVersion: "2.0",
-                        messagesSinceDeepIndexUpdate: nextDeepCounter,
-                        ...(shouldBootstrapAutoDeepAnchor
-                          ? { lastAutoDeepIndexedMessageCount: autoDeepBootstrapAnchor }
-                          : {}),
-                        indexes: reconciledIndexes ?? {
-                          messageCount: totalMessages,
-                          messageNumberingVersion: "1.0",
-                        },
-                      }
-                    : {
-                        ...(rawRpStatsForCounter ? { rpStats: rawRpStatsForCounter } : {}),
-                        updatedAt: now,
-                        characters: {},
-                        worldFacts: [],
-                        unresolvedThreads: [],
-                        memoryArchitectureVersion: "2.0",
-                        messagesSinceDeepIndexUpdate: nextDeepCounter,
-                        ...(shouldBootstrapAutoDeepAnchor
-                          ? { lastAutoDeepIndexedMessageCount: autoDeepBootstrapAnchor }
-                          : {}),
-                        indexes: reconciledIndexes ?? {
-                          messageCount: totalMessages,
-                          messageNumberingVersion: "1.0",
-                        },
-                      },
+                  {
+                    ...baseState,
+                    memoryArchitectureVersion: "2.0",
+                    messagesSinceDeepIndexUpdate: nextDeepCounter,
+                    ...(shouldBootstrapAutoDeepAnchor
+                      ? { lastAutoDeepIndexedMessageCount: autoDeepBootstrapAnchor }
+                      : {}),
+                    indexes: reconciledIndexes ?? {
+                      messageCount: totalMessages,
+                      messageNumberingVersion: "1.0",
+                    },
+                  },
                   { indexedAt: now, memoryArchitectureVersion: "2.0" },
                 );
 
