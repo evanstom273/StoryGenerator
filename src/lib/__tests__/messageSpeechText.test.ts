@@ -374,7 +374,7 @@ describe("messageSpeechText", () => {
 		]);
 	});
 
-	it("skips unquoted staging between quoted dialogue in player turns", () => {
+	it("routes first-person staging between quoted dialogue to the character voice in player turns", () => {
 		const plan = buildStoryMessageSpeechPlan(
 			{
 				id: "jamie-1",
@@ -396,9 +396,39 @@ describe("messageSpeechText", () => {
 			},
 			{
 				speaker: "Jamie",
+				text: "I look at Dad through the camera, smirking.",
+			},
+			{
+				speaker: "Jamie",
 				text:
 					"Saying that I wouldn't be able to wrestle as a type-1, so... suck it Peralta!",
 			},
+			{
+				speaker: "Jamie",
+				text: "We all laugh.",
+			},
+		]);
+	});
+
+	it("keeps third-person group staging between quotes on the narrator in player turns", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			{
+				id: "jamie-2",
+				storyId: "story-1",
+				role: "user",
+				speakerName: "Jamie",
+				speakerType: "player",
+				content:
+					'"Hello there!" The five of them all laugh. "See you later!"',
+				timestamp: "2026-01-01T00:00:00.000Z",
+			},
+			{ playerName: "Jamie", narrationTts },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{ speaker: "Jamie", text: "Hello there!" },
+			{ speaker: "Narrator", text: "The five of them all laugh." },
+			{ speaker: "Jamie", text: "See you later!" },
 		]);
 	});
 });

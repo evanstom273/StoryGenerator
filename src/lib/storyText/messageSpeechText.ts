@@ -73,7 +73,14 @@ function stripActionMarkers(text: string) {
 	return text.replace(/\*([^*]+)\*/g, "$1").replace(/\s+/g, " ").trim();
 }
 
-type CharacterSpeechPart = { kind: "dialogue" | "narration"; text: string };
+type CharacterSpeechPart = {
+	kind: "dialogue" | "narration";
+	text: string;
+	narratorStyle?: "character_action" | "omniscient";
+};
+
+const FIRST_PERSON_STAGING_START =
+	/^(?:I(?:'m|'ve|'ll|'d)?|me|my(?:self)?|mine|we(?:'re|'ve|'ll|'d)?|us|our(?:selves)?|ours)\b/i;
 
 function findNextQuoteOpen(text: string, fromIndex: number) {
 	let bestIndex = -1;
@@ -97,7 +104,65 @@ function findNextQuoteOpen(text: string, fromIndex: number) {
 function appendUnquotedNarration(parts: CharacterSpeechPart[], text: string) {
 	const narration = stripActionMarkers(text);
 	if (narration) {
-		parts.push({ kind: "narration", text: narration });
+		parts.push({ kind: "narration", text: narration, narratorStyle: "character_action" });
+	}
+}
+
+function isFirstPersonPerspectiveStaging(text: string) {
+	const cleaned = stripActionMarkers(text).trim();
+	if (!cleaned) {
+		return false;
+	}
+
+	const clauses = cleaned.split(/[,;]\s+/);
+	return clauses.some((clause) => FIRST_PERSON_STAGING_START.test(clause.trim()));
+}
+
+function splitStagingSentences(text: string) {
+	const cleaned = stripActionMarkers(text).trim();
+	if (!cleaned) {
+		return [];
+	}
+
+	const sentences: string[] = [];
+	let current = "";
+
+	for (const character of cleaned) {
+		current += character;
+		if (character === "." || character === "!" || character === "?") {
+			const trimmed = current.trim();
+			if (trimmed) {
+				sentences.push(trimmed);
+			}
+			current = "";
+		}
+	}
+
+	const remainder = current.trim();
+	if (remainder) {
+		sentences.push(remainder);
+	}
+
+	return sentences.length ? sentences : [cleaned];
+}
+
+function appendUnquotedStagingBetweenQuotes(parts: CharacterSpeechPart[], text: string) {
+	for (const sentence of splitStagingSentences(text)) {
+		const cleaned = sentence.trim();
+		if (!cleaned) {
+			continue;
+		}
+
+		if (isFirstPersonPerspectiveStaging(cleaned)) {
+			parts.push({ kind: "dialogue", text: cleaned });
+			continue;
+		}
+
+		parts.push({
+			kind: "narration",
+			text: cleaned,
+			narratorStyle: "omniscient",
+		});
 	}
 }
 
@@ -158,7 +223,9 @@ function parseCharacterBlockSpeechParts(text: string): CharacterSpeechPart[] {
 				continue;
 			}
 
-			if (!hasQuotedDialogue) {
+			if (hasQuotedDialogue) {
+				appendUnquotedStagingBetweenQuotes(parts, segment.text);
+			} else {
 				appendQuotedAndUnquotedSpeechParts(parts, segment.text);
 			}
 		}
@@ -194,7 +261,10 @@ function buildSpeechScriptLinesFromCharacterBlock(
 			continue;
 		}
 
-		const narrated = formatCharacterActionForNarratorSpeech(speakerLabel, part.text);
+		const narrated =
+			part.narratorStyle === "omniscient"
+				? stripActionMarkers(part.text)
+				: formatCharacterActionForNarratorSpeech(speakerLabel, part.text);
 		if (narrated.trim()) {
 			lines.push({ speaker: NARRATOR_SPEAKER_ALIAS, text: narrated });
 		}
