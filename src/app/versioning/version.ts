@@ -52,6 +52,8 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Guided chapter planner modal with overall direction, chapter count, per-chapter overviews, scenes-per-chapter, and optional AI chapter-plan generation",
       "Guided generation streams assistant replies in the workspace, stages scenes via Continue (not visible Director lines), and posts chapter banners as system messages",
       "Story History layout: no duplicate Chapter I banner at generation start; history divider sits between generated history and the playable chapter; supports Chapter I: / Scene I: planning text",
+      "Guided chapter Director beat parsing retries malformed JSON and falls back to the scene plan instead of failing the whole job",
+      "Story settings background jobs label guided chapter generation separately from indexing",
       "Story export downloads include a local-time timestamp in the filename",
       "Archive Markdown table of contents uses explicit section anchors so links work in common Markdown viewers",
       "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",
