@@ -87,6 +87,7 @@ export async function generateDirectorBeat(params: {
 	sceneCount: number;
 	overallDirection?: string;
 	playerName: string;
+	continuityNotes?: string;
 }): Promise<string> {
 	const system = [
 		"You write ONE Director staging note for Story Engine guided chapter generation.",
@@ -99,6 +100,7 @@ export async function generateDirectorBeat(params: {
 		"- Keep under 120 words.",
 		"- Use exact names from the overall direction and scene plan. Never substitute canon characters when the plan names someone else (e.g. use Kelly Grayson, not Alara Kitan).",
 		"- If the scene plan names who appears, those are the required cast for this beat.",
+		"- Honor the continuity ledger. Do not stage a different docking bay, shuttle, or meeting location than already established this chapter.",
 	].join("\n");
 
 	const scenePlan = params.sceneOverview?.trim() || params.chapterOverview.trim();
@@ -114,6 +116,9 @@ export async function generateDirectorBeat(params: {
 			: "",
 		params.overallDirection?.trim()
 			? `\n\nOverall direction:\n${params.overallDirection.trim()}`
+			: "",
+		params.continuityNotes?.trim()
+			? `\n\nContinuity ledger (mandatory):\n${params.continuityNotes.trim()}`
 			: "",
 	].join("\n");
 
