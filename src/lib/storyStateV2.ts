@@ -10,7 +10,11 @@ import {
 	mergePerTurnRelationshipFields,
 	reconcileRelationshipEntries,
 } from "./relationshipIndex";
-import { ensureIndexedCharacterStatus } from "./characterStatus";
+import { ensureIndexedCharacterStatus, dedupeStatusBullets } from "./characterStatus";
+import {
+	mergeOpenThreadsAuthoritative,
+	reconcileResolvedOpenThreads,
+} from "./openThreads";
 
 export function safeParseStoryStateData(json: string): StoryStateData | null {
   const parsed = safeParseJsonObject<StoryStateDataV2>(json.trim());
@@ -156,16 +160,30 @@ function mergeIndexedEvidenceRows(
   }
 
   const byKey = new Map<string, IndexedEvidenceRow>();
-  for (const row of prev) {
-    const key = typeof row[keyField] === "string" ? row[keyField]!.trim().toLowerCase() : "";
-    if (key) {
-      byKey.set(key, row);
+  const keys: string[] = [];
+
+  const findSimilarKey = (candidate: string): string | null => {
+    const normalized = candidate.trim().toLowerCase();
+    if (!normalized) {
+      return null;
     }
-  }
-  for (const row of inc) {
-    const key = typeof row[keyField] === "string" ? row[keyField]!.trim().toLowerCase() : "";
-    if (!key) {
-      continue;
+    for (const key of keys) {
+      if (stringsSimilar(key, normalized)) {
+        return key;
+      }
+    }
+    return null;
+  };
+
+  const upsert = (row: IndexedEvidenceRow) => {
+    const raw = typeof row[keyField] === "string" ? row[keyField]!.trim() : "";
+    if (!raw) {
+      return;
+    }
+    const similarKey = findSimilarKey(raw);
+    const key = similarKey ?? raw.toLowerCase();
+    if (!similarKey) {
+      keys.push(key);
     }
     const existing = byKey.get(key);
     byKey.set(
@@ -174,13 +192,71 @@ function mergeIndexedEvidenceRows(
         ? {
             ...existing,
             ...row,
+            [keyField]: existing[keyField] ?? raw,
             evidence: mergeEvidence(existing.evidence, row.evidence),
           }
         : row,
     );
+  };
+
+  for (const row of prev) {
+    upsert(row);
+  }
+  for (const row of inc) {
+    upsert(row);
   }
 
   const merged = Array.from(byKey.values()).slice(-maxItems);
+  return merged.length ? merged : undefined;
+}
+
+function stringsSimilar(left: string, right: string): boolean {
+  const normalizedLeft = left.toLowerCase().trim();
+  const normalizedRight = right.toLowerCase().trim();
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) {
+    return true;
+  }
+
+  const tokenize = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^\w\s]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 3);
+  const leftTokens = tokenize(normalizedLeft);
+  const rightTokenSet = new Set(tokenize(normalizedRight));
+  const overlap = leftTokens.filter((word) => rightTokenSet.has(word));
+  const minTokenCount = Math.min(leftTokens.length, rightTokenSet.size);
+  if (minTokenCount === 0) {
+    return false;
+  }
+  return overlap.length >= Math.min(3, Math.ceil(minTokenCount * 0.6));
+}
+
+function dedupeSimilarStrings(values: string[] | undefined, maxItems = 8): string[] | undefined {
+  if (!values?.length) {
+    return undefined;
+  }
+  const merged: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (merged.some((existing) => stringsSimilar(existing, trimmed))) {
+      continue;
+    }
+    merged.push(trimmed);
+    if (merged.length >= maxItems) {
+      break;
+    }
+  }
   return merged.length ? merged : undefined;
 }
 
@@ -231,7 +307,10 @@ export function mergeStoryIndexesIncremental(
       "moment",
       50,
     ) as StoryIndexesV2["significantMemories"],
-    openThreads: mergeIndexedEvidenceRows(prev.openThreads, inc.openThreads, "thread", 20) as StoryIndexesV2["openThreads"],
+    openThreads:
+      inc.openThreads !== undefined
+        ? mergeOpenThreadsAuthoritative(prev.openThreads, inc.openThreads)
+        : prev.openThreads,
   } satisfies StoryIndexesV2;
 }
 
@@ -273,7 +352,7 @@ function mergeCharacterStateMaps(
 		merged[name] = {
 			...existing,
 			...entry,
-			...(mergedBullets ? { statusBullets: mergedBullets } : {}),
+			...(mergedBullets ? { statusBullets: dedupeStatusBullets(mergedBullets) } : {}),
 			...(mergedTransient ? { characterStateTransient: mergedTransient } : {}),
 			...(mergedStrengths ? { strengths: mergedStrengths } : {}),
 			...(mergedWeaknesses ? { weaknesses: mergedWeaknesses } : {}),
@@ -292,9 +371,12 @@ export function mergeStoryStateForIndexing(
     ...(previous.summaries ?? {}),
     ...(incoming.summaries ?? {}),
   };
-  const recentDevelopments = mergeStringArrayPreserve(
-    previous.summaries?.recentDevelopments,
-    incoming.summaries?.recentDevelopments,
+  const recentDevelopments = dedupeSimilarStrings(
+    mergeStringArrayPreserve(
+      previous.summaries?.recentDevelopments,
+      incoming.summaries?.recentDevelopments,
+    ),
+    8,
   );
   if (recentDevelopments) {
     mergedSummaries.recentDevelopments = recentDevelopments;
@@ -670,9 +752,36 @@ export function finalizeStoryStateForSave(params: {
           lastIndexedMessageCount: params.totalMessages,
         }, { indexedAt: params.now, memoryArchitectureVersion: "2.0" });
 
-  const withStatus = ensureIndexedCharacterStatus(stamped, { playerName: params.playerName });
+  const withStatus = ensureIndexedCharacterStatus(
+    applyOpenThreadReconciliation(stamped, {
+      playerName: params.playerName,
+      totalMessages: params.totalMessages,
+    }),
+    { playerName: params.playerName },
+  );
 
   return JSON.stringify(withStatus);
+}
+
+export function applyOpenThreadReconciliation(
+  state: StoryStateDataV2,
+  opts?: { playerName?: string; totalMessages?: number },
+): StoryStateDataV2 {
+  if (!state.indexes?.openThreads?.length) {
+    return state;
+  }
+
+  const reconciled = reconcileResolvedOpenThreads(state.indexes.openThreads, state, opts);
+  const nextIndexes = { ...state.indexes };
+  if (reconciled?.length) {
+    nextIndexes.openThreads = reconciled;
+  } else {
+    delete nextIndexes.openThreads;
+  }
+  return {
+    ...state,
+    indexes: nextIndexes,
+  };
 }
 
 function trimStringArray(value: unknown, maxItems = 12): string[] | undefined {
