@@ -34,13 +34,30 @@ describe("unlabelled narration repair", () => {
     expect(autoRepairedNarration).toBe(false);
   });
 
-  it("does not wrap pronoun-attributed action lines as Narrator", () => {
-    const input = 'She: *takes two slow, deliberate steps toward the crib.*';
-    const { text, autoRepairedNarration } = sanitizeAssistantTranscript({ text: input });
-    expect(text).not.toContain("Narrator:");
-    expect(text).toContain("She:");
-    expect(autoRepairedNarration).toBe(false);
-  });
+	it("does not wrap pronoun-attributed action lines as Narrator", () => {
+		const input = 'She: *takes two slow, deliberate steps toward the crib.*';
+		const { text, autoRepairedNarration } = sanitizeAssistantTranscript({ text: input });
+		expect(text).not.toContain("Narrator:");
+		expect(text).toContain("She:");
+		expect(autoRepairedNarration).toBe(false);
+	});
+
+	it("preserves name-led narrator prose instead of converting to character dialogue", () => {
+		const { text, autoRepairedNarration } = sanitizeAssistantTranscript({
+			text: "Narrator: Ed walked into the bar and looked around.",
+		});
+		expect(text).toBe("Narrator: Ed walked into the bar and looked around.");
+		expect(text).not.toMatch(/^Ed:/m);
+		expect(autoRepairedNarration).toBe(false);
+	});
+
+	it("still strips generic plain-text narrator labels for repair wrapping", () => {
+		const { text, autoRepairedNarration } = sanitizeAssistantTranscript({
+			text: "Narrator: The room goes quiet.",
+		});
+		expect(text).toMatch(/^Narrator: \*The room goes quiet\.\*$/m);
+		expect(autoRepairedNarration).toBe(true);
+	});
 
   it("repairs only the unlabelled block in mixed content", () => {
     const input = [

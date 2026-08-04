@@ -44,4 +44,28 @@ describe("stripNarratorBlockDisplayPrefix", () => {
 			"She shifts closer on the mattress.",
 		);
 	});
+
+	it("strips time-skip number pseudo-labels in narrator blocks", () => {
+		expect(
+			stripNarratorBlockDisplayPrefix(
+				"Fifteen: minutes later, the neon sign of Shaw's Bar glows warmly against the dimming Brooklyn skyline.",
+			),
+		).toBe(
+			"Fifteen minutes later, the neon sign of Shaw's Bar glows warmly against the dimming Brooklyn skyline.",
+		);
+		expect(
+			formatNarratorBlockForDisplay(
+				"*Fifteen: minutes later, the neon sign of Shaw's Bar glows warmly.*",
+			),
+		).toBe("*Fifteen minutes later, the neon sign of Shaw's Bar glows warmly.*");
+	});
+
+	it("strips Narrator prefix from name-led prose without adding a speaker colon", () => {
+		expect(
+			formatNarratorBlockForDisplay("Narrator: Ed walked into the bar and looked around."),
+		).toBe("Ed walked into the bar and looked around.");
+		expect(
+			stripNarratorBlockDisplayPrefix("Narrator: Ed: walked into the bar."),
+		).toBe("Ed walked into the bar.");
+	});
 });
