@@ -25,6 +25,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",
       "Per-story audiobook parallel chapter setting (1–5) speeds full-story listen and export by synthesizing multiple chapters at once",
       "Audiobook synthesis shows per-chapter progress with elapsed timers and checkmarks when each chapter finishes (including parallel batches)",
+      "Locked prequel stories can still change the audiobook parallel-chapters slider without unlocking story model settings",
       "Character speech uses a simple transcript rule: quoted lines use each character's voice; asterisk actions and unquoted prose use the narrator (with character names on action beats)",
       "Director directions use the narrator voice; per-chunk volume normalization keeps character voices closer to the same loudness",
       "MetaChat reply play button for assistant messages",
