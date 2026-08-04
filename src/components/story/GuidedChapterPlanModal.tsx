@@ -117,11 +117,13 @@ export function GuidedChapterPlanModal(props: {
 				return;
 			}
 
-			setChapters(
+			setChapters((current) =>
 				chapterLabels.map((label, index) => ({
 					label,
-					overview: generated[index]?.overview ?? "",
-					scenesPerChapter: clampScenes(generated[index]?.scenesPerChapter ?? 3),
+					overview: generated[index]?.overview ?? current[index]?.overview ?? "",
+					scenesPerChapter: clampScenes(
+						current[index]?.scenesPerChapter ?? generated[index]?.scenesPerChapter ?? 3,
+					),
 				})),
 			);
 		} catch (error) {

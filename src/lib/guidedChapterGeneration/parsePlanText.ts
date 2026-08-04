@@ -66,27 +66,39 @@ export function resolveScenesForChapter(overview: string, scenesPerChapter: numb
 	scenes: string[];
 	sceneCount: number;
 } {
+	const requested = Math.max(1, Math.min(10, scenesPerChapter));
 	const parsedScenes = parseSceneOverviews(overview);
-	if (!parsedScenes.length) {
-		const count = Math.max(1, Math.min(10, scenesPerChapter));
+
+	if (requested === 1) {
 		return {
-			scenes: Array.from({ length: count }, () => overview.trim()),
-			sceneCount: count,
+			scenes: [parsedScenes[0]?.trim() || overview.trim()],
+			sceneCount: 1,
 		};
 	}
 
-	const cappedCount =
-		scenesPerChapter > 0
-			? Math.min(parsedScenes.length, scenesPerChapter)
-			: parsedScenes.length;
-	const sceneCount = Math.max(1, Math.min(10, cappedCount));
+	if (!parsedScenes.length) {
+		return {
+			scenes: Array.from({ length: requested }, () => overview.trim()),
+			sceneCount: requested,
+		};
+	}
+
+	const sceneCount = Math.max(1, Math.min(requested, parsedScenes.length, 10));
 	return {
 		scenes: parsedScenes.slice(0, sceneCount),
 		sceneCount,
 	};
 }
 
-export function shouldStageDirectorBeatForScene(overview: string, sceneIndex: number): boolean {
+export function shouldStageDirectorBeatForScene(
+	overview: string,
+	sceneIndex: number,
+	sceneCount = 1,
+): boolean {
+	if (sceneCount <= 1) {
+		return sceneIndex === 0;
+	}
+
 	const parsedScenes = parseSceneOverviews(overview);
 	if (parsedScenes.length > 0) {
 		return true;
