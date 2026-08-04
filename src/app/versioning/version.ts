@@ -38,7 +38,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Podcast TTS voices stay consistent across chapter sections instead of swapping when a new section opens with the other host",
       "TTS cache invalidates and re-synthesizes when character voices or speech plans change instead of replaying stale prepared audio",
       "TTS now includes character names for label-only transcript lines (e.g. Jake Peralta: / puts his pen down → spoken as Jake Peralta puts his pen down)",
-      "Quoted RP turns route first-person staging (I/we) between quotes to the character voice instead of the narrator; third-person group beats (e.g. the five of them all laugh) stay on the narrator; asterisk actions still use the narrator",
+      "Player RP turns route quoted dialogue and first-person beats (I/we, including mixed *I stand up… Dad grabs my arm.* blocks) through the character voice without the narrator saying their name; third-person scene actions (*Still nothing. Still the door is locked.*) use the narrator",
       "Archive PDF export skips a full re-index when the story index already matches the live message count",
       "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",
       "Version wiring aligned to 3.0.0 across the app label, changelog, npm metadata, and Android release metadata",

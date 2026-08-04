@@ -8,7 +8,7 @@ import {
 } from "../idb";
 import type { SpeechSynthesisPlan } from "../storyText/messageSpeechText";
 
-const CACHE_SCHEMA_VERSION = 6;
+const CACHE_SCHEMA_VERSION = 7;
 const MAX_CACHE_ENTRIES = 120;
 
 export type GeminiTtsCacheRecord = {

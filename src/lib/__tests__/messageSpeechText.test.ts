@@ -431,6 +431,72 @@ describe("messageSpeechText", () => {
 			{ speaker: "Jamie", text: "See you later!" },
 		]);
 	});
+
+	it("reads first-person player RP blocks entirely in the character voice", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			{
+				id: "jamie-3",
+				storyId: "story-1",
+				role: "user",
+				speakerName: "Jamie",
+				speakerType: "player",
+				content:
+					'*I roll my eyes.* "Whatever. I\'m done." *I stand up to leave. Dad grabs my arm.*',
+				timestamp: "2026-01-01T00:00:00.000Z",
+			},
+			{ playerName: "Jamie", narrationTts },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{ speaker: "Jamie", text: "I roll my eyes." },
+			{ speaker: "Jamie", text: "Whatever. I'm done." },
+			{
+				speaker: "Jamie",
+				text: "I stand up to leave. Dad grabs my arm.",
+			},
+		]);
+		expect(plan?.scriptLines.every((line) => line.speaker === "Jamie")).toBe(true);
+	});
+
+	it("narrates third-person player action beats without the character name prefix", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			{
+				id: "jamie-4",
+				storyId: "story-1",
+				role: "user",
+				speakerName: "Jamie",
+				speakerType: "player",
+				content: '"Sniff... sniff..." *Still nothing. Still the door is locked.*',
+				timestamp: "2026-01-01T00:00:00.000Z",
+			},
+			{ playerName: "Jamie", narrationTts },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{ speaker: "Jamie", text: "Sniff... sniff..." },
+			{
+				speaker: "Narrator",
+				text: "Still nothing. Still the door is locked.",
+			},
+		]);
+	});
+
+	it("applies player perspective rules to labeled Jamie blocks in assistant messages", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			assistantMessage(
+				'Jamie: "Sniff... sniff..." *Still nothing. Still the door is locked.*',
+			),
+			{ playerName: "Jamie", narrationTts },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{ speaker: "Jamie", text: "Sniff... sniff..." },
+			{
+				speaker: "Narrator",
+				text: "Still nothing. Still the door is locked.",
+			},
+		]);
+	});
 });
 
 describe("getMessagesForChapterStartingAt", () => {
