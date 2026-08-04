@@ -314,6 +314,24 @@ export function mergeStoryIndexesIncremental(
   } satisfies StoryIndexesV2;
 }
 
+function mergeLiveStringArray(
+	previous?: string[],
+	incoming?: string[],
+	maxItems = 4,
+): string[] | undefined {
+	const inc = Array.isArray(incoming)
+		? incoming.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+		: [];
+	if (inc.length) {
+		return dedupeStatusBullets(inc.map((entry) => entry.trim()), maxItems);
+	}
+
+	const prev = Array.isArray(previous)
+		? previous.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+		: [];
+	return prev.length ? prev.map((entry) => entry.trim()) : undefined;
+}
+
 function mergeCharacterStateMaps(
 	previous?: StoryStateData["characters"],
 	incoming?: StoryStateData["characters"],
@@ -332,13 +350,14 @@ function mergeCharacterStateMaps(
 			continue;
 		}
 		const existing = merged[name] ?? {};
-		const mergedBullets = mergeStringArrayPreserve(
+		const mergedBullets = mergeLiveStringArray(
 			(existing as { statusBullets?: string[] }).statusBullets,
 			(entry as { statusBullets?: string[] }).statusBullets,
 		);
-		const mergedTransient = mergeStringArrayPreserve(
+		const mergedTransient = mergeLiveStringArray(
 			(existing as { characterStateTransient?: string[] }).characterStateTransient,
 			(entry as { characterStateTransient?: string[] }).characterStateTransient,
+			3,
 		);
 		const mergedStrengths = mergeStringArrayPreserve(
 			(existing as { strengths?: string[] }).strengths,
@@ -352,7 +371,7 @@ function mergeCharacterStateMaps(
 		merged[name] = {
 			...existing,
 			...entry,
-			...(mergedBullets ? { statusBullets: dedupeStatusBullets(mergedBullets) } : {}),
+			...(mergedBullets ? { statusBullets: mergedBullets } : {}),
 			...(mergedTransient ? { characterStateTransient: mergedTransient } : {}),
 			...(mergedStrengths ? { strengths: mergedStrengths } : {}),
 			...(mergedWeaknesses ? { weaknesses: mergedWeaknesses } : {}),

@@ -1,26 +1,15 @@
 import { strToU8, zipSync } from "fflate";
 import { APP_VERSION } from "../app/versioning/version";
 import type { StoryExportBundle } from "../types/models";
+import { formatLocalExportTimestamp, sanitizeExportSlug } from "./exportFilename";
 import { serializeStoryExport } from "./storyExport";
-
-function sanitizeSlug(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function buildTimestamp(now: Date) {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
-}
 
 export async function buildStorySupportBundleZip(
   bundle: StoryExportBundle,
 ): Promise<{ filename: string; content: BlobPart; mimeType: string }> {
-  const now = new Date();
-  const timestamp = buildTimestamp(now);
-  const slug = sanitizeSlug(bundle.story.title) || "story-engine-story";
+	const now = new Date();
+	const timestamp = formatLocalExportTimestamp(now);
+	const slug = sanitizeExportSlug(bundle.story.title) || "story-engine-story";
 
   const jsonExport = serializeStoryExport(bundle, "json").content;
   const jsonText = typeof jsonExport === "string" ? jsonExport : JSON.stringify(jsonExport);

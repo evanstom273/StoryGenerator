@@ -4,6 +4,7 @@ import { DownloadIcon, TrashIcon } from "../../components/icons";
 import { Button, buttonClasses } from "../../components/ui/Button";
 import { Panel } from "../../components/ui/Panel";
 import { downloadFile } from "../../lib/download";
+import { createStoryExportFilename } from "../../lib/exportFilename";
 import { serializeStoryExport } from "../../lib/storyExport";
 import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import type { ExportFormat } from "../../types/models";
@@ -41,24 +42,6 @@ function reportArchivePdfDebug(args: {
 interface V2RightSidebarProps {
   storyId?: string;
   className?: string;
-}
-
-function createExportFilename(title: string, format: ExportFormat) {
-  const sanitizedTitle = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  const suffix = format === "archive_pdf" || format === "markdown" ? "-archive" : "";
-  const extension =
-    format === "json"
-      ? "json"
-      : format === "markdown"
-        ? "md"
-        : format === "pdf" || format === "archive_pdf"
-          ? "pdf"
-          : "txt";
-  return `${sanitizedTitle || "story-engine-story"}${suffix}.${extension}`;
 }
 
 export function V2RightSidebar({
@@ -185,7 +168,7 @@ export function V2RightSidebar({
       });
       // #endregion
       setExportStage(stages[stages.length - 1]);
-      await downloadFile(createExportFilename(story.title, format), content, mimeType);
+      await downloadFile(createStoryExportFilename(story.title, format), content, mimeType);
       // #region debug-point archive-pdf-no-op:download-ok
       reportArchivePdfDebug({
         hypothesisId: "D",
