@@ -56,4 +56,13 @@ describe("unlabelled narration repair", () => {
     expect(text).toMatch(/Narrator: \*The muffled giggle echoes\.\*/);
     expect(autoRepairedNarration).toBe(true);
   });
+
+  it("cleans malformed asterisks inside quoted dialogue retroactively", () => {
+    const input =
+      'Ellie: *gestures emphatically with a french fry.* "So then Mr. Henderson goes — \'Class, silence!\' — *.except his mic was still plugged into the cafeteria speaker system, so the entire middle school heard him burp right into the microphone!*"';
+    const { text } = sanitizeAssistantTranscript({ text: input });
+    expect(text).toContain("except his mic was still plugged");
+    expect(text).not.toContain("*.except");
+    expect(text).not.toMatch(/\*Like:\*/i);
+  });
 });

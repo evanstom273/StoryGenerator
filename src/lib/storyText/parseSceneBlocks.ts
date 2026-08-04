@@ -14,6 +14,8 @@ const NOT_A_NAME = new Set([
   "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
   "Note", "Warning", "However", "Therefore", "Eventually", "Finally",
   "Scene", "Chapter", "Part", "First", "Next",
+  "Like", "Well", "Look", "Listen", "See", "Right", "Okay",
+  "Honestly", "Seriously", "Basically", "Literally",
   // Narrative transition/preposition words that can precede a name but are not names themselves
   "As", "With", "After", "Before", "While", "When", "Once", "Until",
   "From", "Into", "Through", "Against", "Between", "Without",

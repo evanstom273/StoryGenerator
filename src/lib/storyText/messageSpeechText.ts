@@ -6,6 +6,11 @@ import {
 	type SceneBlock,
 } from "./parseSceneBlocks";
 import { parseActionSegments } from "./parseActionSegments";
+import {
+	DIALOGUE_QUOTE_PAIRS,
+	normalizeQuotedDialogueContent,
+	splitDialogueQuoteRegions,
+} from "./dialogueQuoteRegions";
 import { sanitizeMessageForDisplay } from "./transcriptSanitizer";
 import type { GeminiNarrationTtsSettings } from "../ai/geminiTtsVoices";
 import type { CharacterTtsGenderMap, CharacterTtsRegistry } from "../ai/characterTtsVoices";
@@ -67,12 +72,6 @@ export function resolveLatestUserMessageBefore(messages: StoryMessage[], beforeI
 function stripActionMarkers(text: string) {
 	return text.replace(/\*([^*]+)\*/g, "$1").replace(/\s+/g, " ").trim();
 }
-
-const DIALOGUE_QUOTE_PAIRS: Array<{ open: string; close: string }> = [
-	{ open: '"', close: '"' },
-	{ open: "“", close: "”" },
-	{ open: "‘", close: "’" },
-];
 
 type CharacterSpeechPart = { kind: "dialogue" | "narration"; text: string };
 
@@ -143,13 +142,23 @@ function appendQuotedAndUnquotedSpeechParts(parts: CharacterSpeechPart[], text: 
 function parseCharacterBlockSpeechParts(text: string): CharacterSpeechPart[] {
 	const parts: CharacterSpeechPart[] = [];
 
-	for (const segment of parseActionSegments(text)) {
-		if (segment.type === "action") {
-			appendUnquotedNarration(parts, segment.text);
+	for (const region of splitDialogueQuoteRegions(text)) {
+		if (region.kind === "quoted") {
+			const dialogue = normalizeQuotedDialogueContent(region.text);
+			if (dialogue) {
+				parts.push({ kind: "dialogue", text: dialogue });
+			}
 			continue;
 		}
 
-		appendQuotedAndUnquotedSpeechParts(parts, segment.text);
+		for (const segment of parseActionSegments(region.text)) {
+			if (segment.type === "action") {
+				appendUnquotedNarration(parts, segment.text);
+				continue;
+			}
+
+			appendQuotedAndUnquotedSpeechParts(parts, segment.text);
+		}
 	}
 
 	return parts;
