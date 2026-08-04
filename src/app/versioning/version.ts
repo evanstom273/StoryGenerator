@@ -50,6 +50,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Markdown export now mirrors the archive PDF (summary, transcript, characters, relationships, world facts, threads, memories, locations, and chapters) with a navigable table of contents",
       "Guided chapter generation: optional Story History when creating a story and a Generate Chapters workspace action between closed chapters (Director beats, narration, chapter ends, incremental indexing per chapter)",
       "Guided chapter planner modal with overall direction, chapter count, per-chapter overviews, scenes-per-chapter, and optional AI chapter-plan generation",
+      "Guided generation streams assistant replies in the workspace, stages scenes via Continue (not visible Director lines), and posts chapter banners as system messages",
       "Story export downloads include a local-time timestamp in the filename",
       "Archive Markdown table of contents uses explicit section anchors so links work in common Markdown viewers",
       "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",

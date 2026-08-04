@@ -28,12 +28,23 @@ export type GuidedChapterProgressUpdate = {
 	chapters: GuidedChapterProgressChapter[];
 };
 
+export type GuidedChapterSendContext = {
+	overallDirection?: string;
+	chapterOverview?: string;
+	chapterLabel?: string;
+};
+
 type SendChatMessageFn = (
 	storyId: string,
 	content: string,
 	opts?: {
 		signal?: AbortSignal;
 		guidedGenerationInternal?: boolean;
+		directorStagingNote?: string;
+		guidedDirectedScene?: boolean;
+		guidedChapterContext?: GuidedChapterSendContext;
+		onChunk?: (chunk: string) => void;
+		onChunkReset?: () => void;
 	},
 ) => Promise<unknown>;
 
@@ -41,6 +52,10 @@ type RunDeepIndexFn = (
 	storyId: string,
 	opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean; jobId?: string },
 ) => Promise<string>;
+
+function normalizeChapterBoundaryLabel(label: string): string {
+	return label.trim().replace(/\.$/, "");
+}
 
 export async function runGuidedChapterGeneration(params: {
 	storyId: string;
@@ -56,6 +71,9 @@ export async function runGuidedChapterGeneration(params: {
 	signal?: AbortSignal;
 	jobId?: string;
 	onProgress?: (update: GuidedChapterProgressUpdate) => void;
+	onStreamingChunk?: (chunk: string) => void;
+	onStreamingReset?: () => void;
+	onTranscriptChange?: () => Promise<void>;
 }): Promise<{ dividerMessageId?: string }> {
 	const { plan, storyId, entry, playerName } = params;
 	const totalChapters = plan.chapters.length;
@@ -86,14 +104,19 @@ export async function runGuidedChapterGeneration(params: {
 		}
 
 		const chapter = plan.chapters[chapterIndex]!;
+		const chapterContext: GuidedChapterSendContext = {
+			overallDirection: plan.overallDirection,
+			chapterOverview: chapter.overview,
+			chapterLabel: chapter.label,
+		};
+
 		chapterStatuses[chapterIndex]!.status = "active";
 		report("generating", chapterIndex + 1, `Starting ${chapter.label}…`, chapter.label);
 
-		await params.sendChatMessage(
-			storyId,
-			formatChapterStartMessage(chapter.label),
-			{ signal: params.signal, guidedGenerationInternal: true },
-		);
+		await saveChapterStartSystemMessage(params.repository, storyId, chapter.label);
+		if (params.onTranscriptChange) {
+			await params.onTranscriptChange();
+		}
 
 		const scenes = Math.max(1, Math.min(10, chapter.scenesPerChapter));
 		for (let sceneIndex = 0; sceneIndex < scenes; sceneIndex += 1) {
@@ -120,9 +143,13 @@ export async function runGuidedChapterGeneration(params: {
 				playerName,
 			});
 
-			await params.sendChatMessage(storyId, `Director: ${directorBeat}`, {
+			await params.sendChatMessage(storyId, "Continue", {
 				signal: params.signal,
 				guidedGenerationInternal: true,
+				directorStagingNote: directorBeat,
+				guidedChapterContext: chapterContext,
+				onChunk: params.onStreamingChunk,
+				onChunkReset: params.onStreamingReset,
 			});
 
 			let continueCount = 0;
@@ -139,6 +166,10 @@ export async function runGuidedChapterGeneration(params: {
 				await params.sendChatMessage(storyId, "Continue", {
 					signal: params.signal,
 					guidedGenerationInternal: true,
+					guidedDirectedScene: true,
+					guidedChapterContext: chapterContext,
+					onChunk: params.onStreamingChunk,
+					onChunkReset: params.onStreamingReset,
 				});
 				continueCount += 1;
 			}
@@ -147,7 +178,13 @@ export async function runGuidedChapterGeneration(params: {
 		await params.sendChatMessage(
 			storyId,
 			`${playerName}: *${formatChapterEndMessage(chapter.label)}.*`,
-			{ signal: params.signal, guidedGenerationInternal: true },
+			{
+				signal: params.signal,
+				guidedGenerationInternal: true,
+				guidedChapterContext: chapterContext,
+				onChunk: params.onStreamingChunk,
+				onChunkReset: params.onStreamingReset,
+			},
 		);
 
 		chapterStatuses[chapterIndex]!.status = "done";
@@ -168,15 +205,36 @@ export async function runGuidedChapterGeneration(params: {
 		dividerMessageId = divider.id;
 		const lastLabel = plan.chapters[plan.chapters.length - 1]?.label ?? "Chapter I";
 		const playableLabel = getNextChapterBannerLabel(lastLabel);
-		await params.sendChatMessage(
-			storyId,
-			formatChapterStartMessage(playableLabel),
-			{ signal: params.signal, guidedGenerationInternal: true },
-		);
+		await saveChapterStartSystemMessage(params.repository, storyId, playableLabel);
+		if (params.onTranscriptChange) {
+			await params.onTranscriptChange();
+		}
 	}
 
 	report("done", totalChapters, "Guided chapter generation complete.");
 	return { dividerMessageId };
+}
+
+async function saveChapterStartSystemMessage(
+	repository: StoryEngineRepository,
+	storyId: string,
+	label: string,
+): Promise<StoryMessage> {
+	const boundaryLabel = normalizeChapterBoundaryLabel(label);
+	const message: StoryMessage = {
+		id: createEntityId("story-message"),
+		storyId,
+		role: "system",
+		content: formatChapterStartMessage(boundaryLabel),
+		timestamp: new Date().toISOString(),
+		speakerType: "system",
+		chapterBoundary: {
+			kind: "start",
+			label: boundaryLabel,
+		},
+	};
+	await repository.saveStoryMessage(message);
+	return message;
 }
 
 async function saveSystemMessage(

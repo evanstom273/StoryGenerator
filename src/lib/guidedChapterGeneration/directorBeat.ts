@@ -1,6 +1,28 @@
 import type { AIProvider } from "../ai/types";
 import { extractFirstJsonObject, safeParseJsonObject } from "../ai/json";
 
+function formatDirectorBeatText(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	if (
+		trimmed.includes('"directorBeat"') ||
+		trimmed.startsWith("{") ||
+		trimmed.startsWith("*{")
+	) {
+		return null;
+	}
+
+	const withoutQuotes = trimmed.replace(/^\*+|\*+$/g, "").trim();
+	if (!withoutQuotes) {
+		return null;
+	}
+
+	return `*${withoutQuotes}*`;
+}
+
 export async function generateDirectorBeat(params: {
 	provider: AIProvider;
 	apiKey: string;
@@ -21,6 +43,7 @@ export async function generateDirectorBeat(params: {
 		"- The AI narrator will realize the scene; include cast participation and player character actions when needed.",
 		"- Do not repeat prior scenes; advance the chapter overview.",
 		"- Keep under 120 words.",
+		"- Use exact names from the overall direction. Never substitute canon characters when the direction names someone else.",
 	].join("\n");
 
 	const user = [
@@ -49,11 +72,15 @@ export async function generateDirectorBeat(params: {
 
 	const jsonText = extractFirstJsonObject(result.content) ?? result.content.trim();
 	const parsed = safeParseJsonObject<{ directorBeat?: string }>(jsonText);
-	const beat = parsed?.directorBeat?.trim();
-	if (beat) {
-		return beat.startsWith("*") ? beat : `*${beat.replace(/^\*+|\*+$/g, "")}*`;
+	const parsedBeat = parsed?.directorBeat ? formatDirectorBeatText(parsed.directorBeat) : null;
+	if (parsedBeat) {
+		return parsedBeat;
 	}
 
-	const fallback = result.content.trim();
-	return fallback.startsWith("*") ? fallback : `*${fallback.replace(/^\*+|\*+$/g, "")}*`;
+	const fallback = formatDirectorBeatText(result.content);
+	if (fallback) {
+		return fallback;
+	}
+
+	throw new Error("Director beat generation returned invalid staging text.");
 }

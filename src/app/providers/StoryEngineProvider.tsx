@@ -257,6 +257,7 @@ interface StoryEngineContextValue {
     jobId?: string;
     startedAtMs?: number;
     error?: string;
+    streamingDraft?: string | null;
   };
   jobNotice?: {
     id: string;
@@ -482,7 +483,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string, opts?: { onChunk?: (chunk: string) => void; onChunkReset?: () => void; signal?: AbortSignal }) => Promise<StoryMessage>;
 }
@@ -3147,15 +3148,37 @@ export function StoryEngineProvider({
             model,
             signal,
             jobId: job.id,
-            sendChatMessage: (targetStoryId, content, opts) =>
-              sendChatMessageForGuided(targetStoryId, content, opts),
+            sendChatMessage: async (targetStoryId, content, opts) => {
+              const result = await sendChatMessageForGuided(targetStoryId, content, opts);
+              setGuidedGenerationStatus((current) =>
+                current?.storyId === storyId ? { ...current, streamingDraft: null } : current,
+              );
+              return result;
+            },
             runDeepIndex: (targetStoryId, deepOpts) =>
               runDeepIndexProcess(targetStoryId, deepOpts),
+            onTranscriptChange: () => hydrate(false),
+            onStreamingChunk: (chunk) => {
+              setGuidedGenerationStatus((current) =>
+                current?.storyId === storyId
+                  ? {
+                      ...current,
+                      streamingDraft: `${current.streamingDraft ?? ""}${chunk}`,
+                    }
+                  : current,
+              );
+            },
+            onStreamingReset: () => {
+              setGuidedGenerationStatus((current) =>
+                current?.storyId === storyId ? { ...current, streamingDraft: "" } : current,
+              );
+            },
             onProgress: (update) => {
-              setGuidedGenerationStatus(
+              setGuidedGenerationStatus((current) =>
                 buildGuidedChapterUiStatus(storyId, update, {
                   jobId: job.id,
                   startedAtMs: guidedStartedAtMs,
+                  streamingDraft: current?.streamingDraft ?? null,
                 }),
               );
               void repository.getBackgroundJob(job.id).then((liveJob) => {
@@ -6288,10 +6311,18 @@ export function StoryEngineProvider({
 
         const shouldSkipAssistantReply = Boolean(chapterBoundary);
         const latestPriorUserMessage = getLatestPriorUserMessage(historyMessages);
-        const allowDirectedPlayerControl = shouldAllowDirectedPlayerControlForUserTurn(
-          userMessage,
-          latestPriorUserMessage,
-        );
+        const allowDirectedPlayerControl = (() => {
+          if (isContinueInstruction && opts?.directorStagingNote?.trim()) {
+            return true;
+          }
+          if (isContinueInstruction && opts?.guidedDirectedScene) {
+            return true;
+          }
+          return shouldAllowDirectedPlayerControlForUserTurn(
+            userMessage,
+            latestPriorUserMessage,
+          );
+        })();
         let assistantMessage: StoryMessage | null = null;
         let appliedRpChanges: RpChangelogEntry[] | null = null;
         let pendingCoreStatChanges: RpStatDelta[] | null = null;
@@ -6325,6 +6356,9 @@ export function StoryEngineProvider({
             latestUserMessageSpeakerType: userMessage.speakerType,
             allowDirectedPlayerControl,
             directorIntent: userMessage.directorIntent ?? null,
+            directorStagingNote: opts?.directorStagingNote,
+            guidedDirectedScene: opts?.guidedDirectedScene ?? false,
+            guidedChapterContext: opts?.guidedChapterContext,
             rpStats: currentRpStats,
             rpConfig: story.rpConfig ?? null,
             playerStateHintOverride: opts?.zeroHpConsequence ?? null,

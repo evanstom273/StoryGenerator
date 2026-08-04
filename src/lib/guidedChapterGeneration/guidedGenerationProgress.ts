@@ -12,12 +12,13 @@ export type GuidedChapterUiStatus = {
 	jobId?: string;
 	startedAtMs?: number;
 	error?: string;
+	streamingDraft?: string | null;
 };
 
 export function buildGuidedChapterUiStatus(
 	storyId: string,
 	update: GuidedChapterProgressUpdate,
-	opts?: { jobId?: string; startedAtMs?: number; error?: string },
+	opts?: { jobId?: string; startedAtMs?: number; error?: string; streamingDraft?: string | null },
 ): GuidedChapterUiStatus {
 	return {
 		storyId,
@@ -30,6 +31,7 @@ export function buildGuidedChapterUiStatus(
 		jobId: opts?.jobId,
 		startedAtMs: opts?.startedAtMs,
 		error: opts?.error,
+		streamingDraft: opts?.streamingDraft ?? null,
 	};
 }
 

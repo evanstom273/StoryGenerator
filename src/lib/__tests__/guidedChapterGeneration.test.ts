@@ -76,4 +76,26 @@ describe("guidedChapterGeneration", () => {
 		expect(percent).toBeGreaterThan(25);
 		expect(percent).toBeLessThan(75);
 	});
+
+	it("parses director beats from JSON without leaking raw JSON into staging", async () => {
+		const { generateDirectorBeat } = await import("../guidedChapterGeneration/directorBeat");
+		const provider = {
+			generateResponse: async () => ({
+				content: '{"directorBeat":"*Kelly steps onto the shuttle deck.*"}',
+			}),
+		};
+
+		const beat = await generateDirectorBeat({
+			provider: provider as never,
+			apiKey: "test",
+			model: "test",
+			chapterLabel: "Chapter I",
+			chapterOverview: "Arrival",
+			sceneIndex: 1,
+			sceneCount: 1,
+			playerName: "Kelly",
+		});
+
+		expect(beat).toBe("*Kelly steps onto the shuttle deck.*");
+	});
 });
