@@ -522,6 +522,8 @@ export function buildStoryChatContext({
       "Only introduce characters named in the plan for this scene unless the transcript already established them.",
       "Before assigning docking bays, shuttle routes, meeting locations, or schedules, check the continuity ledger and transcript. Do not silently change a bay number, shuttle name, or destination already established this chapter.",
       "Guided transcript formatting:",
+      "- Each guided scene is exactly ONE assistant reply. Complete the entire scene in that single message — do not stop mid-sentence or mid-dialogue.",
+      "- Never start a reply with an ellipsis (...) to continue a prior message. Each scene is self-contained.",
       "- Prefer first names in dialogue headers when familiarity is established (Ed, Kelly, Alara, Gordon, Claire).",
       "- Every physical action line must appear under a speaker header. Never output a lone *action* line without 'Name:' on the line above it.",
       "- If Ed Mercer speaks then acts, write 'Ed:' (or 'Ed Mercer:') before '*nods slowly…*'. Orphan action lines are invalid.",

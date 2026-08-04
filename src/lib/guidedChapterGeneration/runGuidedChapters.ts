@@ -3,14 +3,12 @@ import type { StoryEngineRepository } from "../repository";
 import { getNextChapterBannerLabel } from "../ai/chapterBannerLabel";
 import { createEntityId } from "../ids";
 import type { GuidedChapterGenerationEntry, GuidedChapterPlan } from "./types";
-import {
-	GUIDED_MAX_CONTINUE_PER_SCENE,
-	STORY_HISTORY_DIVIDER_MESSAGE,
-} from "./types";
+import { STORY_HISTORY_DIVIDER_MESSAGE } from "./types";
 import {
 	formatChapterEndMessage,
 	formatChapterStartMessage,
 } from "./chapterLabels";
+import { findReusableChapterStartMessage } from "./chapterStart";
 import { generateDirectorBeat } from "./directorBeat";
 import type { AIProvider } from "../ai/types";
 import { parseOverallChapterDirections, resolveScenesForChapter, shouldStageDirectorBeatForScene, stripChapterHeadingPrefix } from "./parsePlanText";
@@ -135,7 +133,13 @@ export async function runGuidedChapterGeneration(params: {
 		chapterStatuses[chapterIndex]!.status = "active";
 		report("generating", chapterIndex + 1, `Starting ${chapter.label}…`, chapter.label);
 
-		const chapterStartMessage = await saveChapterStartSystemMessage(params.repository, storyId, chapter.label);
+		const existingChapterStart = findReusableChapterStartMessage(
+			await params.repository.listStoryMessages(storyId),
+			chapter.label,
+		);
+		const chapterStartMessage =
+			existingChapterStart ??
+			(await saveChapterStartSystemMessage(params.repository, storyId, chapter.label));
 		if (params.onTranscriptChange) {
 			await params.onTranscriptChange();
 		}
@@ -208,29 +212,6 @@ export async function runGuidedChapterGeneration(params: {
 					onChunk: params.onStreamingChunk,
 					onChunkReset: params.onStreamingReset,
 				});
-			}
-
-			let continueCount = 0;
-			while (continueCount < GUIDED_MAX_CONTINUE_PER_SCENE) {
-				const messages = await params.repository.listStoryMessages(storyId);
-				const last = messages[messages.length - 1];
-				if (!last || last.role !== "assistant") {
-					break;
-				}
-				const assistantWords = last.content.split(/\s+/).filter(Boolean).length;
-				if (assistantWords >= 80 || sceneIndex === sceneCount - 1) {
-					break;
-				}
-				const continueContext = await refreshContext(chapterContext);
-				await params.sendChatMessage(storyId, "Continue", {
-					signal: params.signal,
-					guidedGenerationInternal: true,
-					guidedDirectedScene: true,
-					guidedChapterContext: continueContext,
-					onChunk: params.onStreamingChunk,
-					onChunkReset: params.onStreamingReset,
-				});
-				continueCount += 1;
 			}
 		}
 
