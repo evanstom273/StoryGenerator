@@ -216,13 +216,17 @@ export function StoryWorkspacePage() {
   const workspaceGuidedEligibility = story
     ? canGenerateGuidedChaptersAtWorkspace(messages, storyChapters)
     : { ok: false as const, reason: "Story not loaded." };
-  const canShowGenerateChapters = Boolean(
-    story &&
-      !isReadOnly &&
-      isStoryEligibleForGuidedGeneration(story) &&
-      workspaceGuidedEligibility.ok &&
-      !guidedGenerationActive,
+  const canOfferGenerateChapters = Boolean(
+    story && !isReadOnly && isStoryEligibleForGuidedGeneration(story),
   );
+  const canShowGenerateChapters = Boolean(
+    canOfferGenerateChapters && workspaceGuidedEligibility.ok && !guidedGenerationActive,
+  );
+  const generateChaptersDisabledReason = guidedGenerationActive
+    ? "Guided chapter generation is already running."
+    : !workspaceGuidedEligibility.ok
+      ? workspaceGuidedEligibility.reason
+      : undefined;
   const resolveWorkspaceChapterLabels = useMemo(
     () => (count: number) => resolveUpcomingChapterLabels(messages, storyChapters, count),
     [messages, storyChapters],
@@ -1493,16 +1497,6 @@ export function StoryWorkspacePage() {
             {activeStory.currentSummary}
           </p>
         ) : null}
-        {!readerMode && canShowGenerateChapters ? (
-          <div className="mt-4">
-            <Button type="button" variant="secondary" size="sm" onClick={() => setShowGuidedPlanModal(true)}>
-              Generate Chapters
-            </Button>
-          </div>
-        ) : null}
-        {!readerMode && !canShowGenerateChapters && !workspaceGuidedEligibility.ok && story && !isReadOnly && isStoryEligibleForGuidedGeneration(story) && !guidedGenerationActive ? (
-          <p className="mt-3 text-xs text-ink-muted">{workspaceGuidedEligibility.reason}</p>
-        ) : null}
       </div>
 
       <div className="fixed bottom-10 left-0 right-0 z-50 flex flex-col lg:left-[266px]">
@@ -1819,7 +1813,20 @@ export function StoryWorkspacePage() {
               >
                 Clear
               </Button>
+              {canOfferGenerateChapters ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowGuidedPlanModal(true)}
+                  disabled={!canShowGenerateChapters}
+                  title={generateChaptersDisabledReason}
+                >
+                  Generate Chapters
+                </Button>
+              ) : null}
             </div>
+            {canOfferGenerateChapters && generateChaptersDisabledReason ? (
+              <p className="text-xs text-ink-muted">{generateChaptersDisabledReason}</p>
+            ) : null}
           </div>
         </Panel>
         </div>

@@ -157,6 +157,29 @@ function hasMessagesAfterChapterRecord(
   return resolveNextChapterStartIndex(messages, chapter) !== null;
 }
 
+/** Open chapter has at least one user or assistant turn (not just a chapter banner). */
+export function hasSubstantiveContentInOpenChapter(
+  messages: StoryMessage[],
+  chapters: StoryChapter[],
+): boolean {
+  const sortedMessages = sortMessages(messages);
+  const sortedChapters = [...chapters].sort((left, right) => left.endsAtIndex - right.endsAtIndex);
+
+  let sliceStart = 0;
+  if (sortedChapters.length > 0) {
+    const lastChapter = sortedChapters[sortedChapters.length - 1]!;
+    const nextIndex = resolveNextChapterStartIndex(messages, lastChapter);
+    sliceStart = nextIndex ?? sortedMessages.length;
+  } else {
+    const lastStartIndex = findLastChapterStartIndex(sortedMessages);
+    sliceStart = lastStartIndex === null ? 0 : lastStartIndex + 1;
+  }
+
+  return sortedMessages
+    .slice(sliceStart)
+    .some((message) => message.role === "user" || message.role === "assistant");
+}
+
 export function hasActiveOpenChapter(
   messages: StoryMessage[],
   chapters: StoryChapter[],
