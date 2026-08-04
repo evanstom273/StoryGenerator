@@ -21,6 +21,14 @@ const NOT_A_NAME = new Set([
   "From", "Into", "Through", "Against", "Between", "Without",
 ]);
 
+/** Remainder after "Label:" that continues narration, not dialogue or action. */
+export function looksLikeNarrationContinuation(remainder: string): boolean {
+	const trimmed = remainder.trim();
+	if (!trimmed) return false;
+	if (/^["'*(\[]/.test(trimmed)) return false;
+	return /^[a-z]/.test(trimmed);
+}
+
 function isValidSpeakerLabel(label: string): boolean {
   if (!label) return false;
   if (isDeniedSpeakerLabel(label)) return false;
@@ -79,6 +87,12 @@ export function stripNarratorBlockDisplayPrefix(line: string): string {
 	const trimmed = line.trim();
 	if (!trimmed) return trimmed;
 
+	const wrapped = trimmed.match(/^\*(.+)\*$/s);
+	if (wrapped?.[1]) {
+		const inner = stripNarratorBlockDisplayPrefix(wrapped[1]);
+		return inner ? `*${inner}*` : trimmed;
+	}
+
 	const narrator = trimmed.match(/^Narrator\s*(?::|\s[-—])\s*(.*)$/i);
 	if (narrator) {
 		const remainder = narrator[1]?.trim() ?? "";
@@ -93,10 +107,15 @@ export function stripNarratorBlockDisplayPrefix(line: string): string {
 	}
 
 	const nameLabel = trimmed.match(NAME_SPEAKER_LABEL_LINE);
-	if (nameLabel?.[1] && isValidSpeakerLabel(nameLabel[1].trim())) {
+	if (nameLabel?.[1]) {
 		const label = nameLabel[1].trim();
 		const remainder = nameLabel[2]?.trim() ?? "";
-		return remainder ? `${label} ${remainder}` : label;
+		if (remainder && looksLikeNarrationContinuation(remainder)) {
+			return `${label} ${remainder}`;
+		}
+		if (isValidSpeakerLabel(label)) {
+			return remainder ? `${label} ${remainder}` : label;
+		}
 	}
 
 	return trimmed;
@@ -134,6 +153,10 @@ function parseInlineSpeakerLine(line: string) {
   }
 
   if (!isValidSpeakerLabel(label)) {
+    return null;
+  }
+
+  if (looksLikeNarrationContinuation(remainder)) {
     return null;
   }
 

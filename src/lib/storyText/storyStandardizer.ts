@@ -150,6 +150,9 @@ function looksLikeDialogue(value: string) {
   return false;
 }
 
+import { isDeniedSpeakerLabel } from "../relationshipIndex";
+import { looksLikeNarrationContinuation } from "./parseSceneBlocks";
+
 // Words that start sentences but are never character names (shared with parseSceneBlocks).
 const NOT_A_SPEAKER = new Set([
   "He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
@@ -161,6 +164,7 @@ const NOT_A_SPEAKER = new Set([
 
 function isLikelySpeakerLabel(label: string): boolean {
   if (!label || label.includes(",")) return false;
+  if (isDeniedSpeakerLabel(label)) return false;
   const words = label.trim().split(/\s+/);
   if (words.length > 4) return false;
   // Every word must start with uppercase OR be a number ("Paramedic 1", "Guard 2")
@@ -189,6 +193,9 @@ function parseInlineSpeakerLine(line: string) {
   const label = match[1]?.trim();
   const remainder = match[3]?.trim();
   if (!label || !remainder || !isLikelySpeakerLabel(label)) {
+    return null;
+  }
+  if (looksLikeNarrationContinuation(remainder)) {
     return null;
   }
   return { speakerLabel: label, text: remainder };

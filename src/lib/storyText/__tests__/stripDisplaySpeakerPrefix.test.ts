@@ -44,4 +44,19 @@ describe("stripNarratorBlockDisplayPrefix", () => {
 			"She shifts closer on the mattress.",
 		);
 	});
+
+	it("strips time-skip number pseudo-labels in narrator blocks", () => {
+		expect(
+			stripNarratorBlockDisplayPrefix(
+				"Fifteen: minutes later, the neon sign of Shaw's Bar glows warmly against the dimming Brooklyn skyline.",
+			),
+		).toBe(
+			"Fifteen minutes later, the neon sign of Shaw's Bar glows warmly against the dimming Brooklyn skyline.",
+		);
+		expect(
+			formatNarratorBlockForDisplay(
+				"*Fifteen: minutes later, the neon sign of Shaw's Bar glows warmly.*",
+			),
+		).toBe("*Fifteen minutes later, the neon sign of Shaw's Bar glows warmly.*");
+	});
 });

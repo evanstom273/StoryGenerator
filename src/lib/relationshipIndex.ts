@@ -68,6 +68,13 @@ const TIER_SPECIFICITY: Record<string, number> = {
 	nemesis: 25,
 };
 
+/** Written numbers the model uses in time skips ("Fifteen: minutes later"). */
+export const NUMBER_WORD_SPEAKER_DENY = [
+	"Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+	"Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen",
+	"Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety",
+] as const;
+
 /** Labels that must never become characters or relationship endpoints. */
 export const SPEAKER_LABEL_DENYLIST = new Set([
 	"He", "She", "They", "It", "We", "You", "I", "His", "Her", "Their", "Its",
@@ -82,6 +89,7 @@ export const SPEAKER_LABEL_DENYLIST = new Set([
 	"Morning", "Evening", "Dawn", "Dusk", "Day", "Night", "Midnight", "Noon",
 	"Spring", "Summer", "Autumn", "Fall", "Winter",
 	"Weather", "Sky", "Clouds", "Fog", "Mist", "Darkness", "Silence",
+	...NUMBER_WORD_SPEAKER_DENY,
 ]);
 
 const ENVIRONMENTAL_SINGLE_WORDS = new Set([
