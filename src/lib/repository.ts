@@ -830,6 +830,18 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
             typeof record.defaultModels === "object" && record.defaultModels !== null
               ? record.defaultModels
               : {},
+          metachatModels:
+            typeof record.metachatModels === "object" && record.metachatModels !== null
+              ? record.metachatModels
+              : undefined,
+          indexingModels:
+            typeof record.indexingModels === "object" && record.indexingModels !== null
+              ? record.indexingModels
+              : undefined,
+          creationModels:
+            typeof record.creationModels === "object" && record.creationModels !== null
+              ? record.creationModels
+              : undefined,
         } as any;
       })();
 

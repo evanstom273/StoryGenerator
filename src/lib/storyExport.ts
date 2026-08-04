@@ -13,6 +13,7 @@ import { parseActionSegments } from "./storyText/parseActionSegments";
 import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
 import { isContinueMessage } from "./storyText/continueMode";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
+import { normalizePlayerCharacterAliases } from "./playerCharacterPrompt";
 import { cleanTextForExport } from "./storyText/exportCleaner";
 import { isDirectorMessage } from "./storyText/directorMode";
 
@@ -143,6 +144,7 @@ Player Character
 - Personality: ${bundle.playerCharacter.personality || "Not specified"}
 - Background: ${bundle.playerCharacter.background || "Not specified"}
 - Goals: ${bundle.playerCharacter.goals || "Not specified"}
+${normalizePlayerCharacterAliases(bundle.playerCharacter.aliases).length ? `- Aliases: ${normalizePlayerCharacterAliases(bundle.playerCharacter.aliases).join(", ")}` : ""}
 - Notes: ${bundle.playerCharacter.notes || "Not specified"}
 
 Transcript

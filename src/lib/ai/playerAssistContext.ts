@@ -11,6 +11,7 @@ import { sortByTimestampAsc } from "../dates";
 import { buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "./playerAssist";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { formatUniverseWikiSources } from "../universeSources";
+import { formatPlayerCharacterAliasesForPrompt } from "../playerCharacterPrompt";
 import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
@@ -119,6 +120,7 @@ export function buildPlayerAssistContext({
       universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,
       `Player Character: ${playerCharacter.name}`,
+      formatPlayerCharacterAliasesForPrompt(playerCharacter),
       playerCharacter.age.trim() ? `Player Age: ${playerCharacter.age.trim()}` : "",
       playerCharacter.gender.trim() ? `Player Gender: ${playerCharacter.gender.trim()}` : "",
       playerCharacter.species?.trim()
@@ -129,7 +131,6 @@ export function buildPlayerAssistContext({
         ? `Player Concept/Role: ${playerCharacter.characterConcept.trim()}`
         : "",
       playerCharacter.background.trim() ? `Player Background: ${playerCharacter.background.trim()}` : "",
-      playerCharacter.goals.trim() ? `Player Goals: ${playerCharacter.goals.trim()}` : "",
       playerCharacter.notes.trim() ? `Player Notes: ${playerCharacter.notes.trim()}` : "",
     ]
       .filter(Boolean)

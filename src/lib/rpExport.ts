@@ -1,4 +1,5 @@
 import type { PlayerCharacter, RpConfig, RpEventLogEntry, RpStats, StoryMessage } from "../types/models";
+import { normalizePlayerCharacterAliases } from "./playerCharacterPrompt";
 import { formatGold } from "./rpStats";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import { cleanTextForExport } from "./storyText/exportCleaner";
@@ -68,6 +69,7 @@ export function buildRpExportJson(data: RpExportData): string {
       personality: playerCharacter.personality,
       background: playerCharacter.background,
       goals: playerCharacter.goals,
+      aliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
       notes: playerCharacter.notes,
     };
   }
@@ -133,6 +135,9 @@ export function buildRpExportMarkdown(data: RpExportData): string {
       ["Appearance", playerCharacter.appearance],
       ["Personality", playerCharacter.personality],
       ["Background", playerCharacter.background],
+      ...(normalizePlayerCharacterAliases(playerCharacter.aliases).length
+        ? [["Aliases", normalizePlayerCharacterAliases(playerCharacter.aliases).join(", ")] as [string, string]]
+        : []),
       ["Goals", playerCharacter.goals],
       ["Notes", playerCharacter.notes],
     ];
@@ -240,6 +245,9 @@ export function buildRpExportText(data: RpExportData): string {
       ["Appearance", playerCharacter.appearance],
       ["Personality", playerCharacter.personality],
       ["Background", playerCharacter.background],
+      ...(normalizePlayerCharacterAliases(playerCharacter.aliases).length
+        ? [["Aliases", normalizePlayerCharacterAliases(playerCharacter.aliases).join(", ")] as [string, string]]
+        : []),
       ["Goals", playerCharacter.goals],
       ["Notes", playerCharacter.notes],
     ];

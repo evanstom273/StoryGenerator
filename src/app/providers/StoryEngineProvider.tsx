@@ -29,7 +29,7 @@ import {
   buildStoryChatContext,
   buildStorySummaryContext,
 } from "../../lib/ai/contextBuilder";
-import { getValidModel, getIndexingRequestConfig, getModelStreamConfig } from "../../lib/ai/models";
+import { getValidModel, getAIModelForRole, getIndexingRequestConfig, getModelStreamConfig } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
 import { buildPlayerAssistContext } from "../../lib/ai/playerAssistContext";
 import {
@@ -168,7 +168,12 @@ import {
   getPrimaryUniverseWikiUrl,
   normalizeUniverseWikiSources,
 } from "../../lib/universeSources";
+import {
+  formatPlayerCharacterAliasesForPrompt,
+  normalizePlayerCharacterAliases,
+} from "../../lib/playerCharacterPrompt";
 import type {
+  AIModelRole,
   AIProviderType,
   AISettings,
   BackgroundJob,
@@ -461,6 +466,9 @@ interface StoryEngineContextValue {
     activeProviderType: AIProviderType;
     apiKeys?: Partial<Record<AIProviderType, string>>;
     defaultModels?: Partial<Record<AIProviderType, string>>;
+    metachatModels?: Partial<Record<AIProviderType, string>>;
+    indexingModels?: Partial<Record<AIProviderType, string>>;
+    creationModels?: Partial<Record<AIProviderType, string>>;
     geminiPodcastTts?: Partial<GeminiPodcastTtsSettings>;
     geminiNarrationTts?: Partial<GeminiNarrationTtsSettings>;
   }) => Promise<AISettings>;
@@ -1125,6 +1133,7 @@ function buildMetaChatCanonContext(params: {
 
   const playerBlock = [
     `Name: ${params.playerCharacter.name}`,
+    formatPlayerCharacterAliasesForPrompt(params.playerCharacter),
     params.playerCharacter.age?.trim() ? `Age: ${params.playerCharacter.age.trim()}` : null,
     params.playerCharacter.gender?.trim() ? `Gender: ${params.playerCharacter.gender.trim()}` : null,
     params.playerCharacter.species?.trim() ? `Species: ${params.playerCharacter.species.trim()}` : null,
@@ -1141,7 +1150,6 @@ function buildMetaChatCanonContext(params: {
     params.playerCharacter.background?.trim()
       ? `Background: ${params.playerCharacter.background.trim()}`
       : null,
-    params.playerCharacter.goals?.trim() ? `Goals: ${params.playerCharacter.goals.trim()}` : null,
     params.playerCharacter.notes?.trim() ? `Notes: ${params.playerCharacter.notes.trim()}` : null,
   ]
     .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
@@ -1227,7 +1235,9 @@ function buildMetaChatLibraryOverview(args: {
         character.characterConcept?.trim()
           ? `Concept: ${character.characterConcept.trim()}`
           : null,
-        character.goals?.trim() ? `Goals: ${character.goals.trim()}` : null,
+        normalizePlayerCharacterAliases(character.aliases).length
+          ? `Aliases: ${normalizePlayerCharacterAliases(character.aliases).join(", ")}`
+          : null,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" | "),
@@ -1545,7 +1555,13 @@ function mergePlayerCharacterFillEmpty(
     appearance: isBlank(winner.appearance) ? candidate.appearance : winner.appearance,
     personality: isBlank(winner.personality) ? candidate.personality : winner.personality,
     background: isBlank(winner.background) ? candidate.background : winner.background,
-    goals: isBlank(winner.goals) ? candidate.goals : winner.goals,
+    aliases: (() => {
+      const winnerAliases = normalizePlayerCharacterAliases(winner.aliases);
+      if (winnerAliases.length) {
+        return winnerAliases;
+      }
+      return normalizePlayerCharacterAliases(candidate.aliases);
+    })(),
     notes: isBlank(winner.notes) ? candidate.notes : winner.notes,
   };
 }
@@ -1623,8 +1639,29 @@ export function StoryEngineProvider({
       typeof record.defaultModels === "object" &&
       record.defaultModels !== null
     ) {
+      const storyModels =
+        typeof record.defaultModels === "object" && record.defaultModels !== null
+          ? (record.defaultModels as Partial<Record<AIProviderType, string>>)
+          : {};
+      const metachatModels =
+        typeof record.metachatModels === "object" && record.metachatModels !== null
+          ? (record.metachatModels as Partial<Record<AIProviderType, string>>)
+          : { ...storyModels };
+      const indexingModels =
+        typeof record.indexingModels === "object" && record.indexingModels !== null
+          ? (record.indexingModels as Partial<Record<AIProviderType, string>>)
+          : { ...storyModels };
+      const creationModels =
+        typeof record.creationModels === "object" && record.creationModels !== null
+          ? (record.creationModels as Partial<Record<AIProviderType, string>>)
+          : { ...storyModels };
+
       const normalized: AISettings = {
         ...(record as AISettings),
+        defaultModels: storyModels,
+        metachatModels,
+        indexingModels,
+        creationModels,
         geminiPodcastTts: resolveGeminiPodcastTtsSettings(record.geminiPodcastTts),
         geminiNarrationTts: resolveGeminiNarrationTtsSettings(record.geminiNarrationTts),
       };
@@ -1888,7 +1925,11 @@ export function StoryEngineProvider({
   }, [errorMessage, loading, repository]);
 
   const resolveAIProfile = useCallback(
-    async (providerType: AIProviderType, storyModelOverride?: string) => {
+    async (
+      providerType: AIProviderType,
+      storyModelOverride?: string,
+      role: AIModelRole = "story",
+    ) => {
       const settings = await getNormalizedAISettings();
 
       if (!settings) {
@@ -1909,7 +1950,10 @@ export function StoryEngineProvider({
         }
       }
 
-      const savedModel = storyModelOverride?.trim() || settings.defaultModels?.[providerType]?.trim();
+      const savedModel =
+        role === "story" && storyModelOverride?.trim()
+          ? storyModelOverride.trim()
+          : getAIModelForRole(settings, providerType, role)?.trim();
       const resolvedModel = getValidModel(providerType, savedModel);
 
       if (!resolvedModel) {
@@ -2086,6 +2130,7 @@ export function StoryEngineProvider({
               [
                 `Referenced Character: ${reference.label}`,
                 `Name: ${character.name}`,
+                formatPlayerCharacterAliasesForPrompt(character),
                 universe ? `Universe: ${universe.name}` : null,
                 character.characterConcept?.trim()
                   ? `Concept/role: ${character.characterConcept.trim()}`
@@ -2099,7 +2144,6 @@ export function StoryEngineProvider({
                 character.background?.trim()
                   ? `Background: ${character.background.trim()}`
                   : null,
-                character.goals?.trim() ? `Goals: ${character.goals.trim()}` : null,
                 character.notes?.trim() ? `Notes: ${character.notes.trim()}` : null,
                 relatedStories.length
                   ? `Stories in library involving this character: ${relatedStories.join(", ")}`
@@ -2261,7 +2305,7 @@ export function StoryEngineProvider({
       }
 
       let providerType = settings.activeProviderType;
-      let model = settings.defaultModels?.[providerType];
+      let model = getAIModelForRole(settings, providerType, "story");
       if (input.storyId) {
         const storyConfig = await repository.getStoryAIConfig(input.storyId);
         if (storyConfig) {
@@ -2270,7 +2314,7 @@ export function StoryEngineProvider({
         }
       }
 
-      const { apiKey, model: resolvedModel } = await resolveAIProfile(providerType, model);
+      const { apiKey, model: resolvedModel } = await resolveAIProfile(providerType, model, "story");
       const provider = createAIProvider(providerType);
 
       let priorChapterContext: string | undefined;
@@ -2516,7 +2560,7 @@ export function StoryEngineProvider({
         }
 
         const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "indexing");
         const provider = createAIProvider(providerType);
 
         const [allMessages, existingStoryState, storedChapters, playerCharacter] = await Promise.all([
@@ -2892,7 +2936,7 @@ export function StoryEngineProvider({
 
       const storyConfig = scopeStory ? await repository.getStoryAIConfig(scopeId) : null;
       const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-      const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+      const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "metachat");
       const provider = createAIProvider(providerType);
       const contextBlock = await buildMetaChatContextBlock(scopeId, references);
 
@@ -3138,7 +3182,7 @@ export function StoryEngineProvider({
           }
 
           const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-          const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+          const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
           const provider = createAIProvider(providerType);
           const guidedStartedAtMs = Date.now();
 
@@ -3545,7 +3589,7 @@ export function StoryEngineProvider({
       }
 
       const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-      const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+      const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "indexing");
       const provider = createAIProvider(providerType);
 
       const rebuilt = await rebuildStoryMemoryAndIndexes({
@@ -3825,7 +3869,7 @@ export function StoryEngineProvider({
         }
 
         const providerType = settings.activeProviderType;
-        const { apiKey, model } = await resolveAIProfile(providerType);
+        const { apiKey, model } = await resolveAIProfile(providerType, undefined, "creation");
         const provider = createAIProvider(providerType);
 
         const name = input.name.trim();
@@ -3907,7 +3951,7 @@ export function StoryEngineProvider({
         }
 
         const providerType = settings.activeProviderType;
-        const { apiKey, model } = await resolveAIProfile(providerType);
+        const { apiKey, model } = await resolveAIProfile(providerType, undefined, "creation");
         const provider = createAIProvider(providerType);
         const preset = getAiDocumentPreset(input.presetId);
         const structure = input.structure ?? preset.defaultStructure ?? "single";
@@ -4097,6 +4141,7 @@ export function StoryEngineProvider({
         const nextCharacter = applyUniverseIdsFromDraft(draft, {
           id: createEntityId("player-character"),
           name: draft.name.trim(),
+          aliases: normalizePlayerCharacterAliases(draft.aliases),
           age: draft.age.trim(),
           gender: draft.gender.trim(),
           species: draft.species?.trim() ?? "",
@@ -4105,7 +4150,7 @@ export function StoryEngineProvider({
           appearance: draft.appearance.trim(),
           personality: draft.personality.trim(),
           background: draft.background.trim(),
-          goals: draft.goals.trim(),
+          goals: "",
           notes: draft.notes.trim(),
           universeId: draft.universeId,
           scope: draft.scope ?? "library",
@@ -4246,6 +4291,7 @@ export function StoryEngineProvider({
         const nextCharacter = applyUniverseIdsFromDraft(draft, {
           ...currentCharacter,
           name: draft.name.trim(),
+          aliases: normalizePlayerCharacterAliases(draft.aliases),
           age: draft.age.trim(),
           gender: draft.gender.trim(),
           species: draft.species?.trim() ?? "",
@@ -4254,7 +4300,7 @@ export function StoryEngineProvider({
           appearance: draft.appearance.trim(),
           personality: draft.personality.trim(),
           background: draft.background.trim(),
-          goals: draft.goals.trim(),
+          goals: currentCharacter.goals,
           notes: draft.notes.trim(),
           universeId: draft.universeId,
           scope: draft.scope ?? currentCharacter.scope ?? "library",
@@ -4906,7 +4952,7 @@ export function StoryEngineProvider({
         }
 
         const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
         const provider = createAIProvider(providerType);
 
         const playerNameForValidation = (() => {
@@ -5762,18 +5808,29 @@ export function StoryEngineProvider({
         const createdAt = current?.createdAt ?? now;
         const nextApiKeys = next.apiKeys ?? {};
         const nextDefaultModels = next.defaultModels ?? {};
+        const nextMetachatModels = next.metachatModels ?? {};
+        const nextIndexingModels = next.indexingModels ?? {};
+        const nextCreationModels = next.creationModels ?? {};
         const apiKeys = {
           ...(current?.apiKeys ?? {}),
           ...Object.fromEntries(
             Object.entries(nextApiKeys).filter((entry) => entry[1]?.trim()),
           ),
         } as Partial<Record<AIProviderType, string>>;
-        const defaultModels = {
-          ...(current?.defaultModels ?? {}),
-          ...Object.fromEntries(
-            Object.entries(nextDefaultModels).filter((entry) => entry[1]?.trim()),
-          ),
-        } as Partial<Record<AIProviderType, string>>;
+        const mergeModelMaps = (
+          currentMap: Partial<Record<AIProviderType, string>> | undefined,
+          nextMap: Partial<Record<AIProviderType, string>>,
+        ) =>
+          ({
+            ...(currentMap ?? {}),
+            ...Object.fromEntries(
+              Object.entries(nextMap).filter((entry) => entry[1]?.trim()),
+            ),
+          }) as Partial<Record<AIProviderType, string>>;
+        const defaultModels = mergeModelMaps(current?.defaultModels, nextDefaultModels);
+        const metachatModels = mergeModelMaps(current?.metachatModels, nextMetachatModels);
+        const indexingModels = mergeModelMaps(current?.indexingModels, nextIndexingModels);
+        const creationModels = mergeModelMaps(current?.creationModels, nextCreationModels);
         const geminiPodcastTts = next.geminiPodcastTts
           ? resolveGeminiPodcastTtsSettings({
               ...current?.geminiPodcastTts,
@@ -5796,6 +5853,9 @@ export function StoryEngineProvider({
           activeProviderType: next.activeProviderType,
           apiKeys,
           defaultModels,
+          metachatModels,
+          indexingModels,
+          creationModels,
           geminiPodcastTts,
           geminiNarrationTts,
           createdAt,
@@ -5890,7 +5950,7 @@ export function StoryEngineProvider({
         }
 
         const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
         const provider = createAIProvider(providerType);
 
         const [summaries, refreshedMessages] = await Promise.all([
@@ -5948,7 +6008,7 @@ export function StoryEngineProvider({
         }
 
         const providerType = settings.activeProviderType;
-        const { apiKey, model } = await resolveAIProfile(providerType);
+        const { apiKey, model } = await resolveAIProfile(providerType, undefined, "creation");
         const provider = createAIProvider(providerType);
 
         const imports = await repository.listUniverseImports(universeId);
@@ -5964,7 +6024,6 @@ export function StoryEngineProvider({
           "appearance",
           "personality",
           "background",
-          "goals",
           "notes",
         ];
         const requestedFields = fields?.length ? fields : allowedFields;
@@ -6278,7 +6337,7 @@ export function StoryEngineProvider({
         }
 
         const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
         const provider = createAIProvider(providerType);
 
         const playerNameForValidation = (() => {

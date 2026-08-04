@@ -19,6 +19,7 @@ import {
 import { downloadFile } from "../../lib/download";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../../lib/ai/models";
+import { formatPlayerCharacterAliasesForPrompt, normalizePlayerCharacterAliases } from "../../lib/playerCharacterPrompt";
 import type { RpCalendarConfig, RpCondition, RpConfig, RpDiceModifiers, RpRecurringEvent, RpRecurringFrequency, RpStats, RpTimeState, Story } from "../../types/models";
 import { computeInitialNextDue, formatTime, formatTimeShort, minutesBetween } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
@@ -291,10 +292,10 @@ export function RPCharacterSheetOverlay(props: {
       const provider = createAIProvider(providerType);
       const profileText = [
         playerCharacter.name ? `Name: ${playerCharacter.name}` : "",
+        formatPlayerCharacterAliasesForPrompt(playerCharacter),
         playerCharacter.age ? `Age: ${playerCharacter.age}` : "",
         playerCharacter.species ? `Species: ${playerCharacter.species}` : "",
         playerCharacter.background ? `Background: ${playerCharacter.background}` : "",
-        playerCharacter.goals ? `Goals: ${playerCharacter.goals}` : "",
         playerCharacter.notes ? `Notes: ${playerCharacter.notes}` : "",
       ].filter(Boolean).join("\n");
       const settingContext = props.universeLore
@@ -590,7 +591,9 @@ ${profileText}`;
                       ["Appearance", playerCharacter.appearance],
                       ["Personality", playerCharacter.personality],
                       ["Background", playerCharacter.background],
-                      ["Goals", playerCharacter.goals],
+                      ...(normalizePlayerCharacterAliases(playerCharacter.aliases).length
+                        ? [["Aliases", normalizePlayerCharacterAliases(playerCharacter.aliases).join(", ")]]
+                        : []),
                       ["Notes", playerCharacter.notes],
                     ].filter(([, v]) => (v as string)?.trim()).map(([label, val]) => (
                       <div key={label as string} className="space-y-1">

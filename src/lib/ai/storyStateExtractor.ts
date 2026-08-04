@@ -15,6 +15,7 @@ import {
 } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
+import { formatPlayerCharacterAliasesForPrompt } from "../playerCharacterPrompt";
 
 const MAX_RECENT_MESSAGES = 40;
 
@@ -219,6 +220,10 @@ export function buildStoryStateExtractionPrompt({
         ? [
             "Player Character Sheet (authoritative canon):",
             `- Name: ${playerCharacter.name}`,
+            (() => {
+              const aliasesLine = formatPlayerCharacterAliasesForPrompt(playerCharacter);
+              return aliasesLine ? `- ${aliasesLine}` : "";
+            })(),
             playerCharacter.age?.trim() ? `- Age: ${playerCharacter.age.trim()}` : "",
             playerCharacter.gender?.trim() ? `- Gender: ${playerCharacter.gender.trim()}` : "",
             playerCharacter.species?.trim() ? `- Species: ${playerCharacter.species.trim()}` : "",
@@ -227,7 +232,6 @@ export function buildStoryStateExtractionPrompt({
               ? `- Concept/Role: ${playerCharacter.characterConcept.trim()}`
               : "",
             playerCharacter.background?.trim() ? `- Background: ${playerCharacter.background.trim()}` : "",
-            playerCharacter.goals?.trim() ? `- Goals: ${playerCharacter.goals.trim()}` : "",
             playerCharacter.notes?.trim() ? `- Notes: ${playerCharacter.notes.trim()}` : "",
           ]
             .filter(Boolean)

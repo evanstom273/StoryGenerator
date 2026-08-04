@@ -7,6 +7,7 @@ import type {
 } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EntityId, Universe } from "../../types/models";
+import { normalizePlayerCharacterAliases } from "../../lib/playerCharacterPrompt";
 import { cn } from "../../utils/cn";
 
 export function Field({
@@ -285,4 +286,85 @@ export function MultiUniversePicker({
       ) : null}
     </div>
   );
+}
+
+export function AliasesInput({
+	value,
+	onChange,
+	placeholder = "Jamie, Potter, Detective Potter…",
+	disabled,
+}: {
+	value: string[];
+	onChange: (next: string[]) => void;
+	placeholder?: string;
+	disabled?: boolean;
+}) {
+	const [draft, setDraft] = useState("");
+
+	function addAlias(raw: string) {
+		const trimmed = raw.trim();
+		if (!trimmed) {
+			return;
+		}
+
+		const next = normalizePlayerCharacterAliases([...value, trimmed]);
+		if (next.length === value.length) {
+			return;
+		}
+
+		onChange(next);
+		setDraft("");
+	}
+
+	return (
+		<div className="space-y-2">
+			<div className="flex gap-2">
+				<TextInput
+					value={draft}
+					disabled={disabled}
+					placeholder={placeholder}
+					onChange={(event) => setDraft(event.target.value)}
+					onKeyDown={(event) => {
+						if (event.key === "Enter") {
+							event.preventDefault();
+							addAlias(draft);
+						}
+					}}
+				/>
+				<button
+					type="button"
+					disabled={disabled || !draft.trim()}
+					className="shrink-0 rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm font-medium text-ink-soft transition hover:bg-panel-muted disabled:cursor-not-allowed disabled:opacity-50"
+					onClick={() => addAlias(draft)}
+				>
+					Add
+				</button>
+			</div>
+			{value.length ? (
+				<div className="flex flex-wrap gap-2">
+					{value.map((alias) => (
+						<span
+							key={alias}
+							className="inline-flex items-center gap-1.5 rounded-full border border-divider/[0.5] bg-panel-muted/60 px-2.5 py-1 text-xs text-ink-soft"
+						>
+							{alias}
+							<button
+								type="button"
+								disabled={disabled}
+								className="text-ink-muted transition hover:text-ink disabled:opacity-50"
+								aria-label={`Remove ${alias}`}
+								onClick={() => onChange(value.filter((entry) => entry !== alias))}
+							>
+								×
+							</button>
+						</span>
+					))}
+				</div>
+			) : (
+				<p className="text-[11px] text-ink-muted">
+					Nicknames, titles, surnames, and other names the AI should recognise.
+				</p>
+			)}
+		</div>
+	);
 }

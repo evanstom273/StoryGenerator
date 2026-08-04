@@ -7,6 +7,7 @@ import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { formatDate } from "../lib/dates";
 import { getUniverseIds } from "../lib/universeIds";
+import { normalizePlayerCharacterAliases } from "../lib/playerCharacterPrompt";
 
 export function PlayerCharacterDetailPage() {
   const { characterId } = useParams();
@@ -106,13 +107,20 @@ export function PlayerCharacterDetailPage() {
                 <dt className="text-[11px] text-ink-muted">Species</dt>
                 <dd className="text-[13px] text-ink-soft">{activeCharacter.species || "Not specified"}</dd>
               </div>
+              {normalizePlayerCharacterAliases(activeCharacter.aliases).length ? (
+                <div className="flex items-center justify-between gap-4 py-2.5">
+                  <dt className="text-[11px] text-ink-muted">Aliases</dt>
+                  <dd className="text-right text-[13px] text-ink-soft">
+                    {normalizePlayerCharacterAliases(activeCharacter.aliases).join(", ")}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
             <div className="mt-4 space-y-4">
               {[
                 { label: "Appearance", value: activeCharacter.appearance },
                 { label: "Personality", value: activeCharacter.personality },
                 { label: "Background", value: activeCharacter.background },
-                { label: "Goals", value: activeCharacter.goals },
                 { label: "Notes", value: activeCharacter.notes },
               ].map(({ label, value }) => (
                 <div key={label}>

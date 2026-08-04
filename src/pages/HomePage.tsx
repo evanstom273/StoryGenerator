@@ -78,7 +78,7 @@ export function HomePage() {
         .slice(0, 6),
       matchedCharacters: playerCharacters
         .filter((c) => (c.scope ?? "library") === "library")
-        .filter((c) => includesQuery(normalizedQuery, [c.name, c.characterConcept, c.background, c.goals, c.notes, c.gender, c.pronouns, c.species]))
+        .filter((c) => includesQuery(normalizedQuery, [c.name, ...(c.aliases ?? []), c.characterConcept, c.background, c.notes, c.gender, c.pronouns, c.species]))
         .slice(0, 8),
     };
   }, [normalizedQuery, visibleStories, universes, playerCharacters, getUniverseById]);
