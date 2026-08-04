@@ -68,6 +68,7 @@ export function buildStoryStateExtractionPrompt({
   summaryText,
   recentMessages,
   existingStateJson,
+  existingOpenThreads,
   messageNumberStart,
   messageNumberTotal,
   perMessageIndexing,
@@ -77,6 +78,7 @@ export function buildStoryStateExtractionPrompt({
   summaryText: string;
   recentMessages: StoryMessage[];
   existingStateJson?: string;
+  existingOpenThreads?: Array<{ thread: string; evidence?: { messageNumbers?: number[] } }>;
   messageNumberStart?: number;
   messageNumberTotal?: number;
   perMessageIndexing?: boolean;
@@ -195,6 +197,9 @@ export function buildStoryStateExtractionPrompt({
       "- For indexes.relationships.summary: write 1-2 sentences describing the current state of this relationship. Required for non-strangers; optional but encouraged even for strangers.",
       "- For indexes.relationships.history: record up to 3 distinct turning-point moments. Each entry: concise 1-sentence summary + messageNumber when available.",
       "- Do not append rephrased duplicates of the same beat to indexes.relationships.history. If a new message only repeats an earlier moment (e.g. Holt returning early for Wands at Four), update the existing history entry instead of adding another.",
+      "- indexes.openThreads must list ONLY tensions that are still unresolved at the current story moment. Remove (do not keep) any thread the transcript has already answered — e.g. if Jamie has appeared, drop 'Where is Jamie?' threads; if Holt entered the doors, drop 'Who is entering?' threads.",
+      "- When updating indexes.openThreads, return the complete current unresolved set, not only newly introduced questions. Omit solved threads entirely.",
+      "- Do not repeat the same status bullet phrasing for a character in statusBullets (e.g. two bullets both about counting down to Wands at Four). Prefer one concise live-state bullet per distinct beat.",
       "- Preserve Open Threads quality. Track the questions/tensions a reader would still care about.",
       "- If nothing changed, return the previous state with a refreshed updatedAt.",
       "- Never generate dialogue or actions for the player character; this is metadata only.",
@@ -229,6 +234,17 @@ export function buildStoryStateExtractionPrompt({
         : "",
       summaryText.trim() ? `Current Summary:\n${summaryText.trim()}` : "",
       existingStateJson?.trim() ? `Existing Story State JSON:\n${existingStateJson.trim()}` : "",
+      existingOpenThreads?.length
+        ? [
+            "Current Open Threads (remove any that are now resolved; return indexes.openThreads as the full updated unresolved set only):",
+            ...existingOpenThreads.slice(0, 12).map((entry, index) => {
+              const evidence = Array.isArray(entry.evidence?.messageNumbers)
+                ? entry.evidence.messageNumbers.filter((n) => Number.isFinite(n)).join(", ")
+                : "";
+              return `${index + 1}. ${entry.thread}${evidence ? ` [Messages ${evidence}]` : ""}`;
+            }),
+          ].join("\n")
+        : "",
       perMessageIndexing && messageNumberStart && messageNumberTotal
         ? `Indexing focus: message ${messageNumberStart} of ${messageNumberTotal}. Only cite message ${messageNumberStart} in new evidence when this specific message supports the fact or character presence.`
         : "",
@@ -363,7 +379,7 @@ function sanitizeIndexes(value: any) {
         return { [key]: value.trim(), ...(evidence ? { evidence } : {}) } as any;
       })
       .filter(Boolean);
-    return result.length ? result : undefined;
+    return result.length ? result : list.length === 0 ? [] : undefined;
   };
 
   const characters = sanitizeEntityMap(value.characters, maxMessageNumber);

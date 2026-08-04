@@ -15,22 +15,58 @@ function normalizeName(value: string): string {
 	return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function dedupeBullets(bullets: string[], maxItems = 4): string[] {
-	const seen = new Set<string>();
+function tokenizeForSimilarity(value: string): string[] {
+	return value
+		.toLowerCase()
+		.replace(/[^\w\s]/g, " ")
+		.split(/\s+/)
+		.filter((word) => word.length > 3);
+}
+
+function stringsSimilar(left: string, right: string): boolean {
+	const normalizedLeft = left.toLowerCase().trim();
+	const normalizedRight = right.toLowerCase().trim();
+	if (!normalizedLeft || !normalizedRight) {
+		return false;
+	}
+	if (normalizedLeft === normalizedRight) {
+		return true;
+	}
+	if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) {
+		return true;
+	}
+
+	const leftTokens = tokenizeForSimilarity(normalizedLeft);
+	const rightTokenSet = new Set(tokenizeForSimilarity(normalizedRight));
+	const overlap = leftTokens.filter((word) => rightTokenSet.has(word));
+	const minTokenCount = Math.min(leftTokens.length, rightTokenSet.size);
+	if (minTokenCount === 0) {
+		return false;
+	}
+
+	return overlap.length >= Math.min(3, Math.ceil(minTokenCount * 0.6));
+}
+
+export function dedupeStatusBullets(bullets: string[], maxItems = 4): string[] {
 	const merged: string[] = [];
 	for (const bullet of bullets) {
 		const trimmed = bullet.trim();
-		const key = trimmed.toLowerCase();
-		if (!trimmed || seen.has(key)) {
+		if (!trimmed) {
 			continue;
 		}
-		seen.add(key);
+		if (merged.some((existing) => stringsSimilar(existing, trimmed))) {
+			continue;
+		}
 		merged.push(trimmed);
 		if (merged.length >= maxItems) {
 			break;
 		}
 	}
 	return merged;
+}
+
+function dedupeBullets(bullets: string[], maxItems = 4): string[] {
+	return dedupeStatusBullets(bullets, maxItems);
 }
 
 function firstSentence(value: string): string {
@@ -184,7 +220,7 @@ export function ensureIndexedCharacterStatus(
 		characters[name] = {
 			...existing,
 			canonicalName: existing.canonicalName ?? name,
-			statusBullets: synthesized,
+			statusBullets: dedupeStatusBullets(synthesized),
 		};
 	}
 

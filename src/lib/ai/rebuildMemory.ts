@@ -3,7 +3,7 @@ import type { AIProvider, AIChatMessage } from "./types";
 import type { StoryMessage, StoryStateDataV2 } from "../../types/models";
 import { sortByTimestampAsc } from "../dates";
 import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storyStateExtractor";
-import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing } from "../storyStateV2";
+import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing, applyOpenThreadReconciliation } from "../storyStateV2";
 import { ensureIndexedCharacterStatus } from "../characterStatus";
 import { AIError } from "./errors";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
@@ -172,6 +172,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       summaryText,
       recentMessages: chunk,
       existingStateJson,
+      existingOpenThreads: currentState.indexes?.openThreads,
       messageNumberStart: processed + 1,
       messageNumberTotal: total,
       perMessageIndexing: chunk.length === 1,
@@ -276,11 +277,14 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     universeImportedCharacters,
   });
   const finalState = ensureIndexedCharacterStatus(
-    withIndexedMetadata({
-      ...currentState,
-      memoryArchitectureVersion: "2.0",
-      ...(finalIndexes ? { indexes: finalIndexes } : {}),
-    }),
+    applyOpenThreadReconciliation(
+      withIndexedMetadata({
+        ...currentState,
+        memoryArchitectureVersion: "2.0",
+        ...(finalIndexes ? { indexes: finalIndexes } : {}),
+      }),
+      { playerName: playerCharacter.name, totalMessages: total },
+    ),
     { playerName: playerCharacter.name },
   );
   const finalJson = JSON.stringify(finalState);
