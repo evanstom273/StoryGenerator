@@ -59,6 +59,7 @@ export function buildChapterPlanPrompt(params: {
 		"- scenesPerChapter is the number of Director-staged scene beats (1-10).",
 		"- Do not write prose scenes; only planning bullets.",
 		"- Honor the overall direction and current story state.",
+		"- Use exact character names, aliases, and spellings from the overall direction. Do not swap in canon names.",
 	].join("\n");
 
 	const userParts = [

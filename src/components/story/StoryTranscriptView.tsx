@@ -9,6 +9,7 @@ import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
+import { isStoryHistoryDividerMessage } from "../../lib/guidedChapterGeneration/storyHistoryDivider";
 import { ChapterListenBanner, FullStoryAudiobookControls } from "./StorySpeechControls";
 
 type StoryTranscriptViewProps = {
@@ -292,8 +293,19 @@ export function StoryTranscriptView({
     }
 
     const endIndex = resolveChapterEndMessageIndex(messages, chapter);
-    if (endIndex !== null && endIndex + 1 < messages.length) {
-      chapterStartBeforeMessage.set(endIndex + 2, getNextChapterBannerLabel(chapter.label));
+    if (endIndex !== null) {
+      let hasExplicitNextStart = false;
+      for (let index = endIndex + 1; index < messages.length; index += 1) {
+        const boundary = resolveMessageChapterBoundary(messages[index]!);
+        if (boundary?.kind === "start") {
+          hasExplicitNextStart = true;
+          break;
+        }
+      }
+
+      if (!hasExplicitNextStart && endIndex + 1 < messages.length) {
+        chapterStartBeforeMessage.set(endIndex + 2, getNextChapterBannerLabel(chapter.label));
+      }
     }
   }
   return (
@@ -339,6 +351,18 @@ export function StoryTranscriptView({
         }
 
         if (message.role === "system") {
+          if (isStoryHistoryDividerMessage(message)) {
+            return (
+              <div
+                key={message.id}
+                id={`story-message-${message.id}`}
+                className="rounded-2xl border border-accent/25 bg-accent/10 px-4 py-4 text-center text-sm leading-6 text-ink-soft"
+              >
+                {message.content}
+              </div>
+            );
+          }
+
           const tag = getSpeakerTag("System", "system");
           return (
             <Fragment key={message.id}>

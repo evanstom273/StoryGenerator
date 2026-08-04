@@ -110,6 +110,14 @@ export interface BuildStoryChatContextInput {
   latestUserMessageSpeakerType?: StoryMessage["speakerType"];
   allowDirectedPlayerControl?: boolean;
   directorIntent?: DirectorIntent | null;
+  directorStagingNote?: string | null;
+  guidedDirectedScene?: boolean;
+  guidedChapterContext?: {
+    overallDirection?: string;
+    chapterOverview?: string;
+    chapterLabel?: string;
+    sceneOverview?: string;
+  };
   rpStats?: RpStats | null;
   rpConfig?: RpConfig | null;
   playerStateHintOverride?: string | null;
@@ -127,12 +135,18 @@ export function buildStoryChatContext({
   latestUserMessageSpeakerType,
   allowDirectedPlayerControl = false,
   directorIntent,
+  directorStagingNote,
+  guidedDirectedScene = false,
+  guidedChapterContext,
   rpStats,
   rpConfig,
   playerStateHintOverride,
 }: BuildStoryChatContextInput): AIChatMessage[] {
-  const latestMessageIsDirectorNote = latestUserMessageSpeakerType === "director";
+  const latestMessageIsDirectorNote =
+    latestUserMessageSpeakerType === "director" || Boolean(directorStagingNote?.trim());
   const latestMessageIsContinueNote = latestUserMessageSpeakerType === "continue";
+  const guidedDirectedContinue =
+    latestMessageIsContinueNote && (allowDirectedPlayerControl || guidedDirectedScene);
   const sceneDepth: SceneDepth = latestMessageIsContinueNote
     ? "standard"
     : inferSceneDepth(latestUserMessage);
@@ -424,13 +438,16 @@ export function buildStoryChatContext({
       latestMessageIsContinueNote && allowDirectedPlayerControl
         ? "Treat the earlier Director note as still active for this one continuation reply. The Continue note itself is not dialogue, but it does authorize the directed scene to keep playing out naturally."
         : "",
+      guidedDirectedContinue
+        ? "Latest-turn rule: guided chapter generation is extending the current directed scene. Keep the scene moving naturally and you may temporarily control all characters, including the player character, for this reply only."
+        : "",
       latestMessageIsDirectorNote
         ? "Latest-turn rule: the newest user message is a Director note, not protagonist dialogue. Treat it as staging guidance for this reply only. You may temporarily control all characters, including the player character, when needed to realize the directed scene. The resulting scene becomes canon; the Director note itself does not."
         : "Never move, speak for, think for, feel for, or act on behalf of the player character.",
-      latestMessageIsDirectorNote || (latestMessageIsContinueNote && allowDirectedPlayerControl)
+      latestMessageIsDirectorNote || guidedDirectedContinue
         ? "When following a Director note, keep the player character's behavior consistent with canon, current scene state, and established relationships even if you temporarily control them for the directed scene."
         : "Never introduce the player character into the scene unless the transcript/story state or the player's latest message established them there. Do not narrate the player character arriving, acting, speaking, thinking, or reacting. Do not imply the player character is physically present through ambient details (sounds, shadows, movements) if the player has established they are elsewhere.",
-      latestMessageIsDirectorNote || (latestMessageIsContinueNote && allowDirectedPlayerControl)
+      latestMessageIsDirectorNote || guidedDirectedContinue
         ? "Once this directed reply is complete, normal player control resumes on the next user turn."
         : "When the player character is present, other characters may address them, but always wait for the player's response.",
       "Asterisks are reserved exclusively for actions. Never use asterisks for emphasis, sarcasm, or formatting.",
@@ -470,6 +487,33 @@ export function buildStoryChatContext({
     ].join("\n"),
   );
 
+  const guidedChapterBlock = (() => {
+    const parts = [
+      guidedChapterContext?.overallDirection?.trim()
+        ? `Overall direction (mandatory):\n${guidedChapterContext.overallDirection.trim()}`
+        : "",
+      guidedChapterContext?.chapterLabel?.trim()
+        ? `Active chapter: ${guidedChapterContext.chapterLabel.trim()}`
+        : "",
+      guidedChapterContext?.chapterOverview?.trim()
+        ? `Chapter overview:\n${guidedChapterContext.chapterOverview.trim()}`
+        : "",
+      guidedChapterContext?.sceneOverview?.trim()
+        ? `This scene plan (mandatory):\n${guidedChapterContext.sceneOverview.trim()}`
+        : "",
+    ].filter(Boolean);
+    if (!parts.length) {
+      return "";
+    }
+    return [
+      "Guided chapter generation constraints:",
+      ...parts,
+      "Honor every name, alias, and spelling above. If the plan says Kelly Grayson (or Kelly), do NOT substitute Alara Kitan or other canon Security chiefs.",
+      "Only introduce characters named in the plan for this scene unless the transcript already established them.",
+      "Never prefix narration lines with 'Narrator:' inside your reply — the transcript parser adds speaker labels.",
+    ].join("\n\n");
+  })();
+
   const recentWindow =
     summaryBlock !== "No story summary is available yet." && storyState?.stateJson?.trim()
       ? 14
@@ -502,11 +546,18 @@ export function buildStoryChatContext({
     ...(rpStatsBlock
       ? [{ role: "system" as const, content: `RP Character Sheet\n\n${rpStatsBlock}` }]
       : []),
+    ...(guidedChapterBlock
+      ? [{ role: "system" as const, content: guidedChapterBlock }]
+      : []),
     { role: "system", content: `Scene Direction\n\n${sceneGuidance}` },
     ...chatHistory,
     {
       role: "user",
-      content: latestMessageIsDirectorNote
+      content: directorStagingNote?.trim()
+        ? normalizeWhitespace(
+            `Director note for the next scene only:\n${directorStagingNote.trim()}`,
+          )
+        : latestMessageIsDirectorNote
         ? normalizeWhitespace(`Director note for the next scene only:\n${latestUserMessage}`)
         : latestMessageIsContinueNote
           ? normalizeWhitespace(

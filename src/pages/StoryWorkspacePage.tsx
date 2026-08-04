@@ -240,6 +240,17 @@ export function StoryWorkspacePage() {
   const [dismissedSequelPromptMessageId, setDismissedSequelPromptMessageId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingDraft, setStreamingDraft] = useState<string | null>(null);
+  const guidedStreamingDraft =
+    story && guidedGenerationStatus?.storyId === story.id
+      ? guidedGenerationStatus.streamingDraft
+      : null;
+  const showGuidedStreaming = Boolean(
+    story &&
+      guidedGenerationStatus?.storyId === story.id &&
+      guidedGenerationStatus.phase === "generating",
+  );
+  const activeStreamingDraft = streamingDraft ?? guidedStreamingDraft;
+  const showStreamingPanel = streamingDraft !== null || showGuidedStreaming;
   const streamingAbortRef = useRef<AbortController | null>(null);
   const [lastChatContent, setLastChatContent] = useState<string | null>(null);
   const [isGeneratingAssist, setIsGeneratingAssist] = useState(false);
@@ -1644,15 +1655,19 @@ export function StoryWorkspacePage() {
         )}
       </div>
 
-      {streamingDraft !== null ? (
+      {showStreamingPanel ? (
         <div className="mt-2 rounded-[10px] border border-divider/[0.35] bg-app-elevated px-3 py-3 opacity-80">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
             <span className="animate-pulse text-accent">●</span>
-            {variantSession ? "Generating candidate…" : "Generating…"}
+            {variantSession
+              ? "Generating candidate…"
+              : guidedGenerationActive
+                ? "Generating chapter history…"
+                : "Generating…"}
           </div>
-          {streamingDraft ? (
+          {activeStreamingDraft ? (
             <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
-              {streamingDraft}
+              {activeStreamingDraft}
             </div>
           ) : null}
         </div>
