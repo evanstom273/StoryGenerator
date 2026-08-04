@@ -6,16 +6,26 @@ import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storySta
 import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata } from "../storyStateV2";
 import { AIError } from "./errors";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
+import { getIndexingRequestConfig } from "./models";
 
-const REBUILD_REQUEST_TIMEOUT_MS = 180_000;
-const REBUILD_MAX_ATTEMPTS = 3;
+const INDEXING_CHUNK_SIZE = 1;
 
 async function generateWithRetry(
   provider: AIProvider,
-  params: { apiKey: string; model: string; messages: AIChatMessage[]; maxTokens: number; temperature: number; jsonMode: boolean; timeoutMs: number; signal?: AbortSignal },
+  params: {
+    apiKey: string;
+    model: string;
+    messages: AIChatMessage[];
+    maxTokens: number;
+    temperature: number;
+    jsonMode: boolean;
+    timeoutMs: number;
+    maxAttempts: number;
+    signal?: AbortSignal;
+  },
 ): Promise<string> {
   let lastError: unknown;
-  for (let attempt = 1; attempt <= REBUILD_MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= params.maxAttempts; attempt++) {
     if (params.signal?.aborted) throw new Error("Rebuild aborted.");
     try {
       const result = await provider.generateResponse(params);
@@ -26,7 +36,7 @@ async function generateWithRetry(
         error instanceof AIError
           ? error.code === "provider_unavailable" || error.code === "rate_limited" || error.code === "timeout"
           : false;
-      if (!retryable || attempt >= REBUILD_MAX_ATTEMPTS) throw error;
+      if (!retryable || attempt >= params.maxAttempts) throw error;
       const delayMs = 500 * Math.pow(2, attempt - 1);
       await new Promise<void>((resolve, reject) => {
         const id = setTimeout(resolve, delayMs);
@@ -105,8 +115,8 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     };
   }
 
-  const chunkSize = 40;
-  const chunks = chunkMessages(newMessages, chunkSize);
+  const indexingConfig = getIndexingRequestConfig(model);
+  const chunks = chunkMessages(newMessages, INDEXING_CHUNK_SIZE);
   const totalChunks = chunks.length;
 
   // processed tracks absolute message position (1-indexed offset used for prompt numbering)
@@ -154,12 +164,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       return fromState ?? "";
     })();
 
-    const chunkStart = processed + 1;
     const chunkEnd = processed + chunk.length;
-    const chunkLabel = totalChunks > 1
-      ? ` (batch ${chunkIndex + 1}/${totalChunks})`
-      : "";
-
     const extractionContext = buildStoryStateExtractionPrompt({
       playerName: playerCharacter.name,
       playerCharacter,
@@ -168,23 +173,25 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       existingStateJson,
       messageNumberStart: processed + 1,
       messageNumberTotal: total,
+      perMessageIndexing: chunk.length === 1,
     });
 
     const generateParams = {
       apiKey,
       model,
       messages: extractionContext,
-      maxTokens: 32768,
+      maxTokens: indexingConfig.maxTokens,
       temperature: 0,
       jsonMode: true,
-      timeoutMs: REBUILD_REQUEST_TIMEOUT_MS,
+      timeoutMs: indexingConfig.timeoutMs,
+      maxAttempts: indexingConfig.maxAttempts,
       signal,
     };
 
     onProgress?.({
       processed,
       total,
-      message: `Sending messages ${chunkStart}–${chunkEnd} to AI${chunkLabel}…`,
+      message: `Indexing message ${chunkEnd}/${total}…`,
     });
 
     let responseContent = await generateWithRetry(provider, generateParams);
@@ -196,7 +203,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     onProgress?.({
       processed,
       total,
-      message: `Parsing AI response${chunkLabel}…`,
+      message: `Parsing index update for message ${chunkEnd}/${total}…`,
     });
 
     let parsed = parseStoryStateData(responseContent);
@@ -206,7 +213,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       onProgress?.({
         processed,
         total,
-        message: `Retrying batch ${chunkIndex + 1}${totalChunks > 1 ? `/${totalChunks}` : ""} (AI response unparseable)…`,
+        message: `Retrying message ${chunkEnd}/${total} (AI response unparseable)…`,
       });
       await sleep(1000, signal);
       if (signal?.aborted) throw new Error("Rebuild aborted.");
@@ -256,10 +263,10 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       processed,
       total,
       message: totalChunks > 1
-        ? `Batch ${chunkIndex + 1}/${totalChunks} done — ${processed}/${total} messages indexed`
+        ? `Message ${chunkEnd}/${total} indexed`
         : `${processed}/${total} messages indexed`,
       warning: wasRepaired
-        ? `Batch ${chunkIndex + 1}: AI response was truncated — partial data recovered. Some fields in this batch may be missing.`
+        ? `Message ${chunkEnd}: AI response was truncated — partial data recovered. Some fields may be missing.`
         : undefined,
     });
   }

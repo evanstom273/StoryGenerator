@@ -7,6 +7,7 @@ import { StoryArchiveView } from "../components/story/StoryArchiveView";
 import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
 import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
 import { StoryAudioPlayerBar } from "../components/story/StoryAudioPlayerBar";
+import { StoryIndexingProgressBar } from "../components/story/StoryIndexingProgressBar";
 import { useGeminiTtsPlayback } from "../app/providers/GeminiTtsPlaybackProvider";
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
 import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
@@ -1416,7 +1417,10 @@ export function StoryWorkspacePage() {
         ) : null}
       </div>
 
-      <StoryAudioPlayerBar className="fixed bottom-10 left-0 right-0 z-50 lg:left-[266px]" />
+      <div className="fixed bottom-10 left-0 right-0 z-50 flex flex-col lg:left-[266px]">
+        <StoryIndexingProgressBar storyId={storyId} />
+        <StoryAudioPlayerBar className="relative border-t-0 shadow-none" />
+      </div>
       <div
         className={[
           "fixed bottom-0 right-0 z-30 flex items-center justify-between border-t border-divider/[0.3] bg-app will-change-transform px-4 py-2",

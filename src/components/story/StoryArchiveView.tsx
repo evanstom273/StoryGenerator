@@ -6,6 +6,7 @@ import type { RelationshipIndexEntry } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
+import { IndexingProgressPanel } from "./IndexingProgressPanel";
 
 import { RelationshipOverviewList } from "./RelationshipOverviewList";
 import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
@@ -52,7 +53,7 @@ export function StoryArchiveView({
   playerName?: string;
   relationshipsRefreshKey?: number;
 }) {
-  const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, updateIndexesDeep, loadStoryRelationships } =
+  const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, updateIndexesDeep, loadStoryRelationships, cancelStoryIndexing } =
     useStoryEngine();
   const [storyStateJson, setStoryStateJson] = useState<string>("");
   const [archiveRelationships, setArchiveRelationships] = useState<RelationshipIndexEntry[]>([]);
@@ -262,12 +263,10 @@ export function StoryArchiveView({
         </div>
 
         {rebuildInfo ? (
-          <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
-            {rebuildInfo.phase === "error"
-              ? rebuildInfo.error || "Rebuild failed."
-              : rebuildInfo.message ||
-                `Rebuilding… ${rebuildInfo.processedMessages}/${rebuildInfo.totalMessages} messages`}
-          </div>
+          <IndexingProgressPanel
+            status={rebuildInfo}
+            onCancel={() => void cancelStoryIndexing(storyId)}
+          />
         ) : null}
         {successMessage ? (
           <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
