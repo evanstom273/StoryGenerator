@@ -97,6 +97,7 @@ import {
 	generateChapterPlanWithAi,
 } from "../../lib/guidedChapterGeneration/planGeneration";
 import { resolveUpcomingChapterLabels } from "../../lib/guidedChapterGeneration/chapterLabels";
+import { buildGuidedChapterUiStatus } from "../../lib/guidedChapterGeneration/guidedGenerationProgress";
 import { buildPriorChapterContinuationContext } from "../../lib/guidedChapterGeneration/priorChapterContext";
 import type {
 	GuidedChapterGenerationEntry,
