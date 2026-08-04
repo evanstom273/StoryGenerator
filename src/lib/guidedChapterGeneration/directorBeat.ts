@@ -1,5 +1,5 @@
 import type { AIProvider } from "../ai/types";
-import { extractFirstJsonObject, safeParseJsonObject } from "../ai/json";
+import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "../ai/json";
 
 function formatDirectorBeatText(value: string): string | null {
 	const trimmed = value.trim();
@@ -21,6 +21,59 @@ function formatDirectorBeatText(value: string): string | null {
 	}
 
 	return `*${withoutQuotes}*`;
+}
+
+function extractDirectorBeatField(content: string): string | null {
+	const trimmed = content.trim();
+	const jsonCandidates = [
+		extractFirstJsonObject(trimmed),
+		tryRepairTruncatedJson(trimmed),
+		trimmed,
+	].filter((candidate): candidate is string => Boolean(candidate));
+
+	for (const jsonText of jsonCandidates) {
+		const parsed = safeParseJsonObject<{ directorBeat?: string }>(jsonText);
+		if (parsed?.directorBeat) {
+			const formatted = formatDirectorBeatText(String(parsed.directorBeat));
+			if (formatted) {
+				return formatted;
+			}
+		}
+	}
+
+	const quotedMatch = trimmed.match(/"directorBeat"\s*:\s*"((?:\\.|[^"\\])*)"/s);
+	if (quotedMatch?.[1]) {
+		const unescaped = quotedMatch[1]
+			.replace(/\\"/g, '"')
+			.replace(/\\n/g, "\n")
+			.replace(/\\\\/g, "\\");
+		const formatted = formatDirectorBeatText(unescaped);
+		if (formatted) {
+			return formatted;
+		}
+	}
+
+	const stripped = trimmed
+		.replace(/^```(?:json)?\s*/i, "")
+		.replace(/\s*```$/i, "")
+		.trim();
+
+	if (!stripped.startsWith("{")) {
+		return formatDirectorBeatText(stripped);
+	}
+
+	return null;
+}
+
+function buildFallbackDirectorBeat(params: {
+	sceneOverview?: string;
+	chapterOverview: string;
+	sceneIndex: number;
+}): string {
+	const scenePlan = params.sceneOverview?.trim() || params.chapterOverview.trim();
+	const snippet = scenePlan.replace(/\s+/g, " ").trim().slice(0, 200);
+	const staging = snippet || `Scene ${params.sceneIndex} continues.`;
+	return `*${staging.replace(/^\*+|\*+$/g, "")}*`;
 }
 
 export async function generateDirectorBeat(params: {
@@ -64,29 +117,34 @@ export async function generateDirectorBeat(params: {
 			: "",
 	].join("\n");
 
-	const result = await params.provider.generateResponse({
-		apiKey: params.apiKey,
-		model: params.model,
-		messages: [
-			{ role: "system", content: system },
-			{ role: "user", content: user },
-		],
-		maxTokens: 500,
-		temperature: 0.6,
-		jsonMode: true,
+	const requestBeat = async () => {
+		const result = await params.provider.generateResponse({
+			apiKey: params.apiKey,
+			model: params.model,
+			messages: [
+				{ role: "system", content: system },
+				{ role: "user", content: user },
+			],
+			maxTokens: 500,
+			temperature: 0.6,
+			jsonMode: true,
+		});
+		return extractDirectorBeatField(result.content);
+	};
+
+	const firstAttempt = await requestBeat();
+	if (firstAttempt) {
+		return firstAttempt;
+	}
+
+	const retryAttempt = await requestBeat();
+	if (retryAttempt) {
+		return retryAttempt;
+	}
+
+	return buildFallbackDirectorBeat({
+		sceneOverview: params.sceneOverview,
+		chapterOverview: params.chapterOverview,
+		sceneIndex: params.sceneIndex,
 	});
-
-	const jsonText = extractFirstJsonObject(result.content) ?? result.content.trim();
-	const parsed = safeParseJsonObject<{ directorBeat?: string }>(jsonText);
-	const parsedBeat = parsed?.directorBeat ? formatDirectorBeatText(parsed.directorBeat) : null;
-	if (parsedBeat) {
-		return parsedBeat;
-	}
-
-	const fallback = formatDirectorBeatText(result.content);
-	if (fallback) {
-		return fallback;
-	}
-
-	throw new Error("Director beat generation returned invalid staging text.");
 }

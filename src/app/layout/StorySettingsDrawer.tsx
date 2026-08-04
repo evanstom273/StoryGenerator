@@ -1314,7 +1314,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="font-semibold text-ink-soft">
-                                {job.type === "metachat_generate" ? "MetaChat reply" : "Indexing"}
+                                {job.type === "metachat_generate"
+                                  ? "MetaChat reply"
+                                  : job.type === "guided_chapter_generate"
+                                    ? "Guided chapters"
+                                    : "Indexing"}
                               </div>
                               <div className="mt-1 text-xs uppercase tracking-[0.18em] text-ink-muted">
                                 {job.status}

@@ -100,6 +100,54 @@ describe("guidedChapterGeneration", () => {
 		expect(beat).toBe("*Kelly steps onto the shuttle deck.*");
 	});
 
+	it("falls back to scene plan when director beat JSON is unusable", async () => {
+		const { generateDirectorBeat } = await import("../guidedChapterGeneration/directorBeat");
+		let calls = 0;
+		const provider = {
+			generateResponse: async () => {
+				calls += 1;
+				return { content: '{"directorBeat":""}' };
+			},
+		};
+
+		const beat = await generateDirectorBeat({
+			provider: provider as never,
+			apiKey: "test",
+			model: "test",
+			chapterLabel: "Chapter I",
+			chapterOverview: "Arrival",
+			sceneOverview: "Jamie meets Cmdr Grayson (Kelly) in her office.",
+			sceneIndex: 1,
+			sceneCount: 2,
+			playerName: "Jamie",
+		});
+
+		expect(calls).toBe(2);
+		expect(beat).toBe("*Jamie meets Cmdr Grayson (Kelly) in her office.*");
+	});
+
+	it("extracts director beats from malformed JSON without leaking braces", async () => {
+		const { generateDirectorBeat } = await import("../guidedChapterGeneration/directorBeat");
+		const provider = {
+			generateResponse: async () => ({
+				content: '{"directorBeat":"*Kelly opens the door.*"',
+			}),
+		};
+
+		const beat = await generateDirectorBeat({
+			provider: provider as never,
+			apiKey: "test",
+			model: "test",
+			chapterLabel: "Chapter I",
+			chapterOverview: "Arrival",
+			sceneIndex: 1,
+			sceneCount: 1,
+			playerName: "Kelly",
+		});
+
+		expect(beat).toBe("*Kelly opens the door.*");
+	});
+
 	it("parses Scene I / Scene II blocks from chapter overview", () => {
 		const overview =
 			"Scene I: Jamie meets Cmdr Grayson (Kelly) in her office.\nScene II: Jamie tours the bridge with Malloy.";
