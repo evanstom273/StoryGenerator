@@ -15,6 +15,7 @@ import {
 	writeGeminiTtsCache,
 } from "../../lib/ai/geminiTtsCache";
 import { synthesizeStoryAudiobookWav, type StoryAudiobookChapterSegment, computeStoryAudiobookPreparedDigest } from "../../lib/ai/storyAudiobook";
+import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
 import { synthesizeGeminiSpeechPlan } from "../../lib/ai/geminiTtsSynthesis";
 import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
 import type { SpeechSynthesisPlan } from "../../lib/storyText/messageSpeechText";
@@ -26,6 +27,7 @@ interface GeminiTtsPlaybackState {
 	status: GeminiTtsPlaybackStatus;
 	errorMessage: string | null;
 	loadingMessage: string | null;
+	loadingAudiobookProgress: StoryAudiobookProgress | null;
 	loadingStartedAtMs: number | null;
 	playerTitle: string | null;
 	currentTimeSec: number;
@@ -35,6 +37,7 @@ interface GeminiTtsPlaybackState {
 export interface GeminiTtsLoadingDetail {
 	message: string;
 	startedAtMs: number;
+	audiobookProgress?: StoryAudiobookProgress;
 }
 
 interface PreparedSpeechAudio {
@@ -80,6 +83,7 @@ const IDLE_STATE: GeminiTtsPlaybackState = {
 	status: "idle",
 	errorMessage: null,
 	loadingMessage: null,
+	loadingAudiobookProgress: null,
 	loadingStartedAtMs: null,
 	playerTitle: null,
 	currentTimeSec: 0,
@@ -159,6 +163,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					status: "error",
 					errorMessage: "Unable to play synthesized audio.",
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					playerTitle: state.playerTitle,
 					currentTimeSec: 0,
@@ -189,6 +194,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				status: "ready",
 				errorMessage: null,
 				loadingMessage: null,
+				loadingAudiobookProgress: null,
 				loadingStartedAtMs: null,
 				playerTitle: state.playerTitle,
 				currentTimeSec: audioRef.current?.currentTime ?? state.currentTimeSec,
@@ -243,6 +249,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					status: "error",
 					errorMessage: "Audio is not ready yet. Prepare playback first.",
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					playerTitle: state.playerTitle,
 					currentTimeSec: 0,
@@ -264,6 +271,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					status: "playing",
 					errorMessage: null,
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					currentTimeSec: prepared.audio.currentTime,
 					durationSec: Number.isFinite(prepared.audio.duration)
@@ -277,6 +285,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					status: "error",
 					errorMessage: "Unable to start playback.",
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					playerTitle: state.playerTitle,
 					currentTimeSec: 0,
@@ -380,6 +389,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					status: "error",
 					errorMessage: "Add a Gemini API key in Settings → AI to play audio.",
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					playerTitle: options?.title ?? null,
 					currentTimeSec: 0,
@@ -420,6 +430,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				status: "loading",
 				errorMessage: null,
 				loadingMessage: "Preparing voice synthesis…",
+				loadingAudiobookProgress: null,
 				loadingStartedAtMs: startedAtMs,
 				playerTitle: options?.title ?? state.playerTitle,
 				currentTimeSec: 0,
@@ -448,6 +459,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 							status: "ready",
 							errorMessage: null,
 							loadingMessage: null,
+							loadingAudiobookProgress: null,
 							loadingStartedAtMs: null,
 							playerTitle: options?.title ?? state.playerTitle,
 							currentTimeSec: 0,
@@ -461,6 +473,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 							status: "error",
 							errorMessage: "Unable to load cached audio.",
 							loadingMessage: null,
+							loadingAudiobookProgress: null,
 							loadingStartedAtMs: null,
 							playerTitle: options?.title ?? null,
 							currentTimeSec: 0,
@@ -510,6 +523,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					status: "ready",
 					errorMessage: null,
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					playerTitle: options?.title ?? state.playerTitle,
 					currentTimeSec: 0,
@@ -525,6 +539,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					errorMessage:
 						error instanceof Error ? error.message : "Unable to synthesize speech audio.",
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					playerTitle: options?.title ?? null,
 					currentTimeSec: 0,
@@ -553,6 +568,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					status: "error",
 					errorMessage: "Add a Gemini API key in Settings → AI to play audio.",
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					playerTitle: title,
 					currentTimeSec: 0,
@@ -567,6 +583,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					status: "error",
 					errorMessage: "No speakable story content for audiobook playback.",
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					playerTitle: title,
 					currentTimeSec: 0,
@@ -602,6 +619,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				status: "loading",
 				errorMessage: null,
 				loadingMessage: "Preparing story audiobook…",
+				loadingAudiobookProgress: null,
 				loadingStartedAtMs: startedAtMs,
 				playerTitle: title,
 				currentTimeSec: 0,
@@ -615,7 +633,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					model: narrationTts.model,
 					parallelChapters: options?.parallelChapters,
 					signal: controller.signal,
-					onProgress: (message) => {
+					onProgress: (progress) => {
 						if (controller.signal.aborted) {
 							return;
 						}
@@ -625,7 +643,8 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 							}
 							return {
 								...current,
-								loadingMessage: message,
+								loadingMessage: progress.summary,
+								loadingAudiobookProgress: progress,
 								loadingStartedAtMs: current.loadingStartedAtMs ?? startedAtMs,
 							};
 						});
@@ -642,6 +661,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					status: "ready",
 					errorMessage: null,
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					playerTitle: title,
 					currentTimeSec: 0,
@@ -657,6 +677,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 					errorMessage:
 						error instanceof Error ? error.message : "Unable to synthesize story audiobook.",
 					loadingMessage: null,
+					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
 					playerTitle: title,
 					currentTimeSec: 0,
@@ -689,9 +710,16 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			return {
 				message: state.loadingMessage ?? "Synthesizing voice…",
 				startedAtMs: state.loadingStartedAtMs ?? Date.now(),
+				audiobookProgress: state.loadingAudiobookProgress ?? undefined,
 			};
 		},
-		[state.activeId, state.loadingMessage, state.loadingStartedAtMs, state.status],
+		[
+			state.activeId,
+			state.loadingAudiobookProgress,
+			state.loadingMessage,
+			state.loadingStartedAtMs,
+			state.status,
+		],
 	);
 
 	const isPaused =
