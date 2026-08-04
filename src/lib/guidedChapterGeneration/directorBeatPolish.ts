@@ -42,6 +42,14 @@ export function isIncompleteDirectorBeat(text: string): boolean {
 		return true;
 	}
 
+	if (/,\s*[A-Za-z]{1,2}\.?\s*$/.test(inner)) {
+		return true;
+	}
+
+	if (/,\s*(?:Capt|Cmdr|Lt|Dr|Col|Ens)\.?\s*$/i.test(inner)) {
+		return true;
+	}
+
 	const withoutTerminalPunct = inner.replace(/[.!?]+\s*$/g, "").trim();
 	const lastToken = withoutTerminalPunct.split(/\s+/).pop() ?? "";
 	if (lastToken.length <= 2) {

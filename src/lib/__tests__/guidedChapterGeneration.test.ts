@@ -427,5 +427,8 @@ describe("guidedChapterGeneration", () => {
 		).toBe("*Bortus, Alara, Claire, and Gordon react to Jamie's service record.*");
 
 		expect(isIncompleteDirectorBeat("*Senior officers gather to review Jamie's file. Capt.*")).toBe(true);
+		expect(isIncompleteDirectorBeat("*An hour later the bullpen winds down. Jamie, Jake, Amy, Rosa, T.*")).toBe(
+			true,
+		);
 	});
 });
