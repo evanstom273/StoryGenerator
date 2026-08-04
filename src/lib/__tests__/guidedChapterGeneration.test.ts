@@ -130,6 +130,35 @@ describe("guidedChapterGeneration", () => {
 		expect(beat).toBe("*Jamie meets Cmdr Grayson (Kelly) in her office.*");
 	});
 
+	it("rejects truncated director beats and falls back to the scene plan", async () => {
+		const { generateDirectorBeat } = await import("../guidedChapterGeneration/directorBeat");
+		let calls = 0;
+		const provider = {
+			generateResponse: async () => {
+				calls += 1;
+				return {
+					content:
+						'{"directorBeat":"*Lt. Alara Kitan and Lt. Commander Bortus react before Jamie physically arrives o"}',
+				};
+			},
+		};
+
+		const beat = await generateDirectorBeat({
+			provider: provider as never,
+			apiKey: "test",
+			model: "test",
+			chapterLabel: "Chapter I",
+			chapterOverview: "Briefing",
+			sceneOverview: "Senior staff review Jamie's record.",
+			sceneIndex: 1,
+			sceneCount: 1,
+			playerName: "Jamie",
+		});
+
+		expect(calls).toBe(2);
+		expect(beat).toBe("*Senior staff review Jamie's record.*");
+	});
+
 	it("extracts director beats from malformed JSON without leaking braces", async () => {
 		const { generateDirectorBeat } = await import("../guidedChapterGeneration/directorBeat");
 		const provider = {

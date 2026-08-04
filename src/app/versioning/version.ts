@@ -54,6 +54,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Story History layout: history divider sits between generated history and the playable chapter; supports Chapter I: / Scene I: planning text",
       "Guided chapter Director beat parsing retries malformed JSON and falls back to the scene plan instead of failing the whole job",
       "Guided chapter generation maintains a per-chapter continuity ledger (docking bays, shuttles, meeting locations) so later beats do not contradict earlier assignments",
+      "Guided Director beats use short first-name staging notes; truncated beats are rejected and narration uses proper speaker headers during guided generation",
       "Story settings background jobs label guided chapter generation separately from indexing",
       "Story export downloads include a local-time timestamp in the filename",
       "Archive Markdown table of contents uses explicit section anchors so links work in common Markdown viewers",

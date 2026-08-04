@@ -1,6 +1,32 @@
 import type { AIProvider } from "../ai/types";
 import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "../ai/json";
 
+function isTruncatedStagingText(value: string): boolean {
+	const inner = value.replace(/^\*+|\*+$/g, "").trim();
+	if (!inner) {
+		return true;
+	}
+
+	if (/^[a-z]/.test(inner)) {
+		return true;
+	}
+
+	const lastToken = inner.split(/\s+/).pop() ?? "";
+	if (lastToken.length <= 2 && !/[.!?]$/.test(inner)) {
+		return true;
+	}
+
+	if (/ [a-z]$/.test(inner)) {
+		return true;
+	}
+
+	if (inner.length > 40 && !/[.!?]$/.test(inner)) {
+		return true;
+	}
+
+	return false;
+}
+
 function formatDirectorBeatText(value: string): string | null {
 	const trimmed = value.trim();
 	if (!trimmed) {
@@ -16,7 +42,7 @@ function formatDirectorBeatText(value: string): string | null {
 	}
 
 	const withoutQuotes = trimmed.replace(/^\*+|\*+$/g, "").trim();
-	if (!withoutQuotes) {
+	if (!withoutQuotes || isTruncatedStagingText(trimmed)) {
 		return null;
 	}
 
@@ -71,9 +97,11 @@ function buildFallbackDirectorBeat(params: {
 	sceneIndex: number;
 }): string {
 	const scenePlan = params.sceneOverview?.trim() || params.chapterOverview.trim();
-	const snippet = scenePlan.replace(/\s+/g, " ").trim().slice(0, 200);
+	const snippet = scenePlan.replace(/\s+/g, " ").trim().slice(0, 120);
 	const staging = snippet || `Scene ${params.sceneIndex} continues.`;
-	return `*${staging.replace(/^\*+|\*+$/g, "")}*`;
+	const cleaned = staging.replace(/^\*+|\*+$/g, "").trim();
+	const withPeriod = cleaned.endsWith(".") ? cleaned : `${cleaned}.`;
+	return `*${withPeriod}*`;
 }
 
 export async function generateDirectorBeat(params: {
@@ -94,11 +122,12 @@ export async function generateDirectorBeat(params: {
 		"Return STRICT JSON: { \"directorBeat\": string }",
 		"Rules:",
 		"- Output a single Director note as *actions/staging* in asterisks, no 'Director:' prefix.",
+		"- One short sentence only. Max 35 words. End with a complete thought and punctuation.",
+		"- Use first names only for cast (Kelly, Alara, Ed, Gordon, Claire, Bortus). No ranks or titles.",
 		"- Stage what happens in THIS scene beat only.",
-		"- The AI narrator will realize the scene; include cast participation and player character actions when needed.",
+		"- The AI narrator will realize the scene; mention who reacts, not a full script.",
 		"- Do not repeat prior scenes; advance the chapter overview.",
-		"- Keep under 120 words.",
-		"- Use exact names from the overall direction and scene plan. Never substitute canon characters when the plan names someone else (e.g. use Kelly Grayson, not Alara Kitan).",
+		"- Use exact names from the overall direction and scene plan. Never substitute canon characters when the plan names someone else (e.g. use Kelly, not Alara).",
 		"- If the scene plan names who appears, those are the required cast for this beat.",
 		"- Honor the continuity ledger. Do not stage a different docking bay, shuttle, or meeting location than already established this chapter.",
 	].join("\n");
@@ -130,8 +159,8 @@ export async function generateDirectorBeat(params: {
 				{ role: "system", content: system },
 				{ role: "user", content: user },
 			],
-			maxTokens: 500,
-			temperature: 0.6,
+			maxTokens: 256,
+			temperature: 0.5,
 			jsonMode: true,
 		});
 		return extractDirectorBeatField(result.content);

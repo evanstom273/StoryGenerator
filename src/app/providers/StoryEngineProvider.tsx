@@ -6393,6 +6393,7 @@ export function StoryEngineProvider({
               apiKey,
               model,
               messages: context,
+              maxTokens: opts?.guidedChapterContext ? 2000 : undefined,
               signal: opts?.signal,
               onChunk: opts?.onChunk,
               onChunkReset: opts?.onChunkReset,
