@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
+import {
+	getCharacterStatusLines,
+	listIndexedCharacterNames,
+	synthesizeCharacterStatusBullets,
+} from "../../lib/characterStatus";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import type { RelationshipIndexEntry } from "../../types/models";
 import { cn } from "../../utils/cn";
@@ -20,19 +25,6 @@ function trimStringList(value: unknown, maxItems: number) {
     .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
     .map((entry) => entry.trim())
     .slice(0, maxItems);
-}
-
-function getCharacterStatusLines(character: any) {
-  const bullets = trimStringList(character?.statusBullets, 4);
-  if (bullets.length) {
-    return bullets;
-  }
-
-  if (typeof character?.status === "string" && character.status.trim()) {
-    return [character.status.trim()];
-  }
-
-  return trimStringList(character?.notes, 3);
 }
 
 async function isAndroidNativePlatform() {
@@ -220,7 +212,7 @@ export function StoryArchiveView({
   const worldFacts = storyStateData.indexes?.worldFacts ?? [];
   const openThreads = storyStateData.indexes?.openThreads ?? [];
   const characters = storyStateData.indexes?.characters ? Object.values(storyStateData.indexes.characters) : [];
-  const characterStates = Object.entries(storyStateData.characters ?? {});
+  const trackedCharacterNames = listIndexedCharacterNames(storyStateData);
   const locations = storyStateData.indexes?.locations ? Object.values(storyStateData.indexes.locations) : [];
   const significantMemories = (storyStateData.indexes as any)?.significantMemories ?? [];
   const premise = storyStateData.summaries?.premise?.trim() ?? "";
@@ -391,49 +383,50 @@ export function StoryArchiveView({
           </Panel>
         ) : null}
 
-        {characterStates.length ? (
+        {trackedCharacterNames.length ? (
           <Panel variant="flat" padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Character Status
             </div>
             <div className="mt-3 space-y-3">
-              {characterStates
-                .slice()
-                .sort(([a], [b]) => a.localeCompare(b))
-                .map(([name, entry]) => {
-                  const statusLines = getCharacterStatusLines(entry);
-                  const strengths = trimStringList((entry as any)?.strengths, 3);
-                  const weaknesses = trimStringList((entry as any)?.weaknesses, 3);
-                  if (!statusLines.length && !strengths.length && !weaknesses.length) {
-                    return null;
-                  }
+              {trackedCharacterNames.map((name) => {
+                const entry = storyStateData.characters?.[name];
+                const synthesized = synthesizeCharacterStatusBullets(name, storyStateData, {
+                  playerName,
+                });
+                const statusLines = getCharacterStatusLines(entry, synthesized);
+                const strengths = trimStringList((entry as any)?.strengths, 3);
+                const weaknesses = trimStringList((entry as any)?.weaknesses, 3);
+                if (!statusLines.length && !strengths.length && !weaknesses.length) {
+                  return null;
+                }
 
-                  return (
-                    <div
-                      key={name}
-                      className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
-                    >
-                      <div className="font-semibold text-ink-soft">{name}</div>
-                      <div className="mt-2 space-y-2">
-                        {statusLines.map((line) => (
-                          <div key={line} className="text-sm text-ink-soft">
-                            {line}
-                          </div>
-                        ))}
-                        {strengths.length ? (
-                          <div className="text-xs text-emerald-200/90">
-                            Strengths: {strengths.join(", ")}
-                          </div>
-                        ) : null}
-                        {weaknesses.length ? (
-                          <div className="text-xs text-amber-100/90">
-                            Weaknesses: {weaknesses.join(", ")}
-                          </div>
-                        ) : null}
-                      </div>
+                return (
+                  <div
+                    key={name}
+                    className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
+                  >
+                    <div className="font-semibold text-ink-soft">{name}</div>
+                    <div className="mt-2 space-y-2">
+                      {statusLines.map((line) => (
+                        <div key={line} className="text-sm text-ink-soft">
+                          {line}
+                        </div>
+                      ))}
+                      {strengths.length ? (
+                        <div className="text-xs text-emerald-200/90">
+                          Strengths: {strengths.join(", ")}
+                        </div>
+                      ) : null}
+                      {weaknesses.length ? (
+                        <div className="text-xs text-amber-100/90">
+                          Weaknesses: {weaknesses.join(", ")}
+                        </div>
+                      ) : null}
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              })}
             </div>
           </Panel>
         ) : null}

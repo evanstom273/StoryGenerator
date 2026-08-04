@@ -1,6 +1,7 @@
 import type { StoryExportBundle, StoryMessage } from "../types/models";
 import { formatDateTime, sortByTimestampAsc } from "./dates";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "./storyStateV2";
+import { getCharacterStatusLines, synthesizeCharacterStatusBullets } from "./characterStatus";
 import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
 import { isContinueMessage } from "./storyText/continueMode";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
@@ -213,10 +214,14 @@ export function serializeStoryArchivePdf(
       lastSeenMessage: typeof e?.lastSeenMessage === "number" ? e.lastSeenMessage : null,
       evidence: formatEvidence(coerceEvidenceNumbers(e)),
       status: (() => {
-        const stateEntry = (storyStateData?.characters as Record<string, any> | undefined)?.[typeof e?.name === "string" ? e.name.trim() : ""];
-        const bullets = trimStringList(stateEntry?.statusBullets, 4);
-        const fallback = !bullets.length && typeof stateEntry?.status === "string" && stateEntry.status.trim() ? [stateEntry.status.trim()] : [];
-        return [...bullets, ...fallback].join(" | ");
+        const characterName = typeof e?.name === "string" ? e.name.trim() : "";
+        const stateEntry = (storyStateData?.characters as Record<string, any> | undefined)?.[characterName];
+        const synthesized = storyStateData && characterName
+          ? synthesizeCharacterStatusBullets(characterName, storyStateData, {
+              playerName: bundle.playerCharacter.name,
+            })
+          : [];
+        return getCharacterStatusLines(stateEntry, synthesized).join(" | ");
       })(),
     }))
     .filter((e) => e.name)

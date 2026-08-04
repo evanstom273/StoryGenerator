@@ -25,6 +25,11 @@ import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models"
 import { serializeStoryExport } from "../../lib/storyExport";
 import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
+import {
+	getCharacterStatusLines,
+	listIndexedCharacterNames,
+	synthesizeCharacterStatusBullets,
+} from "../../lib/characterStatus";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { RelationshipOverviewList } from "../../components/story/RelationshipOverviewList";
 import { AudiobookChapterProgressList } from "../../components/story/AudiobookChapterProgressList";
@@ -99,19 +104,6 @@ function trimStringList(value: unknown, maxItems: number) {
     .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
     .map((entry) => entry.trim())
     .slice(0, maxItems);
-}
-
-function getCharacterStatusLines(character: any) {
-  const bullets = trimStringList(character?.statusBullets, 4);
-  if (bullets.length) {
-    return bullets;
-  }
-
-  if (typeof character?.status === "string" && character.status.trim()) {
-    return [character.status.trim()];
-  }
-
-  return trimStringList(character?.notes, 3);
 }
 
 async function isAndroidNativePlatform() {
@@ -1426,7 +1418,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     const characters = storyStateData.indexes?.characters
                       ? Object.values(storyStateData.indexes.characters)
                       : [];
-                    const characterStates = Object.entries(storyStateData.characters ?? {});
+                    const trackedCharacterNames = listIndexedCharacterNames(storyStateData);
                     const locations = storyStateData.indexes?.locations
                       ? Object.values(storyStateData.indexes.locations)
                       : [];
@@ -1621,43 +1613,44 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                               })
                             : null}
 
-                          {characterStates.length
+                          {trackedCharacterNames.length
                             ? renderArchiveDropdown({
                                 title: "Character Status",
-                                countLabel: `${characterStates.length} tracked`,
+                                countLabel: `${trackedCharacterNames.length} tracked`,
                                 children: (
                                   <div className="space-y-3">
-                                    {characterStates
-                                      .slice()
-                                      .sort(([a], [b]) => a.localeCompare(b))
-                                      .map(([name, entry]) => {
-                                        const statusLines = getCharacterStatusLines(entry);
-                                        const strengths = trimStringList((entry as any)?.strengths, 3);
-                                        const weaknesses = trimStringList((entry as any)?.weaknesses, 3);
-                                        if (!statusLines.length && !strengths.length && !weaknesses.length) {
-                                          return null;
-                                        }
-                                        return (
-                                          <div key={name} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
-                                            <div className="font-semibold text-ink-soft">{name}</div>
-                                            <div className="mt-2 space-y-2">
-                                              {statusLines.map((line) => (
-                                                <MarkdownText key={line} text={line} className="text-sm text-ink-soft" />
-                                              ))}
-                                              {strengths.length ? (
-                                                <div className="text-xs text-emerald-200/90">
-                                                  Strengths: {strengths.join(", ")}
-                                                </div>
-                                              ) : null}
-                                              {weaknesses.length ? (
-                                                <div className="text-xs text-amber-100/90">
-                                                  Weaknesses: {weaknesses.join(", ")}
-                                                </div>
-                                              ) : null}
-                                            </div>
+                                    {trackedCharacterNames.map((name) => {
+                                      const entry = storyStateData.characters?.[name];
+                                      const synthesized = synthesizeCharacterStatusBullets(name, storyStateData, {
+                                        playerName: playerCharacter?.name,
+                                      });
+                                      const statusLines = getCharacterStatusLines(entry, synthesized);
+                                      const strengths = trimStringList((entry as any)?.strengths, 3);
+                                      const weaknesses = trimStringList((entry as any)?.weaknesses, 3);
+                                      if (!statusLines.length && !strengths.length && !weaknesses.length) {
+                                        return null;
+                                      }
+                                      return (
+                                        <div key={name} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
+                                          <div className="font-semibold text-ink-soft">{name}</div>
+                                          <div className="mt-2 space-y-2">
+                                            {statusLines.map((line) => (
+                                              <MarkdownText key={line} text={line} className="text-sm text-ink-soft" />
+                                            ))}
+                                            {strengths.length ? (
+                                              <div className="text-xs text-emerald-200/90">
+                                                Strengths: {strengths.join(", ")}
+                                              </div>
+                                            ) : null}
+                                            {weaknesses.length ? (
+                                              <div className="text-xs text-amber-100/90">
+                                                Weaknesses: {weaknesses.join(", ")}
+                                              </div>
+                                            ) : null}
                                           </div>
-                                        );
-                                      })}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 ),
                               })
