@@ -255,19 +255,26 @@ describe("guidedChapterGeneration", () => {
 		expect(shouldStageDirectorBeatForScene(overview, 1)).toBe(false);
 	});
 
-	it("stages director beats for each parsed Scene block", () => {
+	it("stages director beats for each parsed Scene block when multiple scenes run", () => {
 		const overview =
 			"Scene I: Jamie meets Kelly.\nScene II: Jamie tours the bridge.";
-		expect(shouldStageDirectorBeatForScene(overview, 0)).toBe(true);
-		expect(shouldStageDirectorBeatForScene(overview, 1)).toBe(true);
+		expect(shouldStageDirectorBeatForScene(overview, 0, 2)).toBe(true);
+		expect(shouldStageDirectorBeatForScene(overview, 1, 2)).toBe(true);
 	});
 
-	it("caps parsed Scene blocks by scenesPerChapter when the user requests one scene", () => {
+	it("uses only the first Scene block when scenes per chapter is 1", () => {
 		const overview = "Scene I: Jamie meets Kelly.\nScene II: Jamie tours the bridge.";
 		const { sceneCount, scenes } = resolveScenesForChapter(overview, 1);
 		expect(sceneCount).toBe(1);
 		expect(scenes).toHaveLength(1);
 		expect(scenes[0]).toContain("Jamie meets Kelly");
+		expect(scenes[0]).not.toContain("tours the bridge");
+	});
+
+	it("does not stage extra director beats when only one scene runs", () => {
+		const overview = "Scene I: Jamie meets Kelly.\nScene II: Jamie tours the bridge.";
+		expect(shouldStageDirectorBeatForScene(overview, 0, 1)).toBe(true);
+		expect(shouldStageDirectorBeatForScene(overview, 1, 1)).toBe(false);
 	});
 
 	it("reuses an existing chapter-start banner instead of duplicating it", () => {

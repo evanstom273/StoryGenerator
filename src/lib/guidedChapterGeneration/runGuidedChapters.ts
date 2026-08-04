@@ -33,6 +33,8 @@ export type GuidedChapterSendContext = {
 	chapterOverview?: string;
 	chapterLabel?: string;
 	sceneOverview?: string;
+	scenesPerChapter?: number;
+	sceneCount?: number;
 	continuityNotes?: string;
 	previousChapterContext?: string;
 };
@@ -123,10 +125,16 @@ export async function runGuidedChapterGeneration(params: {
 				normalizedChapter.overview ||
 				rawChapter.overview,
 		};
+		const { scenes, sceneCount } = resolveScenesForChapter(
+			chapter.overview,
+			chapter.scenesPerChapter,
+		);
 		const chapterContext: GuidedChapterSendContext = {
 			overallDirection: plan.overallDirection,
 			chapterOverview: chapter.overview,
 			chapterLabel: chapter.label,
+			scenesPerChapter: chapter.scenesPerChapter,
+			sceneCount,
 			previousChapterContext: params.priorChapterContext,
 		};
 
@@ -155,10 +163,6 @@ export async function runGuidedChapterGeneration(params: {
 				base,
 			);
 
-		const { scenes, sceneCount } = resolveScenesForChapter(
-			chapter.overview,
-			chapter.scenesPerChapter,
-		);
 		for (let sceneIndex = 0; sceneIndex < sceneCount; sceneIndex += 1) {
 			if (params.signal?.aborted) {
 				throw new Error("Guided chapter generation aborted.");
@@ -177,7 +181,11 @@ export async function runGuidedChapterGeneration(params: {
 				sceneOverview,
 			});
 
-			const useDirectorBeat = shouldStageDirectorBeatForScene(chapter.overview, sceneIndex);
+			const useDirectorBeat = shouldStageDirectorBeatForScene(
+				chapter.overview,
+				sceneIndex,
+				sceneCount,
+			);
 
 			if (useDirectorBeat) {
 				const directorBeat = await generateDirectorBeat({

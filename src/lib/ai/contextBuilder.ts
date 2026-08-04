@@ -117,6 +117,8 @@ export interface BuildStoryChatContextInput {
     chapterOverview?: string;
     chapterLabel?: string;
     sceneOverview?: string;
+    scenesPerChapter?: number;
+    sceneCount?: number;
     continuityNotes?: string;
     previousChapterContext?: string;
   };
@@ -529,6 +531,9 @@ export function buildStoryChatContext({
       "- If Ed Mercer speaks then acts, write 'Ed:' (or 'Ed Mercer:') before '*nods slowly…*'. Orphan action lines are invalid.",
       "- Environmental prose between speakers must use 'Narrator:' — never leave orphaned narration between character blocks.",
       "- Finish each speaker block completely. Do not cut off mid-sentence or mid-thought.",
+      guidedChapterContext?.sceneCount === 1 || guidedChapterContext?.scenesPerChapter === 1
+        ? "This chapter is ONE scene only. Deliver the full chapter beat in this single assistant reply — do not stop early or save material for a follow-up turn."
+        : "",
       guidedChapterContext?.previousChapterContext?.trim()
         ? "When prior chapter context is provided, open the new chapter as the immediate next beat — same location, cast, and tension unless the plan explicitly jumps forward."
         : "",
