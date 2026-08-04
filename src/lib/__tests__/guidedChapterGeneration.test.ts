@@ -127,7 +127,36 @@ describe("guidedChapterGeneration", () => {
 		});
 
 		expect(calls).toBe(2);
-		expect(beat).toBe("*Jamie meets Cmdr Grayson (Kelly) in her office.*");
+		expect(beat).toBe("*Jamie meets Grayson (Kelly) in her office.*");
+	});
+
+	it("rejects truncated director beats and falls back to the scene plan", async () => {
+		const { generateDirectorBeat } = await import("../guidedChapterGeneration/directorBeat");
+		let calls = 0;
+		const provider = {
+			generateResponse: async () => {
+				calls += 1;
+				return {
+					content:
+						'{"directorBeat":"*Lt. Alara Kitan and Lt. Commander Bortus react before Jamie physically arrives o"}',
+				};
+			},
+		};
+
+		const beat = await generateDirectorBeat({
+			provider: provider as never,
+			apiKey: "test",
+			model: "test",
+			chapterLabel: "Chapter I",
+			chapterOverview: "Briefing",
+			sceneOverview: "Senior staff review Jamie's record.",
+			sceneIndex: 1,
+			sceneCount: 1,
+			playerName: "Jamie",
+		});
+
+		expect(calls).toBe(2);
+		expect(beat).toBe("*Senior staff review Jamie's record.*");
 	});
 
 	it("rejects truncated director beats and falls back to the scene plan", async () => {
@@ -316,5 +345,19 @@ describe("guidedChapterGeneration", () => {
 		expect(context).toContain("Last closed chapter: Chapter I");
 		expect(context).toContain("Jamie arrived aboard");
 		expect(context).toContain("End of Chapter I");
+	});
+
+	it("polishes director beats to first names and fixes truncated punctuation", async () => {
+		const { polishDirectorBeatStaging, isIncompleteDirectorBeat } = await import(
+			"../guidedChapterGeneration/directorBeatPolish"
+		);
+
+		expect(
+			polishDirectorBeatStaging(
+				"*Lt. Commander Bortus, Lt. Alara Kitan, Dr. Claire Finn, and Gordon Malloy react to Jamie's service record,.*",
+			),
+		).toBe("*Bortus, Alara, Claire, and Gordon react to Jamie's service record.*");
+
+		expect(isIncompleteDirectorBeat("*Senior officers gather to review Jamie's file. Capt.*")).toBe(true);
 	});
 });
