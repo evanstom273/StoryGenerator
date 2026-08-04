@@ -46,6 +46,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Major indexed characters now receive tracked status for archive/UI; ensemble casts get statusBullets for each on-screen character, with relationship-backed fallbacks when the model omits them",
       "Open threads are retired when the transcript resolves them; status bullets and world facts dedupe repeated phrasing (e.g. duplicate Wands at Four / wand serial facts)",
       "Archive PDF export skips a full re-index when the story index already matches the live message count",
+      "Markdown export now mirrors the archive PDF (summary, transcript, characters, relationships, world facts, threads, memories, locations, and chapters) with a navigable table of contents",
       "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",
       "Version wiring aligned to 3.0.0 across the app label, changelog, npm metadata, and Android release metadata",
     ],

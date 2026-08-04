@@ -83,7 +83,7 @@ function createExportFilename(title: string, format: ExportFormat) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  const suffix = format === "archive_pdf" ? "-archive" : "";
+  const suffix = format === "archive_pdf" || format === "markdown" ? "-archive" : "";
   const extension =
     format === "json"
       ? "json"
@@ -482,7 +482,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
     const stageLabels: Record<ExportFormat, string[]> = {
       json: ["Assembling data…", "Saving…"],
-      markdown: ["Assembling data…", "Formatting…", "Saving…"],
+      markdown: ["Refreshing archive…", "Assembling data…", "Formatting…", "Saving…"],
       txt: ["Assembling data…", "Formatting…", "Saving…"],
       pdf: ["Assembling data…", "Rendering PDF…", "Saving…"],
       archive_pdf: ["Refreshing archive…", "Assembling data…", "Rendering PDF…", "Saving…"],
@@ -507,7 +507,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
       setExportStage(stages[1] ?? stages[0]);
       const bundle = await exportStory(story.id, {
-        refreshArchiveIfStale: format === "archive_pdf",
+        refreshArchiveIfStale: format === "archive_pdf" || format === "markdown",
       });
       // #region debug-point archive-pdf-no-op:bundle
       reportArchivePdfDebug({
@@ -1225,7 +1225,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     disabled={!!exportStage || isExportingSupportBundle}
                   >
                     <DownloadIcon className="h-4 w-4" />
-                    Export Markdown
+                    Export Archive Markdown
                   </Button>
                   <Button
                     variant="secondary"
