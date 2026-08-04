@@ -16,8 +16,7 @@ export function GuidedChapterProgressBar({
 	}
 
 	if (
-		guidedGenerationStatus.phase === "done" ||
-		guidedGenerationStatus.phase === "error"
+		guidedGenerationStatus.phase === "done"
 	) {
 		return null;
 	}
@@ -34,7 +33,11 @@ export function GuidedChapterProgressBar({
 			<div className="mx-auto max-w-3xl">
 				<GuidedChapterProgressPanel
 					status={guidedGenerationStatus}
-					onCancel={() => void cancelGuidedChapterGeneration(storyId)}
+					onCancel={
+						guidedGenerationStatus.phase === "error"
+							? undefined
+							: () => void cancelGuidedChapterGeneration(storyId)
+					}
 					compact
 				/>
 			</div>

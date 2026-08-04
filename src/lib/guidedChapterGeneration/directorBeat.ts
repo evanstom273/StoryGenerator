@@ -103,6 +103,7 @@ export async function generateDirectorBeat(params: {
 	provider: AIProvider;
 	apiKey: string;
 	model: string;
+	signal?: AbortSignal;
 	chapterLabel: string;
 	chapterOverview: string;
 	sceneOverview?: string;
@@ -162,6 +163,7 @@ export async function generateDirectorBeat(params: {
 			maxTokens: 1024,
 			temperature: 0.4,
 			jsonMode: true,
+			signal: params.signal,
 		});
 		return extractDirectorBeatField(result.content);
 	};

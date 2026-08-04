@@ -192,6 +192,7 @@ export async function runGuidedChapterGeneration(params: {
 					provider: params.provider,
 					apiKey: params.apiKey,
 					model: params.model,
+					signal: params.signal,
 					chapterLabel: chapter.label,
 					chapterOverview: chapter.overview,
 					sceneOverview,
@@ -211,6 +212,9 @@ export async function runGuidedChapterGeneration(params: {
 					onChunk: params.onStreamingChunk,
 					onChunkReset: params.onStreamingReset,
 				});
+				if (params.onTranscriptChange) {
+					await params.onTranscriptChange();
+				}
 			} else {
 				await params.sendChatMessage(storyId, "Continue", {
 					signal: params.signal,
@@ -220,6 +224,9 @@ export async function runGuidedChapterGeneration(params: {
 					onChunk: params.onStreamingChunk,
 					onChunkReset: params.onStreamingReset,
 				});
+				if (params.onTranscriptChange) {
+					await params.onTranscriptChange();
+				}
 			}
 		}
 
