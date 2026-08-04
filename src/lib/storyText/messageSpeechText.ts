@@ -118,6 +118,24 @@ function isFirstPersonPerspectiveStaging(text: string) {
 	return clauses.some((clause) => FIRST_PERSON_STAGING_START.test(clause.trim()));
 }
 
+function hasExplicitThirdPersonSubject(text: string) {
+	const cleaned = stripActionMarkers(text).trim();
+	if (!cleaned || isFirstPersonPerspectiveStaging(cleaned)) {
+		return false;
+	}
+
+	if (/^(?:He|She|They|The)\b/.test(cleaned)) {
+		return true;
+	}
+
+	const nameLedClause = /^([A-Z][a-zA-Z''-]*(?:\s+[A-Z][a-zA-Z''-]*){0,2})\s+/.exec(cleaned);
+	if (!nameLedClause?.[1]) {
+		return false;
+	}
+
+	return !/^(I|We|My|Our|Us)\b/i.test(nameLedClause[1]);
+}
+
 function splitStagingSentences(text: string) {
 	const cleaned = stripActionMarkers(text).trim();
 	if (!cleaned) {
@@ -161,7 +179,27 @@ function appendUnquotedStagingBetweenQuotes(parts: CharacterSpeechPart[], text: 
 		parts.push({
 			kind: "narration",
 			text: cleaned,
-			narratorStyle: "omniscient",
+			narratorStyle: hasExplicitThirdPersonSubject(cleaned) ? "omniscient" : "character_action",
+		});
+	}
+}
+
+function appendActionSegmentSpeechParts(parts: CharacterSpeechPart[], text: string) {
+	for (const sentence of splitStagingSentences(text)) {
+		const cleaned = sentence.trim();
+		if (!cleaned) {
+			continue;
+		}
+
+		if (isFirstPersonPerspectiveStaging(cleaned)) {
+			parts.push({ kind: "dialogue", text: cleaned });
+			continue;
+		}
+
+		parts.push({
+			kind: "narration",
+			text: cleaned,
+			narratorStyle: hasExplicitThirdPersonSubject(cleaned) ? "omniscient" : "character_action",
 		});
 	}
 }
@@ -219,7 +257,7 @@ function parseCharacterBlockSpeechParts(text: string): CharacterSpeechPart[] {
 
 		for (const segment of parseActionSegments(region.text)) {
 			if (segment.type === "action") {
-				appendUnquotedNarration(parts, segment.text);
+				appendActionSegmentSpeechParts(parts, segment.text);
 				continue;
 			}
 

@@ -431,6 +431,29 @@ describe("messageSpeechText", () => {
 			{ speaker: "Jamie", text: "See you later!" },
 		]);
 	});
+
+	it("routes first-person asterisk actions to the character voice in player turns", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			{
+				id: "jamie-3",
+				storyId: "story-1",
+				role: "user",
+				speakerName: "Jamie",
+				speakerType: "player",
+				content:
+					'*I roll my eyes.* "Whatever. I\'m done." *I stand up to leave. Dad grabs my arm.*',
+				timestamp: "2026-01-01T00:00:00.000Z",
+			},
+			{ playerName: "Jamie", narrationTts },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{ speaker: "Jamie", text: "I roll my eyes." },
+			{ speaker: "Jamie", text: "Whatever. I'm done." },
+			{ speaker: "Jamie", text: "I stand up to leave." },
+			{ speaker: "Narrator", text: "Dad grabs my arm." },
+		]);
+	});
 });
 
 describe("getMessagesForChapterStartingAt", () => {
