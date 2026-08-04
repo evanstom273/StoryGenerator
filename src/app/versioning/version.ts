@@ -54,7 +54,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Story History layout: history divider sits between generated history and the playable chapter; supports Chapter I: / Scene I: planning text",
       "Guided chapter Director beat parsing retries malformed JSON and falls back to the scene plan instead of failing the whole job",
       "Guided chapter generation maintains a per-chapter continuity ledger (docking bays, shuttles, meeting locations) so later beats do not contradict earlier assignments",
-      "Guided Director beats use short first-name staging notes; truncated beats are rejected; ranks stripped and malformed endings fixed",
+      "Guided Director beats use first-name staging, reject truncated model output, and fix malformed endings — no artificial word cap",
       "Workspace guided chapter generation references the last closed chapter transcript and archive summary so new chapters continue realistically from where the story left off",
       "Story settings background jobs label guided chapter generation separately from indexing",
       "Story export downloads include a local-time timestamp in the filename",

@@ -98,7 +98,7 @@ export async function generateDirectorBeat(params: {
 		"Example: {\"directorBeat\":\"*Kelly, Alara, and Ed review Jamie's file in the briefing room.*\"}",
 		"Rules:",
 		"- Output ONE complete sentence inside asterisks in directorBeat. No 'Director:' prefix.",
-		"- Max 25 words. Must end with a single period. No trailing commas.",
+		"- Write the full staging note as one finished sentence. End with a single period. No trailing commas.",
 		"- FIRST NAMES ONLY: Kelly, Alara, Ed, Gordon, Claire, Bortus. Never write Lt., Dr., Commander, Captain, or full names like Alara Kitan.",
 		"- Stage what happens in THIS scene beat only — who gathers and what they discuss, not a script.",
 		"- Do not repeat prior scenes; advance the chapter overview.",
@@ -137,7 +137,7 @@ export async function generateDirectorBeat(params: {
 				{ role: "system", content: system },
 				{ role: "user", content: user },
 			],
-			maxTokens: 320,
+			maxTokens: 512,
 			temperature: 0.4,
 			jsonMode: true,
 		});

@@ -6,8 +6,6 @@ const FULL_NAME_RE = /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/g;
 const INCOMPLETE_ENDING_RE =
 	/\b(?:Capt|Cmdr|Lt|Dr|Col|Ens|Lieutenant|Commander|Captain|Commander)\.\s*$/i;
 
-const MAX_DIRECTOR_BEAT_WORDS = 28;
-
 export function normalizeDirectorBeatCastNames(text: string): string {
 	let result = text.replace(RANK_PREFIX_RE, "");
 	result = result.replace(FULL_NAME_RE, (_match, firstName: string) => firstName);
@@ -54,27 +52,11 @@ export function isIncompleteDirectorBeat(text: string): boolean {
 		return true;
 	}
 
-	const wordCount = inner.split(/\s+/).filter(Boolean).length;
-	if (wordCount > MAX_DIRECTOR_BEAT_WORDS + 8) {
-		return true;
-	}
-
-	if (inner.length > 50 && !/[.!?]$/.test(inner)) {
+	if (inner.length > 80 && !/[.!?]$/.test(inner)) {
 		return true;
 	}
 
 	return false;
-}
-
-export function enforceDirectorBeatWordLimit(text: string): string {
-	const inner = text.replace(/^\*+|\*+$/g, "").trim();
-	const words = inner.split(/\s+/).filter(Boolean);
-	if (words.length <= MAX_DIRECTOR_BEAT_WORDS) {
-		return inner;
-	}
-
-	const clipped = words.slice(0, MAX_DIRECTOR_BEAT_WORDS).join(" ");
-	return polishDirectorBeatPunctuation(clipped.replace(/[,;:]?\s*$/, ""));
 }
 
 export function polishDirectorBeatStaging(value: string): string | null {
@@ -85,7 +67,6 @@ export function polishDirectorBeatStaging(value: string): string | null {
 
 	let inner = trimmed.replace(/^\*+|\*+$/g, "").trim();
 	inner = normalizeDirectorBeatCastNames(inner);
-	inner = enforceDirectorBeatWordLimit(inner);
 	inner = inner.replace(/[,;]+\s*\.\s*$/g, ".").replace(/[,;]+\s*$/g, "");
 
 	if (isIncompleteDirectorBeat(inner)) {
