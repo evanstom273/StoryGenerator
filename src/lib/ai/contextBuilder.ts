@@ -118,6 +118,7 @@ export interface BuildStoryChatContextInput {
     chapterLabel?: string;
     sceneOverview?: string;
     continuityNotes?: string;
+    previousChapterContext?: string;
   };
   rpStats?: RpStats | null;
   rpConfig?: RpConfig | null;
@@ -507,6 +508,9 @@ export function buildStoryChatContext({
       guidedChapterContext?.continuityNotes?.trim()
         ? guidedChapterContext.continuityNotes.trim()
         : "",
+      guidedChapterContext?.previousChapterContext?.trim()
+        ? guidedChapterContext.previousChapterContext.trim()
+        : "",
     ].filter(Boolean);
     if (!parts.length) {
       return "";
@@ -523,6 +527,9 @@ export function buildStoryChatContext({
       "- If Ed Mercer speaks then acts, write 'Ed:' (or 'Ed Mercer:') before '*nods slowly…*'. Orphan action lines are invalid.",
       "- Environmental prose between speakers must use 'Narrator:' — never leave orphaned narration between character blocks.",
       "- Finish each speaker block completely. Do not cut off mid-sentence or mid-thought.",
+      guidedChapterContext?.previousChapterContext?.trim()
+        ? "When prior chapter context is provided, open the new chapter as the immediate next beat — same location, cast, and tension unless the plan explicitly jumps forward."
+        : "",
     ].join("\n\n");
   })();
 

@@ -46,6 +46,7 @@ export function buildChapterPlanPrompt(params: {
 	universeName: string;
 	playerName: string;
 	currentSituation?: string;
+	priorChapterContext?: string;
 }): { role: "system" | "user"; content: string }[] {
 	const system = [
 		"You plan chapter overviews for a roleplay story transcript generator.",
@@ -59,6 +60,7 @@ export function buildChapterPlanPrompt(params: {
 		"- scenesPerChapter is the number of Director-staged scene beats (1-10).",
 		"- Do not write prose scenes; only planning bullets.",
 		"- Honor the overall direction and current story state.",
+		"- When prior chapter context is provided, plan chapters that continue realistically from where the story left off — do not restart or skip unrelated events.",
 		"- Use exact character names, aliases, and spellings from the overall direction. Do not swap in canon names.",
 	].join("\n");
 
@@ -72,6 +74,9 @@ export function buildChapterPlanPrompt(params: {
 	];
 	if (params.currentSituation?.trim()) {
 		userParts.push("", "Current situation:", params.currentSituation.trim());
+	}
+	if (params.priorChapterContext?.trim()) {
+		userParts.push("", params.priorChapterContext.trim());
 	}
 
 	return [

@@ -36,6 +36,7 @@ export type GuidedChapterSendContext = {
 	chapterLabel?: string;
 	sceneOverview?: string;
 	continuityNotes?: string;
+	previousChapterContext?: string;
 };
 
 type SendChatMessageFn = (
@@ -82,6 +83,7 @@ export async function runGuidedChapterGeneration(params: {
 	onStreamingChunk?: (chunk: string) => void;
 	onStreamingReset?: () => void;
 	onTranscriptChange?: () => Promise<void>;
+	priorChapterContext?: string;
 }): Promise<{ dividerMessageId?: string }> {
 	const { plan, storyId, entry, playerName } = params;
 	const totalChapters = plan.chapters.length;
@@ -127,6 +129,7 @@ export async function runGuidedChapterGeneration(params: {
 			overallDirection: plan.overallDirection,
 			chapterOverview: chapter.overview,
 			chapterLabel: chapter.label,
+			previousChapterContext: params.priorChapterContext,
 		};
 
 		chapterStatuses[chapterIndex]!.status = "active";
@@ -185,6 +188,8 @@ export async function runGuidedChapterGeneration(params: {
 					overallDirection: plan.overallDirection,
 					playerName,
 					continuityNotes: sceneContext.continuityNotes,
+					previousChapterContext:
+						chapterIndex === 0 && sceneIndex === 0 ? params.priorChapterContext : undefined,
 				});
 
 				await params.sendChatMessage(storyId, formatDirectorTranscriptMessage(directorBeat), {
