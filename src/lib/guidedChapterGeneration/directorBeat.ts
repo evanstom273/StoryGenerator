@@ -1,31 +1,6 @@
 import type { AIProvider } from "../ai/types";
 import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "../ai/json";
-
-function isTruncatedStagingText(value: string): boolean {
-	const inner = value.replace(/^\*+|\*+$/g, "").trim();
-	if (!inner) {
-		return true;
-	}
-
-	if (/^[a-z]/.test(inner)) {
-		return true;
-	}
-
-	const lastToken = inner.split(/\s+/).pop() ?? "";
-	if (lastToken.length <= 2 && !/[.!?]$/.test(inner)) {
-		return true;
-	}
-
-	if (/ [a-z]$/.test(inner)) {
-		return true;
-	}
-
-	if (inner.length > 40 && !/[.!?]$/.test(inner)) {
-		return true;
-	}
-
-	return false;
-}
+import { polishDirectorBeatStaging } from "./directorBeatPolish";
 
 function formatDirectorBeatText(value: string): string | null {
 	const trimmed = value.trim();
@@ -41,12 +16,7 @@ function formatDirectorBeatText(value: string): string | null {
 		return null;
 	}
 
-	const withoutQuotes = trimmed.replace(/^\*+|\*+$/g, "").trim();
-	if (!withoutQuotes || isTruncatedStagingText(trimmed)) {
-		return null;
-	}
-
-	return `*${withoutQuotes}*`;
+	return polishDirectorBeatStaging(trimmed);
 }
 
 function extractDirectorBeatField(content: string): string | null {
@@ -100,6 +70,10 @@ function buildFallbackDirectorBeat(params: {
 	const snippet = scenePlan.replace(/\s+/g, " ").trim().slice(0, 120);
 	const staging = snippet || `Scene ${params.sceneIndex} continues.`;
 	const cleaned = staging.replace(/^\*+|\*+$/g, "").trim();
+	const polished = polishDirectorBeatStaging(cleaned);
+	if (polished) {
+		return polished;
+	}
 	const withPeriod = cleaned.endsWith(".") ? cleaned : `${cleaned}.`;
 	return `*${withPeriod}*`;
 }
@@ -121,17 +95,16 @@ export async function generateDirectorBeat(params: {
 	const system = [
 		"You write ONE Director staging note for Story Engine guided chapter generation.",
 		"Return STRICT JSON: { \"directorBeat\": string }",
+		"Example: {\"directorBeat\":\"*Kelly, Alara, and Ed review Jamie's file in the briefing room.*\"}",
 		"Rules:",
-		"- Output a single Director note as *actions/staging* in asterisks, no 'Director:' prefix.",
-		"- One short sentence only. Max 35 words. End with a complete thought and punctuation.",
-		"- Use first names only for cast (Kelly, Alara, Ed, Gordon, Claire, Bortus). No ranks or titles.",
-		"- Stage what happens in THIS scene beat only.",
-		"- The AI narrator will realize the scene; mention who reacts, not a full script.",
+		"- Output ONE complete sentence inside asterisks in directorBeat. No 'Director:' prefix.",
+		"- Max 25 words. Must end with a single period. No trailing commas.",
+		"- FIRST NAMES ONLY: Kelly, Alara, Ed, Gordon, Claire, Bortus. Never write Lt., Dr., Commander, Captain, or full names like Alara Kitan.",
+		"- Stage what happens in THIS scene beat only — who gathers and what they discuss, not a script.",
 		"- Do not repeat prior scenes; advance the chapter overview.",
-		"- Use exact names from the overall direction and scene plan. Never substitute canon characters when the plan names someone else (e.g. use Kelly, not Alara).",
-		"- If the scene plan names who appears, those are the required cast for this beat.",
-		"- Honor the continuity ledger. Do not stage a different docking bay, shuttle, or meeting location than already established this chapter.",
-		"- When prior chapter context is provided, stage the immediate next beat — do not restart the story.",
+		"- Use exact cast from the scene plan. Never substitute canon characters when the plan names someone else.",
+		"- Honor the continuity ledger for locations and shuttles.",
+		"- When prior chapter context is provided, stage the immediate next beat only.",
 	].join("\n");
 
 	const scenePlan = params.sceneOverview?.trim() || params.chapterOverview.trim();
@@ -164,8 +137,8 @@ export async function generateDirectorBeat(params: {
 				{ role: "system", content: system },
 				{ role: "user", content: user },
 			],
-			maxTokens: 256,
-			temperature: 0.5,
+			maxTokens: 320,
+			temperature: 0.4,
 			jsonMode: true,
 		});
 		return extractDirectorBeatField(result.content);
