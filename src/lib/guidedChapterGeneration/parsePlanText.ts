@@ -75,7 +75,11 @@ export function resolveScenesForChapter(overview: string, scenesPerChapter: numb
 		};
 	}
 
-	const sceneCount = Math.max(1, Math.min(10, parsedScenes.length));
+	const cappedCount =
+		scenesPerChapter > 0
+			? Math.min(parsedScenes.length, scenesPerChapter)
+			: parsedScenes.length;
+	const sceneCount = Math.max(1, Math.min(10, cappedCount));
 	return {
 		scenes: parsedScenes.slice(0, sceneCount),
 		sceneCount,

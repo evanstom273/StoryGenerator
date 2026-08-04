@@ -6,6 +6,7 @@ import {
 	buildGuidedChapterContinuityLedger,
 	formatGuidedChapterContinuityNotes,
 } from "../guidedChapterGeneration/guidedChapterContinuity";
+import { findReusableChapterStartMessage } from "../guidedChapterGeneration/chapterStart";
 import { getGuidedChapterProgressPercent } from "../guidedChapterGeneration/guidedGenerationProgress";
 import type { Story, StoryChapter, StoryMessage } from "../../types/models";
 
@@ -259,6 +260,41 @@ describe("guidedChapterGeneration", () => {
 			"Scene I: Jamie meets Kelly.\nScene II: Jamie tours the bridge.";
 		expect(shouldStageDirectorBeatForScene(overview, 0)).toBe(true);
 		expect(shouldStageDirectorBeatForScene(overview, 1)).toBe(true);
+	});
+
+	it("caps parsed Scene blocks by scenesPerChapter when the user requests one scene", () => {
+		const overview = "Scene I: Jamie meets Kelly.\nScene II: Jamie tours the bridge.";
+		const { sceneCount, scenes } = resolveScenesForChapter(overview, 1);
+		expect(sceneCount).toBe(1);
+		expect(scenes).toHaveLength(1);
+		expect(scenes[0]).toContain("Jamie meets Kelly");
+	});
+
+	it("reuses an existing chapter-start banner instead of duplicating it", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "m1",
+				storyId: "s1",
+				role: "system",
+				content: "Chapter I.",
+				timestamp: "2026-01-01T00:00:00.000Z",
+				speakerType: "system",
+				chapterBoundary: { kind: "start", label: "Chapter I" },
+			},
+			{
+				id: "m2",
+				storyId: "s1",
+				role: "system",
+				content: "Chapter II.",
+				timestamp: "2026-01-01T00:01:00.000Z",
+				speakerType: "system",
+				chapterBoundary: { kind: "start", label: "Chapter II" },
+			},
+		];
+
+		const reused = findReusableChapterStartMessage(messages, "Chapter II");
+		expect(reused?.id).toBe("m2");
+		expect(findReusableChapterStartMessage(messages, "Chapter III")).toBeNull();
 	});
 
 	it("builds a continuity ledger that locks the first docking bay assignment", () => {
