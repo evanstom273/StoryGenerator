@@ -202,11 +202,11 @@ export function GuidedChapterPlanModal(props: {
 					</div>
 
 					<div className="mt-6 min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
-						<Field label="Overall direction" hint="Required · e.g. Chapter I: Jamie arrives aboard">
+						<Field label="Overall direction" hint="Required · e.g. Continue from the end of the previous chapter">
 							<TextAreaInput
 								value={overallDirection}
 								onChange={(event) => setOverallDirection(event.target.value)}
-								placeholder="What should these chapters accomplish together?"
+								placeholder="Continue from the end of the previous chapter. What should these chapters accomplish?"
 							/>
 						</Field>
 

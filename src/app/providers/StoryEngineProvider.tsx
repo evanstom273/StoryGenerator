@@ -98,6 +98,7 @@ import {
 } from "../../lib/guidedChapterGeneration/planGeneration";
 import { resolveUpcomingChapterLabels } from "../../lib/guidedChapterGeneration/chapterLabels";
 import { buildGuidedChapterUiStatus } from "../../lib/guidedChapterGeneration/guidedGenerationProgress";
+import { buildPriorChapterContinuationContext } from "../../lib/guidedChapterGeneration/priorChapterContext";
 import type {
 	GuidedChapterGenerationEntry,
 	GuidedChapterPlan,
@@ -483,7 +484,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string; previousChapterContext?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string, opts?: { onChunk?: (chunk: string) => void; onChunkReset?: () => void; signal?: AbortSignal }) => Promise<StoryMessage>;
 }
@@ -2267,12 +2268,29 @@ export function StoryEngineProvider({
 
       const { apiKey, model: resolvedModel } = await resolveAIProfile(providerType, model);
       const provider = createAIProvider(providerType);
+
+      let priorChapterContext: string | undefined;
+      if (input.storyId) {
+        const [messages, chapters] = await Promise.all([
+          repository.listStoryMessages(input.storyId),
+          repository.listStoryChapters(input.storyId),
+        ]);
+        priorChapterContext = buildPriorChapterContinuationContext({
+          messages,
+          chapters,
+          storySummary: input.currentSituation,
+          playerName: input.playerName,
+          overallDirection: input.overallDirection,
+        });
+      }
+
       const messages = buildChapterPlanPrompt({
         overallDirection: input.overallDirection,
         chapterLabels: input.chapterLabels,
         universeName: input.universeName,
         playerName: input.playerName,
         currentSituation: input.currentSituation,
+        priorChapterContext,
       });
 
       return generateChapterPlanWithAi({
@@ -3137,6 +3155,21 @@ export function StoryEngineProvider({
             throw new Error("Story chat engine is not ready.");
           }
 
+          let priorChapterContext: string | undefined;
+          if (entry === "workspace") {
+            const [messages, chapters] = await Promise.all([
+              repository.listStoryMessages(storyId),
+              repository.listStoryChapters(storyId),
+            ]);
+            priorChapterContext = buildPriorChapterContinuationContext({
+              messages,
+              chapters,
+              storySummary: story.currentSummary,
+              playerName: playerCharacter.name,
+              overallDirection: plan.overallDirection,
+            });
+          }
+
           const result = await runGuidedChapterGeneration({
             storyId,
             plan,
@@ -3148,6 +3181,7 @@ export function StoryEngineProvider({
             model,
             signal,
             jobId: job.id,
+            priorChapterContext,
             sendChatMessage: async (targetStoryId, content, opts) => {
               const result = await sendChatMessageForGuided(targetStoryId, content, opts);
               setGuidedGenerationStatus((current) =>
@@ -6393,6 +6427,7 @@ export function StoryEngineProvider({
               apiKey,
               model,
               messages: context,
+              maxTokens: opts?.guidedChapterContext ? 2000 : undefined,
               signal: opts?.signal,
               onChunk: opts?.onChunk,
               onChunkReset: opts?.onChunkReset,

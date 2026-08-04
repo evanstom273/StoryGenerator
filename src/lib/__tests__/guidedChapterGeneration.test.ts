@@ -130,6 +130,35 @@ describe("guidedChapterGeneration", () => {
 		expect(beat).toBe("*Jamie meets Cmdr Grayson (Kelly) in her office.*");
 	});
 
+	it("rejects truncated director beats and falls back to the scene plan", async () => {
+		const { generateDirectorBeat } = await import("../guidedChapterGeneration/directorBeat");
+		let calls = 0;
+		const provider = {
+			generateResponse: async () => {
+				calls += 1;
+				return {
+					content:
+						'{"directorBeat":"*Lt. Alara Kitan and Lt. Commander Bortus react before Jamie physically arrives o"}',
+				};
+			},
+		};
+
+		const beat = await generateDirectorBeat({
+			provider: provider as never,
+			apiKey: "test",
+			model: "test",
+			chapterLabel: "Chapter I",
+			chapterOverview: "Briefing",
+			sceneOverview: "Senior staff review Jamie's record.",
+			sceneIndex: 1,
+			sceneCount: 1,
+			playerName: "Jamie",
+		});
+
+		expect(calls).toBe(2);
+		expect(beat).toBe("*Senior staff review Jamie's record.*");
+	});
+
 	it("extracts director beats from malformed JSON without leaking braces", async () => {
 		const { generateDirectorBeat } = await import("../guidedChapterGeneration/directorBeat");
 		const provider = {
@@ -238,5 +267,54 @@ describe("guidedChapterGeneration", () => {
 
 		const ledger = buildGuidedChapterContinuityLedger(messages);
 		expect(ledger[0]).toContain("Authoritative arrival docking bay: Docking Bay 4");
+	});
+
+	it("builds prior chapter context from the last closed chapter transcript", async () => {
+		const { buildPriorChapterContinuationContext } = await import(
+			"../guidedChapterGeneration/priorChapterContext"
+		);
+		const messages: StoryMessage[] = [
+			{
+				id: "start",
+				storyId: "s1",
+				role: "system",
+				content: "Chapter I.",
+				timestamp: "2026-01-01T00:00:00.000Z",
+				speakerType: "system",
+				chapterBoundary: { kind: "start", label: "Chapter I" },
+			},
+			{
+				id: "end",
+				storyId: "s1",
+				role: "user",
+				content: "End of Chapter I.",
+				timestamp: "2026-01-01T00:05:00.000Z",
+				speakerName: "Jamie Diaz",
+				speakerType: "player",
+			},
+		];
+		const chapters: StoryChapter[] = [
+			{
+				id: "c1",
+				storyId: "s1",
+				label: "Chapter I",
+				endsAtMessageId: "end",
+				endsAtIndex: 2,
+				createdAt: "2026-01-01T00:05:00.000Z",
+				summary: "Jamie arrived aboard and met Alara at the docking bay.",
+			},
+		];
+
+		const context = buildPriorChapterContinuationContext({
+			messages,
+			chapters,
+			playerName: "Jamie Diaz",
+			overallDirection: "Continue from the end of the previous chapter.",
+		});
+
+		expect(context).toContain("Continue from where the existing story left off");
+		expect(context).toContain("Last closed chapter: Chapter I");
+		expect(context).toContain("Jamie arrived aboard");
+		expect(context).toContain("End of Chapter I");
 	});
 });

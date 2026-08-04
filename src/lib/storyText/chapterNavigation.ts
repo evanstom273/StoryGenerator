@@ -126,7 +126,7 @@ export function resolveChapterEndMessageIndex(
   return null;
 }
 
-function resolveNextChapterStartIndex(
+export function resolveNextChapterStartIndex(
   messages: StoryMessage[],
   chapter: StoryChapter,
 ): number | null {

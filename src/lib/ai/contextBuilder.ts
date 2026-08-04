@@ -118,6 +118,7 @@ export interface BuildStoryChatContextInput {
     chapterLabel?: string;
     sceneOverview?: string;
     continuityNotes?: string;
+    previousChapterContext?: string;
   };
   rpStats?: RpStats | null;
   rpConfig?: RpConfig | null;
@@ -148,9 +149,11 @@ export function buildStoryChatContext({
   const latestMessageIsContinueNote = latestUserMessageSpeakerType === "continue";
   const guidedDirectedContinue =
     latestMessageIsContinueNote && (allowDirectedPlayerControl || guidedDirectedScene);
-  const sceneDepth: SceneDepth = latestMessageIsContinueNote
+  const sceneDepth: SceneDepth = guidedChapterContext
     ? "standard"
-    : inferSceneDepth(latestUserMessage);
+    : latestMessageIsContinueNote
+      ? "standard"
+      : inferSceneDepth(latestUserMessage);
   const wordTarget = getSceneWordTarget(sceneDepth);
   const mostRecentImport = imports[0];
   const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
@@ -505,6 +508,9 @@ export function buildStoryChatContext({
       guidedChapterContext?.continuityNotes?.trim()
         ? guidedChapterContext.continuityNotes.trim()
         : "",
+      guidedChapterContext?.previousChapterContext?.trim()
+        ? guidedChapterContext.previousChapterContext.trim()
+        : "",
     ].filter(Boolean);
     if (!parts.length) {
       return "";
@@ -515,7 +521,15 @@ export function buildStoryChatContext({
       "Honor every name, alias, and spelling above. If the plan says Kelly Grayson (or Kelly), do NOT substitute Alara Kitan or other canon Security chiefs.",
       "Only introduce characters named in the plan for this scene unless the transcript already established them.",
       "Before assigning docking bays, shuttle routes, meeting locations, or schedules, check the continuity ledger and transcript. Do not silently change a bay number, shuttle name, or destination already established this chapter.",
-      "Never prefix narration lines with 'Narrator:' inside your reply — the transcript parser adds speaker labels.",
+      "Guided transcript formatting:",
+      "- Prefer first names in dialogue headers when familiarity is established (Ed, Kelly, Alara, Gordon, Claire).",
+      "- Every physical action line must appear under a speaker header. Never output a lone *action* line without 'Name:' on the line above it.",
+      "- If Ed Mercer speaks then acts, write 'Ed:' (or 'Ed Mercer:') before '*nods slowly…*'. Orphan action lines are invalid.",
+      "- Environmental prose between speakers must use 'Narrator:' — never leave orphaned narration between character blocks.",
+      "- Finish each speaker block completely. Do not cut off mid-sentence or mid-thought.",
+      guidedChapterContext?.previousChapterContext?.trim()
+        ? "When prior chapter context is provided, open the new chapter as the immediate next beat — same location, cast, and tension unless the plan explicitly jumps forward."
+        : "",
     ].join("\n\n");
   })();
 
