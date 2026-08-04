@@ -141,6 +141,7 @@ function appendQuotedAndUnquotedSpeechParts(parts: CharacterSpeechPart[], text: 
 
 function parseCharacterBlockSpeechParts(text: string): CharacterSpeechPart[] {
 	const parts: CharacterSpeechPart[] = [];
+	const hasQuotedDialogue = splitDialogueQuoteRegions(text).some((region) => region.kind === "quoted");
 
 	for (const region of splitDialogueQuoteRegions(text)) {
 		if (region.kind === "quoted") {
@@ -157,7 +158,9 @@ function parseCharacterBlockSpeechParts(text: string): CharacterSpeechPart[] {
 				continue;
 			}
 
-			appendQuotedAndUnquotedSpeechParts(parts, segment.text);
+			if (!hasQuotedDialogue) {
+				appendQuotedAndUnquotedSpeechParts(parts, segment.text);
+			}
 		}
 	}
 

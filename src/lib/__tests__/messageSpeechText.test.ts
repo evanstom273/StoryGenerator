@@ -373,6 +373,34 @@ describe("messageSpeechText", () => {
 			},
 		]);
 	});
+
+	it("skips unquoted staging between quoted dialogue in player turns", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			{
+				id: "jamie-1",
+				storyId: "story-1",
+				role: "user",
+				speakerName: "Jamie",
+				speakerType: "player",
+				content:
+					'"—and I distinctly remember someone..." I look at Dad through the camera, smirking. "Saying that I wouldn\'t be able to wrestle as a type-1, so... suck it Peralta!" We all laugh.',
+				timestamp: "2026-01-01T00:00:00.000Z",
+			},
+			{ playerName: "Jamie", narrationTts },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{
+				speaker: "Jamie",
+				text: "—and I distinctly remember someone...",
+			},
+			{
+				speaker: "Jamie",
+				text:
+					"Saying that I wouldn't be able to wrestle as a type-1, so... suck it Peralta!",
+			},
+		]);
+	});
 });
 
 describe("getMessagesForChapterStartingAt", () => {
