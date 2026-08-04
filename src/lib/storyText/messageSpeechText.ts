@@ -114,8 +114,27 @@ function isFirstPersonPerspectiveStaging(text: string) {
 		return false;
 	}
 
-	const clauses = cleaned.split(/[,;]\s+/);
-	return clauses.some((clause) => FIRST_PERSON_STAGING_START.test(clause.trim()));
+	const segments = [
+		...cleaned.split(/[,;]\s+/),
+		...splitStagingSentences(cleaned),
+	];
+	return segments.some((segment) => FIRST_PERSON_STAGING_START.test(segment.trim()));
+}
+
+function isPlayerPerspectiveSpeaker(speakerLabel: string, playerName?: string | null) {
+	const normalizedSpeaker = speakerLabel.trim().toLowerCase();
+	const normalizedPlayer = playerName?.trim().toLowerCase();
+	if (!normalizedSpeaker || !normalizedPlayer) {
+		return false;
+	}
+
+	if (normalizedSpeaker === normalizedPlayer) {
+		return true;
+	}
+
+	const speakerFirst = normalizedSpeaker.split(/\s+/)[0] ?? "";
+	const playerFirst = normalizedPlayer.split(/\s+/)[0] ?? "";
+	return speakerFirst.length > 1 && speakerFirst === playerFirst;
 }
 
 function splitStagingSentences(text: string) {
@@ -144,6 +163,32 @@ function splitStagingSentences(text: string) {
 	}
 
 	return sentences.length ? sentences : [cleaned];
+}
+
+function appendActionSegmentSpeechParts(
+	parts: CharacterSpeechPart[],
+	text: string,
+	playerPerspective: boolean,
+) {
+	const cleaned = stripActionMarkers(text).trim();
+	if (!cleaned) {
+		return;
+	}
+
+	if (playerPerspective) {
+		if (isFirstPersonPerspectiveStaging(cleaned)) {
+			parts.push({ kind: "dialogue", text: cleaned });
+		} else {
+			parts.push({
+				kind: "narration",
+				text: cleaned,
+				narratorStyle: "omniscient",
+			});
+		}
+		return;
+	}
+
+	appendUnquotedNarration(parts, text);
 }
 
 function appendUnquotedStagingBetweenQuotes(parts: CharacterSpeechPart[], text: string) {
@@ -204,9 +249,13 @@ function appendQuotedAndUnquotedSpeechParts(parts: CharacterSpeechPart[], text: 
 	}
 }
 
-function parseCharacterBlockSpeechParts(text: string): CharacterSpeechPart[] {
+function parseCharacterBlockSpeechParts(
+	text: string,
+	options: { playerPerspective?: boolean } = {},
+) {
 	const parts: CharacterSpeechPart[] = [];
 	const hasQuotedDialogue = splitDialogueQuoteRegions(text).some((region) => region.kind === "quoted");
+	const playerPerspective = options.playerPerspective ?? false;
 
 	for (const region of splitDialogueQuoteRegions(text)) {
 		if (region.kind === "quoted") {
@@ -219,7 +268,7 @@ function parseCharacterBlockSpeechParts(text: string): CharacterSpeechPart[] {
 
 		for (const segment of parseActionSegments(region.text)) {
 			if (segment.type === "action") {
-				appendUnquotedNarration(parts, segment.text);
+				appendActionSegmentSpeechParts(parts, segment.text, playerPerspective);
 				continue;
 			}
 
@@ -251,11 +300,14 @@ function buildSpeechScriptLinesFromCharacterBlock(
 	speakerLabel: string,
 	block: SceneBlock,
 	characterRegistry: CharacterTtsRegistry,
+	options: { playerPerspective?: boolean } = {},
 ): SpeechScriptLine[] {
 	const lines: SpeechScriptLine[] = [];
 	const ttsSpeaker = resolveTtsSpeakerLabel(speakerLabel, characterRegistry);
 
-	for (const part of parseCharacterBlockSpeechParts(block.text)) {
+	for (const part of parseCharacterBlockSpeechParts(block.text, {
+		playerPerspective: options.playerPerspective,
+	})) {
 		if (part.kind === "dialogue") {
 			lines.push({ speaker: ttsSpeaker, text: part.text });
 			continue;
@@ -394,6 +446,7 @@ function buildSpeechPlanFromBlocks(
 	options: {
 		defaultCharacterLabel?: string | null;
 		characterRegistry: CharacterTtsRegistry;
+		playerName?: string | null;
 	},
 ): SpeechSynthesisPlan | null {
 	const scriptLines: SpeechScriptLine[] = [];
@@ -421,6 +474,12 @@ function buildSpeechPlanFromBlocks(
 				speechBlock.speakerLabel!,
 				speechBlock,
 				options.characterRegistry,
+				{
+					playerPerspective: isPlayerPerspectiveSpeaker(
+						speechBlock.speakerLabel!,
+						options.playerName ?? options.defaultCharacterLabel,
+					),
+				},
 			);
 			scriptLines.push(...characterLines);
 		}
@@ -663,12 +722,14 @@ export function buildStoryMessageSpeechScriptLines(
 				defaultCharacterLabel,
 				block,
 				options.characterRegistry,
+				{ playerPerspective: true },
 			);
 		}
 
 		const plan = buildSpeechPlanFromBlocks(blocks, options.narrationTts, {
 			defaultCharacterLabel,
 			characterRegistry: options.characterRegistry,
+			playerName: options.playerName,
 		});
 		return plan?.scriptLines ?? [];
 	}
@@ -686,6 +747,7 @@ export function buildStoryMessageSpeechScriptLines(
 	const blocks = parseSceneBlocks(repaired);
 	const plan = buildSpeechPlanFromBlocks(blocks, options.narrationTts, {
 		characterRegistry: options.characterRegistry,
+		playerName: options.playerName,
 	});
 
 	return plan?.scriptLines ?? [];
