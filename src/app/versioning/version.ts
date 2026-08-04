@@ -42,6 +42,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     fixed: [
       "Version wiring aligned to 3.1.0 across the app label, changelog, npm metadata, and Android release metadata",
       "Guided chapter generation: each scene is one assistant message (no auto-Continue splits), scenes-per-chapter is authoritative over Scene I/II plan text, reuses an existing chapter banner instead of duplicating it, and rejects truncated Director staging beats",
+      "Guided chapter generation: stops silently mid-scene when background job state races or streaming pauses between tokens; failures now surface in the progress bar",
     ],
     knownIssues: [],
   },

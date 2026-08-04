@@ -729,6 +729,7 @@ async function generateResponseWithRetry(params: {
   timeoutMs?: number;
   onChunk?: (chunk: string) => void;
   onChunkReset?: () => void;
+  idleTimeoutMs?: number;
   debugTrace?: {
     traceId: string;
     mode: "story" | "additive" | "metachat" | "summary" | "other";
@@ -783,7 +784,7 @@ async function generateResponseWithRetry(params: {
         jsonMode: params.jsonMode,
         signal: params.signal,
         timeoutMs: requestTimeoutMs,
-        idleTimeoutMs: streamConfig?.idleTimeoutMs,
+        idleTimeoutMs: params.idleTimeoutMs ?? streamConfig?.idleTimeoutMs,
         onChunk: params.onChunk,
       });
       // #region debug-point A:provider-response
@@ -1605,6 +1606,7 @@ export function StoryEngineProvider({
   const rebuildAbortRef = useRef<AbortController | null>(null);
   const activeBackgroundJobRef = useRef<string | null>(null);
   const backgroundJobControllersRef = useRef<Record<string, AbortController>>({});
+  const inFlightBackgroundJobsRef = useRef(new Set<string>());
 
   function normalizeAISettings(value: unknown): AISettings | null {
     if (!value || typeof value !== "object") {
@@ -1717,9 +1719,11 @@ export function StoryEngineProvider({
 
         const runningJobsToReset = nextBackgroundJobs.filter(
           (job) =>
+            job.type !== "guided_chapter_generate" &&
             job.status === "running" &&
             activeBackgroundJobRef.current !== job.id &&
-            !backgroundJobControllersRef.current[job.id],
+            !backgroundJobControllersRef.current[job.id] &&
+            !inFlightBackgroundJobsRef.current.has(job.id),
         );
         const runningJobIdsToReset = new Set(runningJobsToReset.map((job) => job.id));
 
@@ -2944,6 +2948,11 @@ export function StoryEngineProvider({
 
   const processBackgroundJob = useCallback(
     async (job: BackgroundJob, signal: AbortSignal) => {
+      if (inFlightBackgroundJobsRef.current.has(job.id)) {
+        return;
+      }
+      inFlightBackgroundJobsRef.current.add(job.id);
+
       // #region debug-point job-cancel-timeout:job-start
       reportJobDebug({
         hypothesisId: "C",
@@ -3231,8 +3240,7 @@ export function StoryEngineProvider({
             },
           });
 
-          const refreshed = await repository.getBackgroundJob(job.id);
-          if (signal.aborted || refreshed?.status === "cancelled") {
+          if (signal.aborted) {
             await repository.saveBackgroundJob({
               ...runningJob,
               status: "cancelled",
@@ -3317,7 +3325,7 @@ export function StoryEngineProvider({
           },
         });
         // #endregion
-        if (signal.aborted || latest?.status === "cancelled") {
+        if (signal.aborted || (latest?.status === "cancelled" && job.type !== "guided_chapter_generate")) {
           try {
             await repository.saveBackgroundJob({
               ...runningJob,
@@ -3358,7 +3366,17 @@ export function StoryEngineProvider({
           });
         }
         await hydrate(false).catch(() => {});
-        throw error;
+        if (job.type === "guided_chapter_generate" && job.storyId) {
+          void deliverJobNotice({
+            jobId: job.id,
+            storyId: job.storyId,
+            title: "Guided chapter generation failed",
+            body: error instanceof Error ? error.message : "Guided chapter generation failed.",
+          });
+        }
+        return;
+      } finally {
+        inFlightBackgroundJobsRef.current.delete(job.id);
       }
     },
     [deliverJobNotice, generateMetaChatAssistantReply, getNormalizedAISettings, hydrate, repository, resolveAIProfile, runDeepIndexProcess],
@@ -3392,6 +3410,10 @@ export function StoryEngineProvider({
     );
 
     if (!nextJob) {
+      return;
+    }
+
+    if (inFlightBackgroundJobsRef.current.has(nextJob.id)) {
       return;
     }
 
@@ -6429,6 +6451,7 @@ export function StoryEngineProvider({
               messages: context,
               maxTokens: opts?.guidedChapterContext ? 4096 : undefined,
               signal: opts?.signal,
+              idleTimeoutMs: opts?.guidedGenerationInternal ? 120_000 : undefined,
               onChunk: opts?.onChunk,
               onChunkReset: opts?.onChunkReset,
               debugTrace: {
@@ -7387,6 +7410,10 @@ export function StoryEngineProvider({
 
         void (async () => {
           try {
+            if (opts?.guidedGenerationInternal) {
+              return;
+            }
+
             const latestStoryState = await repository.getStoryState(storyId);
             const baseParsed = latestStoryState?.stateJson
               ? safeParseStoryStateData(latestStoryState.stateJson)
