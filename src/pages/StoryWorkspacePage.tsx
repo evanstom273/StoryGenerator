@@ -8,6 +8,8 @@ import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
 import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
 import { StoryAudioPlayerBar } from "../components/story/StoryAudioPlayerBar";
 import { StoryIndexingProgressBar } from "../components/story/StoryIndexingProgressBar";
+import { GuidedChapterProgressBar } from "../components/story/GuidedChapterProgressBar";
+import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
 import { useGeminiTtsPlayback } from "../app/providers/GeminiTtsPlaybackProvider";
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
 import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
@@ -34,6 +36,8 @@ import {
   getLatestChapterStartMessage,
   scrollToChapterHeader,
 } from "../lib/storyText/chapterNavigation";
+import { canGenerateGuidedChaptersAtWorkspace, isStoryEligibleForGuidedGeneration } from "../lib/guidedChapterGeneration/eligibility";
+import { resolveUpcomingChapterLabels } from "../lib/guidedChapterGeneration/chapterLabels";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
@@ -154,6 +158,10 @@ export function StoryWorkspacePage() {
     getPlayerCharacterById,
     getStoryById,
     getUniverseById,
+    generateGuidedChapterPlan,
+    queueGuidedChapterJob,
+    guidedGenerationStatus,
+    backgroundJobs,
     editAssistantMessage,
     generatePlayerAssistMessage,
     regenerateLastAssistantMessage,
@@ -193,10 +201,37 @@ export function StoryWorkspacePage() {
         : [],
     [engineChapters, story],
   );
+  const guidedGenerationActive = Boolean(
+    story &&
+      ((guidedGenerationStatus?.storyId === story.id &&
+        guidedGenerationStatus.phase !== "done" &&
+        guidedGenerationStatus.phase !== "error") ||
+        backgroundJobs.some(
+          (job) =>
+            job.type === "guided_chapter_generate" &&
+            job.storyId === story.id &&
+            (job.status === "queued" || job.status === "running"),
+        )),
+  );
+  const workspaceGuidedEligibility = story
+    ? canGenerateGuidedChaptersAtWorkspace(messages, storyChapters)
+    : { ok: false as const, reason: "Story not loaded." };
+  const canShowGenerateChapters = Boolean(
+    story &&
+      !isReadOnly &&
+      isStoryEligibleForGuidedGeneration(story) &&
+      workspaceGuidedEligibility.ok &&
+      !guidedGenerationActive,
+  );
+  const resolveWorkspaceChapterLabels = useMemo(
+    () => (count: number) => resolveUpcomingChapterLabels(messages, storyChapters, count),
+    [messages, storyChapters],
+  );
   const [composerState, setComposerState] = useState(initialComposerState);
   const [editingMessage, setEditingMessage] = useState<StoryMessage | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [isSavingMessage, setIsSavingMessage] = useState(false);
+  const [showGuidedPlanModal, setShowGuidedPlanModal] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
   const [generationFailure, setGenerationFailure] = useState<GenerationFailure | null>(null);
@@ -1216,6 +1251,38 @@ export function StoryWorkspacePage() {
         }}
       />
 
+      {activeStory && playerCharacter && universe ? (
+        <GuidedChapterPlanModal
+          open={showGuidedPlanModal}
+          onClose={() => setShowGuidedPlanModal(false)}
+          title="Generate chapters"
+          description="Plan upcoming chapters, then Story Engine will stage Director beats, narrate scenes, end each chapter, and index incrementally."
+          submitLabel="Generate Chapters"
+          initialOverallDirection={activeStory.currentSummary}
+          resolveChapterLabels={resolveWorkspaceChapterLabels}
+          onGeneratePlan={async ({ overallDirection, chapterLabels }) => {
+            const plan = await generateGuidedChapterPlan({
+              storyId: activeStory.id,
+              overallDirection,
+              chapterLabels,
+              universeName: universe.name,
+              playerName: playerCharacter.name,
+              currentSituation: activeStory.currentSummary,
+            });
+            return plan?.chapters ?? null;
+          }}
+          onSubmit={async (plan) => {
+            const result = await queueGuidedChapterJob(activeStory.id, {
+              entry: "workspace",
+              plan,
+            });
+            if (result.duplicate) {
+              throw new Error("Guided chapter generation is already running for this story.");
+            }
+          }}
+        />
+      ) : null}
+
       {showSequelPrompt && activeStory ? (
         <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-md rounded-[18px] border border-divider bg-app px-5 py-5 shadow-hero">
@@ -1415,9 +1482,20 @@ export function StoryWorkspacePage() {
             {activeStory.currentSummary}
           </p>
         ) : null}
+        {!readerMode && canShowGenerateChapters ? (
+          <div className="mt-4">
+            <Button type="button" variant="secondary" size="sm" onClick={() => setShowGuidedPlanModal(true)}>
+              Generate Chapters
+            </Button>
+          </div>
+        ) : null}
+        {!readerMode && !canShowGenerateChapters && !workspaceGuidedEligibility.ok && story && !isReadOnly && isStoryEligibleForGuidedGeneration(story) && !guidedGenerationActive ? (
+          <p className="mt-3 text-xs text-ink-muted">{workspaceGuidedEligibility.reason}</p>
+        ) : null}
       </div>
 
       <div className="fixed bottom-10 left-0 right-0 z-50 flex flex-col lg:left-[266px]">
+        <GuidedChapterProgressBar storyId={storyId} />
         <StoryIndexingProgressBar storyId={storyId} />
         <StoryAudioPlayerBar className="relative border-t-0 shadow-none" />
       </div>
@@ -1686,7 +1764,7 @@ export function StoryWorkspacePage() {
                 onChange={(event) => setChatInput(event.target.value)}
                 onFocus={handleChatInputFocus}
                 onBlur={handleChatInputBlur}
-                disabled={isReadOnly}
+                disabled={isReadOnly || guidedGenerationActive}
                 placeholder="Write what your character does or says next."
               />
             </Field>
@@ -1704,8 +1782,8 @@ export function StoryWorkspacePage() {
             ) : null}
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Button onClick={handleSendChat} disabled={isGenerating || diceStatLoading || isReadOnly}>
-                {diceStatLoading ? "Selecting stat…" : isGenerating ? "Generating Scene..." : "Send"}
+              <Button onClick={handleSendChat} disabled={isGenerating || diceStatLoading || isReadOnly || guidedGenerationActive}>
+                {diceStatLoading ? "Selecting stat…" : isGenerating ? "Generating Scene..." : guidedGenerationActive ? "Generating chapters…" : "Send"}
               </Button>
               {isGenerating ? (
                 <Button variant="secondary" onClick={handleCancelGeneration}>

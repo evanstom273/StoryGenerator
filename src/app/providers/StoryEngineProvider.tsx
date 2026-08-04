@@ -91,6 +91,17 @@ import {
   withIndexedMetadata,
 } from "../../lib/storyStateV2";
 import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
+import { runGuidedChapterGeneration } from "../../lib/guidedChapterGeneration/runGuidedChapters";
+import {
+	buildChapterPlanPrompt,
+	generateChapterPlanWithAi,
+} from "../../lib/guidedChapterGeneration/planGeneration";
+import { resolveUpcomingChapterLabels } from "../../lib/guidedChapterGeneration/chapterLabels";
+import { buildGuidedChapterUiStatus } from "../../lib/guidedChapterGeneration/guidedGenerationProgress";
+import type {
+	GuidedChapterGenerationEntry,
+	GuidedChapterPlan,
+} from "../../lib/guidedChapterGeneration/types";
 import {
 	buildInitialChapterReviewProgress,
 	selectChaptersForArchiveRebuild,
@@ -234,6 +245,18 @@ interface StoryEngineContextValue {
       completedAtMs?: number;
     }>;
     jobId?: string;
+  };
+  guidedGenerationStatus?: {
+    storyId: string;
+    phase: "generating" | "indexing" | "done" | "error";
+    currentChapter: number;
+    totalChapters: number;
+    chapterLabel?: string;
+    message?: string;
+    chapters: Array<{ label: string; status: "pending" | "active" | "done" }>;
+    jobId?: string;
+    startedAtMs?: number;
+    error?: string;
   };
   jobNotice?: {
     id: string;
@@ -403,6 +426,19 @@ interface StoryEngineContextValue {
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
   cancelBackgroundJob: (jobId: string) => Promise<BackgroundJob | null>;
   cancelStoryIndexing: (storyId: string) => Promise<void>;
+  queueGuidedChapterJob: (
+    storyId: string,
+    opts: { entry: GuidedChapterGenerationEntry; plan: GuidedChapterPlan },
+  ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
+  cancelGuidedChapterGeneration: (storyId: string) => Promise<void>;
+  generateGuidedChapterPlan: (input: {
+    storyId?: string;
+    overallDirection: string;
+    chapterLabels: string[];
+    universeName: string;
+    playerName: string;
+    currentSituation?: string;
+  }) => Promise<GuidedChapterPlan | null>;
   dismissJobNotice: () => void;
   importUniverseExport: (
     bundle: UniverseExportBundleV1,
@@ -446,7 +482,7 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string, opts?: { onChunk?: (chunk: string) => void; onChunkReset?: () => void; signal?: AbortSignal }) => Promise<StoryMessage>;
 }
@@ -1560,7 +1596,10 @@ export function StoryEngineProvider({
     DeveloperTestingNote[]
   >([]);
   const [rebuildStatus, setRebuildStatus] = useState<StoryEngineContextValue["rebuildStatus"]>();
+  const [guidedGenerationStatus, setGuidedGenerationStatus] =
+    useState<StoryEngineContextValue["guidedGenerationStatus"]>();
   const [jobNotice, setJobNotice] = useState<StoryEngineContextValue["jobNotice"]>(null);
+  const sendChatMessageRef = useRef<StoryEngineContextValue["sendChatMessage"] | null>(null);
   const rebuildAbortRef = useRef<AbortController | null>(null);
   const activeBackgroundJobRef = useRef<string | null>(null);
   const backgroundJobControllersRef = useRef<Record<string, AbortController>>({});
@@ -2165,6 +2204,87 @@ export function StoryEngineProvider({
     [hydrate, repository],
   );
 
+  const queueGuidedChapterJob = useCallback(
+    async (
+      storyId: string,
+      opts: { entry: GuidedChapterGenerationEntry; plan: GuidedChapterPlan },
+    ) => {
+      const existing = (await repository.listBackgroundJobs()).find(
+        (job) =>
+          job.type === "guided_chapter_generate" &&
+          job.storyId === storyId &&
+          (job.status === "queued" || job.status === "running"),
+      );
+
+      if (existing) {
+        return { job: existing, duplicate: true };
+      }
+
+      const job: BackgroundJob = {
+        id: createEntityId("background-job"),
+        type: "guided_chapter_generate",
+        storyId,
+        createdAt: new Date().toISOString(),
+        status: "queued",
+        dedupeKey: `guided_chapter_generate:${storyId}`,
+        payload: {
+          guidedEntry: opts.entry,
+          guidedPlan: opts.plan,
+        },
+      };
+
+      await repository.saveBackgroundJob(job);
+      await hydrate(false);
+      return { job, duplicate: false };
+    },
+    [hydrate, repository],
+  );
+
+  const generateGuidedChapterPlan = useCallback(
+    async (input: {
+      storyId?: string;
+      overallDirection: string;
+      chapterLabels: string[];
+      universeName: string;
+      playerName: string;
+      currentSituation?: string;
+    }) => {
+      const settings = await getNormalizedAISettings();
+      if (!settings) {
+        throw new Error("Configure an AI provider in Settings before generating a chapter plan.");
+      }
+
+      let providerType = settings.activeProviderType;
+      let model = settings.defaultModels?.[providerType];
+      if (input.storyId) {
+        const storyConfig = await repository.getStoryAIConfig(input.storyId);
+        if (storyConfig) {
+          providerType = storyConfig.providerType;
+          model = storyConfig.model ?? model;
+        }
+      }
+
+      const { apiKey, model: resolvedModel } = await resolveAIProfile(providerType, model);
+      const provider = createAIProvider(providerType);
+      const messages = buildChapterPlanPrompt({
+        overallDirection: input.overallDirection,
+        chapterLabels: input.chapterLabels,
+        universeName: input.universeName,
+        playerName: input.playerName,
+        currentSituation: input.currentSituation,
+      });
+
+      return generateChapterPlanWithAi({
+        provider,
+        apiKey,
+        model: resolvedModel,
+        messages,
+        fallbackLabels: input.chapterLabels,
+      });
+    },
+    [getNormalizedAISettings, repository, resolveAIProfile],
+  );
+
   const queueMetaChatMessage = useCallback(
     async (scopeId: string, content: string) => {
       const trimmed = content.trim();
@@ -2301,6 +2421,27 @@ export function StoryEngineProvider({
       if (activeJob) {
         await cancelBackgroundJob(activeJob.id);
       }
+    },
+    [cancelBackgroundJob, repository],
+  );
+
+  const cancelGuidedChapterGeneration = useCallback(
+    async (storyId: string) => {
+      const jobs = await repository.listBackgroundJobs();
+      const activeJob = jobs.find(
+        (job) =>
+          job.type === "guided_chapter_generate" &&
+          job.storyId === storyId &&
+          (job.status === "queued" || job.status === "running"),
+      );
+
+      if (activeJob) {
+        await cancelBackgroundJob(activeJob.id);
+      }
+
+      setGuidedGenerationStatus((current) =>
+        current?.storyId === storyId ? undefined : current,
+      );
     },
     [cancelBackgroundJob, repository],
   );
@@ -2941,6 +3082,166 @@ export function StoryEngineProvider({
               "Your out-of-canon assistant reply is ready.",
             openMetaChat: completedJob.result?.openMetaChat,
           });
+        } else if (job.type === "guided_chapter_generate") {
+          const plan = job.payload?.guidedPlan;
+          const entry = job.payload?.guidedEntry ?? "workspace";
+          if (!plan?.chapters?.length) {
+            throw new Error("Guided chapter job is missing a chapter plan.");
+          }
+
+          const storyId = job.storyId ?? "";
+          const story = await repository.getStory(storyId);
+          if (!story) {
+            throw new Error("Story not found.");
+          }
+
+          const [playerCharacter, storyConfig, settings] = await Promise.all([
+            repository.getPlayerCharacter(story.playerCharacterId),
+            repository.getStoryAIConfig(storyId),
+            getNormalizedAISettings(),
+          ]);
+
+          if (!playerCharacter) {
+            throw new Error("Story references missing player character.");
+          }
+
+          if (!settings) {
+            throw new Error("Configure an AI provider in Settings before generating chapters.");
+          }
+
+          const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+          const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model);
+          const provider = createAIProvider(providerType);
+          const guidedStartedAtMs = Date.now();
+
+          setGuidedGenerationStatus(
+            buildGuidedChapterUiStatus(
+              storyId,
+              {
+                phase: "generating",
+                currentChapter: 1,
+                totalChapters: plan.chapters.length,
+                message: "Starting guided chapter generation…",
+                chapters: plan.chapters.map((chapter) => ({
+                  label: chapter.label,
+                  status: "pending",
+                })),
+              },
+              { jobId: job.id, startedAtMs: guidedStartedAtMs },
+            ),
+          );
+
+          const sendChatMessageForGuided = sendChatMessageRef.current;
+          if (!sendChatMessageForGuided) {
+            throw new Error("Story chat engine is not ready.");
+          }
+
+          const result = await runGuidedChapterGeneration({
+            storyId,
+            plan,
+            entry,
+            playerName: playerCharacter.name,
+            repository,
+            provider,
+            apiKey,
+            model,
+            signal,
+            jobId: job.id,
+            sendChatMessage: (targetStoryId, content, opts) =>
+              sendChatMessageForGuided(targetStoryId, content, opts),
+            runDeepIndex: (targetStoryId, deepOpts) =>
+              runDeepIndexProcess(targetStoryId, deepOpts),
+            onProgress: (update) => {
+              setGuidedGenerationStatus(
+                buildGuidedChapterUiStatus(storyId, update, {
+                  jobId: job.id,
+                  startedAtMs: guidedStartedAtMs,
+                }),
+              );
+              void repository.getBackgroundJob(job.id).then((liveJob) => {
+                if (!liveJob || liveJob.status !== "running") {
+                  return;
+                }
+                void repository.saveBackgroundJob({
+                  ...liveJob,
+                  progress: {
+                    current: update.currentChapter,
+                    total: update.totalChapters,
+                    label: update.message ?? update.chapterLabel,
+                  },
+                });
+              });
+            },
+          });
+
+          const refreshed = await repository.getBackgroundJob(job.id);
+          if (signal.aborted || refreshed?.status === "cancelled") {
+            await repository.saveBackgroundJob({
+              ...runningJob,
+              status: "cancelled",
+              finishedAt: new Date().toISOString(),
+              error: undefined,
+            });
+            setGuidedGenerationStatus((current) =>
+              current?.storyId === storyId ? undefined : current,
+            );
+            await hydrate(false);
+            return;
+          }
+
+          const now = new Date().toISOString();
+          await repository.saveStory({
+            ...story,
+            guidedGenerationMeta: {
+              historyChapterCount:
+                entry === "story_history"
+                  ? plan.chapters.length
+                  : story.guidedGenerationMeta?.historyChapterCount,
+              historyDividerMessageId:
+                result.dividerMessageId ?? story.guidedGenerationMeta?.historyDividerMessageId,
+              lastGuidedBatchAt: now,
+            },
+            updatedAt: now,
+          });
+
+          const completedJob: BackgroundJob = {
+            ...runningJob,
+            status: "complete",
+            finishedAt: now,
+            result: {
+              notificationTitle: `Guided chapters complete for ${story.title}`,
+              notificationBody: `Generated ${plan.chapters.length} chapter(s).`,
+            },
+          };
+          await repository.saveBackgroundJob(completedJob);
+          setGuidedGenerationStatus(
+            buildGuidedChapterUiStatus(
+              storyId,
+              {
+                phase: "done",
+                currentChapter: plan.chapters.length,
+                totalChapters: plan.chapters.length,
+                message: "Guided chapter generation complete.",
+                chapters: plan.chapters.map((chapter) => ({
+                  label: chapter.label,
+                  status: "done",
+                })),
+              },
+              { jobId: job.id, startedAtMs: guidedStartedAtMs },
+            ),
+          );
+          await hydrate(false);
+          await deliverJobNotice({
+            jobId: completedJob.id,
+            storyId,
+            title: completedJob.result?.notificationTitle ?? "Guided chapters complete",
+            body: completedJob.result?.notificationBody ?? "Generated chapters are ready.",
+          });
+          window.setTimeout(() => {
+            setGuidedGenerationStatus((current) =>
+              current?.storyId === storyId && current.phase === "done" ? undefined : current,
+            );
+          }, 8_000);
         }
       } catch (error) {
         const latest = await repository.getBackgroundJob(job.id);
@@ -2968,6 +3269,11 @@ export function StoryEngineProvider({
               error: undefined,
             });
           } catch {}
+          if (job.type === "guided_chapter_generate" && job.storyId) {
+            setGuidedGenerationStatus((current) =>
+              current?.storyId === job.storyId ? undefined : current,
+            );
+          }
           await hydrate(false).catch(() => {});
           return;
         }
@@ -2979,11 +3285,26 @@ export function StoryEngineProvider({
             error: error instanceof Error ? error.message : "Background job failed.",
           });
         } catch {}
+        if (job.type === "guided_chapter_generate" && job.storyId) {
+          setGuidedGenerationStatus({
+            storyId: job.storyId,
+            phase: "error",
+            currentChapter: 0,
+            totalChapters: job.payload?.guidedPlan?.chapters.length ?? 0,
+            chapters:
+              job.payload?.guidedPlan?.chapters.map((chapter) => ({
+                label: chapter.label,
+                status: "pending",
+              })) ?? [],
+            jobId: job.id,
+            error: error instanceof Error ? error.message : "Guided chapter generation failed.",
+          });
+        }
         await hydrate(false).catch(() => {});
         throw error;
       }
     },
-    [deliverJobNotice, generateMetaChatAssistantReply, hydrate, repository, runDeepIndexProcess],
+    [deliverJobNotice, generateMetaChatAssistantReply, getNormalizedAISettings, hydrate, repository, resolveAIProfile, runDeepIndexProcess],
   );
 
   useEffect(() => {
@@ -3047,6 +3368,53 @@ export function StoryEngineProvider({
       void hydrate(false);
     });
   }, [backgroundJobs, errorMessage, hydrate, loading, processBackgroundJob]);
+
+  useEffect(() => {
+    if (loading || errorMessage) {
+      return;
+    }
+
+    const activeGuidedJob = backgroundJobs.find(
+      (job) =>
+        job.type === "guided_chapter_generate" &&
+        (job.status === "queued" || job.status === "running"),
+    );
+
+    if (!activeGuidedJob?.storyId) {
+      return;
+    }
+
+    if (guidedGenerationStatus?.jobId === activeGuidedJob.id) {
+      return;
+    }
+
+    const plan = activeGuidedJob.payload?.guidedPlan;
+    setGuidedGenerationStatus(
+      buildGuidedChapterUiStatus(
+        activeGuidedJob.storyId,
+        {
+          phase: "generating",
+          currentChapter: activeGuidedJob.progress?.current ?? 1,
+          totalChapters: activeGuidedJob.progress?.total ?? plan?.chapters.length ?? 1,
+          message: activeGuidedJob.progress?.label ?? "Resuming guided chapter generation…",
+          chapters:
+            plan?.chapters.map((chapter, index) => ({
+              label: chapter.label,
+              status:
+                index < (activeGuidedJob.progress?.current ?? 1) - 1
+                  ? "done"
+                  : index === (activeGuidedJob.progress?.current ?? 1) - 1
+                    ? "active"
+                    : "pending",
+            })) ?? [],
+        },
+        {
+          jobId: activeGuidedJob.id,
+          startedAtMs: Date.parse(activeGuidedJob.startedAt ?? activeGuidedJob.createdAt),
+        },
+      ),
+    );
+  }, [backgroundJobs, errorMessage, guidedGenerationStatus?.jobId, loading]);
 
   // Watchdog: periodic hydrate to unblock any queued jobs that the runner
   // missed due to timing gaps (stale ref not cleared before effect fired).
@@ -3219,6 +3587,7 @@ export function StoryEngineProvider({
       developerFeatureRequests,
       developerTestingNotes,
       rebuildStatus,
+      guidedGenerationStatus,
       jobNotice,
       getUniverseById: (id) => universes.find((universe) => universe.id === id),
       getPlayerCharacterById: (id) =>
@@ -3874,6 +4243,12 @@ export function StoryEngineProvider({
         const storyId = createEntityId("story");
         const universePackSnapshot = universePackSnapshots[0];
         const rpMode = draft.rpMode ?? true;
+        const guidedHistory = draft.guidedStoryHistory;
+        const useGuidedHistory =
+          guidedHistory?.enabled &&
+          Array.isArray(guidedHistory.chapters) &&
+          guidedHistory.chapters.length > 0 &&
+          guidedHistory.chapters.every((chapter) => chapter.overview.trim());
 
         const nextStory: Story = {
           id: storyId,
@@ -3900,24 +4275,47 @@ export function StoryEngineProvider({
           accentThemeKey: draft.accentThemeKey,
           accentThemeCustom: draft.accentThemeCustom,
           currentSummary: draft.currentSummary.trim(),
+          guidedGenerationMeta: useGuidedHistory
+            ? {
+                historyChapterCount:
+                  guidedHistory.chapterCount ?? guidedHistory.chapters?.length ?? 0,
+              }
+            : undefined,
           createdAt: now,
           updatedAt: now,
         };
 
         await repository.saveStory(nextStory);
-        await repository.saveStoryMessage({
-          id: createEntityId("story-message"),
-          storyId,
-          role: "system",
-          content: "Chapter I.",
-          timestamp: now,
-          speakerType: "system",
-          chapterBoundary: {
-            kind: "start",
-            label: "Chapter I",
-          },
-        });
+
+        if (!useGuidedHistory) {
+          await repository.saveStoryMessage({
+            id: createEntityId("story-message"),
+            storyId,
+            role: "system",
+            content: "Chapter I.",
+            timestamp: now,
+            speakerType: "system",
+            chapterBoundary: {
+              kind: "start",
+              label: "Chapter I",
+            },
+          });
+        }
+
         await hydrate(false);
+
+        if (useGuidedHistory && guidedHistory.chapters) {
+          const labels = resolveUpcomingChapterLabels([], [], guidedHistory.chapters.length);
+          const plan: GuidedChapterPlan = {
+            overallDirection: guidedHistory.overallDirection?.trim() || draft.currentSummary.trim(),
+            chapters: guidedHistory.chapters.map((chapter, index) => ({
+              label: chapter.label?.trim() || labels[index] || `Chapter ${index + 1}`,
+              overview: chapter.overview.trim(),
+              scenesPerChapter: chapter.scenesPerChapter,
+            })),
+          };
+          await queueGuidedChapterJob(storyId, { entry: "story_history", plan });
+        }
 
         return nextStory;
       },
@@ -5245,6 +5643,9 @@ export function StoryEngineProvider({
       queueStoryIndexJob,
       cancelBackgroundJob,
       cancelStoryIndexing,
+      queueGuidedChapterJob,
+      cancelGuidedChapterGeneration,
+      generateGuidedChapterPlan,
       dismissJobNotice() {
         setJobNotice(null);
       },
@@ -5570,6 +5971,19 @@ export function StoryEngineProvider({
         if (!trimmed) {
           throw new Error("Message content is required.");
         }
+
+        const activeGuidedJob = backgroundJobs.find(
+          (candidate) =>
+            candidate.type === "guided_chapter_generate" &&
+            candidate.storyId === storyId &&
+            (candidate.status === "queued" || candidate.status === "running"),
+        );
+        if (activeGuidedJob && !opts?.guidedGenerationInternal) {
+          throw new Error(
+            "Guided chapter generation is in progress. Wait for it to finish or cancel it before sending chat.",
+          );
+        }
+
         const traceId = makeGenerationAuditTraceId("story");
         // #region debug-point A:story-start
         reportGenerationAudit({
@@ -7026,8 +7440,13 @@ export function StoryEngineProvider({
     developerBugs,
     developerFeatureRequests,
     developerTestingNotes,
+    backgroundJobs,
+    queueGuidedChapterJob,
     rebuildStatus,
+    guidedGenerationStatus,
   ]);
+
+  sendChatMessageRef.current = value.sendChatMessage;
 
   return (
     <StoryEngineContext.Provider value={value}>
