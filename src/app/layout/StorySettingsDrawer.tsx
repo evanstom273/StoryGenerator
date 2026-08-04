@@ -992,6 +992,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     </select>
                   </label>
 
+                  {isReadOnly ? (
+                    <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
+                      Story model settings are locked on prequel stories. Audiobook parallel chapters
+                      can still be changed below.
+                    </div>
+                  ) : null}
+
                   <label className="block space-y-2">
                     <div className="flex items-center justify-between gap-3 text-xs text-ink-muted">
                       <span>Audiobook parallel chapters</span>
@@ -1004,7 +1011,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       step={1}
                       className="h-1.5 w-full cursor-pointer accent-accent"
                       value={audiobookParallelChapters}
-                      disabled={isReadOnly}
                       onChange={(event) =>
                         setAudiobookParallelChapters(
                           clampAudiobookParallelChapters(Number.parseInt(event.target.value, 10)),
@@ -1017,15 +1023,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     </p>
                   </label>
 
-                  <Button type="submit" className="w-full" disabled={isSavingAI || isReadOnly}>
-                    {isSavingAI ? "Saving..." : "Save AI Settings"}
+                  <Button type="submit" className="w-full" disabled={isSavingAI}>
+                    {isSavingAI
+                      ? "Saving..."
+                      : isReadOnly
+                        ? "Save Audiobook Setting"
+                        : "Save AI Settings"}
                   </Button>
                 </form>
-                {isReadOnly ? (
-                  <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
-                    AI settings are locked on prequel stories.
-                  </div>
-                ) : null}
               </CollapsibleSection>
 
               <CollapsibleSection title="Edit Story">
