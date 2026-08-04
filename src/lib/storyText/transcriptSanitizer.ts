@@ -352,6 +352,29 @@ function normalizeThirdPersonActions(text: string, playerName: string | null | u
   return output.join("\n");
 }
 
+const NARRATION_SUBJECT_STOP_WORDS = new Set([
+  "The", "A", "An", "And", "But", "Or", "So", "Then", "Now",
+  "Later", "Meanwhile", "Outside", "Inside", "Suddenly", "Time",
+]);
+
+function looksLikeThirdPersonNarration(text: string): boolean {
+  const match = text.match(
+    /^([A-Z][a-zA-Z']{1,30}(?:\s+[A-Z][a-zA-Z']{1,30}){0,2})\s+([a-zA-Z']{2,})\b/,
+  );
+  if (!match) {
+    return false;
+  }
+
+  const label = match[1]?.trim() ?? "";
+  const token = match[2]?.trim() ?? "";
+  const firstWord = label.split(/\s+/)[0] ?? "";
+  if (!label || isDeniedSpeakerLabel(label) || NARRATION_SUBJECT_STOP_WORDS.has(firstWord)) {
+    return false;
+  }
+
+  return looksLikeVerbToken(token);
+}
+
 function stripNarratorPrefixFromLine(line: string) {
   const trimmed = line.trim();
   const match = trimmed.match(/^Narrator\s*(?::|\s[-—])\s*(.*)$/);
@@ -362,6 +385,11 @@ function stripNarratorPrefixFromLine(line: string) {
   const remainder = match[1]?.trim() ?? "";
   // Preserve correctly-formatted Narrator: *action* blocks — only strip plain-text uses
   if (remainder.startsWith("*")) {
+    return { changed: false, line };
+  }
+  // Name-led third-person narration ("Narrator: Ed walked in") must keep its prefix.
+  // Stripping to bare prose causes normalizeThirdPersonActions to mis-attribute Ed: as dialogue.
+  if (looksLikeThirdPersonNarration(remainder)) {
     return { changed: false, line };
   }
   return { changed: true, line: remainder };

@@ -42,4 +42,11 @@ describe("parseSceneBlocks", () => {
 		expect(blocks[0]?.speakerLabel).toBeUndefined();
 		expect(blocks[0]?.text).toContain("Twenty:");
 	});
+
+	it("keeps narrator blocks with name-led prose unattributed", () => {
+		const text = "Narrator: Ed walked into the bar and looked around.";
+		const blocks = parseSceneBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0]?.speakerLabel).toBeUndefined();
+	});
 });
