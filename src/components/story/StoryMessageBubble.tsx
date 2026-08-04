@@ -288,8 +288,15 @@ export function StoryMessageBubble({
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div className="flex min-w-0 items-center gap-2">
             {speakerLabel && message.role !== "assistant" ? (
-              <div className={cn("truncate text-sm font-semibold", speakerTagClass)}>
-                {speakerLabel}
+              <div className="min-w-0">
+                <div className={cn("truncate text-sm font-semibold", speakerTagClass)}>
+                  {speakerLabel}
+                </div>
+                {message.speakerType === "director" ? (
+                  <div className="text-[10px] text-violet-200/75">
+                    Out-of-character scene staging
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <div className="text-xs uppercase tracking-[0.18em] text-ink-muted">

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canGenerateGuidedChaptersAtWorkspace, isStoryEligibleForGuidedGeneration } from "../guidedChapterGeneration/eligibility";
 import { normalizeGuidedChapterPlan } from "../guidedChapterGeneration/planGeneration";
-import { parseSceneOverviews, resolveScenesForChapter } from "../guidedChapterGeneration/parsePlanText";
+import { parseSceneOverviews, resolveScenesForChapter, shouldStageDirectorBeatForScene } from "../guidedChapterGeneration/parsePlanText";
 import { getGuidedChapterProgressPercent } from "../guidedChapterGeneration/guidedGenerationProgress";
 import type { Story, StoryChapter, StoryMessage } from "../../types/models";
 
@@ -159,5 +159,18 @@ describe("guidedChapterGeneration", () => {
 		const resolved = resolveScenesForChapter(overview, 3);
 		expect(resolved.sceneCount).toBe(2);
 		expect(resolved.scenes[0]).toContain("Kelly");
+	});
+
+	it("stages a director beat only for the first scene when no Scene headers exist", () => {
+		const overview = "Jamie arrives aboard and settles into the crew rhythm.";
+		expect(shouldStageDirectorBeatForScene(overview, 0)).toBe(true);
+		expect(shouldStageDirectorBeatForScene(overview, 1)).toBe(false);
+	});
+
+	it("stages director beats for each parsed Scene block", () => {
+		const overview =
+			"Scene I: Jamie meets Kelly.\nScene II: Jamie tours the bridge.";
+		expect(shouldStageDirectorBeatForScene(overview, 0)).toBe(true);
+		expect(shouldStageDirectorBeatForScene(overview, 1)).toBe(true);
 	});
 });
