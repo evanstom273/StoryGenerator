@@ -31,7 +31,15 @@ import {
 	type SpeechSynthesisPlan,
 } from "../storyText/messageSpeechText";
 import type { StoryChapter, StoryMessage } from "../../types/models";
+import { getNextChapterBannerLabel } from "./chapterBannerLabel";
 import { clampAudiobookParallelChapters } from "./storyAudiobookParallel";
+import {
+	buildInitialAudiobookProgress,
+	cloneAudiobookProgress,
+	parseTtsProgressDetail,
+	updateChapterProgress,
+	type StoryAudiobookProgress,
+} from "./storyAudiobookProgress";
 
 export interface StoryAudiobookChapterSegment {
 	id: string;
@@ -45,17 +53,6 @@ function sortMessages(messages: StoryMessage[]) {
 	return [...messages].sort(
 		(left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime(),
 	);
-}
-
-function getNextChapterBannerLabel(label: string) {
-	const match = label.match(/chapter\s+(\d+)/i);
-	if (match?.[1]) {
-		const next = Number.parseInt(match[1], 10);
-		if (Number.isFinite(next)) {
-			return `Chapter ${next + 1}`;
-		}
-	}
-	return `Chapter ${label}`;
 }
 
 export function listStoryAudiobookChapterSegments(
@@ -160,7 +157,7 @@ async function synthesizeChapterSegmentWav(params: {
 	segment: StoryAudiobookChapterSegment;
 	model: GeminiTtsModelId;
 	signal?: AbortSignal;
-	onProgress?: (message: string) => void;
+	onDetail?: (detail: string) => void;
 }) {
 	if (params.signal?.aborted) {
 		throw new DOMException("Aborted", "AbortError");
@@ -183,7 +180,7 @@ async function synthesizeChapterSegmentWav(params: {
 			model: params.model,
 			signal: params.signal,
 			onProgress: (message) => {
-				params.onProgress?.(`${params.segment.label}: ${message}`);
+				params.onDetail?.(parseTtsProgressDetail(message));
 			},
 		});
 
@@ -210,11 +207,14 @@ export async function synthesizeStoryAudiobookWav(params: {
 	model: GeminiTtsModelId;
 	parallelChapters?: number;
 	signal?: AbortSignal;
-	onProgress?: (message: string) => void;
+	onProgress?: (progress: StoryAudiobookProgress) => void;
 }): Promise<ArrayBuffer> {
 	const parallelChapters = clampAudiobookParallelChapters(params.parallelChapters);
 	const pcmParts: Uint8Array[] = [];
 	const segmentCount = params.segments.length;
+	let progressState = buildInitialAudiobookProgress(params.segments);
+	const emitProgress = () => params.onProgress?.(cloneAudiobookProgress(progressState));
+	emitProgress();
 
 	for (let batchStart = 0; batchStart < segmentCount; batchStart += parallelChapters) {
 		if (params.signal?.aborted) {
@@ -222,36 +222,58 @@ export async function synthesizeStoryAudiobookWav(params: {
 		}
 
 		const batch = params.segments.slice(batchStart, batchStart + parallelChapters);
-		const batchLabels = batch.map((segment) => segment.label).join(" · ");
-
-		params.onProgress?.(
-			segmentCount > 1
-				? `Preparing ${batchLabels} (${Math.min(batchStart + batch.length, segmentCount)}/${segmentCount})…`
-				: "Preparing audiobook…",
+		const batchStartedAtMs = Date.now();
+		const batchPrep = await Promise.all(
+			batch.map(async (segment) => ({
+				segment,
+				cached: await loadChapterWavFromCache(segment.playId, segment.plan, params.model),
+			})),
 		);
 
-		const wavResults = await Promise.all(
-			batch.map(async (segment, batchIndex) => {
-				const segmentIndex = batchStart + batchIndex;
-				const chapterLabel = segment.label;
-
-				params.onProgress?.(
-					segmentCount > 1
-						? `Synthesizing ${chapterLabel} (${segmentIndex + 1}/${segmentCount})…`
-						: "Synthesizing audiobook…",
-				);
-
-				const wavBytes = await synthesizeChapterSegmentWav({
-					apiKey: params.apiKey,
-					segment,
-					model: params.model,
-					signal: params.signal,
-					onProgress: (message) => {
-						params.onProgress?.(
-							segmentCount > 1 ? `${chapterLabel}: ${message}` : message,
-						);
-					},
+		for (const entry of batchPrep) {
+			if (entry.cached) {
+				progressState = updateChapterProgress(progressState, entry.segment.id, {
+					status: "cached",
+					startedAtMs: batchStartedAtMs,
+					completedAtMs: Date.now(),
+					detail: undefined,
 				});
+			} else {
+				progressState = updateChapterProgress(progressState, entry.segment.id, {
+					status: "synthesizing",
+					startedAtMs: batchStartedAtMs,
+					detail: undefined,
+				});
+			}
+		}
+		emitProgress();
+
+		const wavResults = await Promise.all(
+			batchPrep.map(async (entry, batchIndex) => {
+				const segmentIndex = batchStart + batchIndex;
+				const segment = entry.segment;
+
+				const wavBytes = entry.cached
+					? entry.cached.wav
+					: await synthesizeChapterSegmentWav({
+							apiKey: params.apiKey,
+							segment,
+							model: params.model,
+							signal: params.signal,
+							onDetail: (detail) => {
+								progressState = updateChapterProgress(progressState, segment.id, {
+									detail,
+								});
+								emitProgress();
+							},
+						});
+
+				progressState = updateChapterProgress(progressState, segment.id, {
+					status: "done",
+					completedAtMs: Date.now(),
+					detail: undefined,
+				});
+				emitProgress();
 
 				return { segmentIndex, wavBytes };
 			}),

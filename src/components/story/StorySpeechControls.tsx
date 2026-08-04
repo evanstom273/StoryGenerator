@@ -9,6 +9,7 @@ import { cn } from "../../utils/cn";
 import { MessagePlayButton } from "./MessagePlayButton";
 import { useGeminiTtsPlayback } from "../../app/providers/GeminiTtsPlaybackProvider";
 import { Button } from "../ui/Button";
+import { AudiobookChapterProgressList } from "./AudiobookChapterProgressList";
 
 interface ChapterListenBannerProps {
 	messageId: string;
@@ -102,21 +103,22 @@ export function FullStoryAudiobookControls({
 	return (
 		<div
 			className={cn(
-				"flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3",
+				"flex flex-col gap-3 rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3",
 				className,
 			)}
 		>
-			<div className="min-w-0">
-				<p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-					Story Audiobook
-				</p>
-				<p className="text-sm text-ink-muted">
-					{segments.length > 1
-						? `${segments.length} chapters — uses cached audio where available`
-						: "Full story playback"}
-				</p>
-			</div>
-			<Button
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<div className="min-w-0">
+					<p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+						Story Audiobook
+					</p>
+					<p className="text-sm text-ink-muted">
+						{segments.length > 1
+							? `${segments.length} chapters — uses cached audio where available`
+							: "Full story playback"}
+					</p>
+				</div>
+				<Button
 				type="button"
 				size="sm"
 				variant="ghost"
@@ -154,8 +156,9 @@ export function FullStoryAudiobookControls({
 							? "Play story"
 							: "Listen to full story"}
 			</Button>
-			{isLoading && loadingDetail ? (
-				<p className="text-[10px] text-ink-muted">{loadingDetail.message}</p>
+			</div>
+			{isLoading && loadingDetail?.audiobookProgress ? (
+				<AudiobookChapterProgressList progress={loadingDetail.audiobookProgress} />
 			) : null}
 		</div>
 	);

@@ -19,6 +19,7 @@ import {
 	DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
 	MAX_AUDIOBOOK_PARALLEL_CHAPTERS,
 } from "../../lib/ai/storyAudiobookParallel";
+import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
 import { buildCharacterTtsRegistryForStory } from "../../lib/storyText/messageSpeechText";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
 import { serializeStoryExport } from "../../lib/storyExport";
@@ -26,6 +27,7 @@ import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { RelationshipOverviewList } from "../../components/story/RelationshipOverviewList";
+import { AudiobookChapterProgressList } from "../../components/story/AudiobookChapterProgressList";
 import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
 import type {
@@ -225,6 +227,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
   const [isExportingAudiobook, setIsExportingAudiobook] = useState(false);
   const [exportStage, setExportStage] = useState<string | null>(null);
+  const [exportAudiobookProgress, setExportAudiobookProgress] = useState<StoryAudiobookProgress | null>(
+    null,
+  );
   const [isSavingStory, setIsSavingStory] = useState(false);
   const [aiProviderType, setAiProviderType] = useState<AIProviderType>(
     aiSettings?.activeProviderType ?? "openai",
@@ -590,6 +595,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     showNotice(null);
     setIsExportingAudiobook(true);
     setExportStage("Preparing story audiobook…");
+    setExportAudiobookProgress(null);
 
     try {
       const messages = getMessagesForStory(story.id);
@@ -627,7 +633,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         segments,
         model: narrationTts.model,
         parallelChapters: audiobookParallelChapters,
-        onProgress: (message) => setExportStage(message),
+        onProgress: (progress) => {
+          setExportAudiobookProgress(progress);
+          setExportStage(progress.summary);
+        },
       });
 
       setExportStage("Saving WAV…");
@@ -642,6 +651,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     } finally {
       setIsExportingAudiobook(false);
       setExportStage(null);
+      setExportAudiobookProgress(null);
     }
   }
 
@@ -1185,6 +1195,12 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   {exportStage && (
                     <p className="text-xs text-muted-foreground px-1">{exportStage}</p>
                   )}
+                  {exportAudiobookProgress ? (
+                    <AudiobookChapterProgressList
+                      progress={exportAudiobookProgress}
+                      className="px-1"
+                    />
+                  ) : null}
                   <Button
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"

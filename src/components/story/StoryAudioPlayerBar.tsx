@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGeminiTtsPlayback } from "../../app/providers/GeminiTtsPlaybackProvider";
+import { AudiobookChapterProgressList } from "./AudiobookChapterProgressList";
 import { Button } from "../ui/Button";
 import { cn } from "../../utils/cn";
 
@@ -57,6 +58,7 @@ export function StoryAudioPlayerBar({ className }: { className?: string }) {
 		durationSec > 0 ? Math.min(100, (currentTimeSec / durationSec) * 100) : 0;
 	const isLoading = status === "loading";
 	const isPlaying = status === "playing" && !isPaused;
+	const audiobookProgress = loadingDetail?.audiobookProgress;
 
 	return (
 		<div
@@ -72,9 +74,13 @@ export function StoryAudioPlayerBar({ className }: { className?: string }) {
 					<div className="min-w-0 flex-1">
 						<p className="truncate text-sm font-medium text-ink">{playerTitle ?? "Story audio"}</p>
 						{isLoading ? (
-							<p className="text-xs text-ink-muted">
-								{loadingDetail?.message ?? "Preparing audio…"} · {elapsedLabel}
-							</p>
+							audiobookProgress ? (
+								<p className="text-xs text-ink-muted">{audiobookProgress.summary}</p>
+							) : (
+								<p className="text-xs text-ink-muted">
+									{loadingDetail?.message ?? "Preparing audio…"} · {elapsedLabel}
+								</p>
+							)
 						) : (
 							<p className="text-xs text-ink-muted">
 								{formatClock(currentTimeSec)} / {formatClock(durationSec)}
@@ -123,6 +129,9 @@ export function StoryAudioPlayerBar({ className }: { className?: string }) {
 						</Button>
 					</div>
 				</div>
+				{isLoading && audiobookProgress ? (
+					<AudiobookChapterProgressList progress={audiobookProgress} compact />
+				) : null}
 				<input
 					type="range"
 					min={0}
