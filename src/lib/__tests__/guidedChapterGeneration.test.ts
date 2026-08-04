@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { canGenerateGuidedChaptersAtWorkspace, isStoryEligibleForGuidedGeneration } from "../guidedChapterGeneration/eligibility";
 import { normalizeGuidedChapterPlan } from "../guidedChapterGeneration/planGeneration";
-import { parseSceneOverviews, resolveScenesForChapter } from "../guidedChapterGeneration/parsePlanText";
+import { parseSceneOverviews, resolveScenesForChapter, shouldStageDirectorBeatForScene } from "../guidedChapterGeneration/parsePlanText";
+import {
+	buildGuidedChapterContinuityLedger,
+	formatGuidedChapterContinuityNotes,
+} from "../guidedChapterGeneration/guidedChapterContinuity";
 import { getGuidedChapterProgressPercent } from "../guidedChapterGeneration/guidedGenerationProgress";
 import type { Story, StoryChapter, StoryMessage } from "../../types/models";
 
@@ -159,5 +163,80 @@ describe("guidedChapterGeneration", () => {
 		const resolved = resolveScenesForChapter(overview, 3);
 		expect(resolved.sceneCount).toBe(2);
 		expect(resolved.scenes[0]).toContain("Kelly");
+	});
+
+	it("stages a director beat only for the first scene when no Scene headers exist", () => {
+		const overview = "Jamie arrives aboard and settles into the crew rhythm.";
+		expect(shouldStageDirectorBeatForScene(overview, 0)).toBe(true);
+		expect(shouldStageDirectorBeatForScene(overview, 1)).toBe(false);
+	});
+
+	it("stages director beats for each parsed Scene block", () => {
+		const overview =
+			"Scene I: Jamie meets Kelly.\nScene II: Jamie tours the bridge.";
+		expect(shouldStageDirectorBeatForScene(overview, 0)).toBe(true);
+		expect(shouldStageDirectorBeatForScene(overview, 1)).toBe(true);
+	});
+
+	it("builds a continuity ledger that locks the first docking bay assignment", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "m1",
+				storyId: "s1",
+				role: "system",
+				content: "Chapter I.",
+				timestamp: "2026-01-01T00:00:00.000Z",
+				speakerType: "system",
+				chapterBoundary: { kind: "start", label: "Chapter I" },
+			},
+			{
+				id: "m2",
+				storyId: "s1",
+				role: "assistant",
+				content:
+					"Alara Kitan: \"I'll meet him at docking bay two when his shuttle arrives and set the expectations from minute one.\"",
+				timestamp: "2026-01-01T00:01:00.000Z",
+			},
+			{
+				id: "m3",
+				storyId: "s1",
+				role: "assistant",
+				content:
+					"Alara Kitan: \"I'll head down to Docking Bay Four now. The shuttle Gryphon is on final approach.\"",
+				timestamp: "2026-01-01T00:02:00.000Z",
+			},
+		];
+
+		const ledger = buildGuidedChapterContinuityLedger(messages);
+		expect(ledger.some((entry) => entry.includes("Authoritative arrival docking bay: Docking Bay 2"))).toBe(
+			true,
+		);
+		expect(ledger.some((entry) => entry.includes("Shuttle(s) named: Gryphon"))).toBe(true);
+
+		const notes = formatGuidedChapterContinuityNotes(messages);
+		expect(notes).toContain("do not contradict");
+	});
+
+	it("lets a senior officer assignment override the docking bay in continuity notes", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "m1",
+				storyId: "s1",
+				role: "assistant",
+				content: "Alara Kitan: \"I'll meet him at docking bay two when his shuttle arrives.\"",
+				timestamp: "2026-01-01T00:01:00.000Z",
+			},
+			{
+				id: "m2",
+				storyId: "s1",
+				role: "assistant",
+				content:
+					"Ed Mercer: \"Gryphon is lining up for Docking Bay Four. Alara, he's officially in your hands now.\"",
+				timestamp: "2026-01-01T00:02:00.000Z",
+			},
+		];
+
+		const ledger = buildGuidedChapterContinuityLedger(messages);
+		expect(ledger[0]).toContain("Authoritative arrival docking bay: Docking Bay 4");
 	});
 });

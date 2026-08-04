@@ -82,6 +82,15 @@ export function resolveScenesForChapter(overview: string, scenesPerChapter: numb
 	};
 }
 
+export function shouldStageDirectorBeatForScene(overview: string, sceneIndex: number): boolean {
+	const parsedScenes = parseSceneOverviews(overview);
+	if (parsedScenes.length > 0) {
+		return true;
+	}
+
+	return sceneIndex === 0;
+}
+
 export function parseOverallChapterDirections(overallDirection: string): Record<string, string> {
 	const lines = overallDirection.split("\n");
 	const chapters: Record<string, string> = {};
