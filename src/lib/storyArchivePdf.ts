@@ -6,6 +6,7 @@ import { isContinueMessage } from "./storyText/continueMode";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
 import { isDirectorMessage } from "./storyText/directorMode";
+import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import {
   createPdfDoc,
   pdfDimensions,
@@ -170,7 +171,19 @@ export function serializeStoryArchivePdf(
           }).text
         : message.content;
 
-    y = speakerLine(doc, y, speaker, resolvedContent ?? "", pageH);
+    if (message.role === "assistant") {
+      const blocks = parseSceneBlocks(resolvedContent ?? "");
+      if (blocks.length) {
+        for (const block of blocks) {
+          const blockSpeaker = block.speakerLabel?.trim() || "Narrator";
+          y = speakerLine(doc, y, blockSpeaker, block.text ?? "", pageH);
+        }
+      } else {
+        y = speakerLine(doc, y, speaker, resolvedContent ?? "", pageH);
+      }
+    } else {
+      y = speakerLine(doc, y, speaker, resolvedContent ?? "", pageH);
+    }
 
     const chapterLabel = chapterMarkers.get(num);
     if (chapterLabel) {

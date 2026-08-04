@@ -14,14 +14,18 @@ describe("storyIndexingProgress", () => {
 				id: "ch-1",
 				storyId: "story-1",
 				label: "Chapter One",
+				endsAtMessageId: "m-10",
 				endsAtIndex: 10,
+				createdAt: "2026-01-01T00:00:00.000Z",
 				summary: "Old summary",
 			},
 			{
 				id: "ch-2",
 				storyId: "story-1",
 				label: "Chapter Two",
+				endsAtMessageId: "m-20",
 				endsAtIndex: 20,
+				createdAt: "2026-01-01T00:01:00.000Z",
 				summary: "Fresh summary",
 			},
 		];

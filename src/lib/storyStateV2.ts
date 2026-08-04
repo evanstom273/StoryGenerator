@@ -217,22 +217,29 @@ function reconcileIndexedEntities(
       name: match.entity.name,
       ...(mergedAliasList.length ? { aliases: mergedAliasList } : {}),
       ...(shouldPreferNextDescription ? { description: nextDescription } : {}),
-      ...(typeof (value as any).firstSeenMessage === "number" && Number.isFinite((value as any).firstSeenMessage)
+      ...(mergedEvidence?.messageNumbers?.length
         ? {
-            firstSeenMessage:
-              typeof match.entity.firstSeenMessage === "number"
-                ? Math.min(match.entity.firstSeenMessage, Math.trunc((value as any).firstSeenMessage))
-                : Math.trunc((value as any).firstSeenMessage),
+            firstSeenMessage: Math.min(...mergedEvidence.messageNumbers),
+            lastSeenMessage: Math.max(...mergedEvidence.messageNumbers),
           }
-        : {}),
-      ...(typeof (value as any).lastSeenMessage === "number" && Number.isFinite((value as any).lastSeenMessage)
-        ? {
-            lastSeenMessage:
-              typeof match.entity.lastSeenMessage === "number"
-                ? Math.max(match.entity.lastSeenMessage, Math.trunc((value as any).lastSeenMessage))
-                : Math.trunc((value as any).lastSeenMessage),
-          }
-        : {}),
+        : {
+            ...(typeof (value as any).firstSeenMessage === "number" && Number.isFinite((value as any).firstSeenMessage)
+              ? {
+                  firstSeenMessage:
+                    typeof match.entity.firstSeenMessage === "number"
+                      ? Math.min(match.entity.firstSeenMessage, Math.trunc((value as any).firstSeenMessage))
+                      : Math.trunc((value as any).firstSeenMessage),
+                }
+              : {}),
+            ...(typeof (value as any).lastSeenMessage === "number" && Number.isFinite((value as any).lastSeenMessage)
+              ? {
+                  lastSeenMessage:
+                    typeof match.entity.lastSeenMessage === "number"
+                      ? Math.max(match.entity.lastSeenMessage, Math.trunc((value as any).lastSeenMessage))
+                      : Math.trunc((value as any).lastSeenMessage),
+                }
+              : {}),
+          }),
       ...(mergedEvidence ? { evidence: mergedEvidence } : {}),
     };
   }

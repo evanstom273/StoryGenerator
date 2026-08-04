@@ -170,10 +170,15 @@ export function buildStoryStateExtractionPrompt({
         ? [
             "- You are processing ONE new transcript message at a time in chronological order. Merge incremental changes into existing story-state; do not discard prior canon.",
             "- Focus evidence and updates on entities touched in this message, but preserve all previously established characters, NPCs, threads, and facts.",
+            "- Only ADD the current message number to evidence when that entity speaks, acts, or is directly described in THIS message. Do not add the current message number for characters merely mentioned by someone else.",
+            "- Do not cite System, Chapter marker, Director, or Continue-only messages in evidence unless the cited fact is literally established in that message.",
           ]
         : []),
       "- Use locations to track important recurring places.",
       "- World facts are setting-level truths, institutions, wars, laws, disasters, political situations, and external constraints. Do not put personal character conditions in worldFacts.",
+      "- indexes.worldFacts must be supported by transcript dialogue or narration. Do not promote player-sheet, premise, or summary-only background into indexes.worldFacts unless the same fact appears in the transcript.",
+      "- indexes.worldFacts must cite the message numbers where the fact is stated or clearly established. Never cite a Chapter marker, System, Director, or Continue-only message unless the fact appears there.",
+      "- Good world-fact examples from scene text: precinct routines ('Wands at Four' starts at 3:00 PM), institutional rules stated in dialogue, setting truths established on-screen.",
       "- Personal conditions belong in the relevant character entry, not in worldFacts. Example: 'Lyra is permanently blind' is character status, while 'the poison causes permanent blindness' is a world fact only if the transcript explicitly establishes it as a general rule.",
       "- If a major event is trivial or local, do not let it overwrite the premise. If it is story-defining, reflect it in premise/currentSituation/recentDevelopments.",
       "- Treat probable spelling variants, nicknames, and near-identical names as the same person unless the transcript clearly establishes separate individuals.",
@@ -184,8 +189,10 @@ export function buildStoryStateExtractionPrompt({
       "- Only use characters from indexes.characters, universe canon, or clearly established recurring NPCs — never scene labels, weather headers, or narration prefixes (e.g. Sun, Moon, Rain, Morning).",
       "- For indexes.relationships: represent the CURRENT dynamic state (not a timeline). Keep only one entry per pair. Update/overwrite the pair instead of adding duplicates.",
       `- For indexes.relationships.tier: assign the single best-fit tier. Valid values: ${RELATIONSHIP_TIERS.join(", ")}. Default to stranger if there has been no meaningful interaction.`,
+      "- For commanding officers, supervisors, and formal workplace superiors, prefer acquaintance or ally unless the transcript shows deep personal intimacy beyond professional respect.",
       "- For indexes.relationships.summary: write 1-2 sentences describing the current state of this relationship. Required for non-strangers; optional but encouraged even for strangers.",
-      "- For indexes.relationships.history: record up to 3 key turning-point moments (first meeting counts). Each entry: concise 1-sentence summary + messageNumber if available. Preserve previous history entries unless superseded.",
+      "- For indexes.relationships.history: record up to 3 distinct turning-point moments. Each entry: concise 1-sentence summary + messageNumber when available.",
+      "- Do not append rephrased duplicates of the same beat to indexes.relationships.history. If a new message only repeats an earlier moment (e.g. Holt returning early for Wands at Four), update the existing history entry instead of adding another.",
       "- Preserve Open Threads quality. Track the questions/tensions a reader would still care about.",
       "- If nothing changed, return the previous state with a refreshed updatedAt.",
       "- Never generate dialogue or actions for the player character; this is metadata only.",
@@ -220,6 +227,9 @@ export function buildStoryStateExtractionPrompt({
         : "",
       summaryText.trim() ? `Current Summary:\n${summaryText.trim()}` : "",
       existingStateJson?.trim() ? `Existing Story State JSON:\n${existingStateJson.trim()}` : "",
+      perMessageIndexing && messageNumberStart && messageNumberTotal
+        ? `Indexing focus: message ${messageNumberStart} of ${messageNumberTotal}. Only cite message ${messageNumberStart} in new evidence when this specific message supports the fact or character presence.`
+        : "",
       `Recent Transcript:\n${formatRecentMessages(recentMessages, playerName, { messageNumberStart, messageNumberTotal })}`,
     ]
       .filter(Boolean)
