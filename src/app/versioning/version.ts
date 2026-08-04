@@ -49,6 +49,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Archive PDF export skips a full re-index when the story index already matches the live message count",
       "Markdown export now mirrors the archive PDF (summary, transcript, characters, relationships, world facts, threads, memories, locations, and chapters) with a navigable table of contents",
       "Story export downloads include a local-time timestamp in the filename",
+      "Archive Markdown table of contents uses explicit section anchors so links work in common Markdown viewers",
       "Audiobook chapter labels no longer duplicate “Chapter” in synthesis status (e.g. Chapter Chapter II)",
       "Version wiring aligned to 3.0.0 across the app label, changelog, npm metadata, and Android release metadata",
     ],

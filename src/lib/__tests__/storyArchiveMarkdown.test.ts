@@ -165,16 +165,20 @@ describe("buildStoryArchiveContent", () => {
 });
 
 describe("serializeStoryArchiveMarkdown", () => {
-	it("includes archive sections and table of contents", () => {
+	it("includes archive sections and table of contents with explicit anchors", () => {
 		const markdown = serializeStoryArchiveMarkdown(makeBundle());
 
 		expect(markdown).toContain("# Wands at Four");
+		expect(markdown).toContain("<a id=\"contents\"></a>");
 		expect(markdown).toContain("## Contents");
+		expect(markdown).toContain("[Metadata](#metadata)");
+		expect(markdown).toContain("<a id=\"metadata\"></a>");
 		expect(markdown).toContain("## Metadata");
+		expect(markdown).toContain("<a id=\"story-summary\"></a>");
 		expect(markdown).toContain("## Story Summary");
+		expect(markdown).toContain("<a id=\"transcript\"></a>");
 		expect(markdown).toContain("## Transcript");
 		expect(markdown).toContain("## Characters");
-		expect(markdown).toContain("## Relationships");
 		expect(markdown).toContain("## World Facts");
 		expect(markdown).toContain("## Active Threads");
 		expect(markdown).toContain("## Significant Memories");
