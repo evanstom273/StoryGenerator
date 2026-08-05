@@ -327,6 +327,7 @@ export interface StoryAIConfig {
   providerType: AIProviderType;
   model?: string;
   audiobookParallelChapters?: number;
+  audiobookPerformanceMode?: "radio_drama" | "single_narrator";
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

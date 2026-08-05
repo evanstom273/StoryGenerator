@@ -236,6 +236,27 @@ describe("messageSpeechText", () => {
 		);
 	});
 
+	it("collapses dialogue to a single narrator in single-narrator audiobook mode", () => {
+		const messages: StoryMessage[] = [
+			assistantMessage("Rosa: \"We need to move.\"\n\nAmy: *Copy that.*", "a1"),
+		];
+		const registry = buildCharacterTtsRegistryForStory(messages, {
+			playerName: "Jake Peralta",
+			narrationTts,
+		});
+		const plan = buildChapterSpeechPlan(messages, {
+			narrationTts,
+			characterRegistry: registry,
+			audiobookPerformanceMode: "single_narrator",
+		});
+
+		expect(plan?.scriptLines.every((line) => line.speaker === "Narrator")).toBe(true);
+		expect(plan?.scriptLines.some((line) => line.text.includes('Rosa said, "We need to move."'))).toBe(
+			true,
+		);
+		expect(plan?.multiSpeaker).toBe(false);
+	});
+
 	it("builds chapter speech with player, director, and multi-voice narration", () => {
 		const messages: StoryMessage[] = [
 			{

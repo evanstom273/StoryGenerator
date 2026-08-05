@@ -19,6 +19,11 @@ import {
 	DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
 	MAX_AUDIOBOOK_PARALLEL_CHAPTERS,
 } from "../../lib/ai/storyAudiobookParallel";
+import {
+	DEFAULT_AUDIOBOOK_PERFORMANCE_MODE,
+	normalizeAudiobookPerformanceMode,
+	type AudiobookPerformanceMode,
+} from "../../lib/ai/audiobookPerformance";
 import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
 import { buildCharacterTtsRegistryForStory } from "../../lib/storyText/messageSpeechText";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
@@ -217,6 +222,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [audiobookParallelChapters, setAudiobookParallelChapters] = useState(
     DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
   );
+  const [audiobookPerformanceMode, setAudiobookPerformanceMode] = useState<AudiobookPerformanceMode>(
+    DEFAULT_AUDIOBOOK_PERFORMANCE_MODE,
+  );
   const [isSavingAI, setIsSavingAI] = useState(false);
   const [isPromotingCharacter, setIsPromotingCharacter] = useState(false);
   const [isCleanupConfirmOpen, setIsCleanupConfirmOpen] = useState(false);
@@ -405,6 +413,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         setAudiobookParallelChapters(
           clampAudiobookParallelChapters(config?.audiobookParallelChapters),
         );
+        setAudiobookPerformanceMode(
+          normalizeAudiobookPerformanceMode(config?.audiobookPerformanceMode),
+        );
       })
       .catch(() => {
         if (cancelled) {
@@ -418,6 +429,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
             getProviderDefaultModel(providerType),
         );
         setAudiobookParallelChapters(DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS);
+        setAudiobookPerformanceMode(DEFAULT_AUDIOBOOK_PERFORMANCE_MODE);
       });
 
     return () => {
@@ -597,6 +609,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         narrationTts,
         characterRegistry,
         chapters,
+        audiobookPerformanceMode,
       });
 
       if (!segments.length) {
@@ -708,6 +721,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         providerType: aiProviderType,
         model: aiModel,
         audiobookParallelChapters,
+        audiobookPerformanceMode,
       });
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to save story AI settings.");
@@ -970,10 +984,46 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
                   {isReadOnly ? (
                     <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
-                      Story model settings are locked on prequel stories. Audiobook parallel chapters
-                      can still be changed below.
+                      Story model settings are locked on prequel stories. Audiobook settings below
+                      can still be changed.
                     </div>
                   ) : null}
+
+                  <div className="space-y-2">
+                    <div className="text-xs text-ink-muted">Audiobook performance</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        className={cn(
+                          "rounded-[8px] border px-3 py-2.5 text-left text-sm transition",
+                          audiobookPerformanceMode === "single_narrator"
+                            ? "border-accent/40 bg-accent/10 text-ink"
+                            : "border-divider bg-panel-muted/50 text-ink-muted hover:border-accent/25",
+                        )}
+                        onClick={() => setAudiobookPerformanceMode("single_narrator")}
+                      >
+                        <div className="font-medium text-ink">Single narrator</div>
+                        <div className="mt-1 text-[11px] leading-5 text-ink-muted">
+                          One voice reads everything. Fewer TTS requests.
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          "rounded-[8px] border px-3 py-2.5 text-left text-sm transition",
+                          audiobookPerformanceMode === "radio_drama"
+                            ? "border-accent/40 bg-accent/10 text-ink"
+                            : "border-divider bg-panel-muted/50 text-ink-muted hover:border-accent/25",
+                        )}
+                        onClick={() => setAudiobookPerformanceMode("radio_drama")}
+                      >
+                        <div className="font-medium text-ink">Radio drama</div>
+                        <div className="mt-1 text-[11px] leading-5 text-ink-muted">
+                          Separate voices per character.
+                        </div>
+                      </button>
+                    </div>
+                  </div>
 
                   <label className="block space-y-2">
                     <div className="flex items-center justify-between gap-3 text-xs text-ink-muted">

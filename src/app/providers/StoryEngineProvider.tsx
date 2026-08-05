@@ -156,6 +156,7 @@ import {
 } from "../../lib/storyText/continueMode";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { clampAudiobookParallelChapters } from "../../lib/ai/storyAudiobookParallel";
+import { normalizeAudiobookPerformanceMode } from "../../lib/ai/audiobookPerformance";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import {
@@ -500,6 +501,7 @@ interface StoryEngineContextValue {
     providerType: AIProviderType;
     model?: string;
     audiobookParallelChapters?: number;
+    audiobookPerformanceMode?: "radio_drama" | "single_narrator";
   }) => Promise<StoryAIConfig>;
   listUniverseImports: (universeId: string) => Promise<UniverseImport[]>;
   saveUniverseImport: (next: Omit<UniverseImport, "id">) => Promise<UniverseImport>;
@@ -5897,6 +5899,10 @@ export function StoryEngineProvider({
             next.audiobookParallelChapters !== undefined
               ? clampAudiobookParallelChapters(next.audiobookParallelChapters)
               : existing?.audiobookParallelChapters,
+          audiobookPerformanceMode:
+            next.audiobookPerformanceMode !== undefined
+              ? normalizeAudiobookPerformanceMode(next.audiobookPerformanceMode)
+              : existing?.audiobookPerformanceMode,
           createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         };
