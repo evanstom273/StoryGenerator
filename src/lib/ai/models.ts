@@ -121,7 +121,9 @@ export interface IndexingRequestConfig {
 const INDEXING_REQUEST_CONFIG: Partial<Record<string, IndexingRequestConfig>> = {
   "gemini-3.1-pro-preview": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
   "gemini-3.6-flash": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
+  "gemini-3.5-flash": { timeoutMs: 120_000, maxAttempts: 5, maxTokens: 8_192 },
   "gemini-2.5-pro": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
+  "gemini-2.5-flash": { timeoutMs: 120_000, maxAttempts: 5, maxTokens: 8_192 },
 };
 
 const DEFAULT_INDEXING_CONFIG: IndexingRequestConfig = {
@@ -132,4 +134,14 @@ const DEFAULT_INDEXING_CONFIG: IndexingRequestConfig = {
 
 export function getIndexingRequestConfig(model: string): IndexingRequestConfig {
   return INDEXING_REQUEST_CONFIG[model] ?? DEFAULT_INDEXING_CONFIG;
+}
+
+const CHARACTER_CONCEPT_MAX_TOKENS = 2048;
+
+export function getCharacterConceptRequestConfig(model: string): IndexingRequestConfig {
+	const base = getIndexingRequestConfig(model);
+	return {
+		...base,
+		maxTokens: Math.min(base.maxTokens, CHARACTER_CONCEPT_MAX_TOKENS),
+	};
 }

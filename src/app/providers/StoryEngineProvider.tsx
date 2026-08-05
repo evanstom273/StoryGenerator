@@ -29,12 +29,15 @@ import {
   buildStoryChatContext,
   buildStorySummaryContext,
 } from "../../lib/ai/contextBuilder";
-import { getValidModel, getAIModelForRole, getIndexingRequestConfig, getModelStreamConfig } from "../../lib/ai/models";
+import { getValidModel, getAIModelForRole, getCharacterConceptRequestConfig, getIndexingRequestConfig, getModelStreamConfig } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
 import { buildPlayerAssistContext } from "../../lib/ai/playerAssistContext";
 import {
   buildCharacterGeneratorSystemPrompt,
   buildCharacterConceptGeneratorSystemPrompt,
+  buildCharacterConceptUserPrompt,
+  CHARACTER_CONCEPT_MAX_ATTEMPTS,
+  isCompleteCharacterConcept,
   normalizeGeneratedCharacterConcept,
   type PlayerCharacterField,
 } from "../../lib/ai/characterGenerator";
@@ -739,6 +742,7 @@ async function generateResponseWithRetry(params: {
   maxTokens?: number;
   temperature?: number;
   jsonMode?: boolean;
+  thinkingBudget?: number;
   signal?: AbortSignal;
   maxAttempts?: number;
   timeoutMs?: number;
@@ -797,6 +801,7 @@ async function generateResponseWithRetry(params: {
         maxTokens: params.maxTokens,
         temperature: params.temperature,
         jsonMode: params.jsonMode,
+        thinkingBudget: params.thinkingBudget,
         signal: params.signal,
         timeoutMs: requestTimeoutMs,
         idleTimeoutMs: params.idleTimeoutMs ?? streamConfig?.idleTimeoutMs,
@@ -6132,34 +6137,58 @@ export function StoryEngineProvider({
           importedLoreText,
           existing: buildCharacterConceptConstraintsFromDraft(existing),
         });
+        const requestConfig = getCharacterConceptRequestConfig(model);
+        const characterName = existing?.name?.trim() || undefined;
+        let lastConcept = "";
 
-        let response: GenerateResponseResult;
-        try {
-          response = await generateResponseWithRetry({
-            providerType,
-            provider,
-            apiKey,
-            model,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: "Write the character concept now." },
-            ],
-            maxTokens: 500,
-            temperature: 0.85,
-          });
-        } catch (error) {
-          rethrowUserFacingGenerationError(error, providerType);
+        for (let attempt = 0; attempt < CHARACTER_CONCEPT_MAX_ATTEMPTS; attempt += 1) {
+          let response: GenerateResponseResult;
+          try {
+            response = await generateResponseWithRetry({
+              providerType,
+              provider,
+              apiKey,
+              model,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: buildCharacterConceptUserPrompt(attempt) },
+              ],
+              maxTokens: requestConfig.maxTokens,
+              temperature: 0.75,
+              thinkingBudget: providerType === "gemini" ? 0 : undefined,
+              timeoutMs: requestConfig.timeoutMs,
+              maxAttempts: requestConfig.maxAttempts,
+            });
+          } catch (error) {
+            rethrowUserFacingGenerationError(error, providerType);
+          }
+
+          const concept = normalizeGeneratedCharacterConcept(response.content);
+          lastConcept = concept;
+
+          if (isCompleteCharacterConcept(concept, characterName)) {
+            return concept;
+          }
         }
 
-        const concept = normalizeGeneratedCharacterConcept(response.content);
-        if (!concept) {
+        if (lastConcept) {
           rethrowUserFacingGenerationError(
-            createAIGenerationError("parse", "Character concept generator returned empty text."),
+            createAIGenerationError(
+              "parse",
+              "Character concept generation returned an incomplete pitch. Try again or choose a different creation model.",
+              { diagnostic: lastConcept.slice(0, 400) },
+            ),
             providerType,
           );
         }
 
-        return concept;
+        rethrowUserFacingGenerationError(
+          createAIGenerationError(
+            "parse",
+            "Character concept generation returned empty text. Try again or choose a different creation model.",
+          ),
+          providerType,
+        );
       },
       async sendChatMessage(storyId, content, opts) {
         const trimmed = content.trim();

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildCharacterConceptGeneratorSystemPrompt,
+	buildCharacterConceptUserPrompt,
+	isCompleteCharacterConcept,
+	looksLikeBiographyOpener,
 	normalizeGeneratedCharacterConcept,
 } from "../ai/characterGenerator";
 import { buildCharacterConceptConstraintsFromDraft } from "../playerCharacterPrompt";
@@ -45,7 +48,8 @@ describe("buildCharacterConceptGeneratorSystemPrompt", () => {
 
 		expect(prompt).toContain("Neon Harbor");
 		expect(prompt).toContain("name: Jamie Potter");
-		expect(prompt).toContain("writing prompt or character pitch");
+		expect(prompt).toContain("inspire the rest of the character sheet");
+		expect(prompt).toContain("Jake and Amy's son");
 	});
 
 	it("falls back to a setting-flexible concept when no universe is selected", () => {
@@ -63,5 +67,41 @@ describe("normalizeGeneratedCharacterConcept", () => {
 		expect(normalizeGeneratedCharacterConcept('```\n"A weary courier with a secret."\n```')).toBe(
 			"A weary courier with a secret.",
 		);
+	});
+});
+
+describe("looksLikeBiographyOpener", () => {
+	it("flags encyclopedia-style openers", () => {
+		expect(
+			looksLikeBiographyOpener(
+				"Jamie Peralta is a fast-talking, fifteen-year-old high schooler caught in an",
+				"Jamie Peralta",
+			),
+		).toBe(true);
+	});
+});
+
+describe("isCompleteCharacterConcept", () => {
+	it("accepts a multi-sentence pitch", () => {
+		expect(
+			isCompleteCharacterConcept(
+				"A sharp-tongued rookie detective who plays the clown to hide how carefully they're watching everyone in the room. Core tension: protect their friends vs. blow the whistle on corruption they can't yet prove. Fun to play as the one who jokes first and notices second.",
+			),
+		).toBe(true);
+	});
+
+	it("rejects truncated biography-style output", () => {
+		expect(
+			isCompleteCharacterConcept(
+				"Jamie Peralta is a fast-talking, fifteen-year-old high schooler caught in an",
+				"Jamie Peralta",
+			),
+		).toBe(false);
+	});
+});
+
+describe("buildCharacterConceptUserPrompt", () => {
+	it("asks for a stronger retry on later attempts", () => {
+		expect(buildCharacterConceptUserPrompt(1)).toContain("character sheet");
 	});
 });

@@ -1,4 +1,5 @@
 import type { AIProviderType, Universe } from "../../types/models";
+import { formatCharacterConceptGuideForPrompt } from "./characterConceptGuide";
 import { formatUniverseWikiSources } from "../universeSources";
 
 export type CharacterConceptConstraintField =
@@ -62,7 +63,10 @@ export function buildCharacterGeneratorSystemPrompt({
     ? `Imported Lore (reference only):\n${importedLoreText.trim()}`
     : "No imported lore is available.";
   const conceptBlock = characterConcept?.trim()
-    ? `Character Concept (authoritative):\n${characterConcept.trim()}`
+    ? [
+        "Character Concept (authoritative creative pitch — inspires the sheet; do not contradict it):",
+        characterConcept.trim(),
+      ].join("\n")
     : "No character concept was provided.";
 
   const lockedFields = (existing
@@ -123,7 +127,11 @@ function buildUniverseContextBlock(universe: Universe, importedLoreText?: string
 }
 
 export function normalizeGeneratedCharacterConcept(text: string) {
-	const trimmed = text.trim().replace(/^```[\w]*\n?|```$/g, "").trim();
+	const trimmed = text
+		.trim()
+		.replace(/^```(?:\w+)?\s*/i, "")
+		.replace(/\s*```$/i, "")
+		.trim();
 	if (
 		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
 		(trimmed.startsWith("'") && trimmed.endsWith("'"))
@@ -131,6 +139,73 @@ export function normalizeGeneratedCharacterConcept(text: string) {
 		return trimmed.slice(1, -1).trim();
 	}
 	return trimmed;
+}
+
+const INCOMPLETE_TRAILING_WORDS =
+	/^(a|an|the|in|on|with|for|to|and|or|but|as|at|by|from|of|that|who|which|when|while|because)$/i;
+
+export function looksLikeBiographyOpener(text: string, characterName?: string) {
+	const firstSentence = (text.split(/(?<=[.!?])\s+/)[0] ?? text).trim();
+	const name = characterName?.trim();
+
+	if (name) {
+		const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		if (new RegExp(`^${escapedName}\\s+is\\s+(a|an)\\b`, "i").test(firstSentence)) {
+			return true;
+		}
+	}
+
+	return /^[A-Z][^.!?]{0,120}\s+is\s+(a|an)\s+/i.test(firstSentence);
+}
+
+export function isCompleteCharacterConcept(text: string, characterName?: string) {
+	const concept = normalizeGeneratedCharacterConcept(text);
+	if (!concept) {
+		return false;
+	}
+
+	if (looksLikeBiographyOpener(concept, characterName)) {
+		return false;
+	}
+
+	const words = concept.split(/\s+/).filter(Boolean);
+	if (words.length < 18) {
+		return false;
+	}
+
+	if (!/[.!?]["']?$/.test(concept.trim())) {
+		return false;
+	}
+
+	const lastWord = words[words.length - 1]?.replace(/[.!?,;:"']+$/g, "") ?? "";
+	if (INCOMPLETE_TRAILING_WORDS.test(lastWord)) {
+		return false;
+	}
+
+	const sentences = concept
+		.split(/(?<=[.!?])\s+/)
+		.map((sentence) => sentence.trim())
+		.filter(Boolean);
+
+	return sentences.length >= 2;
+}
+
+export const CHARACTER_CONCEPT_MAX_ATTEMPTS = 3;
+
+export function buildCharacterConceptUserPrompt(attempt: number) {
+	if (attempt <= 0) {
+		return [
+			"Write the Character Concept now.",
+			"Follow the definition and example above.",
+			"Output a few complete sentences. End with proper punctuation. Do not stop mid-sentence.",
+		].join(" ");
+	}
+
+	return [
+		"Your previous attempt was incomplete, truncated, read like a biography, or read like a character sheet.",
+		"Write a NEW Character Concept following the definition and example above.",
+		"Do not start with \"[Name] is a...\". Do not stop mid-sentence.",
+	].join(" ");
 }
 
 export function buildCharacterConceptGeneratorSystemPrompt({
@@ -156,14 +231,23 @@ export function buildCharacterConceptGeneratorSystemPrompt({
 
 	return [
 		"You are a creative writing assistant generating a Character Concept for a roleplay character.",
-		"Output a single concise character concept only: a writing prompt or character pitch, not a biography.",
-		"Keep it to 2–4 sentences. Focus on vibe, role, core tension, and what makes them fun to play.",
-		"Do not write appearance lists, backstory timelines, or stat blocks.",
-		"Do not contradict any provided character constraints.",
-		"If a universe is provided, make the concept authentic to that setting.",
-		"If no universe is provided, keep the concept original and setting-flexible.",
-		"Return plain text only. No markdown. No JSON. No headings. No commentary.",
-		"Asterisks are reserved for actions in story text; do not use asterisks for emphasis.",
+		"",
+		formatCharacterConceptGuideForPrompt(),
+		"",
+		"Generation requirements:",
+		"- Output a few complete sentences only (typically 2–4).",
+		"- Each sentence must be grammatically complete. Never stop mid-sentence or mid-thought.",
+		"- Do not open with \"[Name] is a...\" or similar encyclopedia-style intros.",
+		"- Do not write a biography, timeline, or completed character sheet.",
+		"- Do not fill in detailed Appearance, Personality, Background, or Notes — leave those for Character Generation.",
+		"- Honor all provided character constraints; weave them into the pitch naturally.",
+		"- If a universe is provided, show how the character fits that setting.",
+		"- If no universe is provided, keep the concept original and setting-flexible.",
+		"- Return plain text only. No markdown. No JSON. No headings. No labels. No commentary.",
+		"- Asterisks are reserved for actions in story text; do not use asterisks for emphasis.",
+		"",
+		"BAD example (truncated biography opener — never do this):",
+		"\"Jamie Peralta is a fast-talking, fifteen-year-old high schooler caught in an\"",
 		"",
 		universeBlock,
 		"",
