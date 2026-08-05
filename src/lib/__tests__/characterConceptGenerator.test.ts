@@ -6,7 +6,10 @@ import {
 	looksLikeBiographyOpener,
 	normalizeGeneratedCharacterConcept,
 } from "../ai/characterGenerator";
-import { buildCharacterConceptConstraintsFromDraft } from "../playerCharacterPrompt";
+import {
+	buildCharacterConceptConstraintsFromDraft,
+	formatCharacterConceptAliasesConstraint,
+} from "../playerCharacterPrompt";
 import type { Universe } from "../../types/models";
 
 const universe: Universe = {
@@ -22,7 +25,7 @@ const universe: Universe = {
 };
 
 describe("buildCharacterConceptConstraintsFromDraft", () => {
-	it("includes filled character fields and aliases", () => {
+	it("includes filled character fields but not aliases", () => {
 		expect(
 			buildCharacterConceptConstraintsFromDraft({
 				name: "Jamie Potter",
@@ -33,9 +36,22 @@ describe("buildCharacterConceptConstraintsFromDraft", () => {
 		).toEqual({
 			name: "Jamie Potter",
 			species: "Human",
-			aliases: "Potter, Detective Potter",
 			appearance: "Tall and tired-looking.",
 		});
+	});
+});
+
+describe("formatCharacterConceptAliasesConstraint", () => {
+	it("explains aliases are ambiguous recognition names", () => {
+		const constraint = formatCharacterConceptAliasesConstraint({
+			name: "James Peralta",
+			aliases: ["Jamie", "Static"],
+		});
+
+		expect(constraint).toContain("Jamie, Static");
+		expect(constraint).toContain("ambiguous");
+		expect(constraint).toContain("content-creator");
+		expect(constraint).toContain("furry persona");
 	});
 });
 
@@ -59,6 +75,24 @@ describe("buildCharacterConceptGeneratorSystemPrompt", () => {
 
 		expect(prompt).toContain("No universe is selected");
 		expect(prompt).toContain("pronouns: they/them");
+	});
+
+	it("renders alias and previous-concept guidance separately", () => {
+		const prompt = buildCharacterConceptGeneratorSystemPrompt({
+			universe,
+			existing: { name: "James Peralta", age: "15" },
+			aliasConstraint: formatCharacterConceptAliasesConstraint({
+				name: "James Peralta",
+				aliases: ["Jamie", "Static"],
+			}),
+			previousConcept: "A secret hacker feeding tips to the precinct.",
+		});
+
+		expect(prompt).not.toContain("aliases: Jamie, Static");
+		expect(prompt).toContain("ambiguous");
+		expect(prompt).toContain("do not repeat this hook");
+		expect(prompt).toContain("secret hacker");
+		expect(prompt).toContain("Vary the central hook");
 	});
 });
 
@@ -103,5 +137,11 @@ describe("isCompleteCharacterConcept", () => {
 describe("buildCharacterConceptUserPrompt", () => {
 	it("asks for a stronger retry on later attempts", () => {
 		expect(buildCharacterConceptUserPrompt(1)).toContain("character sheet");
+	});
+
+	it("asks for a fresh angle when a previous concept exists", () => {
+		expect(buildCharacterConceptUserPrompt(0, "A secret hacker alias.")).toContain(
+			"different central hook",
+		);
 	});
 });

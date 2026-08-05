@@ -178,6 +178,7 @@ import {
   formatPlayerCharacterAliasesForPrompt,
   normalizePlayerCharacterAliases,
   buildCharacterConceptConstraintsFromDraft,
+  formatCharacterConceptAliasesConstraint,
 } from "../../lib/playerCharacterPrompt";
 import type {
   AIModelRole,
@@ -6133,10 +6134,13 @@ export function StoryEngineProvider({
         const imports = universe ? await repository.listUniverseImports(trimmedUniverseId) : [];
         const importedLoreText = imports[0]?.importedText?.slice(0, 12000) ?? "";
 
+        const previousConcept = existing?.characterConcept?.trim() || undefined;
         const systemPrompt = buildCharacterConceptGeneratorSystemPrompt({
           universe,
           importedLoreText,
           existing: buildCharacterConceptConstraintsFromDraft(existing),
+          aliasConstraint: formatCharacterConceptAliasesConstraint(existing),
+          previousConcept,
         });
         const requestConfig = getCharacterConceptRequestConfig(model);
         const characterName = existing?.name?.trim() || undefined;
@@ -6152,10 +6156,10 @@ export function StoryEngineProvider({
               model,
               messages: [
                 { role: "system", content: systemPrompt },
-                { role: "user", content: buildCharacterConceptUserPrompt(attempt) },
+                { role: "user", content: buildCharacterConceptUserPrompt(attempt, previousConcept) },
               ],
               maxTokens: requestConfig.maxTokens,
-              temperature: 0.75,
+              temperature: 0.95,
               thinking:
                 providerType === "gemini"
                   ? resolveGeminiMinimalThinkingSettings(model)

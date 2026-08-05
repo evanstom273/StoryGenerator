@@ -18,6 +18,8 @@ export interface CharacterConceptGeneratorInput {
 	universe?: Universe | null;
 	importedLoreText?: string;
 	existing?: Partial<Record<CharacterConceptConstraintField, string>>;
+	aliasConstraint?: string | null;
+	previousConcept?: string;
 }
 
 export type PlayerCharacterField =
@@ -192,29 +194,42 @@ export function isCompleteCharacterConcept(text: string, characterName?: string)
 
 export const CHARACTER_CONCEPT_MAX_ATTEMPTS = 3;
 
-export function buildCharacterConceptUserPrompt(attempt: number) {
+export function buildCharacterConceptUserPrompt(attempt: number, previousConcept?: string) {
+	const variationBlock = previousConcept?.trim()
+		? "Offer a fresh angle with a different central hook and tension. Do not reuse the previous concept's premise, secret, or conflict."
+		: "";
+
 	if (attempt <= 0) {
 		return [
 			"Write the Character Concept now.",
 			"Follow the definition and example above.",
+			variationBlock,
 			"Output a few complete sentences. End with proper punctuation. Do not stop mid-sentence.",
-		].join(" ");
+		]
+			.filter(Boolean)
+			.join(" ");
 	}
 
 	return [
 		"Your previous attempt was incomplete, truncated, read like a biography, or read like a character sheet.",
 		"Write a NEW Character Concept following the definition and example above.",
+		variationBlock,
 		"Do not start with \"[Name] is a...\". Do not stop mid-sentence.",
-	].join(" ");
+	]
+		.filter(Boolean)
+		.join(" ");
 }
 
 export function buildCharacterConceptGeneratorSystemPrompt({
 	universe,
 	importedLoreText,
 	existing,
+	aliasConstraint,
+	previousConcept,
 }: CharacterConceptGeneratorInput) {
 	const constraintLines = existing
 		? Object.entries(existing)
+				.filter(([key]) => key !== "aliases")
 				.filter(([, value]) => typeof value === "string" && value.trim().length > 0)
 				.map(([key, value]) => `${key}: ${(value as string).trim()}`)
 		: [];
@@ -224,6 +239,15 @@ export function buildCharacterConceptGeneratorSystemPrompt({
 				"\n",
 			)
 		: "No existing character fields were provided.";
+
+	const aliasBlock = aliasConstraint?.trim() || null;
+
+	const previousConceptBlock = previousConcept?.trim()
+		? [
+				"Previous concept (do not repeat this hook; invent a different premise and tension):",
+				previousConcept.trim(),
+			].join("\n")
+		: null;
 
 	const universeBlock = universe
 		? buildUniverseContextBlock(universe, importedLoreText)
@@ -241,6 +265,7 @@ export function buildCharacterConceptGeneratorSystemPrompt({
 		"- Do not write a biography, timeline, or completed character sheet.",
 		"- Do not fill in detailed Appearance, Personality, Background, or Notes — leave those for Character Generation.",
 		"- Honor all provided character constraints; weave them into the pitch naturally.",
+		"- Vary the central hook across generations. Avoid repeating the same secret-identity, hacker, hacktivist, anonymous tipster, or vigilante premise unless the constraints explicitly require it.",
 		"- If a universe is provided, show how the character fits that setting.",
 		"- If no universe is provided, keep the concept original and setting-flexible.",
 		"- Return plain text only. No markdown. No JSON. No headings. No labels. No commentary.",
@@ -252,7 +277,11 @@ export function buildCharacterConceptGeneratorSystemPrompt({
 		universeBlock,
 		"",
 		constraintsBlock,
-	].join("\n");
+		aliasBlock,
+		previousConceptBlock,
+	]
+		.filter(Boolean)
+		.join("\n");
 }
 
 export function getCharacterGeneratorProviderHint(providerType: AIProviderType) {
