@@ -163,6 +163,9 @@ const NOT_A_SPEAKER = new Set([
 ]);
 
 function isLikelySpeakerLabel(label: string): boolean {
+  if (label.trim().toLowerCase() === "narrator") {
+    return true;
+  }
   if (!label || label.includes(",")) return false;
   if (isDeniedSpeakerLabel(label)) return false;
   const words = label.trim().split(/\s+/);

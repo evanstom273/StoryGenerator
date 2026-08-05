@@ -35,6 +35,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Generate Chapters planner no longer requires an overall direction; you can plan each chapter directly with one input box per scene",
       "Story generation now prefers the player character's alias as their scene name and enforces their specified pronouns instead of inferring he/him or she/her from name or gender",
       "Single-narrator audiobook mode no longer inserts awkward \"X said\" attribution; character actions and dialogue read as plain narration with one voice",
+      "Transcript sanitization shortens speaker labels and name mentions to first names, fixing validation failures when the model outputs quoted nicknames like Rebecca \"Becca\" Alvarez",
     ],
     knownIssues: [],
   },
