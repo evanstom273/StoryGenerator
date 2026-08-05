@@ -43,6 +43,11 @@ export function normalizeGuidedChapterPlan(
 export function buildChapterPlanPrompt(params: {
 	overallDirection: string;
 	chapterLabels: string[];
+	chapters?: Array<{
+		label: string;
+		overview: string;
+		scenesPerChapter: number;
+	}>;
 	universeName: string;
 	playerName: string;
 	currentSituation?: string;
@@ -57,21 +62,40 @@ export function buildChapterPlanPrompt(params: {
 		"}",
 		"Rules:",
 		"- Each overview covers ONE chapter only.",
+		"- When a chapter has multiple scenes, format overview as Scene I:, Scene II:, etc.",
 		"- scenesPerChapter is the number of Director-staged scene beats (1-10).",
 		"- Do not write prose scenes; only planning bullets.",
-		"- Honor the overall direction and current story state.",
+		"- Honor the overall direction and current story state when provided.",
+		"- When the user already filled chapter scenes, preserve and refine them instead of replacing them.",
 		"- When prior chapter context is provided, plan chapters that continue realistically from where the story left off — do not restart or skip unrelated events.",
-		"- Use exact character names, aliases, and spellings from the overall direction. Do not swap in canon names.",
+		"- Use exact character names, aliases, and spellings from the provided direction. Do not swap in canon names.",
 	].join("\n");
 
 	const userParts = [
 		`Universe: ${params.universeName}`,
 		`Player character: ${params.playerName}`,
 		`Chapters to plan: ${params.chapterLabels.join(", ")}`,
-		"",
-		"Overall direction:",
-		params.overallDirection.trim(),
 	];
+
+	const trimmedDirection = params.overallDirection.trim();
+	if (trimmedDirection) {
+		userParts.push("", "Overall direction:", trimmedDirection);
+	} else {
+		userParts.push("", "Overall direction: (not specified — plan from chapter scene notes below and current story state)");
+	}
+
+	const filledChapters = (params.chapters ?? []).filter((chapter) => chapter.overview.trim());
+	if (filledChapters.length) {
+		userParts.push(
+			"",
+			"Existing chapter scene notes from the user:",
+			...filledChapters.map(
+				(chapter) =>
+					`- ${chapter.label} (${chapter.scenesPerChapter} scenes): ${chapter.overview.trim()}`,
+			),
+		);
+	}
+
 	if (params.currentSituation?.trim()) {
 		userParts.push("", "Current situation:", params.currentSituation.trim());
 	}

@@ -20,6 +20,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Internal Character Concept guide (definition + canonical example) used by concept Randomise generation",
       "Settings → AI now has independent Story, MetaChat, Indexing, and Character & Universe Generation model selectors per provider",
       "Existing story model settings migrate into Story Model on upgrade; the other three roles default to Story Model until changed",
+      "Generate Chapters planner shows a separate scene input for each scene in a chapter instead of requiring Scene I: / Scene II: formatting",
     ],
     fixed: [
       "Character Concept Randomise no longer returns truncated biography openers on Gemini thinking models; thinking is disabled for concept generation and incomplete pitches are retried or rejected",
@@ -29,6 +30,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Guided chapter generation no longer fails validation when a Director beat is correctly realized as scene content; directed scenes skip scene-state renarration rewrites and accept sanitized output as a last resort",
       "Generate Chapters is available immediately on a fresh chapter banner after guided story history, without requiring a manual scene first",
       "Guided chapter generation reuses an existing chapter banner when present and only creates a new heading when one is missing",
+      "Generate Chapters planner no longer requires an overall direction; you can plan each chapter directly with one input box per scene",
       "Story generation now prefers the player character's alias as their scene name and enforces their specified pronouns instead of inferring he/him or she/her from name or gender",
     ],
     knownIssues: [],

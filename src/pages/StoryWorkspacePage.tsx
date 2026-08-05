@@ -1275,11 +1275,12 @@ export function StoryWorkspacePage() {
           submitLabel="Generate Chapters"
           initialOverallDirection={activeStory.currentSummary}
           resolveChapterLabels={resolveWorkspaceChapterLabels}
-          onGeneratePlan={async ({ overallDirection, chapterLabels }) => {
+          onGeneratePlan={async ({ overallDirection, chapterLabels, chapters }) => {
             const plan = await generateGuidedChapterPlan({
               storyId: activeStory.id,
               overallDirection,
               chapterLabels,
+              chapters,
               universeName: universe.name,
               playerName: playerCharacter.name,
               currentSituation: activeStory.currentSummary,
