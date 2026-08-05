@@ -526,6 +526,7 @@ export function buildStoryChatContext({
       "- Each guided scene is exactly ONE assistant reply. Complete the entire scene in that single message — do not stop mid-sentence or mid-dialogue.",
       "- Never start a reply with an ellipsis (...) to continue a prior message. Each scene is self-contained.",
       "- Prefer first names in dialogue headers when familiarity is established (Ed, Kelly, Alara, Gordon, Claire).",
+      "- Never put quoted nicknames inside speaker labels (wrong: Rebecca \"Becca\" Alvarez:; right: Rebecca:). Use the first name only in speaker headers.",
       "- Every physical action line must appear under a speaker header. Never output a lone *action* line without 'Name:' on the line above it.",
       "- If Ed Mercer speaks then acts, write 'Ed:' (or 'Ed Mercer:') before '*nods slowly…*'. Orphan action lines are invalid.",
       "- Environmental prose between speakers must use 'Narrator:' — never leave orphaned narration between character blocks.",

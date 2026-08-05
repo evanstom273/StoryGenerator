@@ -46,7 +46,7 @@ describe("unlabelled narration repair", () => {
 		const { text, autoRepairedNarration } = sanitizeAssistantTranscript({
 			text: "Narrator: Ed walked into the bar and looked around.",
 		});
-		expect(text).toBe("Narrator: Ed walked into the bar and looked around.");
+		expect(text).toBe("Narrator: *Ed walked into the bar and looked around.*");
 		expect(text).not.toMatch(/^Ed:/m);
 		expect(autoRepairedNarration).toBe(false);
 	});

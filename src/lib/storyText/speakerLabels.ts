@@ -1,0 +1,124 @@
+const RESERVED_SPEAKER_LABELS = new Set(["narrator", "director", "time"]);
+
+const SPEAKER_TITLE_PREFIX =
+	/^(?:Dr|Mr|Mrs|Ms|Miss|Lt|Lt\.|Capt|Captain|Detective|Sergeant|Commander|Professor|Prof)\.?\s+/i;
+
+/** Strip quoted or parenthetical nicknames: Rebecca "Becca" Alvarez -> Rebecca Alvarez */
+export function stripEmbeddedNicknameQuotes(value: string) {
+	let next = value.replace(/["“”'‘’]([^"“”'‘’]+)["“”'‘’]/g, " $1 ");
+	next = next.replace(/\s*\(([^)]+)\)\s*/g, " $1 ");
+	return next.replace(/\s+/g, " ").trim();
+}
+
+/** Reduce a speaker label to the short scene name (first name). */
+export function normalizeSceneSpeakerLabel(label: string): string {
+	const trimmed = label.trim();
+	if (!trimmed) {
+		return trimmed;
+	}
+
+	const lower = trimmed.toLowerCase();
+	if (RESERVED_SPEAKER_LABELS.has(lower)) {
+		return lower === "narrator" ? "Narrator" : trimmed;
+	}
+
+	const possessiveMatch = trimmed.match(/^(.+)(['']s)$/i);
+	if (possessiveMatch?.[1]) {
+		return `${normalizeSceneSpeakerLabel(possessiveMatch[1])}${possessiveMatch[2]}`;
+	}
+
+	const withoutNicknames = stripEmbeddedNicknameQuotes(trimmed);
+	const withoutTitle = withoutNicknames.replace(SPEAKER_TITLE_PREFIX, "").trim();
+	const words = (withoutTitle || withoutNicknames).split(/\s+/).filter(Boolean);
+	return words[0] ?? trimmed;
+}
+
+const EMBEDDED_NICKNAME_NAME =
+	/\b([A-Z][a-zA-Z''-]*)\s+["“”'‘’][^"“”'‘’]+["“”'‘’](?:\s+[A-Z][a-zA-Z''-]*)*\b/g;
+
+/** Collapse First "Nick" Last name mentions to the first name in prose. */
+export function normalizeEmbeddedNicknameMentions(text: string) {
+	return text.replace(EMBEDDED_NICKNAME_NAME, "$1");
+}
+
+const FULL_NAME_IN_PROSE =
+	/\b([A-Z][a-zA-Z''-]*)\s+([A-Z][a-zA-Z''-]*)\b/g;
+
+const NOT_A_NAME_SECOND_WORD = new Set([
+	"Room",
+	"Street",
+	"Avenue",
+	"Boulevard",
+	"Road",
+	"Lane",
+	"Drive",
+	"Court",
+	"Place",
+	"Park",
+	"Square",
+	"High",
+	"School",
+	"Hospital",
+	"Station",
+	"Building",
+	"Tower",
+	"Bridge",
+	"River",
+	"Lake",
+	"Bay",
+	"City",
+	"County",
+	"State",
+	"Monday",
+	"Tuesday",
+	"Wednesday",
+	"Thursday",
+	"Friday",
+	"Saturday",
+	"Sunday",
+	"January",
+	"February",
+	"March",
+	"April",
+	"May",
+	"June",
+	"July",
+	"August",
+	"September",
+	"October",
+	"November",
+	"December",
+]);
+
+/** Collapse simple two-word full names in prose to first name only. */
+export function normalizeFullNameMentions(text: string) {
+	return text.replace(FULL_NAME_IN_PROSE, (match, first, second) => {
+		if (NOT_A_NAME_SECOND_WORD.has(second)) {
+			return match;
+		}
+		return first;
+	});
+}
+
+export function normalizeSpeakerNamesInTranscript(text: string) {
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+
+	return lines
+		.map((line) => {
+			const match = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/);
+			if (!match?.[1]) {
+				return normalizeFullNameMentions(normalizeEmbeddedNicknameMentions(line));
+			}
+
+			const label = match[1].trim();
+			const separator = match[2] ?? ":";
+			const remainder = match[3] ?? "";
+			const normalizedLabel = normalizeSceneSpeakerLabel(label);
+			const normalizedRemainder = normalizeFullNameMentions(
+				normalizeEmbeddedNicknameMentions(remainder),
+			);
+
+			return `${normalizedLabel}${separator} ${normalizedRemainder}`;
+		})
+		.join("\n");
+}

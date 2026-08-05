@@ -5,6 +5,7 @@ import {
   normalizeQuotedDialogueContent,
   splitDialogueQuoteRegions,
 } from "./dialogueQuoteRegions";
+import { normalizeSpeakerNamesInTranscript } from "./speakerLabels";
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -757,7 +758,8 @@ export function sanitizeAssistantTranscript(args: {
   const narratorStripped = stripNarratorHeaders(echoed.text);
   const markdownStripped = stripMarkdownArtifacts(narratorStripped.text);
   const bareNamesFixed = fixBareNameHeaders(markdownStripped.text);
-  const dialogueColonsFixed = fixDialogueColons(bareNamesFixed);
+  const speakerNamesNormalized = normalizeSpeakerNamesInTranscript(bareNamesFixed);
+  const dialogueColonsFixed = fixDialogueColons(speakerNamesNormalized);
   const quotedDialogueRepaired = repairQuotedDialogueMarkers(dialogueColonsFixed);
   const actionPeriodsFixed = ensureActionPeriods(quotedDialogueRepaired);
   const normalizedActions = normalizeThirdPersonActions(actionPeriodsFixed, args.playerName);
