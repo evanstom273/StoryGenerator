@@ -30,7 +30,7 @@ import {
   buildStoryChatContext,
   buildStorySummaryContext,
 } from "../../lib/ai/contextBuilder";
-import { getValidModel, getAIModelForRole, getCharacterConceptRequestConfig, getIndexingRequestConfig, getModelStreamConfig } from "../../lib/ai/models";
+import { getValidModel, getAIModelForRole, getCharacterConceptRequestConfig, getIndexingRequestConfig, getModelStreamConfig, getStoryStreamIdleTimeoutMs } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
 import { buildPlayerAssistContext } from "../../lib/ai/playerAssistContext";
 import {
@@ -129,6 +129,7 @@ import { isGlobalMetaChatScope } from "../../lib/metaChatScope";
 import {
   normalizeTranscriptForDisplay,
   validateAssistantTranscriptForSave,
+  shouldAcceptStreamDespiteSpeakerAttributionFlags,
   type AssistantTranscriptValidationStage,
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
@@ -897,6 +898,8 @@ type StreamedTranscriptRewritePrompts = {
 	sceneState: string;
 };
 
+const STREAM_VALIDATION_MAX_REWRITES = 10;
+
 async function resolveStreamedAssistantTranscript(args: {
 	initialText: string;
 	latestUserMessage: string;
@@ -912,6 +915,7 @@ async function resolveStreamedAssistantTranscript(args: {
 	signal?: AbortSignal;
 	onChunk?: (chunk: string) => void;
 	onChunkReset?: () => void;
+	streamIdleTimeoutMs: number;
 	traceId: string;
 	storyId: string;
 }): Promise<{ text: string; diagnostic: string }> {
@@ -929,7 +933,7 @@ async function resolveStreamedAssistantTranscript(args: {
 		scene_state: args.rewritePrompts.sceneState,
 	};
 
-	for (let attempt = 0; attempt < 6; attempt += 1) {
+	for (let attempt = 0; attempt <= STREAM_VALIDATION_MAX_REWRITES; attempt += 1) {
 		const validation = validateAssistantTranscriptForSave({
 			text: candidateAssistantText,
 			latestUserMessage: args.latestUserMessage,
@@ -946,6 +950,26 @@ async function resolveStreamedAssistantTranscript(args: {
 			};
 		}
 
+		if (
+			attempt === 0 &&
+			candidateAssistantText === args.initialText &&
+			validation.stage === "speaker_attribution" &&
+			shouldAcceptStreamDespiteSpeakerAttributionFlags({
+				text: candidateAssistantText,
+				playerName: args.playerName,
+			})
+		) {
+			return {
+				text: normalizeTranscriptForDisplay(candidateAssistantText),
+				diagnostic: [
+					lastValidationDiagnostic,
+					"accepted_stream_with_speaker_attribution_flags",
+				]
+					.filter(Boolean)
+					.join("; "),
+			};
+		}
+
 		lastValidationDiagnostic = [
 			lastValidationDiagnostic,
 			`attempt=${attempt + 1}`,
@@ -956,7 +980,7 @@ async function resolveStreamedAssistantTranscript(args: {
 
 		const stage = validation.stage;
 
-		if (!stage || stage === "insubstantial" || attempt >= 5) {
+		if (!stage || stage === "insubstantial" || attempt >= STREAM_VALIDATION_MAX_REWRITES) {
 			break;
 		}
 
@@ -975,6 +999,7 @@ async function resolveStreamedAssistantTranscript(args: {
 				signal: args.signal,
 				onChunk: args.onChunk,
 				onChunkReset: args.onChunkReset,
+				idleTimeoutMs: args.streamIdleTimeoutMs,
 				debugTrace: {
 					traceId: args.traceId,
 					mode: "story",
@@ -1001,8 +1026,8 @@ async function resolveStreamedAssistantTranscript(args: {
 			{
 				providerName: args.providerType,
 				model: args.model,
-				attempts: 6,
-				maxAttempts: 6,
+				attempts: STREAM_VALIDATION_MAX_REWRITES,
+				maxAttempts: STREAM_VALIDATION_MAX_REWRITES,
 				stage: "validation",
 			},
 		),
@@ -5165,6 +5190,7 @@ export function StoryEngineProvider({
           model,
           messages: context,
           signal: opts?.signal,
+          idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
           onChunk: opts?.onChunk,
           onChunkReset: opts?.onChunkReset,
         });
@@ -5214,6 +5240,7 @@ export function StoryEngineProvider({
                   signal: opts?.signal,
                   onChunk: opts?.onChunk,
                   onChunkReset: opts?.onChunkReset,
+                  idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
                 });
               })()
             ).content
@@ -5353,6 +5380,7 @@ export function StoryEngineProvider({
           signal: opts?.signal,
           onChunk: opts?.onChunk,
           onChunkReset: opts?.onChunkReset,
+          streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
           traceId,
           storyId,
         });
@@ -6570,7 +6598,7 @@ export function StoryEngineProvider({
               messages: context,
               maxTokens: opts?.guidedChapterContext ? 4096 : undefined,
               signal: opts?.signal,
-              idleTimeoutMs: opts?.guidedGenerationInternal ? 120_000 : undefined,
+              idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
               onChunk: opts?.onChunk,
               onChunkReset: opts?.onChunkReset,
               debugTrace: {
@@ -6725,6 +6753,7 @@ export function StoryEngineProvider({
                     signal: opts?.signal,
                     onChunk: opts?.onChunk,
                     onChunkReset: opts?.onChunkReset,
+                    idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
                     debugTrace: {
                       traceId,
                       mode: "story",
@@ -6883,6 +6912,7 @@ export function StoryEngineProvider({
             signal: opts?.signal,
             onChunk: opts?.onChunk,
             onChunkReset: opts?.onChunkReset,
+            streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
             traceId,
             storyId,
           });

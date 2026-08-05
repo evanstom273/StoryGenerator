@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	isSubstantialTranscriptText,
+	shouldAcceptStreamDespiteSpeakerAttributionFlags,
 	validateAssistantTranscriptForSave,
 } from "../transcriptSanitizer";
 
@@ -53,5 +54,14 @@ describe("validateAssistantTranscriptForSave", () => {
 
 		expect(result.valid).toBe(false);
 		expect(result.stage).toBe("insubstantial");
+	});
+
+	it("accepts well-formatted streams even when speaker attribution is flagged", () => {
+		expect(
+			shouldAcceptStreamDespiteSpeakerAttributionFlags({
+				text: VALID_BULLPEN,
+				playerName: "Rebecca",
+			}),
+		).toBe(true);
 	});
 });

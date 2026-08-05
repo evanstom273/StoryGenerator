@@ -108,6 +108,13 @@ const DEFAULT_STREAM_CONFIG: ModelStreamConfig = {
   maxAttempts: 3,
 };
 
+/** Minimum idle gap between stream chunks for story generation and validation rewrites. */
+export const STORY_STREAM_IDLE_TIMEOUT_MS = 180_000;
+
+export function getStoryStreamIdleTimeoutMs(model: string): number {
+	return Math.max(getModelStreamConfig(model).idleTimeoutMs, STORY_STREAM_IDLE_TIMEOUT_MS);
+}
+
 export function getModelStreamConfig(model: string): ModelStreamConfig {
   return MODEL_STREAM_CONFIG[model] ?? DEFAULT_STREAM_CONFIG;
 }
