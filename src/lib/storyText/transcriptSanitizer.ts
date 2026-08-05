@@ -6,6 +6,7 @@ import {
   splitDialogueQuoteRegions,
 } from "./dialogueQuoteRegions";
 import { normalizeSpeakerNamesInTranscript } from "./speakerLabels";
+import { repairMalformedTranscriptFormat } from "./transcriptFormatRepair";
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -621,6 +622,10 @@ function fixBareNameHeaders(text: string): string {
 const FILLER_COLON_RE =
   /\b(like|well|look|listen|see|right|okay|i mean|you know|and like|but like|so like|i guess|anyway|honestly|seriously|genuinely|basically|literally):\s+/gi;
 
+function isSpeakerLabelActionLine(trimmed: string) {
+  return /^[^\n:]{1,48}:\s*\*/.test(trimmed);
+}
+
 function fixDialogueColons(text: string): string {
   const lines = normalizeNewlines(text).split("\n");
   return lines.map((line) => {
@@ -633,7 +638,10 @@ function fixDialogueColons(text: string): string {
     let result = line;
 
     // Colon immediately before an action beat → em dash (": *action*" → " — *action*")
-    result = result.replace(/:\s*(\*[^*\n]+\*)/g, " — $1");
+    // Never rewrite the speaker-label colon ("Rebecca: *steps...*").
+    if (!isSpeakerLabelActionLine(trimmed)) {
+      result = result.replace(/:\s*(\*[^*\n]+\*)/g, " — $1");
+    }
 
     // Casual filler words using colon as a transition
     result = result.replace(FILLER_COLON_RE, (_, word: string) => `${word} — `);
@@ -709,7 +717,7 @@ function stripReasoningPreamble(text: string): string {
 // We intentionally do NOT filter on stop-word lists here: "She: *action*" is a valid
 // pronoun-attributed speaker line and must not be wrapped as Narrator.
 function looksLikeSpeakerPrefix(text: string): boolean {
-  return /^[^\n:]{1,48}:\s*\S/.test(text);
+  return /^[^\n:]{1,48}(?::|\s[-—])\s*\S/.test(text);
 }
 
 function looksLikeSeparator(block: string): boolean {
@@ -758,18 +766,32 @@ export function sanitizeAssistantTranscript(args: {
   const narratorStripped = stripNarratorHeaders(echoed.text);
   const markdownStripped = stripMarkdownArtifacts(narratorStripped.text);
   const bareNamesFixed = fixBareNameHeaders(markdownStripped.text);
-  const speakerNamesNormalized = normalizeSpeakerNamesInTranscript(bareNamesFixed);
+  const speakerNamesNormalized = normalizeSpeakerNamesInTranscript(
+    repairMalformedTranscriptFormat(bareNamesFixed, {
+      playerName: args.playerName,
+    }),
+  );
   const dialogueColonsFixed = fixDialogueColons(speakerNamesNormalized);
   const quotedDialogueRepaired = repairQuotedDialogueMarkers(dialogueColonsFixed);
   const actionPeriodsFixed = ensureActionPeriods(quotedDialogueRepaired);
   const normalizedActions = normalizeThirdPersonActions(actionPeriodsFixed, args.playerName);
   const emphasisStripped = stripInlineAsteriskEmphasis(normalizedActions);
   const narrationRepaired = repairUnlabelledNarration(emphasisStripped);
-  const standardized = standardizeAssistantStoryText({
-    text: narrationRepaired.text,
+  const formatRepaired = repairMalformedTranscriptFormat(narrationRepaired.text, {
     playerName: args.playerName,
   });
-  const normalized = normalizeTranscriptWhitespace(standardized.text);
+  const standardized = standardizeAssistantStoryText({
+    text: formatRepaired,
+    playerName: args.playerName,
+  });
+  const postStandardizeRepaired = repairMalformedTranscriptFormat(standardized.text, {
+    playerName: args.playerName,
+  });
+  const restandardized = standardizeAssistantStoryText({
+    text: postStandardizeRepaired,
+    playerName: args.playerName,
+  });
+  const normalized = normalizeTranscriptWhitespace(restandardized.text);
 
   return {
     text: normalized,
@@ -777,8 +799,8 @@ export function sanitizeAssistantTranscript(args: {
     removedNarratorLabels: narratorStripped.changed,
     removedMarkdownArtifacts: markdownStripped.changed,
     autoRepairedNarration: narrationRepaired.repaired,
-    formatValid: standardized.valid,
-    formatIssues: standardized.issues,
+    formatValid: restandardized.valid,
+    formatIssues: restandardized.issues,
   };
 }
 

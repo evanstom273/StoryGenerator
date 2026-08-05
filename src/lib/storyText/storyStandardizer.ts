@@ -351,6 +351,12 @@ export function standardizeAssistantStoryText(args: {
     return next;
   }
 
+  function hasSpatialGroupReference(text: string) {
+    return /\b(?:between|among|behind|beside|besides|near|past|around|through|across from|in front of|next to)\s+(?:the\s+)?(?:officers|crew|team|staff|group)\b/i.test(
+      text,
+    );
+  }
+
   function looksLikeMultiActorAction(action: string) {
     const normalized = normalizeWhitespace(action);
     const lower = normalized.toLowerCase();
@@ -373,7 +379,7 @@ export function standardizeAssistantStoryText(args: {
           normalized,
         )
       ) {
-        return true;
+        return !hasSpatialGroupReference(normalized);
       }
     }
 
@@ -382,7 +388,7 @@ export function standardizeAssistantStoryText(args: {
         normalized,
       )
     ) {
-      return true;
+      return !hasSpatialGroupReference(normalized);
     }
 
     return false;

@@ -3,6 +3,8 @@ import type { AIProvider, AIChatMessage } from "./types";
 import type { StoryMessage, StoryStateDataV2 } from "../../types/models";
 import { sortByTimestampAsc } from "../dates";
 import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storyStateExtractor";
+import { repairMalformedTranscriptFormat } from "../storyText/transcriptFormatRepair";
+import { normalizeSpeakerNamesInTranscript } from "../storyText/speakerLabels";
 import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing, applyOpenThreadReconciliation } from "../storyStateV2";
 import { ensureIndexedCharacterStatus } from "../characterStatus";
 import { AIError } from "./errors";
@@ -61,6 +63,12 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     const id = setTimeout(resolve, ms);
     signal?.addEventListener("abort", () => { clearTimeout(id); reject(new Error("Rebuild aborted.")); }, { once: true });
   });
+}
+
+function sanitizeIndexingMessageContent(content: string, playerName: string) {
+	return repairMalformedTranscriptFormat(normalizeSpeakerNamesInTranscript(content), {
+		playerName,
+	});
 }
 
 export async function rebuildStoryMemoryAndIndexes(params: {
@@ -170,7 +178,14 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       playerName: playerCharacter.name,
       playerCharacter,
       summaryText,
-      recentMessages: chunk,
+      recentMessages: chunk.map((message) =>
+        message.role === "assistant"
+          ? {
+              ...message,
+              content: sanitizeIndexingMessageContent(message.content, playerCharacter.name),
+            }
+          : message,
+      ),
       existingStateJson,
       existingOpenThreads: currentState.indexes?.openThreads,
       messageNumberStart: processed + 1,
