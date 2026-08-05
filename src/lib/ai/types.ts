@@ -1,5 +1,7 @@
 export type AIChatRole = "system" | "user" | "assistant";
 
+import type { GeminiThinkingSettings } from "./geminiThinking";
+
 export interface AIChatMessage {
   role: AIChatRole;
   content: string;
@@ -14,8 +16,8 @@ export interface GenerateResponseRequest {
   maxTokens?: number;
   temperature?: number;
   jsonMode?: boolean;
-  /** Gemini 2.5+/3.x only. Set to 0 to disable thinking for short outputs. */
-  thinkingBudget?: number;
+  /** Gemini only. Use resolveGeminiMinimalThinkingSettings for short outputs. */
+  thinking?: GeminiThinkingSettings;
   timeoutMs?: number;
   idleTimeoutMs?: number;
   signal?: AbortSignal;
