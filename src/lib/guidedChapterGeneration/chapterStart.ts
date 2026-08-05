@@ -1,6 +1,9 @@
 import type { StoryMessage } from "../../types/models";
+import type { StoryEngineRepository } from "../repository";
+import { createEntityId } from "../ids";
 import { sortByTimestampAsc } from "../dates";
 import { resolveMessageChapterBoundary } from "../storyText/chapterNavigation";
+import { formatChapterStartMessage } from "./chapterLabels";
 
 function normalizeChapterBoundaryLabel(label: string): string {
 	return label.trim().replace(/\.$/, "");
@@ -38,4 +41,33 @@ export function findReusableChapterStartMessage(
 	}
 
 	return null;
+}
+
+export async function resolveOrCreateChapterStartMessage(
+	repository: StoryEngineRepository,
+	storyId: string,
+	label: string,
+	messages?: StoryMessage[],
+): Promise<StoryMessage> {
+	const transcript = messages ?? (await repository.listStoryMessages(storyId));
+	const existing = findReusableChapterStartMessage(transcript, label);
+	if (existing) {
+		return existing;
+	}
+
+	const boundaryLabel = normalizeChapterBoundaryLabel(label);
+	const message: StoryMessage = {
+		id: createEntityId("story-message"),
+		storyId,
+		role: "system",
+		content: formatChapterStartMessage(boundaryLabel),
+		timestamp: new Date().toISOString(),
+		speakerType: "system",
+		chapterBoundary: {
+			kind: "start",
+			label: boundaryLabel,
+		},
+	};
+	await repository.saveStoryMessage(message);
+	return message;
 }

@@ -7,6 +7,7 @@ import {
 	formatGuidedChapterContinuityNotes,
 } from "../guidedChapterGeneration/guidedChapterContinuity";
 import { findReusableChapterStartMessage } from "../guidedChapterGeneration/chapterStart";
+import { resolveUpcomingChapterLabels } from "../guidedChapterGeneration/chapterLabels";
 import { getGuidedChapterProgressPercent } from "../guidedChapterGeneration/guidedGenerationProgress";
 import type { Story, StoryChapter, StoryMessage } from "../../types/models";
 
@@ -73,6 +74,102 @@ describe("guidedChapterGeneration", () => {
 		const chapters: StoryChapter[] = [];
 
 		expect(canGenerateGuidedChaptersAtWorkspace(messages, chapters)).toEqual({ ok: true });
+	});
+
+	it("allows workspace generation on a fresh chapter banner after guided story history", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "m1",
+				storyId: "s1",
+				role: "system",
+				content: "Chapter I.",
+				timestamp: "2026-01-01T00:00:00.000Z",
+				speakerType: "system",
+				chapterBoundary: { kind: "start", label: "Chapter I" },
+			},
+			{
+				id: "m2",
+				storyId: "s1",
+				role: "assistant",
+				content: "Jake and Amy talk quietly in the kitchen.",
+				timestamp: "2026-01-01T00:01:00.000Z",
+				speakerType: "narrator",
+			},
+			{
+				id: "m3",
+				storyId: "s1",
+				role: "system",
+				content: "Generated Story History Complete",
+				timestamp: "2026-01-01T00:02:00.000Z",
+				speakerType: "system",
+			},
+			{
+				id: "m4",
+				storyId: "s1",
+				role: "system",
+				content: "Chapter II.",
+				timestamp: "2026-01-01T00:03:00.000Z",
+				speakerType: "system",
+				chapterBoundary: { kind: "start", label: "Chapter II" },
+			},
+		];
+		const chapters: StoryChapter[] = [
+			{
+				id: "c1",
+				storyId: "s1",
+				label: "Chapter I",
+				summary: "Kitchen scene.",
+				endsAtIndex: 2,
+				endsAtMessageId: "m2",
+				createdAt: "2026-01-01T00:02:00.000Z",
+			},
+		];
+
+		expect(canGenerateGuidedChaptersAtWorkspace(messages, chapters)).toEqual({ ok: true });
+	});
+
+	it("plans from an existing empty chapter banner instead of skipping ahead", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "m1",
+				storyId: "s1",
+				role: "system",
+				content: "Chapter I.",
+				timestamp: "2026-01-01T00:00:00.000Z",
+				speakerType: "system",
+				chapterBoundary: { kind: "start", label: "Chapter I" },
+			},
+			{
+				id: "m2",
+				storyId: "s1",
+				role: "assistant",
+				content: "Backstory scene.",
+				timestamp: "2026-01-01T00:01:00.000Z",
+				speakerType: "narrator",
+			},
+			{
+				id: "m3",
+				storyId: "s1",
+				role: "system",
+				content: "Chapter II.",
+				timestamp: "2026-01-01T00:02:00.000Z",
+				speakerType: "system",
+				chapterBoundary: { kind: "start", label: "Chapter II" },
+			},
+		];
+		const chapters: StoryChapter[] = [
+			{
+				id: "c1",
+				storyId: "s1",
+				label: "Chapter I",
+				summary: "Backstory.",
+				endsAtIndex: 2,
+				endsAtMessageId: "m2",
+				createdAt: "2026-01-01T00:02:00.000Z",
+			},
+		];
+
+		expect(resolveUpcomingChapterLabels(messages, chapters, 2)).toEqual(["Chapter II", "Chapter III"]);
 	});
 
 	it("allows eligible stories for guided generation", () => {

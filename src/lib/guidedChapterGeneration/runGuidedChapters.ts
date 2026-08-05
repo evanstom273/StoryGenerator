@@ -6,9 +6,8 @@ import type { GuidedChapterGenerationEntry, GuidedChapterPlan } from "./types";
 import { STORY_HISTORY_DIVIDER_MESSAGE } from "./types";
 import {
 	formatChapterEndMessage,
-	formatChapterStartMessage,
 } from "./chapterLabels";
-import { findReusableChapterStartMessage } from "./chapterStart";
+import { resolveOrCreateChapterStartMessage } from "./chapterStart";
 import { generateDirectorBeat } from "./directorBeat";
 import type { AIProvider } from "../ai/types";
 import { parseOverallChapterDirections, resolveScenesForChapter, shouldStageDirectorBeatForScene, stripChapterHeadingPrefix } from "./parsePlanText";
@@ -57,10 +56,6 @@ type RunDeepIndexFn = (
 	storyId: string,
 	opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean; jobId?: string },
 ) => Promise<string>;
-
-function normalizeChapterBoundaryLabel(label: string): string {
-	return label.trim().replace(/\.$/, "");
-}
 
 function formatDirectorTranscriptMessage(beat: string): string {
 	return `Director: ${beat.trim()}`;
@@ -141,13 +136,12 @@ export async function runGuidedChapterGeneration(params: {
 		chapterStatuses[chapterIndex]!.status = "active";
 		report("generating", chapterIndex + 1, `Starting ${chapter.label}…`, chapter.label);
 
-		const existingChapterStart = findReusableChapterStartMessage(
-			await params.repository.listStoryMessages(storyId),
+		const chapterStartMessage = await resolveOrCreateChapterStartMessage(
+			params.repository,
+			storyId,
 			chapter.label,
+			await params.repository.listStoryMessages(storyId),
 		);
-		const chapterStartMessage =
-			existingChapterStart ??
-			(await saveChapterStartSystemMessage(params.repository, storyId, chapter.label));
 		if (params.onTranscriptChange) {
 			await params.onTranscriptChange();
 		}
@@ -261,7 +255,7 @@ export async function runGuidedChapterGeneration(params: {
 		dividerMessageId = divider.id;
 		const lastLabel = plan.chapters[plan.chapters.length - 1]?.label ?? "Chapter I";
 		const playableLabel = getNextChapterBannerLabel(lastLabel);
-		await saveChapterStartSystemMessage(params.repository, storyId, playableLabel);
+		await resolveOrCreateChapterStartMessage(params.repository, storyId, playableLabel);
 		if (params.onTranscriptChange) {
 			await params.onTranscriptChange();
 		}
@@ -269,28 +263,6 @@ export async function runGuidedChapterGeneration(params: {
 
 	report("done", totalChapters, "Guided chapter generation complete.");
 	return { dividerMessageId };
-}
-
-async function saveChapterStartSystemMessage(
-	repository: StoryEngineRepository,
-	storyId: string,
-	label: string,
-): Promise<StoryMessage> {
-	const boundaryLabel = normalizeChapterBoundaryLabel(label);
-	const message: StoryMessage = {
-		id: createEntityId("story-message"),
-		storyId,
-		role: "system",
-		content: formatChapterStartMessage(boundaryLabel),
-		timestamp: new Date().toISOString(),
-		speakerType: "system",
-		chapterBoundary: {
-			kind: "start",
-			label: boundaryLabel,
-		},
-	};
-	await repository.saveStoryMessage(message);
-	return message;
 }
 
 async function saveSystemMessage(

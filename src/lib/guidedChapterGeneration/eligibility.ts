@@ -2,6 +2,7 @@ import type { Story, StoryChapter, StoryMessage } from "../../types/models";
 import {
 	hasActiveOpenChapter,
 	hasSubstantiveContentInOpenChapter,
+	isFreshPlayableChapterHandoff,
 } from "../storyText/chapterNavigation";
 
 export function isStoryEligibleForGuidedGeneration(story: Story | null | undefined): boolean {
@@ -29,6 +30,10 @@ export function canGenerateGuidedChaptersAtWorkspace(
 	}
 
 	if (hasSubstantiveContentInOpenChapter(messages, chapters)) {
+		return { ok: true };
+	}
+
+	if (isFreshPlayableChapterHandoff(messages, chapters)) {
 		return { ok: true };
 	}
 
