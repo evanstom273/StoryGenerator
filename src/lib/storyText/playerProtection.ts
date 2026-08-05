@@ -1,4 +1,5 @@
 import { parseSceneBlocks } from "./parseSceneBlocks";
+import { speakerLineLooksLikeMisattributedPlayer } from "./playerDialogueVoice";
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -155,6 +156,25 @@ export function getPlayerCharacterAuthorshipViolation({
 
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const lowerVariants = variants.map((value) => value.toLowerCase());
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const speakerLabel = getSpeakerLabelIfAny(trimmed);
+    if (speakerLabel && lowerVariants.includes(speakerLabel.toLowerCase())) {
+      if (speakerLineLooksLikeMisattributedPlayer(trimmed, playerName)) {
+        return {
+          rule: "dialogue-addresses-player",
+          match: trimmed.slice(0, 120),
+          line: trimmed,
+        };
+      }
+    }
+  }
+
   let pronounWindow = 0;
 
   for (const line of lines) {

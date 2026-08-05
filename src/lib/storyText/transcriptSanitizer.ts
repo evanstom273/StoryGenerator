@@ -6,7 +6,7 @@ import {
   splitDialogueQuoteRegions,
 } from "./dialogueQuoteRegions";
 import { normalizeSpeakerNamesInTranscript } from "./speakerLabels";
-import { repairMalformedTranscriptFormat } from "./transcriptFormatRepair";
+import { repairMalformedTranscriptFormat, repairMisattributedPlayerSpeakerLines, needsSpeakerAttributionRewrite, repairStrayAsteriskArtifacts } from "./transcriptFormatRepair";
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -725,6 +725,14 @@ function looksLikeSeparator(block: string): boolean {
   return trimmed === "" || /^[-*]{3,}$/.test(trimmed) || /^(Chapter|Part|Scene)\b/i.test(trimmed);
 }
 
+function looksLikeUnlabeledCharacterBeat(text: string): boolean {
+	const trimmed = text.trim();
+	if (!trimmed || looksLikeSpeakerPrefix(trimmed) || looksLikeSeparator(trimmed)) {
+		return false;
+	}
+	return /"[^"]+"/.test(trimmed);
+}
+
 function repairUnlabelledNarration(text: string): { text: string; repaired: boolean } {
   const blocks = text.split(/\n\n+/);
   let repaired = false;
@@ -733,6 +741,11 @@ function repairUnlabelledNarration(text: string): { text: string; repaired: bool
   for (const block of blocks) {
     const trimmed = block.trim();
     if (!trimmed || looksLikeSeparator(trimmed) || looksLikeSpeakerPrefix(trimmed)) {
+      result.push(block);
+      continue;
+    }
+
+    if (looksLikeUnlabeledCharacterBeat(trimmed)) {
       result.push(block);
       continue;
     }
@@ -754,6 +767,23 @@ function repairUnlabelledNarration(text: string): { text: string; repaired: bool
   }
 
   return { text: result.join("\n\n"), repaired };
+}
+
+export const MIN_ACCEPTABLE_TRANSCRIPT_CHARS = 80;
+
+export function isSubstantialTranscriptText(text: string): boolean {
+  return text.trim().length >= MIN_ACCEPTABLE_TRANSCRIPT_CHARS;
+}
+
+export function shouldAcceptRepairedTranscriptDespiteFormatIssues(result: {
+	formatValid: boolean;
+	text: string;
+	needsSpeakerAttributionRewrite?: boolean;
+}): boolean {
+	if (result.needsSpeakerAttributionRewrite) {
+		return false;
+	}
+	return !result.formatValid && isSubstantialTranscriptText(result.text);
 }
 
 export function sanitizeAssistantTranscript(args: {
@@ -780,18 +810,28 @@ export function sanitizeAssistantTranscript(args: {
   const formatRepaired = repairMalformedTranscriptFormat(narrationRepaired.text, {
     playerName: args.playerName,
   });
+  if (needsSpeakerAttributionRewrite(formatRepaired)) {
+    const normalized = normalizeTranscriptWhitespace(repairStrayAsteriskArtifacts(formatRepaired));
+    return {
+      text: normalized,
+      removedEcho: echoed.removed,
+      removedNarratorLabels: narratorStripped.changed,
+      removedMarkdownArtifacts: markdownStripped.changed,
+      autoRepairedNarration: narrationRepaired.repaired,
+      strippedMisattributedPlayer: true,
+      needsSpeakerAttributionRewrite: true,
+      formatValid: false,
+      formatIssues: [],
+    };
+  }
+  const strippedPreStandardize = repairMisattributedPlayerSpeakerLines(formatRepaired, args.playerName);
   const standardized = standardizeAssistantStoryText({
-    text: formatRepaired,
+    text: strippedPreStandardize.text,
     playerName: args.playerName,
   });
-  const postStandardizeRepaired = repairMalformedTranscriptFormat(standardized.text, {
-    playerName: args.playerName,
-  });
-  const restandardized = standardizeAssistantStoryText({
-    text: postStandardizeRepaired,
-    playerName: args.playerName,
-  });
-  const normalized = normalizeTranscriptWhitespace(restandardized.text);
+  const strippedMisattributed = repairMisattributedPlayerSpeakerLines(standardized.text, args.playerName);
+  const artifactCleaned = repairStrayAsteriskArtifacts(strippedMisattributed.text);
+  const normalized = normalizeTranscriptWhitespace(artifactCleaned);
 
   return {
     text: normalized,
@@ -799,8 +839,10 @@ export function sanitizeAssistantTranscript(args: {
     removedNarratorLabels: narratorStripped.changed,
     removedMarkdownArtifacts: markdownStripped.changed,
     autoRepairedNarration: narrationRepaired.repaired,
-    formatValid: restandardized.valid,
-    formatIssues: restandardized.issues,
+    strippedMisattributedPlayer: strippedPreStandardize.changed || strippedMisattributed.changed,
+    needsSpeakerAttributionRewrite: needsSpeakerAttributionRewrite(normalized),
+    formatValid: standardized.valid && !needsSpeakerAttributionRewrite(normalized),
+    formatIssues: standardized.issues,
   };
 }
 
