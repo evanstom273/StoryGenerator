@@ -75,11 +75,13 @@ function stripActionMarkers(text: string) {
 	return text.replace(/\*([^*]+)\*/g, "$1").replace(/\s+/g, " ").trim();
 }
 
-type CharacterSpeechPart = {
-	kind: "dialogue" | "narration";
-	text: string;
-	narratorStyle?: "character_action" | "omniscient";
-};
+type CharacterSpeechPart =
+	| { kind: "dialogue"; text: string }
+	| {
+			kind: "narration";
+			text: string;
+			narratorStyle?: "character_action" | "player_third_person_action" | "omniscient";
+	  };
 
 const FIRST_PERSON_STAGING_START =
 	/^(?:I(?:'m|'ve|'ll|'d)?|me|my(?:self)?|mine|we(?:'re|'ve|'ll|'d)?|us|our(?:selves)?|ours)\b/i;
@@ -184,7 +186,7 @@ function appendActionSegmentSpeechParts(
 			parts.push({
 				kind: "narration",
 				text: cleaned,
-				narratorStyle: "omniscient",
+				narratorStyle: "player_third_person_action",
 			});
 		}
 		return;
@@ -298,14 +300,37 @@ function formatCharacterActionForNarratorSpeech(speakerLabel: string, text: stri
 	return `${speakerLabel.trim()} ${cleaned}`;
 }
 
+function formatNarrationPartForSpeech(
+	speakerLabel: string,
+	part: Extract<CharacterSpeechPart, { kind: "narration" }>,
+	audiobookPerformanceMode: AudiobookPerformanceMode = DEFAULT_AUDIOBOOK_PERFORMANCE_MODE,
+) {
+	if (part.narratorStyle === "omniscient") {
+		return stripActionMarkers(part.text);
+	}
+
+	if (
+		part.narratorStyle === "player_third_person_action" &&
+		audiobookPerformanceMode !== "single_narrator"
+	) {
+		return stripActionMarkers(part.text);
+	}
+
+	return formatCharacterActionForNarratorSpeech(speakerLabel, part.text);
+}
+
 function buildSpeechScriptLinesFromCharacterBlock(
 	speakerLabel: string,
 	block: SceneBlock,
 	characterRegistry: CharacterTtsRegistry,
-	options: { playerPerspective?: boolean } = {},
+	options: {
+		playerPerspective?: boolean;
+		audiobookPerformanceMode?: AudiobookPerformanceMode;
+	} = {},
 ): SpeechScriptLine[] {
 	const lines: SpeechScriptLine[] = [];
 	const ttsSpeaker = resolveTtsSpeakerLabel(speakerLabel, characterRegistry);
+	const performanceMode = options.audiobookPerformanceMode ?? DEFAULT_AUDIOBOOK_PERFORMANCE_MODE;
 
 	for (const part of parseCharacterBlockSpeechParts(block.text, {
 		playerPerspective: options.playerPerspective,
@@ -315,10 +340,7 @@ function buildSpeechScriptLinesFromCharacterBlock(
 			continue;
 		}
 
-		const narrated =
-			part.narratorStyle === "omniscient"
-				? stripActionMarkers(part.text)
-				: formatCharacterActionForNarratorSpeech(speakerLabel, part.text);
+		const narrated = formatNarrationPartForSpeech(speakerLabel, part, performanceMode);
 		if (narrated.trim()) {
 			lines.push({ speaker: NARRATOR_SPEAKER_ALIAS, text: narrated });
 		}
@@ -383,23 +405,11 @@ function buildSpeakersFromRegistry(
 }
 
 function collapseScriptLinesToSingleNarrator(scriptLines: SpeechScriptLine[]): SpeechScriptLine[] {
-	return scriptLines.map((line) => {
-		if (line.speaker === NARRATOR_SPEAKER_ALIAS) {
-			return line;
-		}
-
-		const trimmed = line.text.trim();
-		const dialogue =
-			trimmed.startsWith('"') || trimmed.startsWith("'") || trimmed.startsWith("“")
-				? `${line.speaker} said, ${trimmed}`
-				: `${line.speaker} said, "${trimmed}"`;
-
-		return {
-			speaker: NARRATOR_SPEAKER_ALIAS,
-			text: dialogue,
-			messageBreakAfter: line.messageBreakAfter,
-		};
-	});
+	return scriptLines.map((line) => ({
+		speaker: NARRATOR_SPEAKER_ALIAS,
+		text: line.text,
+		messageBreakAfter: line.messageBreakAfter,
+	}));
 }
 
 function finalizeSpeechPlan(
@@ -508,6 +518,8 @@ function buildSpeechPlanFromBlocks(
 						speechBlock.speakerLabel!,
 						options.playerName ?? options.defaultCharacterLabel,
 					),
+					audiobookPerformanceMode:
+						options.audiobookPerformanceMode ?? DEFAULT_AUDIOBOOK_PERFORMANCE_MODE,
 				},
 			);
 			scriptLines.push(...characterLines);
@@ -757,7 +769,11 @@ export function buildStoryMessageSpeechScriptLines(
 				defaultCharacterLabel,
 				block,
 				options.characterRegistry,
-				{ playerPerspective: true },
+				{
+					playerPerspective: true,
+					audiobookPerformanceMode:
+						options.audiobookPerformanceMode ?? DEFAULT_AUDIOBOOK_PERFORMANCE_MODE,
+				},
 			);
 		}
 
