@@ -756,6 +756,19 @@ function repairUnlabelledNarration(text: string): { text: string; repaired: bool
   return { text: result.join("\n\n"), repaired };
 }
 
+export const MIN_ACCEPTABLE_TRANSCRIPT_CHARS = 80;
+
+export function isSubstantialTranscriptText(text: string): boolean {
+  return text.trim().length >= MIN_ACCEPTABLE_TRANSCRIPT_CHARS;
+}
+
+export function shouldAcceptRepairedTranscriptDespiteFormatIssues(result: {
+  formatValid: boolean;
+  text: string;
+}): boolean {
+  return !result.formatValid && isSubstantialTranscriptText(result.text);
+}
+
 export function sanitizeAssistantTranscript(args: {
   text: string;
   latestUserMessage?: string | null;

@@ -131,7 +131,9 @@ import {
 } from "../../lib/storyText/playerProtection";
 import {
   detectSceneStateRenarration,
+  isSubstantialTranscriptText,
   sanitizeAssistantTranscript,
+  shouldAcceptRepairedTranscriptDespiteFormatIssues,
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
@@ -5211,6 +5213,7 @@ export function StoryEngineProvider({
         ].join("\n");
 
         let candidateAssistantText = finalAssistantText;
+        const originalAssistantText = finalAssistantText;
         let finalSanitizedText: string | null = null;
         let lastValidationDiagnostic = "";
 
@@ -5226,26 +5229,34 @@ export function StoryEngineProvider({
           }
 
           if (!candidateSanitized.formatValid) {
+            if (!shouldAcceptRepairedTranscriptDespiteFormatIssues(candidateSanitized)) {
+              lastValidationDiagnostic = [
+                "rewrite_stage=format",
+                `attempt=${attempt + 1}`,
+                `issues=${candidateSanitized.formatIssues.map((issue) => issue.code).join(",") || "unknown"}`,
+                `raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
+                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+              ].join("; ");
+              candidateAssistantText = (
+                await generateResponseWithRetry({
+                  providerType,
+                  provider,
+                  apiKey,
+                  model,
+                  messages: [
+                    { role: "system", content: formatRewritePrompt },
+                    { role: "user", content: candidateAssistantText },
+                  ],
+                })
+              ).content;
+              continue;
+            }
+
             lastValidationDiagnostic = [
-              "rewrite_stage=format",
+              "accepted_with_format_issues",
               `attempt=${attempt + 1}`,
               `issues=${candidateSanitized.formatIssues.map((issue) => issue.code).join(",") || "unknown"}`,
-              `raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
-              `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
             ].join("; ");
-            candidateAssistantText = (
-              await generateResponseWithRetry({
-                providerType,
-                provider,
-                apiKey,
-                model,
-                messages: [
-                  { role: "system", content: formatRewritePrompt },
-                  { role: "user", content: candidateAssistantText },
-                ],
-              })
-            ).content;
-            continue;
           }
 
           const violation = allowDirectedPlayerControl
@@ -5331,6 +5342,25 @@ export function StoryEngineProvider({
 
           finalSanitizedText = candidateSanitized.text;
           break;
+        }
+
+        if (!finalSanitizedText) {
+          const fallbackSanitized = sanitizeAssistantTranscript({
+            text: originalAssistantText,
+            latestUserMessage: previousMessage.content,
+            playerName: playerNameForValidation,
+          });
+          if (isSubstantialTranscriptText(fallbackSanitized.text)) {
+            finalSanitizedText = fallbackSanitized.text;
+            lastValidationDiagnostic = [
+              lastValidationDiagnostic,
+              "validation_fallback=original_stream_sanitized",
+              `formatValid=${fallbackSanitized.formatValid}`,
+              `issues=${fallbackSanitized.formatIssues.map((issue) => issue.code).join(",") || "none"}`,
+            ]
+              .filter(Boolean)
+              .join("; ");
+          }
         }
 
         if (!finalSanitizedText) {
@@ -6858,6 +6888,7 @@ export function StoryEngineProvider({
           ].join("\n");
 
           let candidateAssistantText = finalAssistantText;
+          const originalAssistantText = finalAssistantText;
           let finalSanitizedText: string | null = null;
           let lastValidationDiagnostic = "";
 
@@ -6873,49 +6904,57 @@ export function StoryEngineProvider({
             }
 
             if (!candidateSanitized.formatValid) {
+              if (!shouldAcceptRepairedTranscriptDespiteFormatIssues(candidateSanitized)) {
+                lastValidationDiagnostic = [
+                  "rewrite_stage=format",
+                  `attempt=${attempt + 1}`,
+                  `issues=${candidateSanitized.formatIssues.map((issue) => issue.code).join(",") || "unknown"}`,
+                  `raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
+                  `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+                ].join("; ");
+                // #region debug-point B:format-rewrite
+                reportGenerationAudit({
+                  hypothesisId: "B",
+                  traceId,
+                  location: "StoryEngineProvider.tsx:sendChatMessage:format-rewrite",
+                  msg: "format rewrite triggered",
+                  data: {
+                    storyId,
+                    attempt,
+                    formatIssues: candidateSanitized.formatIssues,
+                    rawOutput: candidateAssistantText,
+                    rewrittenOutput: candidateSanitized.text,
+                  },
+                });
+                // #endregion
+
+                candidateAssistantText = (
+                  await generateResponseWithRetry({
+                    providerType,
+                    provider,
+                    apiKey,
+                    model,
+                    messages: [
+                      { role: "system", content: formatRewritePrompt },
+                      { role: "user", content: candidateAssistantText },
+                    ],
+                    debugTrace: {
+                      traceId,
+                      mode: "story",
+                      storyId,
+                      stage: "format-rewrite",
+                      lastUserText: candidateAssistantText,
+                    },
+                  })
+                ).content;
+                continue;
+              }
+
               lastValidationDiagnostic = [
-                "rewrite_stage=format",
+                "accepted_with_format_issues",
                 `attempt=${attempt + 1}`,
                 `issues=${candidateSanitized.formatIssues.map((issue) => issue.code).join(",") || "unknown"}`,
-                `raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
-                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
               ].join("; ");
-              // #region debug-point B:format-rewrite
-              reportGenerationAudit({
-                hypothesisId: "B",
-                traceId,
-                location: "StoryEngineProvider.tsx:sendChatMessage:format-rewrite",
-                msg: "format rewrite triggered",
-                data: {
-                  storyId,
-                  attempt,
-                  formatIssues: candidateSanitized.formatIssues,
-                  rawOutput: candidateAssistantText,
-                  rewrittenOutput: candidateSanitized.text,
-                },
-              });
-              // #endregion
-
-              candidateAssistantText = (
-                await generateResponseWithRetry({
-                  providerType,
-                  provider,
-                  apiKey,
-                  model,
-                  messages: [
-                    { role: "system", content: formatRewritePrompt },
-                    { role: "user", content: candidateAssistantText },
-                  ],
-                  debugTrace: {
-                    traceId,
-                    mode: "story",
-                    storyId,
-                    stage: "format-rewrite",
-                    lastUserText: candidateAssistantText,
-                  },
-                })
-              ).content;
-              continue;
             }
 
             const violation = allowDirectedPlayerControl
@@ -7074,19 +7113,27 @@ export function StoryEngineProvider({
             break;
           }
 
-          if (!finalSanitizedText && opts?.guidedGenerationInternal) {
+          if (!finalSanitizedText) {
             const fallbackSanitized = sanitizeAssistantTranscript({
-              text: candidateAssistantText,
+              text: originalAssistantText,
               latestUserMessage: userMessage.content,
               playerName: playerNameForValidation,
             });
-            if (fallbackSanitized.text.trim().length >= 80) {
+            if (isSubstantialTranscriptText(fallbackSanitized.text)) {
               finalSanitizedText = fallbackSanitized.text;
+              lastValidationDiagnostic = [
+                lastValidationDiagnostic,
+                "validation_fallback=original_stream_sanitized",
+                `formatValid=${fallbackSanitized.formatValid}`,
+                `issues=${fallbackSanitized.formatIssues.map((issue) => issue.code).join(",") || "none"}`,
+              ]
+                .filter(Boolean)
+                .join("; ");
               reportGenerationAudit({
                 hypothesisId: "C",
                 traceId,
-                location: "StoryEngineProvider.tsx:sendChatMessage:guided-validation-fallback",
-                msg: "guided generation accepted sanitized output after validation exhaustion",
+                location: "StoryEngineProvider.tsx:sendChatMessage:validation-fallback",
+                msg: "accepted sanitized original stream after validation exhaustion",
                 data: {
                   storyId,
                   formatValid: fallbackSanitized.formatValid,

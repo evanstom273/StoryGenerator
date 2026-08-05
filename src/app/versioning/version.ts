@@ -37,6 +37,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Single-narrator audiobook mode no longer inserts awkward \"X said\" attribution; character actions and dialogue read as plain narration with one voice",
       "Transcript sanitization shortens speaker labels and name mentions to first names, fixing validation failures when the model outputs quoted nicknames like Rebecca \"Becca\" Alvarez",
       "Transcript sanitization now auto-repairs common malformed model output (wrapped narrator labels, orphan action lines, stray *.* markers, truncated names, and missing subjects) before validation and indexing",
+      "Story generation no longer discards a good streamed response when only minor format validation remains after auto-repair; the sanitized transcript is saved instead of throwing a validation error",
     ],
     knownIssues: [],
   },
