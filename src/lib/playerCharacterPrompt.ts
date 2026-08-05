@@ -49,6 +49,25 @@ export function formatPlayerCharacterAliasesForPrompt(
 	return `Also known as: ${aliases.join(", ")}`;
 }
 
+export function formatCharacterConceptAliasesConstraint(
+	draft?: Partial<Pick<PlayerCharacterDraft, "name" | "aliases">>,
+): string | null {
+	const name = draft?.name?.trim() ?? "";
+	const aliases = normalizePlayerCharacterAliases(draft?.aliases).filter(
+		(alias) => !name || alias.toLowerCase() !== name.toLowerCase(),
+	);
+
+	if (!aliases.length) {
+		return null;
+	}
+
+	return [
+		`Also known as (recognition names only): ${aliases.join(", ")}`,
+		"Aliases are alternate names the character may be called in the story. They are ambiguous — for example, \"Static\" could be a content-creator handle, a hacktivist alias, a stage name, a furry persona, a nickname, or something else entirely.",
+		"Do not assume a secret identity, criminal activity, or specific profession from alias text alone. Only mention an alias if it fits the concept you chose independently.",
+	].join("\n");
+}
+
 const CHARACTER_CONCEPT_CONSTRAINT_FIELDS = [
 	"name",
 	"age",
@@ -77,11 +96,6 @@ export function buildCharacterConceptConstraintsFromDraft(
 		if (typeof value === "string" && value.trim()) {
 			constraints[key] = value.trim();
 		}
-	}
-
-	const aliases = normalizePlayerCharacterAliases(draft.aliases);
-	if (aliases.length) {
-		constraints.aliases = aliases.join(", ");
 	}
 
 	return constraints;

@@ -23,6 +23,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     fixed: [
       "Character Concept Randomise no longer returns truncated biography openers on Gemini thinking models; thinking is disabled for concept generation and incomplete pitches are retried or rejected",
       "Gemini 3.1 Pro and 2.5 Pro no longer receive invalid thinkingBudget: 0; concept generation uses thinkingLevel low or minimum budget 128 instead",
+      "Character Concept Randomise now treats aliases as ambiguous recognition names (not plot mandates), asks for a fresh hook on re-randomise, and avoids defaulting to hacker/vigilante tropes",
     ],
     knownIssues: [],
   },
