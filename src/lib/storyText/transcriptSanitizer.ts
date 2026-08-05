@@ -7,6 +7,8 @@ import {
 } from "./dialogueQuoteRegions";
 import { normalizeSpeakerNamesInTranscript } from "./speakerLabels";
 import { repairMalformedTranscriptFormat, needsSpeakerAttributionRewrite, repairPlayerOrphanActionLines, repairStrayAsteriskArtifacts } from "./transcriptFormatRepair";
+import { getPlayerCharacterAuthorshipViolation } from "./playerProtection";
+import type { StoryFormatIssue } from "./storyStandardizer";
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -872,8 +874,8 @@ export function sanitizeMessageForDisplay(args: {
     return args.message.content;
   }
 
-  // Assistant messages are sanitized once at save time. Re-running the full
-  // repair pipeline on every render can strip speaker labels and corrupt scenes.
+  // Assistant messages are saved from the streamed text when validation passes.
+  // Only normalize whitespace/capitalization for display.
   return normalizeTranscriptForDisplay(args.message.content);
 }
 
@@ -1003,6 +1005,123 @@ export function detectSceneStateRenarration(args: {
     : "";
 
   return { triggered, reason, snippet: lead };
+}
+
+export type AssistantTranscriptValidationStage =
+	| "insubstantial"
+	| "speaker_attribution"
+	| "format"
+	| "ownership"
+	| "hidden_dialogue"
+	| "scene_state";
+
+export type AssistantTranscriptValidationResult = {
+	valid: boolean;
+	stage: AssistantTranscriptValidationStage | null;
+	diagnostic: string;
+	formatIssues: StoryFormatIssue[];
+};
+
+export function validateAssistantTranscriptForSave(args: {
+	text: string;
+	latestUserMessage?: string | null;
+	playerName?: string | null;
+	allowDirectedPlayerControl?: boolean;
+	skipSceneStateCheck?: boolean;
+	hiddenDialoguePattern: RegExp;
+}): AssistantTranscriptValidationResult {
+	const text = args.text;
+	const playerName = args.playerName ?? null;
+	const latestUserMessage = args.latestUserMessage ?? "";
+
+	if (!isSubstantialTranscriptText(text)) {
+		return {
+			valid: false,
+			stage: "insubstantial",
+			diagnostic: `rewrite_stage=insubstantial; length=${text.trim().length}`,
+			formatIssues: [],
+		};
+	}
+
+	if (needsSpeakerAttributionRewrite(text, playerName)) {
+		return {
+			valid: false,
+			stage: "speaker_attribution",
+			diagnostic: "rewrite_stage=speaker_attribution",
+			formatIssues: [],
+		};
+	}
+
+	const standardized = standardizeAssistantStoryText({
+		text,
+		playerName,
+	});
+	if (!standardized.valid) {
+		return {
+			valid: false,
+			stage: "format",
+			diagnostic: [
+				"rewrite_stage=format",
+				`issues=${standardized.issues.map((issue) => issue.code).join(",") || "unknown"}`,
+			].join("; "),
+			formatIssues: standardized.issues,
+		};
+	}
+
+	if (!args.allowDirectedPlayerControl) {
+		const violation = getPlayerCharacterAuthorshipViolation({
+			playerName: playerName ?? "",
+			text,
+		});
+		if (violation) {
+			return {
+				valid: false,
+				stage: "ownership",
+				diagnostic: [
+					"rewrite_stage=ownership",
+					`rule=${violation.rule}`,
+					`match=${violation.match}`,
+					`line=${violation.line ?? ""}`,
+				].join("; "),
+				formatIssues: [],
+			};
+		}
+	}
+
+	if (args.hiddenDialoguePattern.test(text)) {
+		return {
+			valid: false,
+			stage: "hidden_dialogue",
+			diagnostic: "rewrite_stage=hidden_dialogue",
+			formatIssues: [],
+		};
+	}
+
+	if (!args.allowDirectedPlayerControl && !args.skipSceneStateCheck) {
+		const sceneDup = detectSceneStateRenarration({
+			latestUserMessage,
+			assistantText: text,
+		});
+		if (sceneDup.triggered) {
+			return {
+				valid: false,
+				stage: "scene_state",
+				diagnostic: [
+					"rewrite_stage=scene_state",
+					`reason=${sceneDup.reason}`,
+					`snippet=${sceneDup.snippet}`,
+				].join("; "),
+				formatIssues: [],
+			};
+		}
+	}
+
+	return {
+		valid: true,
+		stage: null,
+		diagnostic: "",
+		formatIssues: [],
+	};
 }
 
 export function getNarrationSpeakerLabel(message: StoryMessage) {
