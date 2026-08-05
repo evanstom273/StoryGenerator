@@ -19,7 +19,9 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Settings → AI now has independent Story, MetaChat, Indexing, and Character & Universe Generation model selectors per provider",
       "Existing story model settings migrate into Story Model on upgrade; the other three roles default to Story Model until changed",
     ],
-    fixed: [],
+    fixed: [
+      "Character Concept Randomise no longer returns truncated biography openers on Gemini thinking models; thinking is disabled for concept generation and incomplete pitches are retried or rejected",
+    ],
     knownIssues: [],
   },
   "3.1.0": {

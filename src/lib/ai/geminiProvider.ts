@@ -16,6 +16,9 @@ interface GeminiGenerateContentRequest {
     maxOutputTokens?: number;
     temperature?: number;
     responseMimeType?: string;
+    thinkingConfig?: {
+      thinkingBudget?: number;
+    };
   };
 }
 
@@ -32,7 +35,12 @@ interface GeminiGenerateContentResponse {
 
 function buildGeminiRequest(
   messages: AIChatMessage[],
-  opts?: { maxTokens?: number; temperature?: number; jsonMode?: boolean },
+  opts?: {
+    maxTokens?: number;
+    temperature?: number;
+    jsonMode?: boolean;
+    thinkingBudget?: number;
+  },
 ): GeminiGenerateContentRequest {
   const systemText = messages
     .filter((message) => message.role === "system")
@@ -53,6 +61,9 @@ function buildGeminiRequest(
   if (opts?.maxTokens != null) generationConfig.maxOutputTokens = opts.maxTokens;
   if (opts?.temperature != null) generationConfig.temperature = opts.temperature;
   if (opts?.jsonMode) generationConfig.responseMimeType = "application/json";
+  if (opts?.thinkingBudget != null) {
+    generationConfig.thinkingConfig = { thinkingBudget: opts.thinkingBudget };
+  }
 
   return {
     contents,
@@ -99,7 +110,16 @@ async function callGenerateContent(
   apiKey: string,
   model: string,
   messages: AIChatMessage[],
-  opts?: { timeoutMs?: number; idleTimeoutMs?: number; signal?: AbortSignal; maxTokens?: number; temperature?: number; jsonMode?: boolean; onChunk?: (chunk: string) => void },
+  opts?: {
+    timeoutMs?: number;
+    idleTimeoutMs?: number;
+    signal?: AbortSignal;
+    maxTokens?: number;
+    temperature?: number;
+    jsonMode?: boolean;
+    thinkingBudget?: number;
+    onChunk?: (chunk: string) => void;
+  },
 ) {
   const controller = new AbortController();
   const abortListener = () => controller.abort();
@@ -114,7 +134,14 @@ async function callGenerateContent(
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   const safeKey = apiKey.replace(/[^\x00-\xFF]/g, "");
-  const requestBody = JSON.stringify(buildGeminiRequest(messages, { maxTokens: opts?.maxTokens, temperature: opts?.temperature, jsonMode: opts?.jsonMode }));
+  const requestBody = JSON.stringify(
+    buildGeminiRequest(messages, {
+      maxTokens: opts?.maxTokens,
+      temperature: opts?.temperature,
+      jsonMode: opts?.jsonMode,
+      thinkingBudget: opts?.thinkingBudget,
+    }),
+  );
 
   try {
     if (opts?.onChunk) {
@@ -250,8 +277,17 @@ export function createGeminiProvider(): AIProvider {
         throw new Error("Gemini validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages, maxTokens, temperature, jsonMode, timeoutMs, idleTimeoutMs, signal, onChunk }) {
-      const content = await callGenerateContent(apiKey, model, messages, { timeoutMs, idleTimeoutMs, signal, maxTokens, temperature, jsonMode, onChunk });
+    async generateResponse({ apiKey, model, messages, maxTokens, temperature, jsonMode, thinkingBudget, timeoutMs, idleTimeoutMs, signal, onChunk }) {
+      const content = await callGenerateContent(apiKey, model, messages, {
+        timeoutMs,
+        idleTimeoutMs,
+        signal,
+        maxTokens,
+        temperature,
+        jsonMode,
+        thinkingBudget,
+        onChunk,
+      });
       return { content };
     },
     async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs, signal }) {

@@ -14,6 +14,8 @@ export interface GenerateResponseRequest {
   maxTokens?: number;
   temperature?: number;
   jsonMode?: boolean;
+  /** Gemini 2.5+/3.x only. Set to 0 to disable thinking for short outputs. */
+  thinkingBudget?: number;
   timeoutMs?: number;
   idleTimeoutMs?: number;
   signal?: AbortSignal;
