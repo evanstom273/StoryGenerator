@@ -5326,31 +5326,33 @@ export function StoryEngineProvider({
             continue;
           }
 
-          const sceneDup = detectSceneStateRenarration({
-            latestUserMessage: previousMessage.content,
-            assistantText: candidateSanitized.text,
-          });
-          if (sceneDup.triggered) {
-            lastValidationDiagnostic = [
-              "rewrite_stage=scene_state",
-              `attempt=${attempt + 1}`,
-              `reason=${sceneDup.reason}`,
-              `snippet=${clipGenerationAuditText(sceneDup.snippet, 300)}`,
-              `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
-            ].join("; ");
-            candidateAssistantText = (
-              await generateResponseWithRetry({
-                providerType,
-                provider,
-                apiKey,
-                model,
-                messages: [
-                  { role: "system", content: sceneStateRewritePrompt },
-                  { role: "user", content: candidateSanitized.text },
-                ],
-              })
-            ).content;
-            continue;
+          if (!allowDirectedPlayerControl) {
+            const sceneDup = detectSceneStateRenarration({
+              latestUserMessage: previousMessage.content,
+              assistantText: candidateSanitized.text,
+            });
+            if (sceneDup.triggered) {
+              lastValidationDiagnostic = [
+                "rewrite_stage=scene_state",
+                `attempt=${attempt + 1}`,
+                `reason=${sceneDup.reason}`,
+                `snippet=${clipGenerationAuditText(sceneDup.snippet, 300)}`,
+                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+              ].join("; ");
+              candidateAssistantText = (
+                await generateResponseWithRetry({
+                  providerType,
+                  provider,
+                  apiKey,
+                  model,
+                  messages: [
+                    { role: "system", content: sceneStateRewritePrompt },
+                    { role: "user", content: candidateSanitized.text },
+                  ],
+                })
+              ).content;
+              continue;
+            }
           }
 
           finalSanitizedText = candidateSanitized.text;
@@ -7073,58 +7075,87 @@ export function StoryEngineProvider({
               continue;
             }
 
-            const sceneDup = detectSceneStateRenarration({
-              latestUserMessage: userMessage.content,
-              assistantText: candidateSanitized.text,
-            });
-            if (sceneDup.triggered) {
-              lastValidationDiagnostic = [
-                "rewrite_stage=scene_state",
-                `attempt=${attempt + 1}`,
-                `reason=${sceneDup.reason}`,
-                `snippet=${clipGenerationAuditText(sceneDup.snippet, 300)}`,
-                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
-              ].join("; ");
-              // #region debug-point B:scene-renarration
-              reportGenerationAudit({
-                hypothesisId: "B",
-                traceId,
-                location: "StoryEngineProvider.tsx:sendChatMessage:scene-renarration",
-                msg: "scene-state renarration rewrite triggered",
-                data: {
-                  storyId,
-                  attempt,
-                  reason: sceneDup.reason,
-                  snippet: sceneDup.snippet,
-                  rewrittenOutput: candidateSanitized.text,
-                },
+            if (
+              !allowDirectedPlayerControl &&
+              !opts?.guidedGenerationInternal
+            ) {
+              const sceneDup = detectSceneStateRenarration({
+                latestUserMessage: userMessage.content,
+                assistantText: candidateSanitized.text,
               });
-              // #endregion
-
-              candidateAssistantText = (
-                await generateResponseWithRetry({
-                  providerType,
-                  provider,
-                  apiKey,
-                  model,
-                  messages: [
-                    { role: "system", content: sceneStateRewritePrompt },
-                    { role: "user", content: candidateSanitized.text },
-                  ],
-                  debugTrace: {
-                    traceId,
-                    mode: "story",
+              if (sceneDup.triggered) {
+                lastValidationDiagnostic = [
+                  "rewrite_stage=scene_state",
+                  `attempt=${attempt + 1}`,
+                  `reason=${sceneDup.reason}`,
+                  `snippet=${clipGenerationAuditText(sceneDup.snippet, 300)}`,
+                  `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
+                ].join("; ");
+                // #region debug-point B:scene-renarration
+                reportGenerationAudit({
+                  hypothesisId: "B",
+                  traceId,
+                  location: "StoryEngineProvider.tsx:sendChatMessage:scene-renarration",
+                  msg: "scene-state renarration rewrite triggered",
+                  data: {
                     storyId,
-                    stage: "scene-state-rewrite",
-                    lastUserText: candidateSanitized.text,
+                    attempt,
+                    reason: sceneDup.reason,
+                    snippet: sceneDup.snippet,
+                    rewrittenOutput: candidateSanitized.text,
                   },
-                })
-              ).content;
-              continue;
+                });
+                // #endregion
+
+                candidateAssistantText = (
+                  await generateResponseWithRetry({
+                    providerType,
+                    provider,
+                    apiKey,
+                    model,
+                    messages: [
+                      { role: "system", content: sceneStateRewritePrompt },
+                      { role: "user", content: candidateSanitized.text },
+                    ],
+                    debugTrace: {
+                      traceId,
+                      mode: "story",
+                      storyId,
+                      stage: "scene-state-rewrite",
+                      lastUserText: candidateSanitized.text,
+                    },
+                  })
+                ).content;
+                continue;
+              }
             }
 
             finalSanitizedText = candidateSanitized.text;
             break;
+          }
+
+          if (!finalSanitizedText && opts?.guidedGenerationInternal) {
+            const fallbackSanitized = sanitizeAssistantTranscript({
+              text: candidateAssistantText,
+              latestUserMessage: userMessage.content,
+              playerName: playerNameForValidation,
+            });
+            if (fallbackSanitized.text.trim().length >= 80) {
+              finalSanitizedText = fallbackSanitized.text;
+              reportGenerationAudit({
+                hypothesisId: "C",
+                traceId,
+                location: "StoryEngineProvider.tsx:sendChatMessage:guided-validation-fallback",
+                msg: "guided generation accepted sanitized output after validation exhaustion",
+                data: {
+                  storyId,
+                  formatValid: fallbackSanitized.formatValid,
+                  formatIssues: fallbackSanitized.formatIssues,
+                  textLength: fallbackSanitized.text.length,
+                  lastValidationDiagnostic,
+                },
+              });
+            }
           }
 
           if (!finalSanitizedText) {
