@@ -19,6 +19,7 @@ import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
+import { STREAM_VALIDATION_MAX_ATTEMPTS } from "../lib/storyText/streamValidationPolicy";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { cn } from "../utils/cn";
 import { useTheme } from "../app/theming/ThemeContext";
@@ -243,6 +244,7 @@ export function StoryWorkspacePage() {
   const [showSequelPrompt, setShowSequelPrompt] = useState(false);
   const [dismissedSequelPromptMessageId, setDismissedSequelPromptMessageId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationAttempt, setGenerationAttempt] = useState<number | null>(null);
   const [streamingDraft, setStreamingDraft] = useState<string | null>(null);
   const guidedStreamingDraft =
     story && guidedGenerationStatus?.storyId === story.id
@@ -255,6 +257,27 @@ export function StoryWorkspacePage() {
   );
   const activeStreamingDraft = streamingDraft ?? guidedStreamingDraft;
   const showStreamingPanel = streamingDraft !== null || showGuidedStreaming;
+
+  function formatStreamingStatusLabel() {
+    const attemptSuffix =
+      generationAttempt !== null
+        ? ` Attempt ${generationAttempt}/${STREAM_VALIDATION_MAX_ATTEMPTS}`
+        : "";
+
+    if (variantSession) {
+      return `Generating candidate…${attemptSuffix}`;
+    }
+    if (guidedGenerationActive) {
+      return "Generating chapter history…";
+    }
+    return `Generating…${attemptSuffix}`;
+  }
+
+  const storyStreamingCallbacks = {
+    onChunk: (chunk: string) => setStreamingDraft((prev) => (prev ?? "") + chunk),
+    onChunkReset: () => setStreamingDraft(""),
+    onGenerationAttempt: (attempt: number) => setGenerationAttempt(attempt),
+  };
   const streamingAbortRef = useRef<AbortController | null>(null);
   const [lastChatContent, setLastChatContent] = useState<string | null>(null);
   const [isGeneratingAssist, setIsGeneratingAssist] = useState(false);
@@ -642,6 +665,7 @@ export function StoryWorkspacePage() {
     const isStoryEndingMarker = isStoryEndingText(content);
 
     setIsGenerating(true);
+    setGenerationAttempt(1);
     setStreamingDraft("");
     setChatError(null);
     setLastChatContent(content);
@@ -661,8 +685,7 @@ export function StoryWorkspacePage() {
           ...(directorIntentOverride ? { directorIntentOverride } : {}),
           ...(isStoryEndingMarker ? { skipAssistantResponse: true } : {}),
           signal: abortController.signal,
-          onChunk: (chunk) => setStreamingDraft((prev) => (prev ?? "") + chunk),
-          onChunkReset: () => setStreamingDraft(""),
+          ...storyStreamingCallbacks,
         },
       );
       // User sent a new message — lock the selected candidate, discard the rest
@@ -718,6 +741,7 @@ export function StoryWorkspacePage() {
       setChatInput(content);
     } finally {
       setIsGenerating(false);
+      setGenerationAttempt(null);
       setStreamingDraft(null);
       streamingAbortRef.current = null;
     }
@@ -905,14 +929,12 @@ export function StoryWorkspacePage() {
     });
 
     setIsGenerating(true);
+    setGenerationAttempt(1);
     setStreamingDraft("");
     setChatError(null);
 
     try {
-      const newMessage = await regenerateLastAssistantMessage(activeStory.id, {
-        onChunk: (chunk) => setStreamingDraft((prev) => (prev ?? "") + chunk),
-        onChunkReset: () => setStreamingDraft(""),
-      });
+      const newMessage = await regenerateLastAssistantMessage(activeStory.id, storyStreamingCallbacks);
 
       // Add the freshly generated candidate and select it
       setVariantSession((prev) => {
@@ -956,6 +978,7 @@ export function StoryWorkspacePage() {
       }
     } finally {
       setIsGenerating(false);
+      setGenerationAttempt(null);
       setStreamingDraft(null);
     }
   }
@@ -1654,11 +1677,7 @@ export function StoryWorkspacePage() {
         <div className="mt-2 rounded-[10px] border border-divider/[0.35] bg-app-elevated px-3 py-3 opacity-80">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
             <span className="animate-pulse text-accent">●</span>
-            {variantSession
-              ? "Generating candidate…"
-              : guidedGenerationActive
-                ? "Generating chapter history…"
-                : "Generating…"}
+            {formatStreamingStatusLabel()}
           </div>
           {activeStreamingDraft ? (
             <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
