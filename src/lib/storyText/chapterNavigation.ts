@@ -259,7 +259,33 @@ export function getLatestChapterStartMessage(
     return null;
   }
 
-  return sortedMessages[lastStartIndex] ?? null;
+	return sortedMessages[lastStartIndex] ?? null;
+}
+
+/** Open chapter has only its banner — prior transcript already has playable turns. */
+export function isFreshPlayableChapterHandoff(
+	messages: StoryMessage[],
+	chapters: StoryChapter[],
+): boolean {
+	if (!hasActiveOpenChapter(messages, chapters)) {
+		return false;
+	}
+	if (hasSubstantiveContentInOpenChapter(messages, chapters)) {
+		return false;
+	}
+	if (chapters.length > 0) {
+		return true;
+	}
+
+	const sortedMessages = sortMessages(messages);
+	const lastStartIndex = findLastChapterStartIndex(sortedMessages);
+	if (lastStartIndex === null || lastStartIndex === 0) {
+		return false;
+	}
+
+	return sortedMessages
+		.slice(0, lastStartIndex)
+		.some((message) => message.role === "user" || message.role === "assistant");
 }
 
 export function resolveChapterHeaderElement(messageId: string): HTMLElement | null {
