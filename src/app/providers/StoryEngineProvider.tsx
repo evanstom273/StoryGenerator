@@ -132,6 +132,7 @@ import {
   shouldAcceptStreamDespiteSpeakerAttributionFlags,
   type AssistantTranscriptValidationStage,
 } from "../../lib/storyText/transcriptSanitizer";
+import { STREAM_VALIDATION_MAX_ATTEMPTS } from "../../lib/storyText/streamValidationPolicy";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
 import {
@@ -518,9 +519,9 @@ interface StoryEngineContextValue {
     universeId?: string,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<string>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string; previousChapterContext?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string; previousChapterContext?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void; onGenerationAttempt?: (attempt: number, maxAttempts: number) => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
-  regenerateLastAssistantMessage: (storyId: string, opts?: { onChunk?: (chunk: string) => void; onChunkReset?: () => void; signal?: AbortSignal }) => Promise<StoryMessage>;
+  regenerateLastAssistantMessage: (storyId: string, opts?: { onChunk?: (chunk: string) => void; onChunkReset?: () => void; onGenerationAttempt?: (attempt: number, maxAttempts: number) => void; signal?: AbortSignal }) => Promise<StoryMessage>;
 }
 
 const AI_MAX_ATTEMPTS = 3;
@@ -898,7 +899,15 @@ type StreamedTranscriptRewritePrompts = {
 	sceneState: string;
 };
 
-const STREAM_VALIDATION_MAX_REWRITES = 10;
+const STREAM_VALIDATION_MAX_REWRITES = STREAM_VALIDATION_MAX_ATTEMPTS;
+
+function reportStreamGenerationAttempt(
+	onGenerationAttempt: ((attempt: number, maxAttempts: number) => void) | undefined,
+	streamAttempt: { current: number },
+) {
+	streamAttempt.current = Math.min(streamAttempt.current + 1, STREAM_VALIDATION_MAX_ATTEMPTS);
+	onGenerationAttempt?.(streamAttempt.current, STREAM_VALIDATION_MAX_ATTEMPTS);
+}
 
 async function resolveStreamedAssistantTranscript(args: {
 	initialText: string;
@@ -915,6 +924,7 @@ async function resolveStreamedAssistantTranscript(args: {
 	signal?: AbortSignal;
 	onChunk?: (chunk: string) => void;
 	onChunkReset?: () => void;
+	reportStreamAttempt?: () => void;
 	streamIdleTimeoutMs: number;
 	traceId: string;
 	storyId: string;
@@ -985,6 +995,7 @@ async function resolveStreamedAssistantTranscript(args: {
 		}
 
 		const rewritePrompt = rewriteStageToPrompt[stage];
+		args.reportStreamAttempt?.();
 		args.onChunkReset?.();
 		candidateAssistantText = (
 			await generateResponseWithRetry({
@@ -5183,6 +5194,12 @@ export function StoryEngineProvider({
           directorIntent: previousMessage.directorIntent ?? null,
         });
 
+        const streamAttempt = { current: 0 };
+        const reportStreamAttempt = () => {
+          reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt);
+        };
+        reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt);
+
         const assistantContent = await generateResponseWithRetry({
           providerType,
           provider,
@@ -5380,6 +5397,7 @@ export function StoryEngineProvider({
           signal: opts?.signal,
           onChunk: opts?.onChunk,
           onChunkReset: opts?.onChunkReset,
+          reportStreamAttempt,
           streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
           traceId,
           storyId,
@@ -6588,6 +6606,12 @@ export function StoryEngineProvider({
           });
           // #endregion
 
+          const streamAttempt = { current: 0 };
+          const reportStreamAttempt = () => {
+            reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt);
+          };
+          reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt);
+
           let assistantContent: GenerateResponseResult;
           try {
             assistantContent = await generateResponseWithRetry({
@@ -6912,6 +6936,7 @@ export function StoryEngineProvider({
             signal: opts?.signal,
             onChunk: opts?.onChunk,
             onChunkReset: opts?.onChunkReset,
+            reportStreamAttempt,
             streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
             traceId,
             storyId,
