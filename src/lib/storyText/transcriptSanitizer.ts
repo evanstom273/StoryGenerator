@@ -859,6 +859,10 @@ export function sanitizeAssistantTranscript(args: {
   };
 }
 
+export function normalizeTranscriptForDisplay(text: string): string {
+	return capitalizeFirstLetter(normalizeTranscriptWhitespace(text));
+}
+
 export function sanitizeMessageForDisplay(args: {
   message: StoryMessage;
   latestUserMessage?: string | null;
@@ -868,17 +872,9 @@ export function sanitizeMessageForDisplay(args: {
     return args.message.content;
   }
 
-  // Respect manual transcript fixes. If the user edited the assistant message,
-  // render the saved text as-is instead of re-sanitising it back into a different shape.
-  if (args.message.editedAt) {
-    return capitalizeFirstLetter(normalizeTranscriptWhitespace(args.message.content));
-  }
-
-  return capitalizeFirstLetter(sanitizeAssistantTranscript({
-    text: args.message.content,
-    latestUserMessage: args.latestUserMessage,
-    playerName: args.playerName,
-  }).text);
+  // Assistant messages are sanitized once at save time. Re-running the full
+  // repair pipeline on every render can strip speaker labels and corrupt scenes.
+  return normalizeTranscriptForDisplay(args.message.content);
 }
 
 function capitalizeFirstLetter(text: string): string {

@@ -133,6 +133,7 @@ import {
   detectSceneStateRenarration,
   isSubstantialTranscriptText,
   sanitizeAssistantTranscript,
+  normalizeTranscriptForDisplay,
   shouldAcceptRepairedTranscriptDespiteFormatIssues,
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
@@ -5018,10 +5019,7 @@ export function StoryEngineProvider({
 
           return {
             ...message,
-            content: sanitizeAssistantTranscript({
-              text: message.content,
-              playerName: playerNameForValidation,
-            }).text,
+            content: normalizeTranscriptForDisplay(message.content),
           };
         });
 
@@ -6490,10 +6488,7 @@ export function StoryEngineProvider({
 
           return {
             ...message,
-            content: sanitizeAssistantTranscript({
-              text: message.content,
-              playerName: playerNameForValidation,
-            }).text,
+            content: normalizeTranscriptForDisplay(message.content),
           };
         });
         const inputSafetyAnalysis = analyzeStoryInputSafety({
