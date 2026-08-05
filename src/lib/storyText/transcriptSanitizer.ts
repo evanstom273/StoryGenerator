@@ -1124,6 +1124,22 @@ export function validateAssistantTranscriptForSave(args: {
 	};
 }
 
+export function shouldAcceptStreamDespiteSpeakerAttributionFlags(args: {
+	text: string;
+	playerName?: string | null;
+}): boolean {
+	if (!isSubstantialTranscriptText(args.text)) {
+		return false;
+	}
+	if (!needsSpeakerAttributionRewrite(args.text, args.playerName)) {
+		return true;
+	}
+	return standardizeAssistantStoryText({
+		text: args.text,
+		playerName: args.playerName,
+	}).valid;
+}
+
 export function getNarrationSpeakerLabel(message: StoryMessage) {
   if (message.role !== "assistant") {
     return null;

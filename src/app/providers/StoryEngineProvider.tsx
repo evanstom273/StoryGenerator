@@ -30,7 +30,7 @@ import {
   buildStoryChatContext,
   buildStorySummaryContext,
 } from "../../lib/ai/contextBuilder";
-import { getValidModel, getAIModelForRole, getCharacterConceptRequestConfig, getIndexingRequestConfig, getModelStreamConfig } from "../../lib/ai/models";
+import { getValidModel, getAIModelForRole, getCharacterConceptRequestConfig, getIndexingRequestConfig, getModelStreamConfig, getStoryStreamIdleTimeoutMs } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
 import { buildPlayerAssistContext } from "../../lib/ai/playerAssistContext";
 import {
@@ -129,6 +129,7 @@ import { isGlobalMetaChatScope } from "../../lib/metaChatScope";
 import {
   normalizeTranscriptForDisplay,
   validateAssistantTranscriptForSave,
+  shouldAcceptStreamDespiteSpeakerAttributionFlags,
   type AssistantTranscriptValidationStage,
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
@@ -912,6 +913,7 @@ async function resolveStreamedAssistantTranscript(args: {
 	signal?: AbortSignal;
 	onChunk?: (chunk: string) => void;
 	onChunkReset?: () => void;
+	streamIdleTimeoutMs: number;
 	traceId: string;
 	storyId: string;
 }): Promise<{ text: string; diagnostic: string }> {
@@ -946,6 +948,26 @@ async function resolveStreamedAssistantTranscript(args: {
 			};
 		}
 
+		if (
+			attempt === 0 &&
+			candidateAssistantText === args.initialText &&
+			validation.stage === "speaker_attribution" &&
+			shouldAcceptStreamDespiteSpeakerAttributionFlags({
+				text: candidateAssistantText,
+				playerName: args.playerName,
+			})
+		) {
+			return {
+				text: normalizeTranscriptForDisplay(candidateAssistantText),
+				diagnostic: [
+					lastValidationDiagnostic,
+					"accepted_stream_with_speaker_attribution_flags",
+				]
+					.filter(Boolean)
+					.join("; "),
+			};
+		}
+
 		lastValidationDiagnostic = [
 			lastValidationDiagnostic,
 			`attempt=${attempt + 1}`,
@@ -975,6 +997,7 @@ async function resolveStreamedAssistantTranscript(args: {
 				signal: args.signal,
 				onChunk: args.onChunk,
 				onChunkReset: args.onChunkReset,
+				idleTimeoutMs: args.streamIdleTimeoutMs,
 				debugTrace: {
 					traceId: args.traceId,
 					mode: "story",
@@ -5165,6 +5188,7 @@ export function StoryEngineProvider({
           model,
           messages: context,
           signal: opts?.signal,
+          idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
           onChunk: opts?.onChunk,
           onChunkReset: opts?.onChunkReset,
         });
@@ -5214,6 +5238,7 @@ export function StoryEngineProvider({
                   signal: opts?.signal,
                   onChunk: opts?.onChunk,
                   onChunkReset: opts?.onChunkReset,
+                  idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
                 });
               })()
             ).content
@@ -5353,6 +5378,7 @@ export function StoryEngineProvider({
           signal: opts?.signal,
           onChunk: opts?.onChunk,
           onChunkReset: opts?.onChunkReset,
+          streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
           traceId,
           storyId,
         });
@@ -6570,7 +6596,7 @@ export function StoryEngineProvider({
               messages: context,
               maxTokens: opts?.guidedChapterContext ? 4096 : undefined,
               signal: opts?.signal,
-              idleTimeoutMs: opts?.guidedGenerationInternal ? 120_000 : undefined,
+              idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
               onChunk: opts?.onChunk,
               onChunkReset: opts?.onChunkReset,
               debugTrace: {
@@ -6725,6 +6751,7 @@ export function StoryEngineProvider({
                     signal: opts?.signal,
                     onChunk: opts?.onChunk,
                     onChunkReset: opts?.onChunkReset,
+                    idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
                     debugTrace: {
                       traceId,
                       mode: "story",
@@ -6883,6 +6910,7 @@ export function StoryEngineProvider({
             signal: opts?.signal,
             onChunk: opts?.onChunk,
             onChunkReset: opts?.onChunkReset,
+            streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
             traceId,
             storyId,
           });
