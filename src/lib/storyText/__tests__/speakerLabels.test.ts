@@ -30,6 +30,13 @@ describe("speakerLabels", () => {
 			'Rebecca: *walks over to her desk.* "Hello, class."',
 		);
 	});
+
+	it("does not collapse quoted dialogue when normalizing prose names", () => {
+		const input = 'Marcus: "We are the Blood Brothers now."';
+		expect(normalizeSpeakerNamesInTranscript(input)).toBe(
+			'Marcus: "We are the Blood Brothers now."',
+		);
+	});
 });
 
 describe("quoted nickname transcript validation", () => {

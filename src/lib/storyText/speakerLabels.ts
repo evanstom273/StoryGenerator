@@ -1,3 +1,5 @@
+import { splitDialogueQuoteRegions } from "./dialogueQuoteRegions";
+
 const RESERVED_SPEAKER_LABELS = new Set(["narrator", "director", "time"]);
 
 const SPEAKER_TITLE_PREFIX =
@@ -100,6 +102,26 @@ export function normalizeFullNameMentions(text: string) {
 	});
 }
 
+const EMBEDDED_NICKNAME_QUOTE_IN_PROSE =
+	/\b([A-Z][a-zA-Z''-]*)\s+["“”'‘’][^"“”'‘’]+["“”'‘’]\s+([A-Z][a-zA-Z''-]*)\b/g;
+
+function collapseEmbeddedNicknameQuotesBeforeDialogueSplit(text: string) {
+	return text.replace(EMBEDDED_NICKNAME_QUOTE_IN_PROSE, "$1 $2");
+}
+
+function normalizeProseMentions(text: string) {
+	const withoutNicknameQuotes = collapseEmbeddedNicknameQuotesBeforeDialogueSplit(text);
+	let rebuilt = "";
+	for (const region of splitDialogueQuoteRegions(withoutNicknameQuotes)) {
+		if (region.kind === "quoted") {
+			rebuilt += `"${region.text}"`;
+			continue;
+		}
+		rebuilt += normalizeFullNameMentions(normalizeEmbeddedNicknameMentions(region.text));
+	}
+	return rebuilt;
+}
+
 export function normalizeSpeakerNamesInTranscript(text: string) {
 	const lines = text.replace(/\r\n/g, "\n").split("\n");
 
@@ -107,16 +129,14 @@ export function normalizeSpeakerNamesInTranscript(text: string) {
 		.map((line) => {
 			const match = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/);
 			if (!match?.[1]) {
-				return normalizeFullNameMentions(normalizeEmbeddedNicknameMentions(line));
+				return normalizeProseMentions(line);
 			}
 
 			const label = match[1].trim();
 			const separator = match[2] ?? ":";
 			const remainder = match[3] ?? "";
 			const normalizedLabel = normalizeSceneSpeakerLabel(label);
-			const normalizedRemainder = normalizeFullNameMentions(
-				normalizeEmbeddedNicknameMentions(remainder),
-			);
+			const normalizedRemainder = normalizeProseMentions(remainder);
 
 			return `${normalizedLabel}${separator} ${normalizedRemainder}`;
 		})

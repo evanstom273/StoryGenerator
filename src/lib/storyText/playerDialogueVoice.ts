@@ -53,8 +53,58 @@ function playerVariantPattern(variants: string[]) {
 		.join("|");
 }
 
-/** Dialogue clearly spoken to the player, not by them. */
-export function dialogueLooksAddressedToPlayer(dialogue: string, playerName: string) {
+/** First-person speech strongly suggests the labeled speaker is talking. */
+export function dialogueHasFirstPersonVoice(dialogue: string) {
+	return /\b(?:I|I'm|I've|I'd|I'll|my|myself|me)\b/i.test(dialogue.trim());
+}
+
+/** The player is referenced in third person — someone else is speaking. */
+export function dialogueReferencesPlayerInThirdPerson(dialogue: string, playerName: string) {
+	const trimmed = dialogue.trim();
+	if (!trimmed) {
+		return false;
+	}
+
+	const variants = getPlayerNameVariants(playerName);
+	for (const variant of variants) {
+		const escaped = escapeRegex(variant);
+		if (new RegExp(`\\b${escaped}\\s+is\\b`, "i").test(trimmed)) {
+			return true;
+		}
+		if (new RegExp(`\\b${escaped}\\s+(?:Stare|stare|glare)\\b`, "i").test(trimmed)) {
+			return true;
+		}
+	}
+
+	if (!dialogueHasFirstPersonVoice(trimmed) && /\b(?:she|her)\b/i.test(trimmed)) {
+		if (/\b(?:was|were|slipped|thought|handled|is|are)\b/i.test(trimmed)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/** Dialogue uses second-person address aimed at the player. */
+export function dialogueAddressesPlayerBySecondPerson(dialogue: string) {
+	const trimmed = dialogue.trim();
+	if (!trimmed || !/\byou\b/i.test(trimmed)) {
+		return false;
+	}
+
+	if (/\byou\s+(?:two|three|four|five|all|both|guys|folks|officers|detectives)\b/i.test(trimmed)) {
+		return false;
+	}
+
+	if (/\b(?:missed|see|glad|welcome)\s+you\b/i.test(trimmed)) {
+		return true;
+	}
+
+	return /\byou\b.{0,48}\b(?:were|are|was|slipped|thought|looked|handled|came|did)\b/i.test(trimmed);
+}
+
+/** Dialogue uses a player name variant as the addressee — not titles like Captain. */
+export function dialogueAddressesPlayerByName(dialogue: string, playerName: string) {
 	const trimmed = dialogue.trim();
 	if (!trimmed) {
 		return false;
@@ -66,7 +116,18 @@ export function dialogueLooksAddressedToPlayer(dialogue: string, playerName: str
 		return false;
 	}
 
-	if (/\b(?:missed|see|glad|welcome|need|want|tell|asked|called)\s+you\b/i.test(trimmed)) {
+	if (new RegExp(`,\\s*(?:${pattern})\\b`, "i").test(trimmed)) {
+		return true;
+	}
+
+	if (new RegExp(`\\b(?:hey|hi|hello)\\s+(?:${pattern})\\b`, "i").test(trimmed)) {
+		return true;
+	}
+
+	if (
+		/\b(?:missed|see|glad|welcome)\s+you\b/i.test(trimmed) &&
+		variants.some((variant) => new RegExp(`\\b${escapeRegex(variant)}\\b`, "i").test(trimmed))
+	) {
 		return true;
 	}
 
@@ -75,60 +136,39 @@ export function dialogueLooksAddressedToPlayer(dialogue: string, playerName: str
 		!/\byou\s+(?:two|three|four|five|all|both|guys|folks|officers|detectives)\b/i.test(trimmed) &&
 		/\byou\b.{0,48}\b(?:were|are|was|slipped|thought|looked|handled|came|did)\b/i.test(trimmed)
 	) {
-		return true;
-	}
-
-	if (/\b(?:is|are)\s+(?:finally\s+)?back\b/i.test(trimmed) && !/\b(?:I'm|I am|we're|we are)\b/i.test(trimmed)) {
-		return true;
-	}
-
-	const firstName = normalizeSceneSpeakerLabel(playerName);
-	const vocativeMatch = trimmed.match(/,\s*([A-Z][a-zA-Z''-]+)\b[.!?"]?\s*$/);
-	if (vocativeMatch?.[1]) {
-		const vocative = vocativeMatch[1];
-		if (vocative.toLowerCase() !== firstName.toLowerCase() || /\byou\b/i.test(trimmed)) {
-			return true;
-		}
-	}
-
-	const surname = variants.length > 1 ? variants[variants.length - 1] : "";
-	if (surname && new RegExp(`\\b${escapeRegex(surname)}\\s+(?:Stare|stare|glare)\\b`, "i").test(trimmed)) {
-		return true;
-	}
-
-	if (new RegExp(`,\\s*(?:${pattern})\\b`, "i").test(trimmed)) {
-		return true;
-	}
-
-	if (new RegExp(`\\b(?:hey|hi|hello|so|well|look),?\\s+(?:${pattern})\\b`, "i").test(trimmed)) {
-		return true;
-	}
-
-	for (const variant of variants) {
-		const escaped = escapeRegex(variant);
-		if (new RegExp(`\\b${escaped}\\s+is\\b`, "i").test(trimmed)) {
-			return true;
-		}
-		if (new RegExp(`\\b${escaped}\\b`, "i").test(trimmed) && /\b(?:she|her|they|them)\b/i.test(trimmed)) {
-			return true;
-		}
+		return variants.some((variant) => new RegExp(`,\\s*${escapeRegex(variant)}\\b`, "i").test(trimmed));
 	}
 
 	return false;
 }
 
-/** Dialogue in the player's own voice (first-person experience, not third-person self-reference). */
-export function dialogueLooksLikePlayerVoice(dialogue: string, playerName: string) {
-	const trimmed = dialogue.trim();
-	if (!trimmed) {
-		return false;
+/** @deprecated use dialogueAddressesPlayerByName or dialogueReferencesPlayerInThirdPerson */
+export function dialogueLooksAddressedToPlayer(dialogue: string, playerName: string) {
+	return (
+		dialogueAddressesPlayerByName(dialogue, playerName) ||
+		dialogueAddressesPlayerBySecondPerson(dialogue) ||
+		dialogueReferencesPlayerInThirdPerson(dialogue, playerName)
+	);
+}
+
+export function dialogueLooksLikePlayerVoice(dialogue: string, _playerName?: string) {
+	return dialogueHasFirstPersonVoice(dialogue);
+}
+
+function dialogueDiscussesOtherCharacterInThirdPerson(dialogue: string, playerLabel: string) {
+	if (/\b(?:he|his|him|she|her|they|their)\b/i.test(dialogue)) {
+		return true;
 	}
 
-	if (!/\b(?:I|I'm|I've|I'd|I'll|my|myself|me)\b/i.test(trimmed)) {
-		return false;
+	const properSubject = dialogue.match(/\b([A-Z][a-zA-Z''-]+)\s+(?:is|was|are|were)\b/);
+	if (
+		properSubject?.[1] &&
+		properSubject[1].toLowerCase() !== playerLabel.toLowerCase()
+	) {
+		return true;
 	}
 
-	return !dialogueLooksAddressedToPlayer(trimmed, playerName);
+	return false;
 }
 
 export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName: string) {
@@ -149,15 +189,22 @@ export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName
 		return false;
 	}
 
-	if (dialogueLooksLikePlayerVoice(dialogue, playerName)) {
-		return false;
-	}
-
-	if (dialogueLooksAddressedToPlayer(dialogue, playerName)) {
+	if (dialogueReferencesPlayerInThirdPerson(dialogue, playerName)) {
 		return true;
 	}
 
-	if (/\b(?:she|her)\b/i.test(dialogue) && /\b(?:was|were|thought|slipped|handled)\b/i.test(dialogue)) {
+	if (dialogueAddressesPlayerByName(dialogue, playerName)) {
+		return true;
+	}
+
+	if (dialogueAddressesPlayerBySecondPerson(dialogue)) {
+		return true;
+	}
+
+	if (
+		!dialogueHasFirstPersonVoice(dialogue) &&
+		dialogueDiscussesOtherCharacterInThirdPerson(dialogue, playerLabel)
+	) {
 		return true;
 	}
 
@@ -171,4 +218,15 @@ export function stripMisattributedPlayerSpeakerLabel(line: string, playerName: s
 
 	const remainder = line.trim().replace(/^[^\n:]{1,64}:\s*/, "");
 	return remainder.trim();
+}
+
+export function countMisattributedPlayerSpeakerLines(text: string, playerName?: string | null) {
+	if (!playerName?.trim()) {
+		return 0;
+	}
+
+	return text
+		.replace(/\r\n/g, "\n")
+		.split("\n")
+		.filter((line) => speakerLineLooksLikeMisattributedPlayer(line, playerName)).length;
 }
