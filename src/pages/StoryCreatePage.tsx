@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
-import { Field, MultiUniversePicker, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
+import { Field, MultiUniversePicker, SelectInput, TextAreaInput, TextInput, AliasesInput } from "../components/forms/Fields";
 import { getUniverseIds } from "../lib/universeIds";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
@@ -11,6 +11,7 @@ import type { AIProviderType, PlayerCharacterDraft } from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
 import { resolveUpcomingChapterLabels } from "../lib/guidedChapterGeneration/chapterLabels";
+import { normalizePlayerCharacterAliases } from "../lib/playerCharacterPrompt";
 import type { GuidedChapterPlan } from "../lib/guidedChapterGeneration/types";
 
 const initialFormState = {
@@ -25,6 +26,7 @@ const initialFormState = {
 
 const initialQuickCharacterState: PlayerCharacterDraft = {
   name: "",
+  aliases: [],
   age: "",
   gender: "",
   species: "",
@@ -33,7 +35,6 @@ const initialQuickCharacterState: PlayerCharacterDraft = {
   appearance: "",
   personality: "",
   background: "",
-  goals: "",
   notes: "",
   universeId: "",
   universeIds: [],
@@ -370,7 +371,6 @@ export function StoryCreatePage() {
       "appearance",
       "personality",
       "background",
-      "goals",
       "notes",
     ];
 
@@ -624,6 +624,21 @@ export function StoryCreatePage() {
                 </Field>
               </div>
 
+              <div className="mt-6">
+                <Field label="Aliases" hint="Alternative names the AI should recognise">
+                  <AliasesInput
+                    value={normalizePlayerCharacterAliases(quickCharacterState.aliases)}
+                    disabled={isQuickGenerating || isSubmitting}
+                    onChange={(aliases) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        aliases,
+                      }))
+                    }
+                  />
+                </Field>
+              </div>
+
               <div className="mt-6 grid gap-6 md:grid-cols-2">
                 <Field label="Age">
                   <TextInput
@@ -715,20 +730,6 @@ export function StoryCreatePage() {
                     }
                   />
                 </Field>
-                <Field label="Goals">
-                  <TextAreaInput
-                    value={quickCharacterState.goals}
-                    onChange={(event) =>
-                      setQuickCharacterState((current) => ({
-                        ...current,
-                        goals: event.target.value,
-                      }))
-                    }
-                  />
-                </Field>
-              </div>
-
-              <div className="mt-6">
                 <Field label="Notes">
                   <TextAreaInput
                     value={quickCharacterState.notes}

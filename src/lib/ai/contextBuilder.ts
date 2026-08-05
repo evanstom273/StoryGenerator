@@ -23,6 +23,7 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
+import { formatPlayerCharacterAliasesForPrompt } from "../playerCharacterPrompt";
 import {
   formatAuthorDirectiveStateForPrompt,
   isAuthorDirectiveMessage,
@@ -194,6 +195,7 @@ export function buildStoryChatContext({
       universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,
       `Player Character: ${playerCharacter.name}`,
+      formatPlayerCharacterAliasesForPrompt(playerCharacter),
       playerCharacter.age.trim() ? `Player Age: ${playerCharacter.age.trim()}` : "",
       playerCharacter.gender.trim() ? `Player Gender: ${playerCharacter.gender.trim()}` : "",
       playerCharacter.species?.trim()
@@ -204,7 +206,6 @@ export function buildStoryChatContext({
         ? `Player Concept/Role: ${playerCharacter.characterConcept.trim()}`
         : "",
       playerCharacter.background.trim() ? `Player Background: ${playerCharacter.background.trim()}` : "",
-      playerCharacter.goals.trim() ? `Player Goals: ${playerCharacter.goals.trim()}` : "",
       playerCharacter.notes.trim() ? `Player Notes: ${playerCharacter.notes.trim()}` : "",
     ]
       .filter(Boolean)

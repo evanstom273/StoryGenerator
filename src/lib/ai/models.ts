@@ -1,4 +1,4 @@
-import type { AIProviderType } from "../../types/models";
+import type { AIModelRole, AIProviderType, AISettings } from "../../types/models";
 
 export interface ProviderModelOption {
   id: string;
@@ -67,6 +67,25 @@ export function getValidModel(providerType: AIProviderType, savedModel: string |
     return savedModel;
   }
   return DEFAULT_MODEL[providerType];
+}
+
+export function getAIModelForRole(
+	settings: AISettings,
+	providerType: AIProviderType,
+	role: AIModelRole = "story",
+): string | undefined {
+	const storyModel = settings.defaultModels?.[providerType];
+
+	switch (role) {
+		case "story":
+			return storyModel;
+		case "metachat":
+			return settings.metachatModels?.[providerType] ?? storyModel;
+		case "indexing":
+			return settings.indexingModels?.[providerType] ?? storyModel;
+		case "creation":
+			return settings.creationModels?.[providerType] ?? storyModel;
+	}
 }
 
 export interface ModelStreamConfig {

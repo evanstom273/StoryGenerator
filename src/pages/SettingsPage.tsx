@@ -12,8 +12,8 @@ import { UI_PREFS_KEYS, readStoredTextSize, writeStoredTextSize } from "../app/u
 import { useChangelog } from "../app/versioning/ChangelogContext";
 import { APP_NAME, APP_VERSION } from "../app/versioning/version";
 import { useTheme } from "../app/theming/ThemeContext";
-import type { AIProviderType } from "../types/models";
-import { getProviderDefaultModel, getProviderModels, getValidModel } from "../lib/ai/models";
+import type { AIModelRole, AIProviderType, AISettings } from "../types/models";
+import { getAIModelForRole, getProviderModels, getValidModel } from "../lib/ai/models";
 import { downloadFile } from "../lib/download";
 import {
 	AUTO_BACKUP_INTERVAL_OPTIONS_HOURS,
@@ -36,6 +36,67 @@ import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 import { TutorialSettingsTab } from "../components/settings/TutorialSettingsTab";
 import { AiDocumentGeneratorTab } from "../components/settings/AiDocumentGeneratorTab";
 import { ThemePicker } from "../components/settings/ThemePicker";
+
+const AI_PROVIDERS: AIProviderType[] = ["openai", "gemini", "openrouter", "anthropic"];
+
+const MODEL_ROLE_OPTIONS = [
+  {
+    role: "story" as const,
+    label: "Story Model",
+    hint: "Story generation, Director replies, Continue, guided chapters, and Story History",
+  },
+  {
+    role: "metachat" as const,
+    label: "MetaChat Model",
+    hint: "MetaChat only",
+  },
+  {
+    role: "indexing" as const,
+    label: "Indexing Model",
+    hint: "Indexing, archive rebuilding, summaries, relationships, world facts, and memories",
+  },
+  {
+    role: "creation" as const,
+    label: "Character & Universe Generation Model",
+    hint: "Player character generation, universe generation, and related creation tools",
+  },
+] as const;
+
+type ProviderModelMap = Record<AIProviderType, string>;
+type RoleModelMaps = Record<AIModelRole, ProviderModelMap>;
+
+function buildRoleModelMaps(settings: AISettings | null): RoleModelMaps {
+  const fallback: AISettings = {
+    id: "ai-settings",
+    activeProviderType: "openai",
+    apiKeys: {},
+    defaultModels: {},
+    createdAt: "",
+    updatedAt: "",
+  };
+  const source = settings ?? fallback;
+
+  const readRole = (role: AIModelRole): ProviderModelMap =>
+    Object.fromEntries(
+      AI_PROVIDERS.map((provider) => [
+        provider,
+        getValidModel(provider, getAIModelForRole(source, provider, role)),
+      ]),
+    ) as ProviderModelMap;
+
+  return {
+    story: readRole("story"),
+    metachat: readRole("metachat"),
+    indexing: readRole("indexing"),
+    creation: readRole("creation"),
+  };
+}
+
+function roleModelMapsEqual(left: RoleModelMaps, right: RoleModelMaps) {
+  return MODEL_ROLE_OPTIONS.every(({ role }) =>
+    AI_PROVIDERS.every((provider) => left[role][provider] === right[role][provider]),
+  );
+}
 
 function sanitizeFileStem(value: string) {
   return value
@@ -94,18 +155,7 @@ export function SettingsPage() {
   const [activeProviderType, setActiveProviderType] = useState<AIProviderType>(
     aiSettings?.activeProviderType ?? "openai",
   );
-  const [openaiModel, setOpenaiModel] = useState(
-    aiSettings?.defaultModels?.openai ?? getProviderDefaultModel("openai"),
-  );
-  const [geminiModel, setGeminiModel] = useState(
-    getValidModel("gemini", aiSettings?.defaultModels?.gemini),
-  );
-  const [openrouterModel, setOpenrouterModel] = useState(
-    aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
-  );
-  const [anthropicModel, setAnthropicModel] = useState(
-    aiSettings?.defaultModels?.anthropic ?? getProviderDefaultModel("anthropic"),
-  );
+  const [roleModels, setRoleModels] = useState<RoleModelMaps>(() => buildRoleModelMaps(aiSettings ?? null));
   const [openaiKeyInput, setOpenaiKeyInput] = useState("");
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
   const [openrouterKeyInput, setOpenrouterKeyInput] = useState("");
@@ -160,17 +210,18 @@ export function SettingsPage() {
 
   useEffect(() => {
     setActiveProviderType(aiSettings?.activeProviderType ?? "openai");
-    setOpenaiModel(
-      aiSettings?.defaultModels?.openai ?? getProviderDefaultModel("openai"),
-    );
-    setGeminiModel(getValidModel("gemini", aiSettings?.defaultModels?.gemini));
-    setOpenrouterModel(
-      aiSettings?.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter"),
-    );
-    setAnthropicModel(
-      aiSettings?.defaultModels?.anthropic ?? getProviderDefaultModel("anthropic"),
-    );
+    setRoleModels(buildRoleModelMaps(aiSettings ?? null));
   }, [aiSettings]);
+
+  function setProviderRoleModel(role: AIModelRole, provider: AIProviderType, model: string) {
+    setRoleModels((current) => ({
+      ...current,
+      [role]: {
+        ...current[role],
+        [provider]: model,
+      },
+    }));
+  }
 
   useEffect(() => {
     writeStoredTextSize(UI_PREFS_KEYS.textSize, textSize);
@@ -228,28 +279,21 @@ export function SettingsPage() {
 
       if (
         activeProviderType === aiSettings.activeProviderType &&
-        openaiModel === (aiSettings.defaultModels?.openai ?? getProviderDefaultModel("openai")) &&
-        geminiModel === (aiSettings.defaultModels?.gemini ?? getProviderDefaultModel("gemini")) &&
-        openrouterModel ===
-          (aiSettings.defaultModels?.openrouter ?? getProviderDefaultModel("openrouter")) &&
-        anthropicModel ===
-          (aiSettings.defaultModels?.anthropic ?? getProviderDefaultModel("anthropic"))
+        roleModelMapsEqual(roleModels, buildRoleModelMaps(aiSettings))
       ) {
         return;
       }
 
       void saveAISettings({
         activeProviderType,
-        defaultModels: {
-          openai: openaiModel,
-          gemini: geminiModel,
-          openrouter: openrouterModel,
-          anthropic: anthropicModel,
-        },
+        defaultModels: roleModels.story,
+        metachatModels: roleModels.metachat,
+        indexingModels: roleModels.indexing,
+        creationModels: roleModels.creation,
       }).catch(() => {});
     },
     800,
-    [aiSettings, isSaving, activeProviderType, openaiModel, geminiModel, openrouterModel, anthropicModel],
+    [aiSettings, isSaving, activeProviderType, roleModels],
   );
 
   useDebouncedEffect(
@@ -275,12 +319,10 @@ export function SettingsPage() {
           openrouter: openrouterKey ? openrouterKey : undefined,
           anthropic: anthropicKey ? anthropicKey : undefined,
         },
-        defaultModels: {
-          openai: openaiModel,
-          gemini: geminiModel,
-          openrouter: openrouterModel,
-          anthropic: anthropicModel,
-        },
+        defaultModels: roleModels.story,
+        metachatModels: roleModels.metachat,
+        indexingModels: roleModels.indexing,
+        creationModels: roleModels.creation,
       })
         .then(() => {
           setOpenaiKeyInput("");
@@ -299,10 +341,7 @@ export function SettingsPage() {
     [
       isSaving,
       activeProviderType,
-      openaiModel,
-      geminiModel,
-      openrouterModel,
-      anthropicModel,
+      roleModels,
       openaiKeyInput,
       geminiKeyInput,
       openrouterKeyInput,
@@ -336,12 +375,10 @@ export function SettingsPage() {
           openrouter: openrouterKeyInput.trim() ? openrouterKeyInput : undefined,
           anthropic: anthropicKeyInput.trim() ? anthropicKeyInput : undefined,
         },
-        defaultModels: {
-          openai: openaiModel,
-          gemini: geminiModel,
-          openrouter: openrouterModel,
-          anthropic: anthropicModel,
-        },
+        defaultModels: roleModels.story,
+        metachatModels: roleModels.metachat,
+        indexingModels: roleModels.indexing,
+        creationModels: roleModels.creation,
       });
       setOpenaiKeyInput("");
       setGeminiKeyInput("");
@@ -729,8 +766,6 @@ export function SettingsPage() {
                 id: "openai" as const,
                 label: "OpenAI",
                 configured: openaiConfigured,
-                model: openaiModel,
-                setModel: setOpenaiModel,
                 keyInput: openaiKeyInput,
                 setKeyInput: setOpenaiKeyInput,
                 placeholder: "sk-...",
@@ -739,8 +774,6 @@ export function SettingsPage() {
                 id: "gemini" as const,
                 label: "Gemini",
                 configured: geminiConfigured,
-                model: geminiModel,
-                setModel: setGeminiModel,
                 keyInput: geminiKeyInput,
                 setKeyInput: setGeminiKeyInput,
                 placeholder: "AIza...",
@@ -749,8 +782,6 @@ export function SettingsPage() {
                 id: "openrouter" as const,
                 label: "OpenRouter",
                 configured: openrouterConfigured,
-                model: openrouterModel,
-                setModel: setOpenrouterModel,
                 keyInput: openrouterKeyInput,
                 setKeyInput: setOpenrouterKeyInput,
                 placeholder: "sk-or-...",
@@ -759,8 +790,6 @@ export function SettingsPage() {
                 id: "anthropic" as const,
                 label: "Anthropic",
                 configured: anthropicConfigured,
-                model: anthropicModel,
-                setModel: setAnthropicModel,
                 keyInput: anthropicKeyInput,
                 setKeyInput: setAnthropicKeyInput,
                 placeholder: "sk-ant-...",
@@ -775,16 +804,20 @@ export function SettingsPage() {
                 </Badge>
               </div>
               <div className="mt-3 space-y-3">
-                <Field label="Default Model">
-                  <SelectInput
-                    value={provider.model}
-                    onChange={(event) => provider.setModel(event.target.value)}
-                  >
-                    {getProviderModels(provider.id).map((model) => (
-                      <option key={model.id} value={model.id}>{model.label}</option>
-                    ))}
-                  </SelectInput>
-                </Field>
+                {MODEL_ROLE_OPTIONS.map(({ role, label, hint }) => (
+                  <Field key={role} label={label} hint={hint}>
+                    <SelectInput
+                      value={roleModels[role][provider.id]}
+                      onChange={(event) =>
+                        setProviderRoleModel(role, provider.id, event.target.value)
+                      }
+                    >
+                      {getProviderModels(provider.id).map((model) => (
+                        <option key={model.id} value={model.id}>{model.label}</option>
+                      ))}
+                    </SelectInput>
+                  </Field>
+                ))}
                 <Field label="API Key" hint={provider.configured ? "Saved locally" : "Required"}>
                   <TextInput
                     type="password"

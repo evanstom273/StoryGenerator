@@ -82,6 +82,7 @@ export interface Universe {
 export interface PlayerCharacter {
   id: EntityId;
   name: string;
+  aliases?: string[];
   age: string;
   gender: string;
   species: string;
@@ -286,11 +287,20 @@ export interface GeminiNarrationTtsSettings {
   model: string;
 }
 
+export type AIModelRole = "story" | "metachat" | "indexing" | "creation";
+
 export interface AISettings {
   id: "ai-settings";
   activeProviderType: AIProviderType;
   apiKeys: Partial<Record<AIProviderType, string>>;
+  /** Story generation, Director, Continue, guided chapters, Story History */
   defaultModels: Partial<Record<AIProviderType, string>>;
+  /** MetaChat only */
+  metachatModels?: Partial<Record<AIProviderType, string>>;
+  /** Deep indexing, summaries, relationship extraction, memories */
+  indexingModels?: Partial<Record<AIProviderType, string>>;
+  /** Character/universe generation and related creation tools */
+  creationModels?: Partial<Record<AIProviderType, string>>;
   geminiPodcastTts?: GeminiPodcastTtsSettings;
   geminiNarrationTts?: GeminiNarrationTtsSettings;
   createdAt: Timestamp;
@@ -657,6 +667,7 @@ export interface UniverseDraft {
 
 export interface PlayerCharacterDraft {
   name: string;
+  aliases?: string[];
   age: string;
   gender: string;
   species: string;
@@ -665,7 +676,7 @@ export interface PlayerCharacterDraft {
   appearance: string;
   personality: string;
   background: string;
-  goals: string;
+  goals?: string;
   notes: string;
   universeId: EntityId;
   universeIds?: EntityId[];

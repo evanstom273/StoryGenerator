@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { PlayerCharacter } from "../../types/models";
 import { formatDate } from "../../lib/dates";
+import { normalizePlayerCharacterAliases } from "../../lib/playerCharacterPrompt";
 import { Badge } from "../ui/Badge";
 import { Panel } from "../ui/Panel";
 
@@ -38,10 +39,10 @@ export function CharacterCard({
       <dl className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>
           <dt className="text-xs uppercase tracking-[0.18em] text-ink-muted">
-            Goals
+            Aliases
           </dt>
           <dd className="mt-1 text-sm text-ink-soft">
-            {character.goals || "Not specified"}
+            {normalizePlayerCharacterAliases(character.aliases).join(", ") || "None"}
           </dd>
         </div>
         <div>

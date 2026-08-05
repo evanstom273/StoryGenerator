@@ -7,9 +7,20 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "3.1.0";
+export const APP_VERSION = "3.2.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "3.2.0": {
+    title: "Character Aliases & AI Model Roles",
+    releasedAt: "2026-08-04T23:59:59+00:00",
+    added: [
+      "Player character Aliases field for nicknames, titles, surnames, and other names the AI should recognise in story prompts",
+      "Settings → AI now has independent Story, MetaChat, Indexing, and Character & Universe Generation model selectors per provider",
+      "Existing story model settings migrate into Story Model on upgrade; the other three roles default to Story Model until changed",
+    ],
+    fixed: [],
+    knownIssues: [],
+  },
   "3.1.0": {
     title: "Guided Chapter Generation, Story Audiobook & Archive Export",
     releasedAt: "2026-08-04T13:05:59+00:00",

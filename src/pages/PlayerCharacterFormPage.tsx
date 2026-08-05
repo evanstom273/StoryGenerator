@@ -2,17 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
-import { Field, MultiUniversePicker, TextAreaInput, TextInput } from "../components/forms/Fields";
+import { Field, MultiUniversePicker, TextAreaInput, TextInput, AliasesInput } from "../components/forms/Fields";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { SparklesIcon } from "../components/icons";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import type { PlayerCharacterDraft } from "../types/models";
 import { parseUniverseIdsParam } from "../lib/universeIds";
+import { normalizePlayerCharacterAliases } from "../lib/playerCharacterPrompt";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 
 const initialFormState: PlayerCharacterDraft = {
   name: "",
+  aliases: [],
   age: "",
   gender: "",
   species: "",
@@ -21,7 +23,6 @@ const initialFormState: PlayerCharacterDraft = {
   appearance: "",
   personality: "",
   background: "",
-  goals: "",
   notes: "",
   universeId: "",
   universeIds: [],
@@ -70,6 +71,7 @@ export function PlayerCharacterFormPage() {
 
     setFormState({
       name: existingCharacter.name,
+      aliases: normalizePlayerCharacterAliases(existingCharacter.aliases),
       age: existingCharacter.age,
       gender: existingCharacter.gender,
       species: existingCharacter.species ?? "",
@@ -78,7 +80,6 @@ export function PlayerCharacterFormPage() {
       appearance: existingCharacter.appearance,
       personality: existingCharacter.personality,
       background: existingCharacter.background,
-      goals: existingCharacter.goals,
       notes: existingCharacter.notes,
       universeId: existingCharacter.universeId,
       universeIds: existingCharacter.universeIds?.length
@@ -107,6 +108,7 @@ export function PlayerCharacterFormPage() {
     [
       existingCharacter?.id,
       formState.name,
+      formState.aliases?.join("|"),
       formState.age,
       formState.gender,
       formState.species,
@@ -115,7 +117,6 @@ export function PlayerCharacterFormPage() {
       formState.appearance,
       formState.personality,
       formState.background,
-      formState.goals,
       formState.notes,
       formState.universeId,
       formState.universeIds?.join("|"),
@@ -235,7 +236,6 @@ export function PlayerCharacterFormPage() {
       "appearance",
       "personality",
       "background",
-      "goals",
       "notes",
     ];
 
@@ -329,6 +329,19 @@ export function PlayerCharacterFormPage() {
                     ...currentState,
                     universeIds,
                     universeId: universeIds[0] ?? "",
+                  }))
+                }
+              />
+            </Field>
+
+            <Field label="Aliases" hint="Alternative names the AI should recognise">
+              <AliasesInput
+                value={normalizePlayerCharacterAliases(formState.aliases)}
+                disabled={isGenerating || isSubmitting}
+                onChange={(aliases) =>
+                  setFormState((currentState) => ({
+                    ...currentState,
+                    aliases,
                   }))
                 }
               />
@@ -457,22 +470,6 @@ export function PlayerCharacterFormPage() {
                 setFormState((currentState) => ({
                   ...currentState,
                   background: event.target.value,
-                }))
-              }
-            />
-          </Field>
-
-          <Field
-            label="Goals"
-            hint={resolveFieldHint(formState.goals)}
-            action={renderFieldRandomizeAction(["goals"])}
-          >
-            <TextAreaInput
-              value={formState.goals}
-              onChange={(event) =>
-                setFormState((currentState) => ({
-                  ...currentState,
-                  goals: event.target.value,
                 }))
               }
             />
