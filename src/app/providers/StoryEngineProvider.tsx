@@ -898,6 +898,8 @@ type StreamedTranscriptRewritePrompts = {
 	sceneState: string;
 };
 
+const STREAM_VALIDATION_MAX_REWRITES = 10;
+
 async function resolveStreamedAssistantTranscript(args: {
 	initialText: string;
 	latestUserMessage: string;
@@ -931,7 +933,7 @@ async function resolveStreamedAssistantTranscript(args: {
 		scene_state: args.rewritePrompts.sceneState,
 	};
 
-	for (let attempt = 0; attempt < 6; attempt += 1) {
+	for (let attempt = 0; attempt <= STREAM_VALIDATION_MAX_REWRITES; attempt += 1) {
 		const validation = validateAssistantTranscriptForSave({
 			text: candidateAssistantText,
 			latestUserMessage: args.latestUserMessage,
@@ -978,7 +980,7 @@ async function resolveStreamedAssistantTranscript(args: {
 
 		const stage = validation.stage;
 
-		if (!stage || stage === "insubstantial" || attempt >= 5) {
+		if (!stage || stage === "insubstantial" || attempt >= STREAM_VALIDATION_MAX_REWRITES) {
 			break;
 		}
 
@@ -1024,8 +1026,8 @@ async function resolveStreamedAssistantTranscript(args: {
 			{
 				providerName: args.providerType,
 				model: args.model,
-				attempts: 6,
-				maxAttempts: 6,
+				attempts: STREAM_VALIDATION_MAX_REWRITES,
+				maxAttempts: STREAM_VALIDATION_MAX_REWRITES,
 				stage: "validation",
 			},
 		),
