@@ -5141,7 +5141,6 @@ export function StoryEngineProvider({
           formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, false),
           "Never narrate actions/thoughts for the player character.",
           "Remove any repetition of the latest player message.",
-          "Never use narrator labels like 'Narrator:' anywhere in the output.",
           "Keep continuity, character voice, and natural pacing.",
           "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
           "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
@@ -5151,7 +5150,9 @@ export function StoryEngineProvider({
           "- Actions must be wrapped as *...* (asterisks only for actions).",
           '- Dialogue must be wrapped in double quotes like \"...\"',
           "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+          "- Narration must use the format: Narrator: *prose text.*",
+          "- Every paragraph must begin with either a character name followed by a colon or 'Narrator:' followed by narration in *...*.",
+          "- Assign each speaker only their own dialogue and actions. Never label another character's line with the player character's name.",
           "Mystery rule:",
           "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
           "Information ownership rule:",
@@ -5185,8 +5186,9 @@ export function StoryEngineProvider({
           "- Actions must be wrapped as *...* (asterisks only for actions).",
           '- Dialogue must be wrapped in double quotes like \"...\"',
           "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
-          "Never use narrator labels like 'Narrator:' anywhere in the output.",
+          "- Narration must use the format: Narrator: *prose text.*",
+          "- Every paragraph must begin with either a character name followed by a colon or 'Narrator:' followed by narration in *...*.",
+          "- Assign each speaker only their own dialogue and actions. Never label another character's line with the player character's name.",
           "Never use asterisks for emphasis.",
         ].join("\n");
 
@@ -5205,8 +5207,9 @@ export function StoryEngineProvider({
           "- Actions must be wrapped as *...* (asterisks only for actions).",
           '- Dialogue must be wrapped in double quotes like \"...\"',
           "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-          "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
-          "Never use narrator labels like 'Narrator:' anywhere in the output.",
+          "- Narration must use the format: Narrator: *prose text.*",
+          "- Every paragraph must begin with either a character name followed by a colon or 'Narrator:' followed by narration in *...*.",
+          "- Assign each speaker only their own dialogue and actions. Never label another character's line with the player character's name.",
           "Never use asterisks for emphasis.",
           "Ownership rules:",
           formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
@@ -5350,7 +5353,10 @@ export function StoryEngineProvider({
             latestUserMessage: previousMessage.content,
             playerName: playerNameForValidation,
           });
-          if (isSubstantialTranscriptText(fallbackSanitized.text)) {
+          if (
+            isSubstantialTranscriptText(fallbackSanitized.text) &&
+            !fallbackSanitized.needsSpeakerAttributionRewrite
+          ) {
             finalSanitizedText = fallbackSanitized.text;
             lastValidationDiagnostic = [
               lastValidationDiagnostic,
@@ -6814,7 +6820,6 @@ export function StoryEngineProvider({
             allowDirectedPlayerControl
               ? "Do not treat the Director note itself as dialogue spoken by the player character."
               : "Remove any repetition of the latest player message.",
-            "Never use narrator labels like 'Narrator:' anywhere in the output.",
             "Keep continuity, character voice, and natural pacing.",
             allowDirectedPlayerControl
               ? "Do not repeat the Director note verbatim. Realize it as scene content and continue from the next beat."
@@ -6826,7 +6831,9 @@ export function StoryEngineProvider({
             "- Actions must be wrapped as *...* (asterisks only for actions).",
             '- Dialogue must be wrapped in double quotes like "..."',
             "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-            "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
+            "- Narration must use the format: Narrator: *prose text.*",
+          "- Every paragraph must begin with either a character name followed by a colon or 'Narrator:' followed by narration in *...*.",
+          "- Assign each speaker only their own dialogue and actions. Never label another character's line with the player character's name.",
             "Mystery rule:",
             "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
             "Information ownership rule:",
@@ -6860,8 +6867,9 @@ export function StoryEngineProvider({
             "- Actions must be wrapped as *...* (asterisks only for actions).",
             '- Dialogue must be wrapped in double quotes like \"...\"',
             "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-            "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
-            "Never use narrator labels like 'Narrator:' anywhere in the output.",
+            "- Narration must use the format: Narrator: *prose text.*",
+          "- Every paragraph must begin with either a character name followed by a colon or 'Narrator:' followed by narration in *...*.",
+          "- Assign each speaker only their own dialogue and actions. Never label another character's line with the player character's name.",
             "Never use asterisks for emphasis.",
           ].join("\n");
 
@@ -6880,8 +6888,9 @@ export function StoryEngineProvider({
             "- Actions must be wrapped as *...* (asterisks only for actions).",
             '- Dialogue must be wrapped in double quotes like \"...\"',
             "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-            "- Narration is italic prose with no speaker label. Do not wrap narration in *...*.",
-            "Never use narrator labels like 'Narrator:' anywhere in the output.",
+            "- Narration must use the format: Narrator: *prose text.*",
+          "- Every paragraph must begin with either a character name followed by a colon or 'Narrator:' followed by narration in *...*.",
+          "- Assign each speaker only their own dialogue and actions. Never label another character's line with the player character's name.",
             "Never use asterisks for emphasis.",
             "Ownership rules:",
             formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
@@ -7119,7 +7128,10 @@ export function StoryEngineProvider({
               latestUserMessage: userMessage.content,
               playerName: playerNameForValidation,
             });
-            if (isSubstantialTranscriptText(fallbackSanitized.text)) {
+            if (
+            isSubstantialTranscriptText(fallbackSanitized.text) &&
+            !fallbackSanitized.needsSpeakerAttributionRewrite
+          ) {
               finalSanitizedText = fallbackSanitized.text;
               lastValidationDiagnostic = [
                 lastValidationDiagnostic,

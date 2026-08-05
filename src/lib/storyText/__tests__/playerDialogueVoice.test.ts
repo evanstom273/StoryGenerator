@@ -116,18 +116,17 @@ describe("bullpen speaker repair", () => {
 		expect(violation?.rule).toBe("dialogue-addresses-player");
 	});
 
-	it("sanitized bullpen scene no longer reads as five Rebecca speakers", () => {
+	it("sanitized bullpen scene flags misattribution without stripping speaker labels", () => {
 		const result = sanitizeAssistantTranscript({
 			text: ALL_REBECCA_BULLPEN,
 			playerName: "Rebecca Alvarez",
 		});
 
-		const rebeccaSpeakerLines = result.text
-			.split("\n")
-			.filter((line) => /^Rebecca:\s/.test(line.trim()));
-		expect(rebeccaSpeakerLines.length).toBeLessThanOrEqual(1);
 		expect(result.needsSpeakerAttributionRewrite).toBe(true);
-		expect(result.text).toContain('*smiles warmly and nods in agreement.* "We really missed you around here, Alvarez.');
+		expect(result.formatValid).toBe(false);
+		expect(result.text).toContain(
+			'Rebecca: *smiles warmly and nods in agreement.* "We really missed you around here, Alvarez.',
+		);
 		expect(result.text).toContain(
 			'Rebecca: *picks up her mug and leans casually against the edge of the lectern.* "Honestly? The undercover part was easy.',
 		);

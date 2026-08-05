@@ -1,20 +1,7 @@
 import { normalizeSceneSpeakerLabel } from "./speakerLabels";
-import {
-	countMisattributedPlayerSpeakerLines,
-	dialogueAddressesPlayerByName,
-	dialogueAddressesPlayerBySecondPerson,
-	dialogueHasFirstPersonVoice,
-	dialogueReferencesPlayerInThirdPerson,
-	extractQuotedDialogue,
-} from "./playerDialogueVoice";
+import { countMisattributedPlayerSpeakerLines } from "./playerDialogueVoice";
 
 const SPEAKER_LINE = /^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/;
-
-const ORPHAN_ACTION_LINE =
-	/^(?:\*([^*]+)\*|([a-z][a-zA-Z''-]*(?:\s+[a-z][a-zA-Z''-]*){0,12}))\.?$/;
-
-const IMPLIED_SUBJECT_START =
-	/^(?:\*?)(?:steps|walks|turns|glances|looks|moves|crosses|places|sets|picks|reaches|leans|nods|shakes|smiles|flicks|gives|adjusts|flashes|slumps|hastily|quietly|strains|whispers|slides|slams|uncaps|lets|sets)\b/i;
 
 function normalizeNewlines(text: string) {
 	return text.replace(/\r\n/g, "\n");
@@ -31,37 +18,57 @@ function wrapAction(value: string) {
 	return `*${trimmed}*`;
 }
 
-function resolveOrphanSpeakerLabel(
-	line: string,
-	_lastSpeaker: string | null,
-	playerName?: string | null,
-) {
-	const trimmed = line.trim();
+/** Split run-on lines where multiple speaker headers appear on one physical line. */
+export function repairInlineSpeakerBoundaries(text: string) {
+	return normalizeNewlines(text).replace(
+		/([.!?…*])\s+((?:[A-Z][a-zA-Z''-]{0,30}|Narrator)):\s+/g,
+		(full, punct, name, offset, source) => {
+			const before = source.slice(Math.max(0, offset - 48), offset);
+			if (/["“”'‘’][^"“”'‘’]*$/.test(before)) {
+				return full;
+			}
+			return `${punct}\n\n${name}: `;
+		},
+	);
+}
+
+const ORPHAN_ACTION_LINE =
+	/^(?:\*([^*]+)\*|([a-z][a-zA-Z''-]*(?:\s+[a-z][a-zA-Z''-]*){0,12}))\.?$/;
+
+const IMPLIED_SUBJECT_START =
+	/^(?:\*?)(?:steps|walks|turns|glances|looks|moves|crosses|places|sets|picks|reaches|leans|nods|shakes|smiles|flicks|gives|adjusts|flashes|slumps|hastily|quietly|strains|whispers|slides|slams|uncaps|lets|sets)\b/i;
+
+/** Assign player label only to unlabeled implied-subject action lines without dialogue. */
+export function repairPlayerOrphanActionLines(text: string, playerName?: string | null) {
 	const playerLabel = playerName?.trim() ? normalizeSceneSpeakerLabel(playerName) : null;
-	const dialogue = extractQuotedDialogue(trimmed);
-	const hasDialogue = dialogue.length > 0;
+	if (!playerLabel) {
+		return text;
+	}
 
-	if (hasDialogue) {
-		if (!playerLabel || !dialogueHasFirstPersonVoice(dialogue)) {
-			return null;
+	const lines = normalizeNewlines(text).split("\n");
+	const output: string[] = [];
+
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (!trimmed || /^[^\n:]{1,64}:\s/.test(trimmed) || /"[^"]+"/.test(trimmed)) {
+			output.push(line);
+			continue;
 		}
 
+		const orphanMatch = trimmed.match(ORPHAN_ACTION_LINE);
+		const actionText = orphanMatch?.[1] ?? orphanMatch?.[2] ?? trimmed.replace(/^\*+|\*+$/g, "");
 		if (
-			dialogueReferencesPlayerInThirdPerson(dialogue, playerName ?? "") ||
-			dialogueAddressesPlayerByName(dialogue, playerName ?? "") ||
-			dialogueAddressesPlayerBySecondPerson(dialogue)
+			actionText.trim() &&
+			IMPLIED_SUBJECT_START.test(actionText.replace(/^\*+|\*+$/g, ""))
 		) {
-			return null;
+			output.push(`${playerLabel}: ${wrapAction(actionText)}`);
+			continue;
 		}
 
-		return playerLabel;
+		output.push(line);
 	}
 
-	if (playerLabel && IMPLIED_SUBJECT_START.test(trimmed.replace(/^\*+|\*+$/g, ""))) {
-		return playerLabel;
-	}
-
-	return null;
+	return output.join("\n");
 }
 
 export function countUnlabeledCharacterDialogueLines(text: string) {
@@ -175,81 +182,18 @@ export function repairMissingActionSubjects(text: string, playerName?: string | 
 	return text.replace(/\bBefore can take\b/gi, `Before ${subject} can take`);
 }
 
-/** Attribute orphan implied-subject action lines to the player or previous speaker. */
-export function repairOrphanActionLines(text: string, playerName?: string | null) {
-	const lines = normalizeNewlines(text).split("\n");
-	const output: string[] = [];
-	let lastSpeaker: string | null = null;
-
-	for (const line of lines) {
-		const trimmed = line.trim();
-		if (!trimmed) {
-			output.push("");
-			continue;
-		}
-
-		if (trimmed === "---" || trimmed === "***") {
-			output.push(trimmed);
-			lastSpeaker = null;
-			continue;
-		}
-
-		const speakerMatch = trimmed.match(SPEAKER_LINE);
-		if (speakerMatch?.[1]) {
-			lastSpeaker = normalizeSceneSpeakerLabel(speakerMatch[1].trim());
-			output.push(line);
-			continue;
-		}
-
-		const orphanMatch = trimmed.match(ORPHAN_ACTION_LINE);
-		const looksLikeOrphanAction =
-			Boolean(orphanMatch) ||
-			(!trimmed.startsWith('"') &&
-				!trimmed.startsWith("*Narrator") &&
-				!/^Narrator\s*(?::|\s[-—])/i.test(trimmed) &&
-				IMPLIED_SUBJECT_START.test(trimmed));
-
-		if (looksLikeOrphanAction) {
-			const actionText = orphanMatch?.[1] ?? orphanMatch?.[2] ?? trimmed.replace(/^\*+|\*+$/g, "");
-			const speaker = resolveOrphanSpeakerLabel(trimmed, lastSpeaker, playerName);
-			if (speaker && actionText.trim()) {
-				output.push(`${speaker}: ${wrapAction(actionText)}`);
-				lastSpeaker = speaker;
-				continue;
-			}
-		}
-
-		const orphanDialogue = extractQuotedDialogue(trimmed);
-		if (
-			orphanDialogue &&
-			playerName?.trim() &&
-			!trimmed.match(SPEAKER_LINE)
-		) {
-			const speaker = resolveOrphanSpeakerLabel(trimmed, lastSpeaker, playerName);
-			if (speaker) {
-				output.push(`${speaker}: ${trimmed}`);
-				lastSpeaker = speaker;
-				continue;
-			}
-		}
-
-		output.push(line);
-	}
-
-	return output.join("\n");
-}
-
 export function repairMalformedTranscriptFormat(
 	text: string,
 	options: { playerName?: string | null } = {},
 ) {
 	let next = text;
+	next = repairInlineSpeakerBoundaries(next);
 	next = repairSpeakerLabelEmDash(next);
 	next = repairMalformedNarratorLines(next);
 	next = repairStrayAsteriskArtifacts(next);
 	next = repairSpeakerEmbeddedActions(next);
 	next = repairMissingActionSubjects(next, options.playerName);
-	next = repairOrphanActionLines(next, options.playerName);
+	next = repairPlayerOrphanActionLines(next, options.playerName);
 	return next;
 }
 
