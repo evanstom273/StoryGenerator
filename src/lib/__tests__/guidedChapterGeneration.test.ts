@@ -7,6 +7,7 @@ import {
 	formatGuidedChapterContinuityNotes,
 } from "../guidedChapterGeneration/guidedChapterContinuity";
 import { findReusableChapterStartMessage } from "../guidedChapterGeneration/chapterStart";
+import { buildGuidedChapterSetupSnapshot } from "../guidedChapterGeneration/setupSnapshot";
 import { resolveUpcomingChapterLabels } from "../guidedChapterGeneration/chapterLabels";
 import { getGuidedChapterProgressPercent } from "../guidedChapterGeneration/guidedGenerationProgress";
 import type { Story, StoryChapter, StoryMessage } from "../../types/models";
@@ -540,5 +541,38 @@ describe("guidedChapterGeneration", () => {
 		expect(isIncompleteDirectorBeat("*An hour later the bullpen winds down. Jamie, Jake, Amy, Rosa, T.*")).toBe(
 			true,
 		);
+	});
+
+	it("builds a persisted chapter setup snapshot from guided plan data", () => {
+		const snapshot = buildGuidedChapterSetupSnapshot({
+			plan: {
+				overallDirection: "Continue the undercover assignment.",
+				chapters: [
+					{
+						label: "Chapter II",
+						overview: "Scene I: Jamie meets Kelly.\nScene II: Jamie tours the bridge.",
+						scenesPerChapter: 2,
+					},
+				],
+			},
+			chapter: {
+				label: "Chapter II",
+				overview: "Scene I: Jamie meets Kelly.\nScene II: Jamie tours the bridge.",
+				scenesPerChapter: 2,
+			},
+			chapterOverview: "Scene I: Jamie meets Kelly.\nScene II: Jamie tours the bridge.",
+			entry: "workspace",
+			jobId: "job-1",
+			generatedAt: "2026-08-05T02:00:00.000Z",
+		});
+
+		expect(snapshot.chapterLabel).toBe("Chapter II");
+		expect(snapshot.overallDirection).toBe("Continue the undercover assignment.");
+		expect(snapshot.scenes).toEqual([
+			{ label: "Scene I", overview: "Jamie meets Kelly." },
+			{ label: "Scene II", overview: "Jamie tours the bridge." },
+		]);
+		expect(snapshot.entry).toBe("workspace");
+		expect(snapshot.jobId).toBe("job-1");
 	});
 });
