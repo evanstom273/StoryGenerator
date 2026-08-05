@@ -1,6 +1,24 @@
 import type { AIProviderType, Universe } from "../../types/models";
 import { formatUniverseWikiSources } from "../universeSources";
 
+export type CharacterConceptConstraintField =
+	| "name"
+	| "age"
+	| "gender"
+	| "species"
+	| "pronouns"
+	| "appearance"
+	| "personality"
+	| "background"
+	| "notes"
+	| "aliases";
+
+export interface CharacterConceptGeneratorInput {
+	universe?: Universe | null;
+	importedLoreText?: string;
+	existing?: Partial<Record<CharacterConceptConstraintField, string>>;
+}
+
 export type PlayerCharacterField =
   | "name"
   | "age"
@@ -82,6 +100,75 @@ export function buildCharacterGeneratorSystemPrompt({
     "",
     lockedBlock,
   ].join("\n");
+}
+
+function buildUniverseContextBlock(universe: Universe, importedLoreText?: string) {
+	const loreBlock = importedLoreText?.trim()
+		? `Imported Lore (reference only):\n${importedLoreText.trim()}`
+		: "No imported lore is available.";
+
+	return [
+		`Universe Name: ${universe.name}`,
+		universe.description.trim() ? `Universe Description: ${universe.description.trim()}` : "",
+		universe.concept?.trim() ? `Universe Concept: ${universe.concept.trim()}` : "",
+		universe.genreTheme?.trim() ? `Genre/Theme: ${universe.genreTheme.trim()}` : "",
+		universe.tone?.trim() ? `Tone: ${universe.tone.trim()}` : "",
+		formatUniverseWikiSources(universe).length
+			? `Universe Sources:\n${formatUniverseWikiSources(universe).join("\n")}`
+			: "",
+		loreBlock,
+	]
+		.filter(Boolean)
+		.join("\n");
+}
+
+export function normalizeGeneratedCharacterConcept(text: string) {
+	const trimmed = text.trim().replace(/^```[\w]*\n?|```$/g, "").trim();
+	if (
+		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+		(trimmed.startsWith("'") && trimmed.endsWith("'"))
+	) {
+		return trimmed.slice(1, -1).trim();
+	}
+	return trimmed;
+}
+
+export function buildCharacterConceptGeneratorSystemPrompt({
+	universe,
+	importedLoreText,
+	existing,
+}: CharacterConceptGeneratorInput) {
+	const constraintLines = existing
+		? Object.entries(existing)
+				.filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+				.map(([key, value]) => `${key}: ${(value as string).trim()}`)
+		: [];
+
+	const constraintsBlock = constraintLines.length
+		? ["Existing character fields (authoritative constraints; do not contradict):", ...constraintLines].join(
+				"\n",
+			)
+		: "No existing character fields were provided.";
+
+	const universeBlock = universe
+		? buildUniverseContextBlock(universe, importedLoreText)
+		: "No universe is selected. Invent an original, broadly appealing character concept that could fit many settings.";
+
+	return [
+		"You are a creative writing assistant generating a Character Concept for a roleplay character.",
+		"Output a single concise character concept only: a writing prompt or character pitch, not a biography.",
+		"Keep it to 2–4 sentences. Focus on vibe, role, core tension, and what makes them fun to play.",
+		"Do not write appearance lists, backstory timelines, or stat blocks.",
+		"Do not contradict any provided character constraints.",
+		"If a universe is provided, make the concept authentic to that setting.",
+		"If no universe is provided, keep the concept original and setting-flexible.",
+		"Return plain text only. No markdown. No JSON. No headings. No commentary.",
+		"Asterisks are reserved for actions in story text; do not use asterisks for emphasis.",
+		"",
+		universeBlock,
+		"",
+		constraintsBlock,
+	].join("\n");
 }
 
 export function getCharacterGeneratorProviderHint(providerType: AIProviderType) {
