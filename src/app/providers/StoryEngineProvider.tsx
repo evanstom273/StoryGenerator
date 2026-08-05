@@ -127,14 +127,9 @@ import {
 } from "../../lib/metaChatReferences";
 import { isGlobalMetaChatScope } from "../../lib/metaChatScope";
 import {
-  getPlayerCharacterAuthorshipViolation,
-} from "../../lib/storyText/playerProtection";
-import {
-  detectSceneStateRenarration,
-  isSubstantialTranscriptText,
-  sanitizeAssistantTranscript,
   normalizeTranscriptForDisplay,
-  shouldAcceptRepairedTranscriptDespiteFormatIssues,
+  validateAssistantTranscriptForSave,
+  type AssistantTranscriptValidationStage,
 } from "../../lib/storyText/transcriptSanitizer";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
@@ -893,6 +888,125 @@ async function generateResponseWithRetry(params: {
       maxAttempts,
     }),
   );
+}
+
+type StreamedTranscriptRewritePrompts = {
+	format: string;
+	ownership: string;
+	hiddenDialogue: string;
+	sceneState: string;
+};
+
+async function resolveStreamedAssistantTranscript(args: {
+	initialText: string;
+	latestUserMessage: string;
+	playerName: string;
+	allowDirectedPlayerControl: boolean;
+	skipSceneStateCheck?: boolean;
+	hiddenDialoguePattern: RegExp;
+	rewritePrompts: StreamedTranscriptRewritePrompts;
+	providerType: string;
+	provider: AIProvider;
+	apiKey: string;
+	model: string;
+	signal?: AbortSignal;
+	onChunk?: (chunk: string) => void;
+	onChunkReset?: () => void;
+	traceId: string;
+	storyId: string;
+}): Promise<{ text: string; diagnostic: string }> {
+	let candidateAssistantText = args.initialText;
+	let lastValidationDiagnostic = "";
+
+	const rewriteStageToPrompt: Record<
+		Exclude<AssistantTranscriptValidationStage, "insubstantial">,
+		string
+	> = {
+		speaker_attribution: args.rewritePrompts.format,
+		format: args.rewritePrompts.format,
+		ownership: args.rewritePrompts.ownership,
+		hidden_dialogue: args.rewritePrompts.hiddenDialogue,
+		scene_state: args.rewritePrompts.sceneState,
+	};
+
+	for (let attempt = 0; attempt < 6; attempt += 1) {
+		const validation = validateAssistantTranscriptForSave({
+			text: candidateAssistantText,
+			latestUserMessage: args.latestUserMessage,
+			playerName: args.playerName,
+			allowDirectedPlayerControl: args.allowDirectedPlayerControl,
+			skipSceneStateCheck: args.skipSceneStateCheck,
+			hiddenDialoguePattern: args.hiddenDialoguePattern,
+		});
+
+		if (validation.valid) {
+			return {
+				text: normalizeTranscriptForDisplay(candidateAssistantText),
+				diagnostic: lastValidationDiagnostic,
+			};
+		}
+
+		lastValidationDiagnostic = [
+			lastValidationDiagnostic,
+			`attempt=${attempt + 1}`,
+			validation.diagnostic,
+		]
+			.filter(Boolean)
+			.join("; ");
+
+		const stage = validation.stage;
+
+		if (!stage || stage === "insubstantial" || attempt >= 5) {
+			break;
+		}
+
+		const rewritePrompt = rewriteStageToPrompt[stage];
+		args.onChunkReset?.();
+		candidateAssistantText = (
+			await generateResponseWithRetry({
+				providerType: args.providerType,
+				provider: args.provider,
+				apiKey: args.apiKey,
+				model: args.model,
+				messages: [
+					{ role: "system", content: rewritePrompt },
+					{ role: "user", content: candidateAssistantText },
+				],
+				signal: args.signal,
+				onChunk: args.onChunk,
+				onChunkReset: args.onChunkReset,
+				debugTrace: {
+					traceId: args.traceId,
+					mode: "story",
+					storyId: args.storyId,
+					stage: `${validation.stage}-rewrite`,
+					lastUserText: candidateAssistantText,
+				},
+			})
+		).content;
+	}
+
+	throw new GenerationFailureError(
+		createGenerationFailure(
+			createAIGenerationError(
+				"validation",
+				"The streamed response could not be validated. Rewrite attempts were exhausted.",
+				{
+					retryable: false,
+					diagnostic:
+						lastValidationDiagnostic ||
+						`rewrite_stage=unknown; raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
+				},
+			),
+			{
+				providerName: args.providerType,
+				model: args.model,
+				attempts: 6,
+				maxAttempts: 6,
+				stage: "validation",
+			},
+		),
+	);
 }
 
 async function generateSummaryWithRetry(params: {
@@ -5003,6 +5117,7 @@ export function StoryEngineProvider({
         const providerType = storyConfig?.providerType ?? settings.activeProviderType;
         const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
         const provider = createAIProvider(providerType);
+        const traceId = makeGenerationAuditTraceId("story");
 
         const playerNameForValidation = buildPlayerNameForValidation(
           playerCharacter,
@@ -5060,41 +5175,47 @@ export function StoryEngineProvider({
         const shouldRewriteForSize = sceneDepth === "light" && wordCount > target.maxWords * 2;
         const finalAssistantText = shouldRewriteForSize
           ? (
-              await generateResponseWithRetry({
-                providerType,
-                provider,
-                apiKey,
-                model,
-                messages: [
-                  {
-                    role: "system",
-                    content: [
-                      "Rewrite the following story scene to match a light interaction.",
-                      `Target length: ${target.minWords}-${target.maxWords} words.`,
-                      "Keep character voice and only the essential beats.",
-                      "Do not reintroduce unchanged environments or participants.",
-                      "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
-                      "Not every character needs to speak; keep participation natural.",
-                      "Never speak for the player character. Do not generate suggested player lines or options.",
-                      "Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
-                      "Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
-                      "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
-                      "Formatting rules:",
-                      "- Every character line must start with 'Name:'.",
-                      "- Actions must be wrapped as *...* (asterisks only for actions).",
-                      '- Dialogue must be wrapped in double quotes like \"...\"',
-                      "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-                      "- Narration is plain prose with no speaker label. Do not wrap narration in *...*.",
-                      "Mystery rule:",
-                      "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
-                    ].join("\n"),
-                  },
-                  {
-                    role: "user",
-                    content: assistantContent.content,
-                  },
-                ],
-              })
+              await (async () => {
+                opts?.onChunkReset?.();
+                return generateResponseWithRetry({
+                  providerType,
+                  provider,
+                  apiKey,
+                  model,
+                  messages: [
+                    {
+                      role: "system",
+                      content: [
+                        "Rewrite the following story scene to match a light interaction.",
+                        `Target length: ${target.minWords}-${target.maxWords} words.`,
+                        "Keep character voice and only the essential beats.",
+                        "Do not reintroduce unchanged environments or participants.",
+                        "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
+                        "Not every character needs to speak; keep participation natural.",
+                        "Never speak for the player character. Do not generate suggested player lines or options.",
+                        "Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
+                        "Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
+                        "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+                        "Formatting rules:",
+                        "- Every character line must start with 'Name:'.",
+                        "- Actions must be wrapped as *...* (asterisks only for actions).",
+                        '- Dialogue must be wrapped in double quotes like \"...\"',
+                        "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+                        "- Narration is plain prose with no speaker label. Do not wrap narration in *...*.",
+                        "Mystery rule:",
+                        "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+                      ].join("\n"),
+                    },
+                    {
+                      role: "user",
+                      content: assistantContent.content,
+                    },
+                  ],
+                  signal: opts?.signal,
+                  onChunk: opts?.onChunk,
+                  onChunkReset: opts?.onChunkReset,
+                });
+              })()
             ).content
           : assistantContent.content;
 
@@ -5213,187 +5334,32 @@ export function StoryEngineProvider({
           formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
         ].join("\n");
 
-        let candidateAssistantText = finalAssistantText;
-        const originalAssistantText = finalAssistantText;
-        let finalSanitizedText: string | null = null;
-        let lastValidationDiagnostic = "";
-
-        for (let attempt = 0; attempt < 6; attempt += 1) {
-          const candidateSanitized = sanitizeAssistantTranscript({
-            text: candidateAssistantText,
-            latestUserMessage: previousMessage.content,
-            playerName: playerNameForValidation,
-          });
-
-          if (candidateSanitized.autoRepairedNarration && !lastValidationDiagnostic) {
-            lastValidationDiagnostic = `auto_repaired_unlabelled_narration; attempt=${attempt + 1}`;
-          }
-
-          if (!candidateSanitized.formatValid) {
-            if (!shouldAcceptRepairedTranscriptDespiteFormatIssues(candidateSanitized)) {
-              lastValidationDiagnostic = [
-                "rewrite_stage=format",
-                `attempt=${attempt + 1}`,
-                `issues=${candidateSanitized.formatIssues.map((issue) => issue.code).join(",") || "unknown"}`,
-                `raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
-                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
-              ].join("; ");
-              candidateAssistantText = (
-                await generateResponseWithRetry({
-                  providerType,
-                  provider,
-                  apiKey,
-                  model,
-                  messages: [
-                    { role: "system", content: formatRewritePrompt },
-                    { role: "user", content: candidateAssistantText },
-                  ],
-                })
-              ).content;
-              continue;
-            }
-
-            lastValidationDiagnostic = [
-              "accepted_with_format_issues",
-              `attempt=${attempt + 1}`,
-              `issues=${candidateSanitized.formatIssues.map((issue) => issue.code).join(",") || "unknown"}`,
-            ].join("; ");
-          }
-
-          const violation = allowDirectedPlayerControl
-            ? null
-            : getPlayerCharacterAuthorshipViolation({
-                playerName: playerNameForValidation,
-                text: candidateSanitized.text,
-              });
-
-          if (violation) {
-            lastValidationDiagnostic = [
-              "rewrite_stage=ownership",
-              `attempt=${attempt + 1}`,
-              `rule=${violation.rule}`,
-              `match=${violation.match}`,
-              `line=${clipGenerationAuditText(violation.line ?? "", 300)}`,
-              `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
-            ].join("; ");
-            candidateAssistantText = (
-              await generateResponseWithRetry({
-                providerType,
-                provider,
-                apiKey,
-                model,
-                messages: [
-                  { role: "system", content: ownershipRewritePrompt },
-                  { role: "user", content: candidateSanitized.text },
-                ],
-              })
-            ).content;
-            continue;
-          }
-
-          if (hiddenDialogueInferencePattern.test(candidateSanitized.text)) {
-            lastValidationDiagnostic = [
-              "rewrite_stage=hidden_dialogue",
-              `attempt=${attempt + 1}`,
-              `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
-            ].join("; ");
-            candidateAssistantText = (
-              await generateResponseWithRetry({
-                providerType,
-                provider,
-                apiKey,
-                model,
-                messages: [
-                  { role: "system", content: hiddenDialogueRewritePrompt },
-                  { role: "user", content: candidateSanitized.text },
-                ],
-              })
-            ).content;
-            continue;
-          }
-
-          if (!allowDirectedPlayerControl) {
-            const sceneDup = detectSceneStateRenarration({
-              latestUserMessage: previousMessage.content,
-              assistantText: candidateSanitized.text,
-            });
-            if (sceneDup.triggered) {
-              lastValidationDiagnostic = [
-                "rewrite_stage=scene_state",
-                `attempt=${attempt + 1}`,
-                `reason=${sceneDup.reason}`,
-                `snippet=${clipGenerationAuditText(sceneDup.snippet, 300)}`,
-                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
-              ].join("; ");
-              candidateAssistantText = (
-                await generateResponseWithRetry({
-                  providerType,
-                  provider,
-                  apiKey,
-                  model,
-                  messages: [
-                    { role: "system", content: sceneStateRewritePrompt },
-                    { role: "user", content: candidateSanitized.text },
-                  ],
-                })
-              ).content;
-              continue;
-            }
-          }
-
-          finalSanitizedText = candidateSanitized.text;
-          break;
-        }
-
-        if (!finalSanitizedText) {
-          const fallbackSanitized = sanitizeAssistantTranscript({
-            text: originalAssistantText,
-            latestUserMessage: previousMessage.content,
-            playerName: playerNameForValidation,
-          });
-          if (
-            isSubstantialTranscriptText(fallbackSanitized.text) &&
-            !fallbackSanitized.needsSpeakerAttributionRewrite
-          ) {
-            finalSanitizedText = fallbackSanitized.text;
-            lastValidationDiagnostic = [
-              lastValidationDiagnostic,
-              "validation_fallback=original_stream_sanitized",
-              `formatValid=${fallbackSanitized.formatValid}`,
-              `issues=${fallbackSanitized.formatIssues.map((issue) => issue.code).join(",") || "none"}`,
-            ]
-              .filter(Boolean)
-              .join("; ");
-          }
-        }
-
-        if (!finalSanitizedText) {
-          throw new GenerationFailureError(
-            createGenerationFailure(
-              createAIGenerationError(
-                "validation",
-                "The model output could not be rewritten into a valid response format.",
-                {
-                  retryable: false,
-                  diagnostic:
-                    lastValidationDiagnostic ||
-                    `rewrite_stage=unknown; raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
-                },
-              ),
-              {
-                providerName: providerType,
-                model,
-                attempts: 1,
-                maxAttempts: 1,
-                stage: "validation",
-              },
-            ),
-          );
-        }
+        const { text: finalStreamText } = await resolveStreamedAssistantTranscript({
+          initialText: finalAssistantText,
+          latestUserMessage: previousMessage.content,
+          playerName: playerNameForValidation,
+          allowDirectedPlayerControl,
+          hiddenDialoguePattern: hiddenDialogueInferencePattern,
+          rewritePrompts: {
+            format: formatRewritePrompt,
+            ownership: ownershipRewritePrompt,
+            hiddenDialogue: hiddenDialogueRewritePrompt,
+            sceneState: sceneStateRewritePrompt,
+          },
+          providerType,
+          provider,
+          apiKey,
+          model,
+          signal: opts?.signal,
+          onChunk: opts?.onChunk,
+          onChunkReset: opts?.onChunkReset,
+          traceId,
+          storyId,
+        });
 
         const nextAssistantMessage: StoryMessage = {
           ...lastMessage,
-          content: finalSanitizedText,
+          content: finalStreamText,
           regeneratedAt: new Date().toISOString(),
           revision: (lastMessage.revision ?? 0) + 1,
         };
@@ -6720,48 +6686,54 @@ export function StoryEngineProvider({
           const shouldRewriteForSize = sceneDepth === "light" && wordCount > target.maxWords * 2;
           const finalAssistantText = shouldRewriteForSize
             ? (
-                await generateResponseWithRetry({
-                  providerType,
-                  provider,
-                  apiKey,
-                  model,
-                  messages: [
-                    {
-                      role: "system",
-                      content: [
-                        "Rewrite the following story scene to match a light interaction.",
-                        `Target length: ${target.minWords}-${target.maxWords} words.`,
-                        "Keep character voice and only the essential beats.",
-                        "Do not reintroduce unchanged environments or participants.",
-                        "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
-                        "Not every character needs to speak; keep participation natural.",
-                        "Never speak for the player character. Do not generate suggested player lines or options.",
-                        "Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
-                        "Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
-                        "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
-                        "Formatting rules:",
-                        "- Every character line must start with 'Name:'.",
-                        "- Actions must be wrapped as *...* (asterisks only for actions).",
-                        '- Dialogue must be wrapped in double quotes like "..."',
-                        "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-                        "- Narration is plain prose with no speaker label. Do not wrap narration in *...*.",
-                        "Mystery rule:",
-                        "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
-                      ].join("\n"),
+                await (async () => {
+                  opts?.onChunkReset?.();
+                  return generateResponseWithRetry({
+                    providerType,
+                    provider,
+                    apiKey,
+                    model,
+                    messages: [
+                      {
+                        role: "system",
+                        content: [
+                          "Rewrite the following story scene to match a light interaction.",
+                          `Target length: ${target.minWords}-${target.maxWords} words.`,
+                          "Keep character voice and only the essential beats.",
+                          "Do not reintroduce unchanged environments or participants.",
+                          "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
+                          "Not every character needs to speak; keep participation natural.",
+                          "Never speak for the player character. Do not generate suggested player lines or options.",
+                          "Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
+                          "Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
+                          "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+                          "Formatting rules:",
+                          "- Every character line must start with 'Name:'.",
+                          "- Actions must be wrapped as *...* (asterisks only for actions).",
+                          '- Dialogue must be wrapped in double quotes like "..."',
+                          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
+                          "- Narration is plain prose with no speaker label. Do not wrap narration in *...*.",
+                          "Mystery rule:",
+                          "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+                        ].join("\n"),
+                      },
+                      {
+                        role: "user",
+                        content: assistantContent.content,
+                      },
+                    ],
+                    signal: opts?.signal,
+                    onChunk: opts?.onChunk,
+                    onChunkReset: opts?.onChunkReset,
+                    debugTrace: {
+                      traceId,
+                      mode: "story",
+                      storyId,
+                      stage: "size-rewrite",
+                      lastUserText: assistantContent.content,
                     },
-                    {
-                      role: "user",
-                      content: assistantContent.content,
-                    },
-                  ],
-                  debugTrace: {
-                    traceId,
-                    mode: "story",
-                    storyId,
-                    stage: "size-rewrite",
-                    lastUserText: assistantContent.content,
-                  },
-                })
+                  });
+                })()
               ).content
             : assistantContent.content;
 
@@ -6891,310 +6863,35 @@ export function StoryEngineProvider({
             formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
           ].join("\n");
 
-          let candidateAssistantText = finalAssistantText;
-          const originalAssistantText = finalAssistantText;
-          let finalSanitizedText: string | null = null;
-          let lastValidationDiagnostic = "";
-
-          for (let attempt = 0; attempt < 6; attempt += 1) {
-            const candidateSanitized = sanitizeAssistantTranscript({
-              text: candidateAssistantText,
-              latestUserMessage: userMessage.content,
-              playerName: playerNameForValidation,
-            });
-
-            if (candidateSanitized.autoRepairedNarration && !lastValidationDiagnostic) {
-              lastValidationDiagnostic = `auto_repaired_unlabelled_narration; attempt=${attempt + 1}`;
-            }
-
-            if (!candidateSanitized.formatValid) {
-              if (!shouldAcceptRepairedTranscriptDespiteFormatIssues(candidateSanitized)) {
-                lastValidationDiagnostic = [
-                  "rewrite_stage=format",
-                  `attempt=${attempt + 1}`,
-                  `issues=${candidateSanitized.formatIssues.map((issue) => issue.code).join(",") || "unknown"}`,
-                  `raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
-                  `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
-                ].join("; ");
-                // #region debug-point B:format-rewrite
-                reportGenerationAudit({
-                  hypothesisId: "B",
-                  traceId,
-                  location: "StoryEngineProvider.tsx:sendChatMessage:format-rewrite",
-                  msg: "format rewrite triggered",
-                  data: {
-                    storyId,
-                    attempt,
-                    formatIssues: candidateSanitized.formatIssues,
-                    rawOutput: candidateAssistantText,
-                    rewrittenOutput: candidateSanitized.text,
-                  },
-                });
-                // #endregion
-
-                candidateAssistantText = (
-                  await generateResponseWithRetry({
-                    providerType,
-                    provider,
-                    apiKey,
-                    model,
-                    messages: [
-                      { role: "system", content: formatRewritePrompt },
-                      { role: "user", content: candidateAssistantText },
-                    ],
-                    debugTrace: {
-                      traceId,
-                      mode: "story",
-                      storyId,
-                      stage: "format-rewrite",
-                      lastUserText: candidateAssistantText,
-                    },
-                  })
-                ).content;
-                continue;
-              }
-
-              lastValidationDiagnostic = [
-                "accepted_with_format_issues",
-                `attempt=${attempt + 1}`,
-                `issues=${candidateSanitized.formatIssues.map((issue) => issue.code).join(",") || "unknown"}`,
-              ].join("; ");
-            }
-
-            const violation = allowDirectedPlayerControl
-              ? null
-              : getPlayerCharacterAuthorshipViolation({
-                  playerName: playerNameForValidation,
-                  text: candidateSanitized.text,
-                });
-
-            if (violation) {
-              lastValidationDiagnostic = [
-                "rewrite_stage=ownership",
-                `attempt=${attempt + 1}`,
-                `rule=${violation.rule}`,
-                `match=${violation.match}`,
-                `line=${clipGenerationAuditText(violation.line ?? "", 300)}`,
-                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
-              ].join("; ");
-              // #region debug-point C:ownership-rewrite
-              reportGenerationAudit({
-                hypothesisId: "C",
-                traceId,
-                location: "StoryEngineProvider.tsx:sendChatMessage:ownership-rewrite",
-                msg: "ownership rewrite triggered",
-                data: {
-                  storyId,
-                  attempt,
-                  rule: violation.rule,
-                  match: violation.match,
-                  line: violation.line ?? null,
-                  rawOutput: candidateAssistantText,
-                  rewrittenOutput: candidateSanitized.text,
-                },
-              });
-              // #endregion
-
-              candidateAssistantText = (
-                await generateResponseWithRetry({
-                  providerType,
-                  provider,
-                  apiKey,
-                  model,
-                  messages: [
-                    { role: "system", content: ownershipRewritePrompt },
-                    { role: "user", content: candidateSanitized.text },
-                  ],
-                  debugTrace: {
-                    traceId,
-                    mode: "story",
-                    storyId,
-                    stage: "ownership-rewrite",
-                    lastUserText: candidateSanitized.text,
-                  },
-                })
-              ).content;
-              continue;
-            }
-
-            if (hiddenDialogueInferencePattern.test(candidateSanitized.text)) {
-              lastValidationDiagnostic = [
-                "rewrite_stage=hidden_dialogue",
-                `attempt=${attempt + 1}`,
-                `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
-              ].join("; ");
-              // #region debug-point B:hidden-dialogue
-              reportGenerationAudit({
-                hypothesisId: "B",
-                traceId,
-                location: "StoryEngineProvider.tsx:sendChatMessage:hidden-dialogue-rewrite",
-                msg: "hidden dialogue rewrite triggered",
-                data: {
-                  storyId,
-                  attempt,
-                  rewrittenOutput: candidateSanitized.text,
-                },
-              });
-              // #endregion
-              candidateAssistantText = (
-                await generateResponseWithRetry({
-                  providerType,
-                  provider,
-                  apiKey,
-                  model,
-                  messages: [
-                    { role: "system", content: hiddenDialogueRewritePrompt },
-                    { role: "user", content: candidateSanitized.text },
-                  ],
-                  debugTrace: {
-                    traceId,
-                    mode: "story",
-                    storyId,
-                    stage: "hidden-dialogue-rewrite",
-                    lastUserText: candidateSanitized.text,
-                  },
-                })
-              ).content;
-              continue;
-            }
-
-            if (
-              !allowDirectedPlayerControl &&
-              !opts?.guidedGenerationInternal
-            ) {
-              const sceneDup = detectSceneStateRenarration({
-                latestUserMessage: userMessage.content,
-                assistantText: candidateSanitized.text,
-              });
-              if (sceneDup.triggered) {
-                lastValidationDiagnostic = [
-                  "rewrite_stage=scene_state",
-                  `attempt=${attempt + 1}`,
-                  `reason=${sceneDup.reason}`,
-                  `snippet=${clipGenerationAuditText(sceneDup.snippet, 300)}`,
-                  `sanitized=${clipGenerationAuditText(candidateSanitized.text, 1200)}`,
-                ].join("; ");
-                // #region debug-point B:scene-renarration
-                reportGenerationAudit({
-                  hypothesisId: "B",
-                  traceId,
-                  location: "StoryEngineProvider.tsx:sendChatMessage:scene-renarration",
-                  msg: "scene-state renarration rewrite triggered",
-                  data: {
-                    storyId,
-                    attempt,
-                    reason: sceneDup.reason,
-                    snippet: sceneDup.snippet,
-                    rewrittenOutput: candidateSanitized.text,
-                  },
-                });
-                // #endregion
-
-                candidateAssistantText = (
-                  await generateResponseWithRetry({
-                    providerType,
-                    provider,
-                    apiKey,
-                    model,
-                    messages: [
-                      { role: "system", content: sceneStateRewritePrompt },
-                      { role: "user", content: candidateSanitized.text },
-                    ],
-                    debugTrace: {
-                      traceId,
-                      mode: "story",
-                      storyId,
-                      stage: "scene-state-rewrite",
-                      lastUserText: candidateSanitized.text,
-                    },
-                  })
-                ).content;
-                continue;
-              }
-            }
-
-            finalSanitizedText = candidateSanitized.text;
-            break;
-          }
-
-          if (!finalSanitizedText) {
-            const fallbackSanitized = sanitizeAssistantTranscript({
-              text: originalAssistantText,
-              latestUserMessage: userMessage.content,
-              playerName: playerNameForValidation,
-            });
-            if (
-            isSubstantialTranscriptText(fallbackSanitized.text) &&
-            !fallbackSanitized.needsSpeakerAttributionRewrite
-          ) {
-              finalSanitizedText = fallbackSanitized.text;
-              lastValidationDiagnostic = [
-                lastValidationDiagnostic,
-                "validation_fallback=original_stream_sanitized",
-                `formatValid=${fallbackSanitized.formatValid}`,
-                `issues=${fallbackSanitized.formatIssues.map((issue) => issue.code).join(",") || "none"}`,
-              ]
-                .filter(Boolean)
-                .join("; ");
-              reportGenerationAudit({
-                hypothesisId: "C",
-                traceId,
-                location: "StoryEngineProvider.tsx:sendChatMessage:validation-fallback",
-                msg: "accepted sanitized original stream after validation exhaustion",
-                data: {
-                  storyId,
-                  formatValid: fallbackSanitized.formatValid,
-                  formatIssues: fallbackSanitized.formatIssues,
-                  textLength: fallbackSanitized.text.length,
-                  lastValidationDiagnostic,
-                },
-              });
-            }
-          }
-
-          if (!finalSanitizedText) {
-            // #region debug-point C:validation-terminal
-            reportGenerationAudit({
-              hypothesisId: "C",
-              traceId,
-              location: "StoryEngineProvider.tsx:sendChatMessage:validation-terminal",
-              msg: "story validation exhausted rewrite budget",
-              data: {
-                storyId,
-                providerType,
-                model,
-                finalCandidate: candidateAssistantText,
-              },
-            });
-            // #endregion
-            throw new GenerationFailureError(
-              createGenerationFailure(
-                createAIGenerationError(
-                  "validation",
-                  "The model output could not be rewritten into a valid response format.",
-                  {
-                    retryable: false,
-                    diagnostic:
-                      lastValidationDiagnostic ||
-                      `rewrite_stage=unknown; raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
-                  },
-                ),
-                {
-                  providerName: providerType,
-                  model,
-                  attempts: 1,
-                  maxAttempts: 1,
-                  stage: "validation",
-                },
-              ),
-            );
-          }
+          const { text: finalStreamText } = await resolveStreamedAssistantTranscript({
+            initialText: finalAssistantText,
+            latestUserMessage: userMessage.content,
+            playerName: playerNameForValidation,
+            allowDirectedPlayerControl,
+            skipSceneStateCheck: opts?.guidedGenerationInternal,
+            hiddenDialoguePattern: hiddenDialogueInferencePattern,
+            rewritePrompts: {
+              format: formatRewritePrompt,
+              ownership: ownershipRewritePrompt,
+              hiddenDialogue: hiddenDialogueRewritePrompt,
+              sceneState: sceneStateRewritePrompt,
+            },
+            providerType,
+            provider,
+            apiKey,
+            model,
+            signal: opts?.signal,
+            onChunk: opts?.onChunk,
+            onChunkReset: opts?.onChunkReset,
+            traceId,
+            storyId,
+          });
 
           assistantMessage = {
             id: createEntityId("story-message"),
             storyId,
             role: "assistant",
-            content: finalSanitizedText,
+            content: finalStreamText,
             timestamp: new Date().toISOString(),
             speakerType: "narrator",
             ...(currentRpStats?.timeState ? { storyTime: currentRpStats.timeState } : {}),
@@ -7244,7 +6941,7 @@ export function StoryEngineProvider({
               const playerNameNorm = rpPlayerName.toLowerCase().trim();
               const speakerNamesInScene = [
                 ...new Set(
-                  parseSceneBlocks(finalSanitizedText)
+                  parseSceneBlocks(finalStreamText)
                     .map((b) => b.speakerLabel?.trim())
                     .filter(
                       (l): l is string =>
@@ -7262,7 +6959,7 @@ export function StoryEngineProvider({
               });
 
               const extracted = await extractRpStatChanges(
-                finalSanitizedText,
+                finalStreamText,
                 currentRpStats,
                 story.rpConfig,
                 provider,
