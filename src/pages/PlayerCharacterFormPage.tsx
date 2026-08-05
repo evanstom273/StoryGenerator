@@ -2,19 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
-import { Field, MultiUniversePicker, TextAreaInput, TextInput, AliasesInput } from "../components/forms/Fields";
+import { Field, MultiUniversePicker, TextAreaInput, TextInput, AliasesInput, KnownTiesInput } from "../components/forms/Fields";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { SparklesIcon } from "../components/icons";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import type { PlayerCharacterDraft } from "../types/models";
 import { parseUniverseIdsParam } from "../lib/universeIds";
-import { normalizePlayerCharacterAliases } from "../lib/playerCharacterPrompt";
+import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } from "../lib/playerCharacterPrompt";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 
 const initialFormState: PlayerCharacterDraft = {
   name: "",
   aliases: [],
+  knownTies: [],
   age: "",
   gender: "",
   species: "",
@@ -74,6 +75,7 @@ export function PlayerCharacterFormPage() {
     setFormState({
       name: existingCharacter.name,
       aliases: normalizePlayerCharacterAliases(existingCharacter.aliases),
+      knownTies: normalizePlayerCharacterKnownTies(existingCharacter.knownTies),
       age: existingCharacter.age,
       gender: existingCharacter.gender,
       species: existingCharacter.species ?? "",
@@ -111,6 +113,7 @@ export function PlayerCharacterFormPage() {
       existingCharacter?.id,
       formState.name,
       formState.aliases?.join("|"),
+      formState.knownTies?.join("|"),
       formState.age,
       formState.gender,
       formState.species,
@@ -367,6 +370,22 @@ export function PlayerCharacterFormPage() {
               />
             </Field>
           </div>
+
+          <Field
+            label="Known ties"
+            hint="Optional canon characters and relationships the AI may reference when generating this character"
+          >
+            <KnownTiesInput
+              value={normalizePlayerCharacterKnownTies(formState.knownTies)}
+              disabled={isGenerating || isSubmitting}
+              onChange={(knownTies) =>
+                setFormState((currentState) => ({
+                  ...currentState,
+                  knownTies,
+                }))
+              }
+            />
+          </Field>
 
           <Field
             label="Character Concept"

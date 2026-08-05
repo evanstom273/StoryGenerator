@@ -179,6 +179,10 @@ import {
   normalizePlayerCharacterAliases,
   buildCharacterConceptConstraintsFromDraft,
   formatCharacterConceptAliasesConstraint,
+  formatCharacterKnownTiesConstraint,
+  formatAntiCanonSprawlGuidance,
+  formatPlayerCharacterKnownTiesForPrompt,
+  normalizePlayerCharacterKnownTies,
 } from "../../lib/playerCharacterPrompt";
 import type {
   AIModelRole,
@@ -1148,6 +1152,7 @@ function buildMetaChatCanonContext(params: {
   const playerBlock = [
     `Name: ${params.playerCharacter.name}`,
     formatPlayerCharacterAliasesForPrompt(params.playerCharacter),
+    formatPlayerCharacterKnownTiesForPrompt(params.playerCharacter),
     params.playerCharacter.age?.trim() ? `Age: ${params.playerCharacter.age.trim()}` : null,
     params.playerCharacter.gender?.trim() ? `Gender: ${params.playerCharacter.gender.trim()}` : null,
     params.playerCharacter.species?.trim() ? `Species: ${params.playerCharacter.species.trim()}` : null,
@@ -1575,6 +1580,13 @@ function mergePlayerCharacterFillEmpty(
         return winnerAliases;
       }
       return normalizePlayerCharacterAliases(candidate.aliases);
+    })(),
+    knownTies: (() => {
+      const winnerKnownTies = normalizePlayerCharacterKnownTies(winner.knownTies);
+      if (winnerKnownTies.length) {
+        return winnerKnownTies;
+      }
+      return normalizePlayerCharacterKnownTies(candidate.knownTies);
     })(),
     notes: isBlank(winner.notes) ? candidate.notes : winner.notes,
   };
@@ -2145,6 +2157,7 @@ export function StoryEngineProvider({
                 `Referenced Character: ${reference.label}`,
                 `Name: ${character.name}`,
                 formatPlayerCharacterAliasesForPrompt(character),
+                formatPlayerCharacterKnownTiesForPrompt(character),
                 universe ? `Universe: ${universe.name}` : null,
                 character.characterConcept?.trim()
                   ? `Concept/role: ${character.characterConcept.trim()}`
@@ -4156,6 +4169,7 @@ export function StoryEngineProvider({
           id: createEntityId("player-character"),
           name: draft.name.trim(),
           aliases: normalizePlayerCharacterAliases(draft.aliases),
+          knownTies: normalizePlayerCharacterKnownTies(draft.knownTies),
           age: draft.age.trim(),
           gender: draft.gender.trim(),
           species: draft.species?.trim() ?? "",
@@ -4306,6 +4320,7 @@ export function StoryEngineProvider({
           ...currentCharacter,
           name: draft.name.trim(),
           aliases: normalizePlayerCharacterAliases(draft.aliases),
+          knownTies: normalizePlayerCharacterKnownTies(draft.knownTies),
           age: draft.age.trim(),
           gender: draft.gender.trim(),
           species: draft.species?.trim() ?? "",
@@ -6045,6 +6060,7 @@ export function StoryEngineProvider({
           allowedFields.includes(field),
         ) as PlayerCharacterField[];
 
+        const knownTies = normalizePlayerCharacterKnownTies(existing?.knownTies);
         const systemPrompt = buildCharacterGeneratorSystemPrompt({
           universe,
           importedLoreText,
@@ -6065,6 +6081,8 @@ export function StoryEngineProvider({
                 {} as Partial<Record<PlayerCharacterField, string>>,
               )
             : undefined,
+          knownTiesConstraint: formatCharacterKnownTiesConstraint(existing),
+          antiCanonSprawlGuidance: formatAntiCanonSprawlGuidance(knownTies.length > 0),
         });
 
         let response: GenerateResponseResult;
@@ -6135,11 +6153,14 @@ export function StoryEngineProvider({
         const importedLoreText = imports[0]?.importedText?.slice(0, 12000) ?? "";
 
         const previousConcept = existing?.characterConcept?.trim() || undefined;
+        const knownTies = normalizePlayerCharacterKnownTies(existing?.knownTies);
         const systemPrompt = buildCharacterConceptGeneratorSystemPrompt({
           universe,
           importedLoreText,
           existing: buildCharacterConceptConstraintsFromDraft(existing),
           aliasConstraint: formatCharacterConceptAliasesConstraint(existing),
+          knownTiesConstraint: formatCharacterKnownTiesConstraint(existing),
+          antiCanonSprawlGuidance: formatAntiCanonSprawlGuidance(knownTies.length > 0),
           previousConcept,
         });
         const requestConfig = getCharacterConceptRequestConfig(model);

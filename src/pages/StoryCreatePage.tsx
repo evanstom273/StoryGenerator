@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
-import { Field, MultiUniversePicker, SelectInput, TextAreaInput, TextInput, AliasesInput } from "../components/forms/Fields";
+import { Field, MultiUniversePicker, SelectInput, TextAreaInput, TextInput, AliasesInput, KnownTiesInput } from "../components/forms/Fields";
 import { getUniverseIds } from "../lib/universeIds";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { SparklesIcon } from "../components/icons";
@@ -12,7 +12,7 @@ import type { AIProviderType, PlayerCharacterDraft } from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
 import { resolveUpcomingChapterLabels } from "../lib/guidedChapterGeneration/chapterLabels";
-import { normalizePlayerCharacterAliases } from "../lib/playerCharacterPrompt";
+import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } from "../lib/playerCharacterPrompt";
 import type { GuidedChapterPlan } from "../lib/guidedChapterGeneration/types";
 
 const initialFormState = {
@@ -28,6 +28,7 @@ const initialFormState = {
 const initialQuickCharacterState: PlayerCharacterDraft = {
   name: "",
   aliases: [],
+  knownTies: [],
   age: "",
   gender: "",
   species: "",
@@ -656,6 +657,21 @@ export function StoryCreatePage() {
                       setQuickCharacterState((current) => ({
                         ...current,
                         aliases,
+                      }))
+                    }
+                  />
+                </Field>
+              </div>
+
+              <div className="mt-6">
+                <Field label="Known ties" hint="Optional canon characters and relationships the AI may reference">
+                  <KnownTiesInput
+                    value={normalizePlayerCharacterKnownTies(quickCharacterState.knownTies)}
+                    disabled={isQuickGenerating || isSubmitting}
+                    onChange={(knownTies) =>
+                      setQuickCharacterState((current) => ({
+                        ...current,
+                        knownTies,
                       }))
                     }
                   />

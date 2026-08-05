@@ -19,6 +19,8 @@ export interface CharacterConceptGeneratorInput {
 	importedLoreText?: string;
 	existing?: Partial<Record<CharacterConceptConstraintField, string>>;
 	aliasConstraint?: string | null;
+	knownTiesConstraint?: string | null;
+	antiCanonSprawlGuidance?: string | null;
 	previousConcept?: string;
 }
 
@@ -39,6 +41,8 @@ export interface CharacterGeneratorInput {
   fields?: PlayerCharacterField[];
   existing?: Partial<Record<PlayerCharacterField, string>>;
   characterConcept?: string;
+  knownTiesConstraint?: string | null;
+  antiCanonSprawlGuidance?: string | null;
 }
 
 function buildUniverseInfo(universe: Universe) {
@@ -59,6 +63,8 @@ export function buildCharacterGeneratorSystemPrompt({
   fields,
   existing,
   characterConcept,
+  knownTiesConstraint,
+  antiCanonSprawlGuidance,
 }: CharacterGeneratorInput) {
   const requested = fields?.length ? fields.join(", ") : "all";
   const loreBlock = importedLoreText?.trim()
@@ -88,6 +94,7 @@ export function buildCharacterGeneratorSystemPrompt({
     "You are a character generator for a fictional universe.",
     "Character authenticity and setting fit are the highest priority.",
     "Do not contradict canon. If uncertain, stay generic but setting-appropriate.",
+    "Do not name-drop major canon characters unless listed in Known ties or explicitly named in the Character Concept.",
     "When some fields are already provided by the user, treat them as authoritative and use them as constraints for generating the missing fields.",
     "Do not contradict locked fields. Make generated fields consistent with them (age, gender, pronouns, name, etc.).",
     "Return STRICT JSON only. No markdown. No code fences. No commentary.",
@@ -105,7 +112,11 @@ export function buildCharacterGeneratorSystemPrompt({
     conceptBlock,
     "",
     lockedBlock,
-  ].join("\n");
+    antiCanonSprawlGuidance,
+    knownTiesConstraint,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildUniverseContextBlock(universe: Universe, importedLoreText?: string) {
@@ -225,6 +236,8 @@ export function buildCharacterConceptGeneratorSystemPrompt({
 	importedLoreText,
 	existing,
 	aliasConstraint,
+	knownTiesConstraint,
+	antiCanonSprawlGuidance,
 	previousConcept,
 }: CharacterConceptGeneratorInput) {
 	const constraintLines = existing
@@ -266,6 +279,7 @@ export function buildCharacterConceptGeneratorSystemPrompt({
 		"- Do not fill in detailed Appearance, Personality, Background, or Notes — leave those for Character Generation.",
 		"- Honor all provided character constraints; weave them into the pitch naturally.",
 		"- Vary the central hook across generations. Avoid repeating the same secret-identity, hacker, hacktivist, anonymous tipster, or vigilante premise unless the constraints explicitly require it.",
+		"- Do not name-drop the full main cast of the universe. Only reference canon characters listed in Known ties or clearly named in constraints or the Character Concept.",
 		"- If a universe is provided, show how the character fits that setting.",
 		"- If no universe is provided, keep the concept original and setting-flexible.",
 		"- Return plain text only. No markdown. No JSON. No headings. No labels. No commentary.",
@@ -278,6 +292,8 @@ export function buildCharacterConceptGeneratorSystemPrompt({
 		"",
 		constraintsBlock,
 		aliasBlock,
+		knownTiesConstraint,
+		antiCanonSprawlGuidance,
 		previousConceptBlock,
 	]
 		.filter(Boolean)

@@ -13,7 +13,7 @@ import { parseActionSegments } from "./storyText/parseActionSegments";
 import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
 import { isContinueMessage } from "./storyText/continueMode";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
-import { normalizePlayerCharacterAliases } from "./playerCharacterPrompt";
+import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } from "./playerCharacterPrompt";
 import { cleanTextForExport } from "./storyText/exportCleaner";
 import { isDirectorMessage } from "./storyText/directorMode";
 
@@ -145,6 +145,7 @@ Player Character
 - Background: ${bundle.playerCharacter.background || "Not specified"}
 - Goals: ${bundle.playerCharacter.goals || "Not specified"}
 ${normalizePlayerCharacterAliases(bundle.playerCharacter.aliases).length ? `- Aliases: ${normalizePlayerCharacterAliases(bundle.playerCharacter.aliases).join(", ")}` : ""}
+${normalizePlayerCharacterKnownTies(bundle.playerCharacter.knownTies).length ? `- Known ties: ${normalizePlayerCharacterKnownTies(bundle.playerCharacter.knownTies).join("; ")}` : ""}
 - Notes: ${bundle.playerCharacter.notes || "Not specified"}
 
 Transcript

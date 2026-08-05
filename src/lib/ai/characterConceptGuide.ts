@@ -8,7 +8,7 @@ export const CHARACTER_CONCEPT_DEFINITION = [
 	"A good Character Concept explains:",
 	"- who the character is",
 	"- how they fit into the chosen universe",
-	"- any important relationships they already have",
+	"- any important relationships they already have (only when specified in Known ties or the Character Concept)",
 	"- the central premise or hook that makes them interesting",
 	"- a handful of defining personality traits",
 	"It should intentionally leave the detailed Appearance, Personality, Background, and Notes to be expanded by the Character Generation system.",

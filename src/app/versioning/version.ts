@@ -15,6 +15,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     releasedAt: "2026-08-04T23:59:59+00:00",
     added: [
       "Player character Aliases field for nicknames, titles, surnames, and other names the AI should recognise in story prompts",
+      "Known ties field on player characters for optional canon relationships the AI may reference during generation",
       "Randomise button on Character Concept to generate a concise pitch that respects existing character fields and the selected universe",
       "Internal Character Concept guide (definition + canonical example) used by concept Randomise generation",
       "Settings → AI now has independent Story, MetaChat, Indexing, and Character & Universe Generation model selectors per provider",
@@ -24,6 +25,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Character Concept Randomise no longer returns truncated biography openers on Gemini thinking models; thinking is disabled for concept generation and incomplete pitches are retried or rejected",
       "Gemini 3.1 Pro and 2.5 Pro no longer receive invalid thinkingBudget: 0; concept generation uses thinkingLevel low or minimum budget 128 instead",
       "Character Concept Randomise now treats aliases as ambiguous recognition names (not plot mandates), asks for a fresh hook on re-randomise, and avoids defaulting to hacker/vigilante tropes",
+      "Character and concept generation no longer drags in the full main cast of a universe unless listed in Known ties or named in the Character Concept",
     ],
     knownIssues: [],
   },

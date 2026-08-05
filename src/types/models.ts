@@ -83,6 +83,7 @@ export interface PlayerCharacter {
   id: EntityId;
   name: string;
   aliases?: string[];
+  knownTies?: string[];
   age: string;
   gender: string;
   species: string;
@@ -668,6 +669,7 @@ export interface UniverseDraft {
 export interface PlayerCharacterDraft {
   name: string;
   aliases?: string[];
+  knownTies?: string[];
   age: string;
   gender: string;
   species: string;
