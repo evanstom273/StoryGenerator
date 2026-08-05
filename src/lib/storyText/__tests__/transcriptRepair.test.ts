@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeAssistantTranscript } from "../transcriptSanitizer";
+import { detectSceneStateRenarration, sanitizeAssistantTranscript } from "../transcriptSanitizer";
 
 describe("unlabelled narration repair", () => {
   it("repairs underscore-italic narration", () => {
@@ -82,4 +82,17 @@ describe("unlabelled narration repair", () => {
     expect(text).not.toContain("*.except");
     expect(text).not.toMatch(/\*Like:\*/i);
   });
+});
+
+describe("detectSceneStateRenarration", () => {
+	it("flags paraphrased player scene-state re-narration", () => {
+		const result = detectSceneStateRenarration({
+			latestUserMessage:
+				"Jake and Amy talk quietly in the kitchen about Jamie before he wakes up in his bedroom.",
+			assistantText:
+				"Jake and Amy are talking quietly in the kitchen about Jamie. A few minutes later, the hallway creaks.",
+		});
+
+		expect(result.triggered).toBe(true);
+	});
 });

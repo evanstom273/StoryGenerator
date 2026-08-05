@@ -26,6 +26,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Gemini 3.1 Pro and 2.5 Pro no longer receive invalid thinkingBudget: 0; concept generation uses thinkingLevel low or minimum budget 128 instead",
       "Character Concept Randomise now treats aliases as ambiguous recognition names (not plot mandates), asks for a fresh hook on re-randomise, and avoids defaulting to hacker/vigilante tropes",
       "Character and concept generation no longer drags in the full main cast of a universe unless listed in Known ties or named in the Character Concept",
+      "Guided chapter generation no longer fails validation when a Director beat is correctly realized as scene content; directed scenes skip scene-state renarration rewrites and accept sanitized output as a last resort",
     ],
     knownIssues: [],
   },
