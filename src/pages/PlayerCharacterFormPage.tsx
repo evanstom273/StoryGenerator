@@ -35,6 +35,7 @@ export function PlayerCharacterFormPage() {
   const {
     createPlayerCharacter,
     generatePlayerCharacterDraft,
+    generatePlayerCharacterConcept,
     getPlayerCharacterById,
     updatePlayerCharacter,
     universes,
@@ -54,6 +55,7 @@ export function PlayerCharacterFormPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingConcept, setIsGeneratingConcept] = useState(false);
   const [generatorError, setGeneratorError] = useState<string | null>(null);
   const loadedCharacterIdRef = useRef<string | null>(null);
 
@@ -90,7 +92,7 @@ export function PlayerCharacterFormPage() {
 
   useDebouncedEffect(
     () => {
-      if (!existingCharacter || isSubmitting || isGenerating) {
+      if (!existingCharacter || isSubmitting || isGenerating || isGeneratingConcept) {
         return;
       }
 
@@ -122,6 +124,7 @@ export function PlayerCharacterFormPage() {
       formState.universeIds?.join("|"),
       isSubmitting,
       isGenerating,
+      isGeneratingConcept,
     ],
   );
 
@@ -207,6 +210,23 @@ export function PlayerCharacterFormPage() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleRandomizeConcept() {
+    setIsGeneratingConcept(true);
+    setGeneratorError(null);
+
+    try {
+      const universeId = formState.universeId || formState.universeIds?.[0] || "";
+      const concept = await generatePlayerCharacterConcept(universeId || undefined, formState);
+      setFormState((current) => ({ ...current, characterConcept: concept }));
+    } catch (error) {
+      setGeneratorError(
+        error instanceof Error ? error.message : "Unable to generate a character concept.",
+      );
+    } finally {
+      setIsGeneratingConcept(false);
     }
   }
 
@@ -351,6 +371,18 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Character Concept"
             hint={resolveFieldHint(formState.characterConcept ?? "")}
+            action={
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => void handleRandomizeConcept()}
+                disabled={isGenerating || isGeneratingConcept || isSubmitting}
+              >
+                <SparklesIcon className="h-4 w-4" />
+                {isGeneratingConcept ? "Randomising..." : "Randomise"}
+              </Button>
+            }
           >
             <TextAreaInput
               value={formState.characterConcept ?? ""}

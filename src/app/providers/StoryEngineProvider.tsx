@@ -34,6 +34,8 @@ import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
 import { buildPlayerAssistContext } from "../../lib/ai/playerAssistContext";
 import {
   buildCharacterGeneratorSystemPrompt,
+  buildCharacterConceptGeneratorSystemPrompt,
+  normalizeGeneratedCharacterConcept,
   type PlayerCharacterField,
 } from "../../lib/ai/characterGenerator";
 import {
@@ -171,6 +173,7 @@ import {
 import {
   formatPlayerCharacterAliasesForPrompt,
   normalizePlayerCharacterAliases,
+  buildCharacterConceptConstraintsFromDraft,
 } from "../../lib/playerCharacterPrompt";
 import type {
   AIModelRole,
@@ -492,6 +495,10 @@ interface StoryEngineContextValue {
     fields?: Array<keyof PlayerCharacterDraft>,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<Partial<PlayerCharacterDraft>>;
+  generatePlayerCharacterConcept: (
+    universeId?: string,
+    existing?: Partial<PlayerCharacterDraft>,
+  ) => Promise<string>;
   sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string; previousChapterContext?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string, opts?: { onChunk?: (chunk: string) => void; onChunkReset?: () => void; signal?: AbortSignal }) => Promise<StoryMessage>;
@@ -6102,6 +6109,57 @@ export function StoryEngineProvider({
         }
 
         return draft;
+      },
+      async generatePlayerCharacterConcept(universeId, existing) {
+        const settings = await getNormalizedAISettings();
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings before generating characters.");
+        }
+
+        const providerType = settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(providerType, undefined, "creation");
+        const provider = createAIProvider(providerType);
+
+        const trimmedUniverseId = universeId?.trim() ?? "";
+        const universe = trimmedUniverseId
+          ? await repository.getUniverse(trimmedUniverseId)
+          : null;
+        const imports = universe ? await repository.listUniverseImports(trimmedUniverseId) : [];
+        const importedLoreText = imports[0]?.importedText?.slice(0, 12000) ?? "";
+
+        const systemPrompt = buildCharacterConceptGeneratorSystemPrompt({
+          universe,
+          importedLoreText,
+          existing: buildCharacterConceptConstraintsFromDraft(existing),
+        });
+
+        let response: GenerateResponseResult;
+        try {
+          response = await generateResponseWithRetry({
+            providerType,
+            provider,
+            apiKey,
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: "Write the character concept now." },
+            ],
+            maxTokens: 500,
+            temperature: 0.85,
+          });
+        } catch (error) {
+          rethrowUserFacingGenerationError(error, providerType);
+        }
+
+        const concept = normalizeGeneratedCharacterConcept(response.content);
+        if (!concept) {
+          rethrowUserFacingGenerationError(
+            createAIGenerationError("parse", "Character concept generator returned empty text."),
+            providerType,
+          );
+        }
+
+        return concept;
       },
       async sendChatMessage(storyId, content, opts) {
         const trimmed = content.trim();

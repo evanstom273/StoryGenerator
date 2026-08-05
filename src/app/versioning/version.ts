@@ -15,6 +15,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     releasedAt: "2026-08-04T23:59:59+00:00",
     added: [
       "Player character Aliases field for nicknames, titles, surnames, and other names the AI should recognise in story prompts",
+      "Randomise button on Character Concept to generate a concise pitch that respects existing character fields and the selected universe",
       "Settings → AI now has independent Story, MetaChat, Indexing, and Character & Universe Generation model selectors per provider",
       "Existing story model settings migrate into Story Model on upgrade; the other three roles default to Story Model until changed",
     ],
