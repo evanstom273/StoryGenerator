@@ -1,12 +1,35 @@
 import type { StoryChapter, StoryMessage } from "../../types/models";
 import { getNextChapterBannerLabel } from "../ai/chapterBannerLabel";
-import { countGeneratedChapters } from "../storyText/chapterNavigation";
+import {
+	countGeneratedChapters,
+	getLatestChapterStartMessage,
+	hasActiveOpenChapter,
+	hasSubstantiveContentInOpenChapter,
+	resolveMessageChapterBoundary,
+} from "../storyText/chapterNavigation";
 
 export function resolveUpcomingChapterLabels(
 	messages: StoryMessage[],
 	chapters: StoryChapter[],
 	count: number,
 ): string[] {
+	if (
+		hasActiveOpenChapter(messages, chapters) &&
+		!hasSubstantiveContentInOpenChapter(messages, chapters)
+	) {
+		const startMessage = getLatestChapterStartMessage(messages, chapters);
+		const boundary = startMessage ? resolveMessageChapterBoundary(startMessage) : null;
+		if (boundary?.kind === "start" && boundary.label?.trim()) {
+			const labels: string[] = [];
+			let current = boundary.label.trim();
+			for (let index = 0; index < count; index += 1) {
+				labels.push(current);
+				current = getNextChapterBannerLabel(current);
+			}
+			return labels;
+		}
+	}
+
 	const generatedCount = countGeneratedChapters(messages, chapters);
 	let label = "Chapter I";
 	if (generatedCount > 0) {
