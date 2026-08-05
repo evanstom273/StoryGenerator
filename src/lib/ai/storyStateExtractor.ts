@@ -15,7 +15,7 @@ import {
 } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
-import { formatPlayerCharacterAliasesForPrompt } from "../playerCharacterPrompt";
+import { formatPlayerCharacterAliasesForPrompt, formatPlayerCharacterKnownTiesForPrompt } from "../playerCharacterPrompt";
 
 const MAX_RECENT_MESSAGES = 40;
 
@@ -223,6 +223,10 @@ export function buildStoryStateExtractionPrompt({
             (() => {
               const aliasesLine = formatPlayerCharacterAliasesForPrompt(playerCharacter);
               return aliasesLine ? `- ${aliasesLine}` : "";
+            })(),
+            (() => {
+              const knownTiesLine = formatPlayerCharacterKnownTiesForPrompt(playerCharacter);
+              return knownTiesLine ? `- ${knownTiesLine}` : "";
             })(),
             playerCharacter.age?.trim() ? `- Age: ${playerCharacter.age.trim()}` : "",
             playerCharacter.gender?.trim() ? `- Gender: ${playerCharacter.gender.trim()}` : "",

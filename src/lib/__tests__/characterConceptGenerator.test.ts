@@ -9,6 +9,8 @@ import {
 import {
 	buildCharacterConceptConstraintsFromDraft,
 	formatCharacterConceptAliasesConstraint,
+	formatCharacterKnownTiesConstraint,
+	formatAntiCanonSprawlGuidance,
 } from "../playerCharacterPrompt";
 import type { Universe } from "../../types/models";
 
@@ -93,6 +95,21 @@ describe("buildCharacterConceptGeneratorSystemPrompt", () => {
 		expect(prompt).toContain("do not repeat this hook");
 		expect(prompt).toContain("secret hacker");
 		expect(prompt).toContain("Vary the central hook");
+	});
+
+	it("includes anti-canon-sprawl guidance and known ties", () => {
+		const prompt = buildCharacterConceptGeneratorSystemPrompt({
+			universe,
+			existing: { name: "James Peralta" },
+			knownTiesConstraint: formatCharacterKnownTiesConstraint({
+				knownTies: ["Jake Peralta — father", "Amy Santiago — mother"],
+			}),
+			antiCanonSprawlGuidance: formatAntiCanonSprawlGuidance(true),
+		});
+
+		expect(prompt).toContain("Do not name-drop the full main cast");
+		expect(prompt).toContain("Jake Peralta — father");
+		expect(prompt).toContain("Only the Known ties");
 	});
 });
 

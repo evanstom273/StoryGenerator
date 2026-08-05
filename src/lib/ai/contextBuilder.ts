@@ -23,7 +23,7 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterAliasesForPrompt } from "../playerCharacterPrompt";
+import { formatPlayerCharacterAliasesForPrompt, formatPlayerCharacterKnownTiesForPrompt } from "../playerCharacterPrompt";
 import {
   formatAuthorDirectiveStateForPrompt,
   isAuthorDirectiveMessage,
@@ -196,6 +196,7 @@ export function buildStoryChatContext({
       `Story Title: ${story.title}`,
       `Player Character: ${playerCharacter.name}`,
       formatPlayerCharacterAliasesForPrompt(playerCharacter),
+      formatPlayerCharacterKnownTiesForPrompt(playerCharacter),
       playerCharacter.age.trim() ? `Player Age: ${playerCharacter.age.trim()}` : "",
       playerCharacter.gender.trim() ? `Player Gender: ${playerCharacter.gender.trim()}` : "",
       playerCharacter.species?.trim()

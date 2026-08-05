@@ -11,7 +11,7 @@ import { sortByTimestampAsc } from "../dates";
 import { buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "./playerAssist";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterAliasesForPrompt } from "../playerCharacterPrompt";
+import { formatPlayerCharacterAliasesForPrompt, formatPlayerCharacterKnownTiesForPrompt } from "../playerCharacterPrompt";
 import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
@@ -121,6 +121,7 @@ export function buildPlayerAssistContext({
       `Story Title: ${story.title}`,
       `Player Character: ${playerCharacter.name}`,
       formatPlayerCharacterAliasesForPrompt(playerCharacter),
+      formatPlayerCharacterKnownTiesForPrompt(playerCharacter),
       playerCharacter.age.trim() ? `Player Age: ${playerCharacter.age.trim()}` : "",
       playerCharacter.gender.trim() ? `Player Gender: ${playerCharacter.gender.trim()}` : "",
       playerCharacter.species?.trim()

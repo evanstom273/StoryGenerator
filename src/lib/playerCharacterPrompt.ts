@@ -34,6 +34,77 @@ export function normalizePlayerCharacterAliases(value: unknown): string[] {
 	return aliases;
 }
 
+export function normalizePlayerCharacterKnownTies(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+
+	const seen = new Set<string>();
+	const knownTies: string[] = [];
+
+	for (const item of value) {
+		if (typeof item !== "string") {
+			continue;
+		}
+
+		const trimmed = item.trim();
+		if (!trimmed) {
+			continue;
+		}
+
+		const key = trimmed.toLowerCase();
+		if (seen.has(key)) {
+			continue;
+		}
+
+		seen.add(key);
+		knownTies.push(trimmed);
+
+		if (knownTies.length >= 16) {
+			break;
+		}
+	}
+
+	return knownTies;
+}
+
+export function formatPlayerCharacterKnownTiesForPrompt(
+	character: Pick<PlayerCharacter, "knownTies">,
+): string | null {
+	const knownTies = normalizePlayerCharacterKnownTies(character.knownTies);
+	if (!knownTies.length) {
+		return null;
+	}
+
+	return `Known ties: ${knownTies.join("; ")}`;
+}
+
+export function formatCharacterKnownTiesConstraint(
+	draft?: Partial<Pick<PlayerCharacterDraft, "knownTies">>,
+): string | null {
+	const knownTies = normalizePlayerCharacterKnownTies(draft?.knownTies);
+	if (!knownTies.length) {
+		return null;
+	}
+
+	return [
+		"Known ties (only these canon characters may be referenced by name):",
+		...knownTies.map((tie) => `- ${tie}`),
+	].join("\n");
+}
+
+export function formatAntiCanonSprawlGuidance(hasKnownTies: boolean): string {
+	return [
+		"Universe canon characters:",
+		"- Imported lore may describe a large cast. Do not reference every famous character from the setting.",
+		"- Do not assume the player character knows, works with, or is related to the main ensemble unless listed in Known ties or clearly implied by the Character Concept.",
+		"- Prefer original hooks, everyday life, and off-screen connections over roping in the full main cast.",
+		hasKnownTies
+			? "- Only the Known ties listed above may be named. Do not add extra canon characters beyond those ties and any people explicitly named in the Character Concept."
+			: "- No Known ties were specified. Do not name-drop major canon characters unless the Character Concept explicitly names them (for example, parents or mentors).",
+	].join("\n");
+}
+
 export function formatPlayerCharacterAliasesForPrompt(
 	character: Pick<PlayerCharacter, "name" | "aliases">,
 ): string | null {
