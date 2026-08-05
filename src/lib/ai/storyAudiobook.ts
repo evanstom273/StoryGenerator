@@ -33,6 +33,8 @@ import {
 import type { StoryChapter, StoryMessage } from "../../types/models";
 import { getNextChapterBannerLabel } from "./chapterBannerLabel";
 import { clampAudiobookParallelChapters } from "./storyAudiobookParallel";
+import type { AudiobookPerformanceMode } from "./audiobookPerformance";
+import { DEFAULT_AUDIOBOOK_PERFORMANCE_MODE } from "./audiobookPerformance";
 import {
 	buildInitialAudiobookProgress,
 	cloneAudiobookProgress,
@@ -62,6 +64,7 @@ export function listStoryAudiobookChapterSegments(
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry: CharacterTtsRegistry;
 		chapters?: StoryChapter[];
+		audiobookPerformanceMode?: AudiobookPerformanceMode;
 	},
 ): StoryAudiobookChapterSegment[] {
 	const sorted = sortMessages(messages);
@@ -115,6 +118,8 @@ export function listStoryAudiobookChapterSegments(
 				characterRegistry: options.characterRegistry,
 				allStoryMessages: messages,
 				chapterTitle: start.label,
+				audiobookPerformanceMode:
+					options.audiobookPerformanceMode ?? DEFAULT_AUDIOBOOK_PERFORMANCE_MODE,
 			});
 
 			if (!plan) {
