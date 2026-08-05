@@ -44,8 +44,8 @@ describe("transcriptFormatRepair", () => {
 		expect(repaired).toContain("Before Rebecca can take two steps");
 		expect(repaired).toContain("Rebecca: *steps smoothly into the middle aisle");
 		expect(repaired).not.toContain("*.*");
-		expect(repaired).toContain("Detective Diaz's intense gaze");
-		expect(repaired).toContain("Detective Peralta's theatrical entrance");
+		expect(repaired).toContain("Detective intense gaze");
+		expect(repaired).toContain("Detective theatrical entrance");
 	});
 
 	it("passes validation after automatic transcript repair", () => {

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	dialogueLooksAddressedToPlayer,
 	dialogueLooksLikePlayerVoice,
 	speakerLineLooksLikeMisattributedPlayer,
 } from "../playerDialogueVoice";
@@ -51,28 +50,37 @@ Rebecca: *leans against the doorway, crossing her arms with a faint smirk.* "Not
 Rebecca: *picks up her mug and leans casually against the edge of the lectern.* "Honestly? The undercover part was easy. The hardest part was stopping myself from entirely rewriting East High's curriculum while I was sitting in faculty meetings."`;
 
 describe("playerDialogueVoice", () => {
-	it("detects other characters talking to Rebecca", () => {
+	it("detects other characters talking to the player", () => {
 		expect(
-			dialogueLooksAddressedToPlayer(
-				"We really missed you around here, Alvarez. The bullpen was way too rowdy without you.",
+			speakerLineLooksLikeMisattributedPlayer(
+				'Rebecca: *smiles warmly and nods in agreement.* "We really missed you around here, Alvarez. The bullpen was way too rowdy without you."',
 				"Rebecca Alvarez",
 			),
 		).toBe(true);
 		expect(
-			dialogueLooksAddressedToPlayer(
-				"Okay, serious police business over! Now for the actual important news—Becca is finally back in the bullpen full-time!",
+			speakerLineLooksLikeMisattributedPlayer(
+				'Rebecca: *slaps both hands down on his desk and beams.* "Okay, serious police business over! Now for the actual important news—Becca is finally back in the bullpen full-time!"',
 				"Rebecca Alvarez",
 			),
 		).toBe(true);
 	});
 
-	it("keeps Rebecca's own undercover line as player voice", () => {
+	it("keeps first-person player dialogue under the player label", () => {
 		expect(
-			dialogueLooksLikePlayerVoice(
-				"Honestly? The undercover part was easy. The hardest part was stopping myself from entirely rewriting East High's curriculum while I was sitting in faculty meetings.",
+			speakerLineLooksLikeMisattributedPlayer(
+				'Rebecca: *picks up her mug.* "Honestly? The undercover part was easy. The hardest part was stopping myself from entirely rewriting East High\'s curriculum while I was sitting in faculty meetings."',
 				"Rebecca Alvarez",
 			),
-		).toBe(true);
+		).toBe(false);
+	});
+
+	it("does not treat titles like Captain as player-directed speech", () => {
+		expect(
+			speakerLineLooksLikeMisattributedPlayer(
+				'Rebecca: "Thank you, Captain. I appreciate the welcome back."',
+				"Rebecca Alvarez",
+			),
+		).toBe(false);
 	});
 });
 
@@ -89,16 +97,13 @@ describe("bullpen speaker repair", () => {
 		);
 	});
 
-	it("strips false Rebecca labels from other characters' dialogue", () => {
+	it("flags misattributed player labels for rewrite instead of repairing them", () => {
 		const repaired = repairMalformedTranscriptFormat(ALL_REBECCA_BULLPEN, {
 			playerName: "Rebecca Alvarez",
 		});
 
-		expect(repaired).not.toContain(
-			'Rebecca: *smiles warmly and nods in agreement.* "We really missed you around here, Alvarez.',
-		);
 		expect(repaired).toContain(
-			'Rebecca: *picks up her mug and leans casually against the edge of the lectern.* "Honestly? The undercover part was easy.',
+			'Rebecca: *smiles warmly and nods in agreement.* "We really missed you around here, Alvarez.',
 		);
 	});
 

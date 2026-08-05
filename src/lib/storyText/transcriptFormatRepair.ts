@@ -1,9 +1,11 @@
 import { normalizeSceneSpeakerLabel } from "./speakerLabels";
 import {
-	dialogueLooksAddressedToPlayer,
-	dialogueLooksLikePlayerVoice,
+	countMisattributedPlayerSpeakerLines,
+	dialogueAddressesPlayerByName,
+	dialogueAddressesPlayerBySecondPerson,
+	dialogueHasFirstPersonVoice,
+	dialogueReferencesPlayerInThirdPerson,
 	extractQuotedDialogue,
-	stripMisattributedPlayerSpeakerLabel,
 } from "./playerDialogueVoice";
 
 const SPEAKER_LINE = /^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/;
@@ -31,7 +33,7 @@ function wrapAction(value: string) {
 
 function resolveOrphanSpeakerLabel(
 	line: string,
-	lastSpeaker: string | null,
+	_lastSpeaker: string | null,
 	playerName?: string | null,
 ) {
 	const trimmed = line.trim();
@@ -39,65 +41,27 @@ function resolveOrphanSpeakerLabel(
 	const dialogue = extractQuotedDialogue(trimmed);
 	const hasDialogue = dialogue.length > 0;
 
-	if (playerLabel && hasDialogue) {
-		if (dialogueLooksAddressedToPlayer(dialogue, playerName!)) {
-			if (
-				lastSpeaker &&
-				lastSpeaker.toLowerCase() !== playerLabel.toLowerCase() &&
-				lastSpeaker.toLowerCase() !== "narrator"
-			) {
-				return lastSpeaker;
-			}
+	if (hasDialogue) {
+		if (!playerLabel || !dialogueHasFirstPersonVoice(dialogue)) {
 			return null;
 		}
 
-		if (!dialogueLooksLikePlayerVoice(dialogue, playerName!)) {
-			if (
-				lastSpeaker &&
-				lastSpeaker.toLowerCase() !== playerLabel.toLowerCase() &&
-				lastSpeaker.toLowerCase() !== "narrator"
-			) {
-				return lastSpeaker;
-			}
+		if (
+			dialogueReferencesPlayerInThirdPerson(dialogue, playerName ?? "") ||
+			dialogueAddressesPlayerByName(dialogue, playerName ?? "") ||
+			dialogueAddressesPlayerBySecondPerson(dialogue)
+		) {
 			return null;
 		}
-	}
 
-	if (!hasDialogue && playerLabel && IMPLIED_SUBJECT_START.test(trimmed)) {
 		return playerLabel;
 	}
 
-	if (lastSpeaker) {
-		return lastSpeaker;
-	}
-
-	if (playerLabel && !hasDialogue) {
+	if (playerLabel && IMPLIED_SUBJECT_START.test(trimmed.replace(/^\*+|\*+$/g, ""))) {
 		return playerLabel;
 	}
 
 	return null;
-}
-
-/** Remove player labels from lines that are clearly other characters talking to/about the player. */
-export function repairMisattributedPlayerSpeakerLines(
-	text: string,
-	playerName?: string | null,
-): { text: string; changed: boolean } {
-	if (!playerName?.trim()) {
-		return { text, changed: false };
-	}
-
-	const lines = normalizeNewlines(text).split("\n");
-	let changed = false;
-	const output = lines.map((line) => {
-		const next = stripMisattributedPlayerSpeakerLabel(line, playerName);
-		if (next !== line) {
-			changed = true;
-		}
-		return next;
-	});
-
-	return { text: output.join("\n"), changed };
 }
 
 export function countUnlabeledCharacterDialogueLines(text: string) {
@@ -109,8 +73,15 @@ export function countUnlabeledCharacterDialogueLines(text: string) {
 		}).length;
 }
 
-export function needsSpeakerAttributionRewrite(text: string) {
-	return countUnlabeledCharacterDialogueLines(text) >= 2;
+export function needsSpeakerAttributionRewrite(
+	text: string,
+	playerName?: string | null,
+) {
+	if (countUnlabeledCharacterDialogueLines(text) >= 2) {
+		return true;
+	}
+
+	return countMisattributedPlayerSpeakerLines(text, playerName) > 0;
 }
 
 /** Normalize "Name — *action*" back to "Name: *action*" when em dash was used as separator. */
@@ -198,18 +169,6 @@ export function repairSpeakerEmbeddedActions(text: string) {
 		.join("\n");
 }
 
-/** Fill common truncated detective references when Jake/Rosa are in scene. */
-export function repairTruncatedDetectiveReferences(text: string) {
-	if (!/\bJake\b/i.test(text) || !/\bRosa\b/i.test(text)) {
-		return text;
-	}
-
-	let next = text;
-	next = next.replace(/\bDetective intense\b/gi, "Detective Diaz's intense");
-	next = next.replace(/\bDetective theatrical\b/gi, "Detective Peralta's theatrical");
-	return next;
-}
-
 /** Fix "Before can take" style clauses missing the subject. */
 export function repairMissingActionSubjects(text: string, playerName?: string | null) {
 	const subject = playerName?.trim() ? normalizeSceneSpeakerLabel(playerName) : "She";
@@ -289,31 +248,17 @@ export function repairMalformedTranscriptFormat(
 	next = repairMalformedNarratorLines(next);
 	next = repairStrayAsteriskArtifacts(next);
 	next = repairSpeakerEmbeddedActions(next);
-	next = repairTruncatedDetectiveReferences(next);
 	next = repairMissingActionSubjects(next, options.playerName);
-	next = repairMisattributedPlayerSpeakerLines(next, options.playerName).text;
 	next = repairOrphanActionLines(next, options.playerName);
-	return repairMisattributedPlayerSpeakerLines(next, options.playerName).text;
+	return next;
 }
 
 export function repairMalformedTranscriptFormatWithMeta(
 	text: string,
 	options: { playerName?: string | null } = {},
 ) {
-	let next = text;
-	let strippedMisattributedPlayer = false;
-	next = repairSpeakerLabelEmDash(next);
-	next = repairMalformedNarratorLines(next);
-	next = repairStrayAsteriskArtifacts(next);
-	next = repairSpeakerEmbeddedActions(next);
-	next = repairTruncatedDetectiveReferences(next);
-	next = repairMissingActionSubjects(next, options.playerName);
-	const firstPass = repairMisattributedPlayerSpeakerLines(next, options.playerName);
-	next = firstPass.text;
-	strippedMisattributedPlayer ||= firstPass.changed;
-	next = repairOrphanActionLines(next, options.playerName);
-	const secondPass = repairMisattributedPlayerSpeakerLines(next, options.playerName);
-	next = secondPass.text;
-	strippedMisattributedPlayer ||= secondPass.changed;
-	return { text: next, strippedMisattributedPlayer };
+	return {
+		text: repairMalformedTranscriptFormat(text, options),
+		strippedMisattributedPlayer: false,
+	};
 }

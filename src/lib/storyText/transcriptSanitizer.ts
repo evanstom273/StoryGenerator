@@ -6,7 +6,8 @@ import {
   splitDialogueQuoteRegions,
 } from "./dialogueQuoteRegions";
 import { normalizeSpeakerNamesInTranscript } from "./speakerLabels";
-import { repairMalformedTranscriptFormat, repairMisattributedPlayerSpeakerLines, needsSpeakerAttributionRewrite, repairStrayAsteriskArtifacts } from "./transcriptFormatRepair";
+import { repairMalformedTranscriptFormat, needsSpeakerAttributionRewrite, repairStrayAsteriskArtifacts } from "./transcriptFormatRepair";
+import { stripMisattributedPlayerSpeakerLabel } from "./playerDialogueVoice";
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -786,6 +787,23 @@ export function shouldAcceptRepairedTranscriptDespiteFormatIssues(result: {
 	return !result.formatValid && isSubstantialTranscriptText(result.text);
 }
 
+function stripMisattributedPlayerSpeakerLabels(text: string, playerName?: string | null) {
+	if (!playerName?.trim()) {
+		return { text, changed: false };
+	}
+
+	let changed = false;
+	const lines = text.replace(/\r\n/g, "\n").split("\n").map((line) => {
+		const next = stripMisattributedPlayerSpeakerLabel(line, playerName);
+		if (next !== line) {
+			changed = true;
+		}
+		return next;
+	});
+
+	return { text: lines.join("\n"), changed };
+}
+
 export function sanitizeAssistantTranscript(args: {
   text: string;
   latestUserMessage?: string | null;
@@ -810,27 +828,28 @@ export function sanitizeAssistantTranscript(args: {
   const formatRepaired = repairMalformedTranscriptFormat(narrationRepaired.text, {
     playerName: args.playerName,
   });
-  if (needsSpeakerAttributionRewrite(formatRepaired)) {
-    const normalized = normalizeTranscriptWhitespace(repairStrayAsteriskArtifacts(formatRepaired));
+  if (needsSpeakerAttributionRewrite(formatRepaired, args.playerName)) {
+    const stripped = stripMisattributedPlayerSpeakerLabels(formatRepaired, args.playerName);
+    const normalized = normalizeTranscriptWhitespace(
+      repairStrayAsteriskArtifacts(stripped.text),
+    );
     return {
       text: normalized,
       removedEcho: echoed.removed,
       removedNarratorLabels: narratorStripped.changed,
       removedMarkdownArtifacts: markdownStripped.changed,
       autoRepairedNarration: narrationRepaired.repaired,
-      strippedMisattributedPlayer: true,
+      strippedMisattributedPlayer: stripped.changed,
       needsSpeakerAttributionRewrite: true,
       formatValid: false,
       formatIssues: [],
     };
   }
-  const strippedPreStandardize = repairMisattributedPlayerSpeakerLines(formatRepaired, args.playerName);
   const standardized = standardizeAssistantStoryText({
-    text: strippedPreStandardize.text,
+    text: formatRepaired,
     playerName: args.playerName,
   });
-  const strippedMisattributed = repairMisattributedPlayerSpeakerLines(standardized.text, args.playerName);
-  const artifactCleaned = repairStrayAsteriskArtifacts(strippedMisattributed.text);
+  const artifactCleaned = repairStrayAsteriskArtifacts(standardized.text);
   const normalized = normalizeTranscriptWhitespace(artifactCleaned);
 
   return {
@@ -839,9 +858,11 @@ export function sanitizeAssistantTranscript(args: {
     removedNarratorLabels: narratorStripped.changed,
     removedMarkdownArtifacts: markdownStripped.changed,
     autoRepairedNarration: narrationRepaired.repaired,
-    strippedMisattributedPlayer: strippedPreStandardize.changed || strippedMisattributed.changed,
-    needsSpeakerAttributionRewrite: needsSpeakerAttributionRewrite(normalized),
-    formatValid: standardized.valid && !needsSpeakerAttributionRewrite(normalized),
+    strippedMisattributedPlayer: false,
+    needsSpeakerAttributionRewrite: needsSpeakerAttributionRewrite(normalized, args.playerName),
+    formatValid:
+      standardized.valid &&
+      !needsSpeakerAttributionRewrite(normalized, args.playerName),
     formatIssues: standardized.issues,
   };
 }
