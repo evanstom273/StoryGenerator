@@ -15,7 +15,7 @@ import {
 } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
-import { formatPlayerCharacterAliasesForPrompt, formatPlayerCharacterKnownTiesForPrompt } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt } from "../playerCharacterPrompt";
 
 const MAX_RECENT_MESSAGES = 40;
 
@@ -219,19 +219,11 @@ export function buildStoryStateExtractionPrompt({
       playerCharacter
         ? [
             "Player Character Sheet (authoritative canon):",
-            `- Name: ${playerCharacter.name}`,
-            (() => {
-              const aliasesLine = formatPlayerCharacterAliasesForPrompt(playerCharacter);
-              return aliasesLine ? `- ${aliasesLine}` : "";
-            })(),
+            formatPlayerCharacterIdentityForPrompt(playerCharacter),
             (() => {
               const knownTiesLine = formatPlayerCharacterKnownTiesForPrompt(playerCharacter);
               return knownTiesLine ? `- ${knownTiesLine}` : "";
             })(),
-            playerCharacter.age?.trim() ? `- Age: ${playerCharacter.age.trim()}` : "",
-            playerCharacter.gender?.trim() ? `- Gender: ${playerCharacter.gender.trim()}` : "",
-            playerCharacter.species?.trim() ? `- Species: ${playerCharacter.species.trim()}` : "",
-            playerCharacter.pronouns?.trim() ? `- Pronouns: ${playerCharacter.pronouns.trim()}` : "",
             playerCharacter.characterConcept?.trim()
               ? `- Concept/Role: ${playerCharacter.characterConcept.trim()}`
               : "",

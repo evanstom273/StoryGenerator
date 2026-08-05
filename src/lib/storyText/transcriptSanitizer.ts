@@ -35,6 +35,19 @@ function getPlayerNameVariants(playerName: string | null | undefined) {
   if (lastToken && lastToken.length >= 2) {
     variants.add(lastToken);
   }
+
+  const parenMatches = trimmed.matchAll(/\(([^)]{2,128})\)/g);
+  for (const match of parenMatches) {
+    const value = match[1]?.trim() ?? "";
+    if (!value) continue;
+    for (const part of value.split(/,\s*/)) {
+      const alias = part.trim();
+      if (alias.length >= 2) {
+        variants.add(alias);
+      }
+    }
+  }
+
   return Array.from(variants);
 }
 

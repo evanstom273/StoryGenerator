@@ -1,4 +1,5 @@
 import type { PlayerCharacter, PlayerCharacterDraft } from "../types/models";
+import { safeParseStoryStateData } from "./storyStateV2";
 
 export function normalizePlayerCharacterAliases(value: unknown): string[] {
 	if (!Array.isArray(value)) {
@@ -103,6 +104,172 @@ export function formatAntiCanonSprawlGuidance(hasKnownTies: boolean): string {
 			? "- Only the Known ties listed above may be named. Do not add extra canon characters beyond those ties and any people explicitly named in the Character Concept."
 			: "- No Known ties were specified. Do not name-drop major canon characters unless the Character Concept explicitly names them (for example, parents or mentors).",
 	].join("\n");
+}
+
+export function resolvePlayerCharacterPreferredSceneName(
+	character: Pick<PlayerCharacter, "name" | "aliases">,
+): string {
+	const name = character.name.trim();
+	const aliases = normalizePlayerCharacterAliases(character.aliases).filter(
+		(alias) => alias.toLowerCase() !== name.toLowerCase(),
+	);
+
+	return aliases[0] ?? name;
+}
+
+export function getPlayerCharacterNameVariants(
+	character: Pick<PlayerCharacter, "name" | "aliases">,
+): string[] {
+	const name = character.name.trim();
+	const variants = new Set<string>();
+
+	if (name) {
+		variants.add(name);
+	}
+
+	for (const alias of normalizePlayerCharacterAliases(character.aliases)) {
+		variants.add(alias);
+	}
+
+	const tokens = name.split(/\s+/).filter(Boolean);
+	const firstToken = tokens[0] ?? "";
+	const lastToken = tokens.length > 1 ? tokens[tokens.length - 1] : "";
+
+	if (firstToken.length >= 2) {
+		variants.add(firstToken);
+	}
+	if (lastToken.length >= 2) {
+		variants.add(lastToken);
+	}
+
+	return Array.from(variants);
+}
+
+export function buildPlayerNameForValidation(
+	character: Pick<PlayerCharacter, "name" | "aliases">,
+	storyStateJson?: string | null,
+): string {
+	const base = character.name.trim();
+	const aliases = new Set<string>();
+
+	for (const alias of normalizePlayerCharacterAliases(character.aliases)) {
+		if (alias.toLowerCase() !== base.toLowerCase()) {
+			aliases.add(alias);
+		}
+	}
+
+	const json = storyStateJson?.trim() ?? "";
+	if (base && json) {
+		const parsed = safeParseStoryStateData(json);
+		if (parsed) {
+			const candidates = Object.entries(parsed.characters ?? {});
+			const match = candidates.find(([key, entry]) => {
+				if (key === base) return true;
+				if (!entry) return false;
+				if (entry.canonicalName === base) return true;
+				if (entry.displayName === base) return true;
+				if (entry.aliases?.includes(base)) return true;
+				return false;
+			});
+
+			if (match) {
+				const [key, entry] = match;
+				if (key && key.toLowerCase() !== base.toLowerCase()) {
+					aliases.add(key);
+				}
+				if (entry?.displayName && entry.displayName.toLowerCase() !== base.toLowerCase()) {
+					aliases.add(entry.displayName);
+				}
+				for (const alias of entry?.aliases ?? []) {
+					if (alias && alias.toLowerCase() !== base.toLowerCase()) {
+						aliases.add(alias);
+					}
+				}
+			}
+		}
+	}
+
+	const aliasText = Array.from(aliases).slice(0, 6).join(", ");
+	return aliasText ? `${base} (${aliasText})` : base;
+}
+
+export function formatPlayerCharacterPronounAndNamingRules(
+	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns">,
+): string {
+	const preferredName = resolvePlayerCharacterPreferredSceneName(character);
+	const legalName = character.name.trim();
+	const pronouns = character.pronouns.trim();
+	const usesDifferentPreferredName = preferredName.toLowerCase() !== legalName.toLowerCase();
+
+	return [
+		"Player identity rules (mandatory):",
+		usesDifferentPreferredName
+			? `- Preferred name for speaker headers and third-person narration: "${preferredName}". Do NOT use the full legal name "${legalName}" in speaker headers or casual narration unless the scene is explicitly formal or a character who does not know them well addresses them.`
+			: `- Preferred name for speaker headers and third-person narration: "${preferredName}".`,
+		pronouns
+			? `- Player pronouns: ${pronouns}. These are authoritative. NEVER infer pronouns from name, gender field, or stereotypes. Use only these pronouns when referring to the player character in narration.`
+			: "- Player pronouns were not specified. Do not assume he/him or she/her from name or gender.",
+		pronouns.includes("they")
+			? `- Use they/them/their forms in narration for ${preferredName}. Never write he/him/his or she/her/hers for this character.`
+			: "",
+	]
+		.filter(Boolean)
+		.join("\n");
+}
+
+export function formatPlayerCharacterIdentityForPrompt(
+	character: Pick<
+		PlayerCharacter,
+		"name" | "aliases" | "pronouns" | "gender" | "species" | "age"
+	>,
+): string {
+	const preferredName = resolvePlayerCharacterPreferredSceneName(character);
+	const legalName = character.name.trim();
+	const aliases = normalizePlayerCharacterAliases(character.aliases).filter(
+		(alias) => alias.toLowerCase() !== legalName.toLowerCase(),
+	);
+	const otherAliases = aliases.filter(
+		(alias) => alias.toLowerCase() !== preferredName.toLowerCase(),
+	);
+
+	return [
+		`Player Character (preferred scene name): ${preferredName}`,
+		preferredName.toLowerCase() !== legalName.toLowerCase()
+			? `Legal/full name: ${legalName}`
+			: "",
+		otherAliases.length ? `Also known as: ${otherAliases.join(", ")}` : "",
+		character.age.trim() ? `Player Age: ${character.age.trim()}` : "",
+		character.gender.trim() ? `Player Gender: ${character.gender.trim()}` : "",
+		character.species?.trim() ? `Player Species: ${character.species.trim()}` : "",
+		character.pronouns.trim() ? `Player Pronouns: ${character.pronouns.trim()}` : "",
+		formatPlayerCharacterPronounAndNamingRules(character),
+	]
+		.filter(Boolean)
+		.join("\n");
+}
+
+export function formatPlayerCharacterOwnershipRulesForRewrite(
+	character: Pick<
+		PlayerCharacter,
+		"name" | "aliases" | "pronouns" | "gender" | "species" | "age"
+	>,
+	allowDirectedPlayerControl: boolean,
+): string {
+	const preferredName = resolvePlayerCharacterPreferredSceneName(character);
+
+	return [
+		`The player character is: ${preferredName}.`,
+		`Player character sheet is authoritative canon. Pronouns: ${character.pronouns.trim() || "unspecified"}. Gender: ${character.gender.trim() || "unspecified"}. Species: ${(character.species ?? "").trim() || "unspecified"}. Age: ${character.age.trim() || "unspecified"}.`,
+		formatPlayerCharacterPronounAndNamingRules(character),
+		allowDirectedPlayerControl
+			? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewrite when required by the direction."
+			: "- Never write dialogue/actions/thoughts/decisions for the player character.",
+		allowDirectedPlayerControl
+			? "- Use the preferred scene name in any player-character speaker header."
+			: "- Never include a speaker header for the player character.",
+	]
+		.filter(Boolean)
+		.join("\n");
 }
 
 export function formatPlayerCharacterAliasesForPrompt(

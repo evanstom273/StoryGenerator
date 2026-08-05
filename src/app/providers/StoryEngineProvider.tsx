@@ -183,6 +183,10 @@ import {
   formatAntiCanonSprawlGuidance,
   formatPlayerCharacterKnownTiesForPrompt,
   normalizePlayerCharacterKnownTies,
+  buildPlayerNameForValidation,
+  formatPlayerCharacterOwnershipRulesForRewrite,
+  formatPlayerCharacterPronounAndNamingRules,
+  resolvePlayerCharacterPreferredSceneName,
 } from "../../lib/playerCharacterPrompt";
 import type {
   AIModelRole,
@@ -4995,43 +4999,10 @@ export function StoryEngineProvider({
         const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
         const provider = createAIProvider(providerType);
 
-        const playerNameForValidation = (() => {
-          const base = playerCharacter.name.trim();
-          const json = storyState?.stateJson?.trim() ?? "";
-          if (!base || !json) {
-            return base;
-          }
-
-          const parsed = safeParseStoryStateData(json);
-          if (!parsed) {
-            return base;
-          }
-
-          const candidates = Object.entries(parsed.characters ?? {});
-          const match = candidates.find(([key, entry]) => {
-            if (key === base) return true;
-            if (!entry) return false;
-            if (entry.canonicalName === base) return true;
-            if (entry.displayName === base) return true;
-            if (entry.aliases?.includes(base)) return true;
-            return false;
-          });
-
-          if (!match) {
-            return base;
-          }
-
-          const [key, entry] = match;
-          const aliases = new Set<string>();
-          if (key && key !== base) aliases.add(key);
-          if (entry?.displayName && entry.displayName !== base) aliases.add(entry.displayName);
-          for (const alias of entry?.aliases ?? []) {
-            if (alias && alias !== base) aliases.add(alias);
-          }
-
-          const aliasText = Array.from(aliases).slice(0, 4).join(", ");
-          return aliasText ? `${base} (${aliasText})` : base;
-        })();
+        const playerNameForValidation = buildPlayerNameForValidation(
+          playerCharacter,
+          storyState?.stateJson,
+        );
 
         const recentMessages = sortByTimestampAsc(existingMessages.slice(0, -1)).slice(-31);
         const historyMessages = recentMessages.slice(0, -1);
@@ -5150,11 +5121,7 @@ export function StoryEngineProvider({
             ? "- Never write lines that pretend the Director note was spoken aloud in-scene."
             : "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
           "Ownership rules (strict):",
-          `- The player character is: ${playerCharacter.name}`,
-          `- Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
-          allowDirectedPlayerControl
-            ? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewrite when required by the direction."
-            : "- Never write dialogue/actions/thoughts/decisions for the player character.",
+          formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
           allowDirectedPlayerControl
             ? "- Do not treat the Director note itself as in-world dialogue."
             : "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
@@ -5167,9 +5134,7 @@ export function StoryEngineProvider({
 
         const ownershipRewritePrompt = [
           "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
-          `The player character is: ${playerCharacter.name}.`,
-          `Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
-          "Never include a speaker header for the player character.",
+          formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, false),
           "Never narrate actions/thoughts for the player character.",
           "Remove any repetition of the latest player message.",
           "Never use narrator labels like 'Narrator:' anywhere in the output.",
@@ -5200,8 +5165,8 @@ export function StoryEngineProvider({
           allowDirectedPlayerControl
             ? `The latest Director note is:\n${previousMessage.content}`
             : `The latest player message is:\n${previousMessage.content}`,
-          `The player character is: ${playerCharacter.name}.`,
-          `Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
+          `The player character is: ${resolvePlayerCharacterPreferredSceneName(playerCharacter)}.`,
+          formatPlayerCharacterPronounAndNamingRules(playerCharacter),
           allowDirectedPlayerControl
             ? "Do not repeat the Director note as dialogue. Realize it as scene content and continue naturally."
             : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
@@ -5240,11 +5205,7 @@ export function StoryEngineProvider({
           "Never use narrator labels like 'Narrator:' anywhere in the output.",
           "Never use asterisks for emphasis.",
           "Ownership rules:",
-          `- The player character is: ${playerCharacter.name}`,
-          `- Player character sheet is authoritative canon. Pronouns: ${playerCharacter.pronouns.trim() || "unspecified"}. Gender: ${playerCharacter.gender.trim() || "unspecified"}. Species: ${(playerCharacter.species ?? "").trim() || "unspecified"}. Age: ${playerCharacter.age.trim() || "unspecified"}.`,
-          allowDirectedPlayerControl
-            ? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewritten scene when required by the direction."
-            : "- Never write dialogue/actions/thoughts/decisions for the player character.",
+          formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
         ].join("\n");
 
         let candidateAssistantText = finalAssistantText;
@@ -6469,43 +6430,10 @@ export function StoryEngineProvider({
         const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
         const provider = createAIProvider(providerType);
 
-        const playerNameForValidation = (() => {
-          const base = playerCharacter.name.trim();
-          const json = storyState?.stateJson?.trim() ?? "";
-          if (!base || !json) {
-            return base;
-          }
-
-          const parsed = safeParseStoryStateData(json);
-          if (!parsed) {
-            return base;
-          }
-
-          const candidates = Object.entries(parsed.characters ?? {});
-          const match = candidates.find(([key, entry]) => {
-            if (key === base) return true;
-            if (!entry) return false;
-            if (entry.canonicalName === base) return true;
-            if (entry.displayName === base) return true;
-            if (entry.aliases?.includes(base)) return true;
-            return false;
-          });
-
-          if (!match) {
-            return base;
-          }
-
-          const [key, entry] = match;
-          const aliases = new Set<string>();
-          if (key && key !== base) aliases.add(key);
-          if (entry?.displayName && entry.displayName !== base) aliases.add(entry.displayName);
-          for (const alias of entry?.aliases ?? []) {
-            if (alias && alias !== base) aliases.add(alias);
-          }
-
-          const aliasText = Array.from(aliases).slice(0, 4).join(", ");
-          return aliasText ? `${base} (${aliasText})` : base;
-        })();
+        const playerNameForValidation = buildPlayerNameForValidation(
+          playerCharacter,
+          storyState?.stateJson,
+        );
 
         const recentMessages = sortByTimestampAsc(refreshedMessages).slice(-31);
         const historyMessages =
@@ -6825,10 +6753,7 @@ export function StoryEngineProvider({
               ? "- Never write lines that pretend the Director note was spoken aloud in-scene."
               : "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
             "Ownership rules (strict):",
-            `- The player character is: ${playerCharacter.name}`,
-            allowDirectedPlayerControl
-              ? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewrite when required by the direction."
-              : "- Never write dialogue/actions/thoughts/decisions for the player character.",
+            formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
             allowDirectedPlayerControl
               ? "- Do not treat the Director note itself as in-world dialogue."
               : "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
@@ -6843,10 +6768,10 @@ export function StoryEngineProvider({
             allowDirectedPlayerControl
               ? "Rewrite the following story scene to preserve the directed scene while removing any formatting or continuity problems."
               : "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
-            `The player character is: ${playerCharacter.name}.`,
+            formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
             allowDirectedPlayerControl
               ? "The latest user message was a Director note, not protagonist dialogue."
-              : "Never include a speaker header for the player character.",
+              : "",
             allowDirectedPlayerControl
               ? "It is valid for this one rewritten scene to temporarily include player-character dialogue/actions if the directed scene requires it."
               : "Never narrate actions/thoughts for the player character.",
@@ -6883,7 +6808,8 @@ export function StoryEngineProvider({
             allowDirectedPlayerControl
               ? `The latest Director note is:\n${userMessage.content}`
               : `The latest player message is:\n${userMessage.content}`,
-            `The player character is: ${playerCharacter.name}.`,
+            `The player character is: ${resolvePlayerCharacterPreferredSceneName(playerCharacter)}.`,
+            formatPlayerCharacterPronounAndNamingRules(playerCharacter),
             allowDirectedPlayerControl
               ? "Do not repeat the Director note as dialogue. Realize it as scene content and continue naturally."
               : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
@@ -6922,10 +6848,7 @@ export function StoryEngineProvider({
             "Never use narrator labels like 'Narrator:' anywhere in the output.",
             "Never use asterisks for emphasis.",
             "Ownership rules:",
-            `- The player character is: ${playerCharacter.name}`,
-            allowDirectedPlayerControl
-              ? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewritten scene when required by the direction."
-              : "- Never write dialogue/actions/thoughts/decisions for the player character.",
+            formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
           ].join("\n");
 
           let candidateAssistantText = finalAssistantText;

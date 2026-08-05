@@ -23,7 +23,7 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterAliasesForPrompt, formatPlayerCharacterKnownTiesForPrompt } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterPreferredSceneName } from "../playerCharacterPrompt";
 import {
   formatAuthorDirectiveStateForPrompt,
   isAuthorDirectiveMessage,
@@ -194,15 +194,8 @@ export function buildStoryChatContext({
         : "",
       universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,
-      `Player Character: ${playerCharacter.name}`,
-      formatPlayerCharacterAliasesForPrompt(playerCharacter),
+      formatPlayerCharacterIdentityForPrompt(playerCharacter),
       formatPlayerCharacterKnownTiesForPrompt(playerCharacter),
-      playerCharacter.age.trim() ? `Player Age: ${playerCharacter.age.trim()}` : "",
-      playerCharacter.gender.trim() ? `Player Gender: ${playerCharacter.gender.trim()}` : "",
-      playerCharacter.species?.trim()
-        ? `Player Species: ${playerCharacter.species.trim()}`
-        : "",
-      playerCharacter.pronouns.trim() ? `Player Pronouns: ${playerCharacter.pronouns.trim()}` : "",
       playerCharacter.characterConcept?.trim()
         ? `Player Concept/Role: ${playerCharacter.characterConcept.trim()}`
         : "",
@@ -389,6 +382,10 @@ export function buildStoryChatContext({
       "Scene ownership can belong to the player character, a supporting character, several supporting characters, or the wider cast.",
       "Name resolution rule: treat nicknames, shortened names, last-name references, and informal variants as referring to the same character unless the story explicitly introduces a separate person.",
       "Use Long-Term Memory name preferences: if a character has a displayName or aliases recorded, prefer the displayName for speaker headers and how other characters address them.",
+      `Player character naming: use "${resolvePlayerCharacterPreferredSceneName(playerCharacter)}" for speaker headers and third-person narration unless the scene is explicitly formal.`,
+      playerCharacter.pronouns.trim()
+        ? `Player character pronouns: ${playerCharacter.pronouns.trim()}. Never infer different pronouns from name or gender.`
+        : "",
       "Formality rule: if identity and familiarity are established, prefer first names over formal titles (Detective/Doctor/Captain) unless the scene is explicitly formal or a title is being used for emphasis.",
       "If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation. React, investigate, speculate, and ask questions, but do not resolve the mystery unless the player explicitly provides the answer.",
       "Information ownership: do not invent facts that could only have been communicated by the player character off-screen. If NPCs lack details, they must ask clarifying questions instead of asserting specifics as if the player already said them.",
@@ -549,7 +546,9 @@ export function buildStoryChatContext({
 
   const chatHistory = sortByTimestampAsc(recentMessages)
     .slice(-recentWindow)
-    .map((message) => formatTimelineMessage(message, playerCharacter.name));
+    .map((message) =>
+      formatTimelineMessage(message, resolvePlayerCharacterPreferredSceneName(playerCharacter)),
+    );
 
   return [
     { role: "system", content: `Universe Information\n\n${universeInfo}` },
@@ -596,7 +595,9 @@ export function buildStoryChatContext({
                 "Let the moment breathe until a natural pause is reached.",
               ].join("\n"),
             )
-          : normalizeWhitespace(`Player (${playerCharacter.name}) turn:\n${latestUserMessage}`),
+          : normalizeWhitespace(
+              `Player (${resolvePlayerCharacterPreferredSceneName(playerCharacter)}) turn:\n${latestUserMessage}`,
+            ),
     },
   ];
 }

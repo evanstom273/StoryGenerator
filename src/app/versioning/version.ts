@@ -31,6 +31,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Generate Chapters is available immediately on a fresh chapter banner after guided story history, without requiring a manual scene first",
       "Guided chapter generation reuses an existing chapter banner when present and only creates a new heading when one is missing",
       "Generate Chapters planner no longer requires an overall direction; you can plan each chapter directly with one input box per scene",
+      "Story generation now prefers the player character's alias as their scene name and enforces their specified pronouns instead of inferring he/him or she/her from name or gender",
     ],
     knownIssues: [],
   },
