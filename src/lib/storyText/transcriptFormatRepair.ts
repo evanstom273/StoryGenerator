@@ -1,4 +1,10 @@
 import { normalizeSceneSpeakerLabel } from "./speakerLabels";
+import {
+	dialogueLooksAddressedToPlayer,
+	dialogueLooksLikePlayerVoice,
+	extractQuotedDialogue,
+	stripMisattributedPlayerSpeakerLabel,
+} from "./playerDialogueVoice";
 
 const SPEAKER_LINE = /^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/;
 
@@ -24,14 +30,87 @@ function wrapAction(value: string) {
 }
 
 function resolveOrphanSpeakerLabel(
-	_lastLine: string,
+	line: string,
 	lastSpeaker: string | null,
 	playerName?: string | null,
 ) {
-	if (playerName?.trim()) {
-		return normalizeSceneSpeakerLabel(playerName);
+	const trimmed = line.trim();
+	const playerLabel = playerName?.trim() ? normalizeSceneSpeakerLabel(playerName) : null;
+	const dialogue = extractQuotedDialogue(trimmed);
+	const hasDialogue = dialogue.length > 0;
+
+	if (playerLabel && hasDialogue) {
+		if (dialogueLooksAddressedToPlayer(dialogue, playerName!)) {
+			if (
+				lastSpeaker &&
+				lastSpeaker.toLowerCase() !== playerLabel.toLowerCase() &&
+				lastSpeaker.toLowerCase() !== "narrator"
+			) {
+				return lastSpeaker;
+			}
+			return null;
+		}
+
+		if (!dialogueLooksLikePlayerVoice(dialogue, playerName!)) {
+			if (
+				lastSpeaker &&
+				lastSpeaker.toLowerCase() !== playerLabel.toLowerCase() &&
+				lastSpeaker.toLowerCase() !== "narrator"
+			) {
+				return lastSpeaker;
+			}
+			return null;
+		}
 	}
-	return lastSpeaker;
+
+	if (!hasDialogue && playerLabel && IMPLIED_SUBJECT_START.test(trimmed)) {
+		return playerLabel;
+	}
+
+	if (lastSpeaker) {
+		return lastSpeaker;
+	}
+
+	if (playerLabel && !hasDialogue) {
+		return playerLabel;
+	}
+
+	return null;
+}
+
+/** Remove player labels from lines that are clearly other characters talking to/about the player. */
+export function repairMisattributedPlayerSpeakerLines(
+	text: string,
+	playerName?: string | null,
+): { text: string; changed: boolean } {
+	if (!playerName?.trim()) {
+		return { text, changed: false };
+	}
+
+	const lines = normalizeNewlines(text).split("\n");
+	let changed = false;
+	const output = lines.map((line) => {
+		const next = stripMisattributedPlayerSpeakerLabel(line, playerName);
+		if (next !== line) {
+			changed = true;
+		}
+		return next;
+	});
+
+	return { text: output.join("\n"), changed };
+}
+
+export function countUnlabeledCharacterDialogueLines(text: string) {
+	return normalizeNewlines(text)
+		.split("\n")
+		.filter((line) => {
+			const trimmed = line.trim();
+			return trimmed && /"[^"]+"/.test(trimmed) && !/^[^\n:]{1,64}:\s/.test(trimmed);
+		}).length;
+}
+
+export function needsSpeakerAttributionRewrite(text: string) {
+	return countUnlabeledCharacterDialogueLines(text) >= 2;
 }
 
 /** Normalize "Name — *action*" back to "Name: *action*" when em dash was used as separator. */
@@ -181,6 +260,20 @@ export function repairOrphanActionLines(text: string, playerName?: string | null
 			}
 		}
 
+		const orphanDialogue = extractQuotedDialogue(trimmed);
+		if (
+			orphanDialogue &&
+			playerName?.trim() &&
+			!trimmed.match(SPEAKER_LINE)
+		) {
+			const speaker = resolveOrphanSpeakerLabel(trimmed, lastSpeaker, playerName);
+			if (speaker) {
+				output.push(`${speaker}: ${trimmed}`);
+				lastSpeaker = speaker;
+				continue;
+			}
+		}
+
 		output.push(line);
 	}
 
@@ -198,6 +291,29 @@ export function repairMalformedTranscriptFormat(
 	next = repairSpeakerEmbeddedActions(next);
 	next = repairTruncatedDetectiveReferences(next);
 	next = repairMissingActionSubjects(next, options.playerName);
+	next = repairMisattributedPlayerSpeakerLines(next, options.playerName).text;
 	next = repairOrphanActionLines(next, options.playerName);
-	return next;
+	return repairMisattributedPlayerSpeakerLines(next, options.playerName).text;
+}
+
+export function repairMalformedTranscriptFormatWithMeta(
+	text: string,
+	options: { playerName?: string | null } = {},
+) {
+	let next = text;
+	let strippedMisattributedPlayer = false;
+	next = repairSpeakerLabelEmDash(next);
+	next = repairMalformedNarratorLines(next);
+	next = repairStrayAsteriskArtifacts(next);
+	next = repairSpeakerEmbeddedActions(next);
+	next = repairTruncatedDetectiveReferences(next);
+	next = repairMissingActionSubjects(next, options.playerName);
+	const firstPass = repairMisattributedPlayerSpeakerLines(next, options.playerName);
+	next = firstPass.text;
+	strippedMisattributedPlayer ||= firstPass.changed;
+	next = repairOrphanActionLines(next, options.playerName);
+	const secondPass = repairMisattributedPlayerSpeakerLines(next, options.playerName);
+	next = secondPass.text;
+	strippedMisattributedPlayer ||= secondPass.changed;
+	return { text: next, strippedMisattributedPlayer };
 }

@@ -38,6 +38,8 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Transcript sanitization shortens speaker labels and name mentions to first names, fixing validation failures when the model outputs quoted nicknames like Rebecca \"Becca\" Alvarez",
       "Transcript sanitization now auto-repairs common malformed model output (wrapped narrator labels, orphan action lines, stray *.* markers, truncated names, and missing subjects) before validation and indexing",
       "Story generation no longer discards a good streamed response when only minor format validation remains after auto-repair; the sanitized transcript is saved instead of throwing a validation error",
+      "Transcript repair no longer stamps every unlabeled beat as the player character; dialogue addressed to the player is stripped from false player labels and triggers speaker-attribution rewrite",
+      "Story prompts now tell the model to use character names in Narrator blocks instead of only titles like Captain when the character is known",
     ],
     knownIssues: [],
   },
