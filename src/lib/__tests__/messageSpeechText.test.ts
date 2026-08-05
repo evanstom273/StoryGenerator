@@ -251,10 +251,42 @@ describe("messageSpeechText", () => {
 		});
 
 		expect(plan?.scriptLines.every((line) => line.speaker === "Narrator")).toBe(true);
-		expect(plan?.scriptLines.some((line) => line.text.includes('Rosa said, "We need to move."'))).toBe(
-			true,
-		);
+		expect(plan?.scriptLines.some((line) => line.text === "We need to move.")).toBe(true);
+		expect(plan?.scriptLines.some((line) => line.text.includes("Amy Copy that"))).toBe(true);
+		expect(plan?.scriptLines.every((line) => !line.text.includes(" said,"))).toBe(true);
 		expect(plan?.multiSpeaker).toBe(false);
+	});
+
+	it("reads director notes as plain narration in single-narrator mode", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			{
+				id: "d1",
+				storyId: "story-1",
+				role: "user",
+				content: "Stage a chase scene.",
+				speakerType: "director",
+				timestamp: "2026-01-01T00:00:00.000Z",
+			},
+			{ narrationTts, audiobookPerformanceMode: "single_narrator" },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{ speaker: "Narrator", text: "Stage a chase scene." },
+		]);
+	});
+
+	it("preserves character block speech formatting in single-narrator mode", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			assistantMessage(
+				'Jake: *takes a slow sip from his mug.* "I\'m just saying, it\'s not that deep."',
+			),
+			{ narrationTts, playerName: "Jake Peralta", audiobookPerformanceMode: "single_narrator" },
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{ speaker: "Narrator", text: "Jake takes a slow sip from his mug." },
+			{ speaker: "Narrator", text: "I'm just saying, it's not that deep." },
+		]);
 	});
 
 	it("builds chapter speech with player, director, and multi-voice narration", () => {
