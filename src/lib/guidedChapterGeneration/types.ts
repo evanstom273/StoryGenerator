@@ -11,6 +11,22 @@ export type GuidedChapterPlan = {
 	chapters: GuidedChapterPlanChapter[];
 };
 
+export type GuidedChapterSetupScene = {
+	label: string;
+	overview: string;
+};
+
+export type GuidedChapterSetupSnapshot = {
+	overallDirection?: string;
+	chapterLabel: string;
+	chapterOverview: string;
+	scenesPerChapter: number;
+	scenes: GuidedChapterSetupScene[];
+	entry?: GuidedChapterGenerationEntry;
+	generatedAt: string;
+	jobId?: string;
+};
+
 export const GUIDED_CHAPTER_MIN_SCENES = 1;
 export const GUIDED_CHAPTER_MAX_SCENES = 10;
 export const GUIDED_CHAPTER_MIN_COUNT = 1;

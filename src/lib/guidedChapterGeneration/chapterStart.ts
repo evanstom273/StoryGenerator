@@ -1,5 +1,6 @@
 import type { StoryMessage } from "../../types/models";
 import type { StoryEngineRepository } from "../repository";
+import type { GuidedChapterSetupSnapshot } from "./types";
 import { createEntityId } from "../ids";
 import { sortByTimestampAsc } from "../dates";
 import { resolveMessageChapterBoundary } from "../storyText/chapterNavigation";
@@ -48,10 +49,19 @@ export async function resolveOrCreateChapterStartMessage(
 	storyId: string,
 	label: string,
 	messages?: StoryMessage[],
+	setup?: GuidedChapterSetupSnapshot,
 ): Promise<StoryMessage> {
 	const transcript = messages ?? (await repository.listStoryMessages(storyId));
 	const existing = findReusableChapterStartMessage(transcript, label);
 	if (existing) {
+		if (setup) {
+			const updated: StoryMessage = {
+				...existing,
+				guidedChapterSetup: setup,
+			};
+			await repository.saveStoryMessage(updated);
+			return updated;
+		}
 		return existing;
 	}
 
@@ -67,6 +77,7 @@ export async function resolveOrCreateChapterStartMessage(
 			kind: "start",
 			label: boundaryLabel,
 		},
+		guidedChapterSetup: setup,
 	};
 	await repository.saveStoryMessage(message);
 	return message;

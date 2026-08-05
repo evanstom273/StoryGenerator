@@ -244,6 +244,19 @@ export interface StoryMessage {
     kind: "start" | "end";
     label: string;
   };
+  guidedChapterSetup?: {
+    overallDirection?: string;
+    chapterLabel: string;
+    chapterOverview: string;
+    scenesPerChapter: number;
+    scenes: Array<{
+      label: string;
+      overview: string;
+    }>;
+    entry?: "story_history" | "workspace";
+    generatedAt: Timestamp;
+    jobId?: EntityId;
+  };
   editedAt?: Timestamp;
   regeneratedAt?: Timestamp;
   revision?: number;

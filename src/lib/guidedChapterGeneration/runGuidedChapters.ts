@@ -12,6 +12,7 @@ import { generateDirectorBeat } from "./directorBeat";
 import type { AIProvider } from "../ai/types";
 import { parseOverallChapterDirections, resolveScenesForChapter, shouldStageDirectorBeatForScene, stripChapterHeadingPrefix } from "./parsePlanText";
 import { buildContinuityNotesForChapter } from "./guidedChapterContinuity";
+import { buildGuidedChapterSetupSnapshot } from "./setupSnapshot";
 
 export type GuidedChapterProgressChapter = {
 	label: string;
@@ -141,6 +142,13 @@ export async function runGuidedChapterGeneration(params: {
 			storyId,
 			chapter.label,
 			await params.repository.listStoryMessages(storyId),
+			buildGuidedChapterSetupSnapshot({
+				plan,
+				chapter: rawChapter,
+				chapterOverview: chapter.overview,
+				entry,
+				jobId: params.jobId,
+			}),
 		);
 		if (params.onTranscriptChange) {
 			await params.onTranscriptChange();

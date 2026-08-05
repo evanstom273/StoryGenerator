@@ -9,6 +9,7 @@ import { cn } from "../../utils/cn";
 import { MessagePlayButton } from "./MessagePlayButton";
 import { useGeminiTtsPlayback } from "../../app/providers/GeminiTtsPlaybackProvider";
 import { Button } from "../ui/Button";
+import { ChapterPlanButton } from "./GuidedChapterSetupModal";
 
 interface ChapterListenBannerProps {
 	messageId: string;
@@ -37,6 +38,8 @@ export function ChapterListenBanner({
 		allStoryMessages: messages,
 		chapterTitle: label,
 	});
+	const chapterMessage = messages.find((message) => message.id === messageId);
+	const guidedChapterSetup = chapterMessage?.guidedChapterSetup;
 
 	return (
 		<div
@@ -49,6 +52,7 @@ export function ChapterListenBanner({
 		>
 			<div className="flex flex-wrap items-center justify-center gap-3">
 				<span>{label}</span>
+				<ChapterPlanButton setup={guidedChapterSetup} />
 				{plan ? (
 					<MessagePlayButton
 						playId={`chapter-${messageId}`}
