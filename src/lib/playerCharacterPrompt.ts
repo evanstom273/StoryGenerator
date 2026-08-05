@@ -50,7 +50,7 @@ export function formatPlayerCharacterAliasesForPrompt(
 }
 
 export function formatCharacterConceptAliasesConstraint(
-	draft?: Pick<PlayerCharacterDraft, "name" | "aliases">,
+	draft?: Partial<Pick<PlayerCharacterDraft, "name" | "aliases">>,
 ): string | null {
 	const name = draft?.name?.trim() ?? "";
 	const aliases = normalizePlayerCharacterAliases(draft?.aliases).filter(
