@@ -11,7 +11,7 @@ import { sortByTimestampAsc } from "../dates";
 import { buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "./playerAssist";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterAliasesForPrompt, formatPlayerCharacterKnownTiesForPrompt } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterPreferredSceneName } from "../playerCharacterPrompt";
 import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
@@ -119,15 +119,8 @@ export function buildPlayerAssistContext({
         : "",
       universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,
-      `Player Character: ${playerCharacter.name}`,
-      formatPlayerCharacterAliasesForPrompt(playerCharacter),
+      formatPlayerCharacterIdentityForPrompt(playerCharacter),
       formatPlayerCharacterKnownTiesForPrompt(playerCharacter),
-      playerCharacter.age.trim() ? `Player Age: ${playerCharacter.age.trim()}` : "",
-      playerCharacter.gender.trim() ? `Player Gender: ${playerCharacter.gender.trim()}` : "",
-      playerCharacter.species?.trim()
-        ? `Player Species: ${playerCharacter.species.trim()}`
-        : "",
-      playerCharacter.pronouns.trim() ? `Player Pronouns: ${playerCharacter.pronouns.trim()}` : "",
       playerCharacter.characterConcept?.trim()
         ? `Player Concept/Role: ${playerCharacter.characterConcept.trim()}`
         : "",
@@ -160,15 +153,17 @@ export function buildPlayerAssistContext({
       "Output only the player's message in the required format. No other speakers. No narration. No commentary.",
       "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
       "The player character sheet is authoritative canon for identity facts. Do not contradict it or introduce genre-default assumptions about the protagonist.",
+      `Use "${resolvePlayerCharacterPreferredSceneName(playerCharacter)}" as the player character's preferred name. Use their specified pronouns (${playerCharacter.pronouns.trim() || "unspecified"}) and never infer he/him or she/her from name or gender.`,
       buildMatureFictionPolicyBlock({
         includeParity: true,
       }),
     ].join("\n"),
   );
 
+  const preferredName = resolvePlayerCharacterPreferredSceneName(playerCharacter);
   const chatHistory = sortByTimestampAsc(recentMessages)
     .slice(-MAX_RECENT_MESSAGES)
-    .map((message) => formatTimelineMessage(message, playerCharacter.name));
+    .map((message) => formatTimelineMessage(message, preferredName));
 
   const effectiveExistingText = typeof existingText === "string" ? existingText.trimEnd() : "";
 
@@ -182,8 +177,8 @@ export function buildPlayerAssistContext({
       role: "user",
       content: normalizeWhitespace(
         effectiveExistingText
-          ? buildPlayerAssistContinuationRequest(playerCharacter.name, effectiveExistingText)
-          : buildPlayerAssistRequest(playerCharacter.name),
+          ? buildPlayerAssistContinuationRequest(preferredName, effectiveExistingText)
+          : buildPlayerAssistRequest(preferredName),
       ),
     },
   ];
