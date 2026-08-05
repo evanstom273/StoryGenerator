@@ -25,6 +25,7 @@ import {
 } from "../../lib/dates";
 import { createEntityId } from "../../lib/ids";
 import { createAIProvider } from "../../lib/ai/providerFactory";
+import { resolveGeminiMinimalThinkingSettings } from "../../lib/ai/geminiThinking";
 import {
   buildStoryChatContext,
   buildStorySummaryContext,
@@ -742,7 +743,7 @@ async function generateResponseWithRetry(params: {
   maxTokens?: number;
   temperature?: number;
   jsonMode?: boolean;
-  thinkingBudget?: number;
+  thinking?: import("../../lib/ai/geminiThinking").GeminiThinkingSettings;
   signal?: AbortSignal;
   maxAttempts?: number;
   timeoutMs?: number;
@@ -801,7 +802,7 @@ async function generateResponseWithRetry(params: {
         maxTokens: params.maxTokens,
         temperature: params.temperature,
         jsonMode: params.jsonMode,
-        thinkingBudget: params.thinkingBudget,
+        thinking: params.thinking,
         signal: params.signal,
         timeoutMs: requestTimeoutMs,
         idleTimeoutMs: params.idleTimeoutMs ?? streamConfig?.idleTimeoutMs,
@@ -6155,7 +6156,10 @@ export function StoryEngineProvider({
               ],
               maxTokens: requestConfig.maxTokens,
               temperature: 0.75,
-              thinkingBudget: providerType === "gemini" ? 0 : undefined,
+              thinking:
+                providerType === "gemini"
+                  ? resolveGeminiMinimalThinkingSettings(model)
+                  : undefined,
               timeoutMs: requestConfig.timeoutMs,
               maxAttempts: requestConfig.maxAttempts,
             });
