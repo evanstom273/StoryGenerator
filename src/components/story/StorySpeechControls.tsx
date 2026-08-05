@@ -28,7 +28,10 @@ export function ChapterListenBanner({
 	playerCharacterName,
 	className,
 }: ChapterListenBannerProps) {
-	const { narrationTts, characterRegistry } = useStorySpeechSetup(messages, playerCharacterName);
+	const { narrationTts, characterRegistry, audiobookPerformanceMode } = useStorySpeechSetup(
+		messages,
+		playerCharacterName,
+	);
 
 	const chapterMessages = getMessagesForChapterStartingAt(messages, messageId);
 	const plan = buildChapterSpeechPlan(chapterMessages, {
@@ -37,6 +40,7 @@ export function ChapterListenBanner({
 		characterRegistry,
 		allStoryMessages: messages,
 		chapterTitle: label,
+		audiobookPerformanceMode,
 	});
 	const chapterMessage = messages.find((message) => message.id === messageId);
 	const guidedChapterSetup = chapterMessage?.guidedChapterSetup;
@@ -82,8 +86,14 @@ export function FullStoryAudiobookControls({
 	chapters,
 	className,
 }: FullStoryAudiobookControlsProps) {
-	const { narrationTts, storyId, characterRegistry, hasGeminiKey, audiobookParallelChapters } =
-		useStorySpeechSetup(messages, playerCharacterName);
+	const {
+		narrationTts,
+		storyId,
+		characterRegistry,
+		hasGeminiKey,
+		audiobookParallelChapters,
+		audiobookPerformanceMode,
+	} = useStorySpeechSetup(messages, playerCharacterName);
 	const { getStoryAIConfig } = useStoryEngine();
 	const { prepareStoryAudiobook, getItemStatus, playPreparedSpeech, stop, cancelStoryAudiobookPreparation } =
 		useGeminiTtsPlayback();
@@ -93,6 +103,7 @@ export function FullStoryAudiobookControls({
 		narrationTts,
 		characterRegistry,
 		chapters,
+		audiobookPerformanceMode,
 	});
 
 	const playId = storyId ? `story-audiobook-${storyId}` : "story-audiobook";

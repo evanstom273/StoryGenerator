@@ -13,6 +13,8 @@ import {
 } from "./dialogueQuoteRegions";
 import { sanitizeMessageForDisplay } from "./transcriptSanitizer";
 import type { GeminiNarrationTtsSettings } from "../ai/geminiTtsVoices";
+import type { AudiobookPerformanceMode } from "../ai/audiobookPerformance";
+import { DEFAULT_AUDIOBOOK_PERFORMANCE_MODE } from "../ai/audiobookPerformance";
 import type { CharacterTtsGenderMap, CharacterTtsRegistry } from "../ai/characterTtsVoices";
 import {
 	DIRECTOR_TTS_KEY,
@@ -380,26 +382,52 @@ function buildSpeakersFromRegistry(
 	return speakers;
 }
 
+function collapseScriptLinesToSingleNarrator(scriptLines: SpeechScriptLine[]): SpeechScriptLine[] {
+	return scriptLines.map((line) => {
+		if (line.speaker === NARRATOR_SPEAKER_ALIAS) {
+			return line;
+		}
+
+		const trimmed = line.text.trim();
+		const dialogue =
+			trimmed.startsWith('"') || trimmed.startsWith("'") || trimmed.startsWith("“")
+				? `${line.speaker} said, ${trimmed}`
+				: `${line.speaker} said, "${trimmed}"`;
+
+		return {
+			speaker: NARRATOR_SPEAKER_ALIAS,
+			text: dialogue,
+			messageBreakAfter: line.messageBreakAfter,
+		};
+	});
+}
+
 function finalizeSpeechPlan(
 	scriptLines: SpeechScriptLine[],
 	characterRegistry: CharacterTtsRegistry,
 	narrationTts: GeminiNarrationTtsSettings,
+	audiobookPerformanceMode: AudiobookPerformanceMode = "radio_drama",
 ): SpeechSynthesisPlan | null {
-	if (!scriptLines.length) {
+	const effectiveLines =
+		audiobookPerformanceMode === "single_narrator"
+			? collapseScriptLinesToSingleNarrator(scriptLines)
+			: scriptLines;
+
+	if (!effectiveLines.length) {
 		return null;
 	}
 
-	const text = scriptLines.map((line) => `${line.speaker}: ${line.text}`).join("\n");
-	const speakers = buildSpeakersFromRegistry(characterRegistry, narrationTts, scriptLines);
-	const hasCharacterDialogue = scriptLines.some(
+	const text = effectiveLines.map((line) => `${line.speaker}: ${line.text}`).join("\n");
+	const speakers = buildSpeakersFromRegistry(characterRegistry, narrationTts, effectiveLines);
+	const hasCharacterDialogue = effectiveLines.some(
 		(line) => line.speaker !== NARRATOR_SPEAKER_ALIAS,
 	);
 
 	return {
 		text,
-		scriptLines,
+		scriptLines: effectiveLines,
 		speakers,
-		multiSpeaker: hasCharacterDialogue,
+		multiSpeaker: audiobookPerformanceMode === "radio_drama" && hasCharacterDialogue,
 	};
 }
 
@@ -447,6 +475,7 @@ function buildSpeechPlanFromBlocks(
 		defaultCharacterLabel?: string | null;
 		characterRegistry: CharacterTtsRegistry;
 		playerName?: string | null;
+		audiobookPerformanceMode?: AudiobookPerformanceMode;
 	},
 ): SpeechSynthesisPlan | null {
 	const scriptLines: SpeechScriptLine[] = [];
@@ -485,7 +514,12 @@ function buildSpeechPlanFromBlocks(
 		}
 	}
 
-	return finalizeSpeechPlan(scriptLines, options.characterRegistry, narrationTts);
+	return finalizeSpeechPlan(
+		scriptLines,
+		options.characterRegistry,
+		narrationTts,
+		options.audiobookPerformanceMode ?? DEFAULT_AUDIOBOOK_PERFORMANCE_MODE,
+	);
 }
 
 export function isSpeakableUserMessage(message: StoryMessage) {
@@ -673,6 +707,7 @@ export function buildStoryMessageSpeechScriptLines(
 		latestUserMessage?: string | null;
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry: CharacterTtsRegistry;
+		audiobookPerformanceMode?: AudiobookPerformanceMode;
 	},
 ): SpeechScriptLine[] {
 	if (message.role === "user") {
@@ -730,6 +765,7 @@ export function buildStoryMessageSpeechScriptLines(
 			defaultCharacterLabel,
 			characterRegistry: options.characterRegistry,
 			playerName: options.playerName,
+			audiobookPerformanceMode: options.audiobookPerformanceMode,
 		});
 		return plan?.scriptLines ?? [];
 	}
@@ -748,6 +784,7 @@ export function buildStoryMessageSpeechScriptLines(
 	const plan = buildSpeechPlanFromBlocks(blocks, options.narrationTts, {
 		characterRegistry: options.characterRegistry,
 		playerName: options.playerName,
+		audiobookPerformanceMode: options.audiobookPerformanceMode,
 	});
 
 	return plan?.scriptLines ?? [];
@@ -760,18 +797,21 @@ export function buildStoryMessageSpeechPlan(
 		latestUserMessage?: string | null;
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry?: CharacterTtsRegistry;
+		audiobookPerformanceMode?: AudiobookPerformanceMode;
 	},
 ): SpeechSynthesisPlan | null {
 	const characterRegistry =
 		options.characterRegistry ??
 		buildCharacterRegistryForMessages([message], options.playerName, options.narrationTts);
+	const performanceMode = options.audiobookPerformanceMode ?? DEFAULT_AUDIOBOOK_PERFORMANCE_MODE;
 
 	const scriptLines = buildStoryMessageSpeechScriptLines(message, {
 		...options,
 		characterRegistry,
+		audiobookPerformanceMode: performanceMode,
 	});
 
-	return finalizeSpeechPlan(scriptLines, characterRegistry, options.narrationTts);
+	return finalizeSpeechPlan(scriptLines, characterRegistry, options.narrationTts, performanceMode);
 }
 
 function buildCharacterRegistryForMessages(
@@ -809,8 +849,10 @@ function buildSpeechPlanFromMessages(
 		playerName?: string | null;
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry: CharacterTtsRegistry;
+		audiobookPerformanceMode?: AudiobookPerformanceMode;
 	},
 ): SpeechSynthesisPlan | null {
+	const performanceMode = options.audiobookPerformanceMode ?? DEFAULT_AUDIOBOOK_PERFORMANCE_MODE;
 	const scriptLines: SpeechScriptLine[] = [];
 
 	for (let index = 0; index < messages.length; index += 1) {
@@ -824,6 +866,7 @@ function buildSpeechPlanFromMessages(
 			latestUserMessage: resolveLatestUserMessageBefore(messages, index),
 			narrationTts: options.narrationTts,
 			characterRegistry: options.characterRegistry,
+			audiobookPerformanceMode: performanceMode,
 		});
 
 		if (lines.length) {
@@ -836,7 +879,12 @@ function buildSpeechPlanFromMessages(
 		}
 	}
 
-	return finalizeSpeechPlan(scriptLines, options.characterRegistry, options.narrationTts);
+	return finalizeSpeechPlan(
+		scriptLines,
+		options.characterRegistry,
+		options.narrationTts,
+		performanceMode,
+	);
 }
 
 export function buildChapterSpeechPlan(
@@ -847,17 +895,20 @@ export function buildChapterSpeechPlan(
 		characterRegistry?: CharacterTtsRegistry;
 		allStoryMessages?: StoryMessage[];
 		chapterTitle?: string | null;
+		audiobookPerformanceMode?: AudiobookPerformanceMode;
 	},
 ): SpeechSynthesisPlan | null {
 	const registrySource = options.allStoryMessages ?? messages;
 	const characterRegistry =
 		options.characterRegistry ??
 		buildCharacterRegistryForMessages(registrySource, options.playerName, options.narrationTts);
+	const performanceMode = options.audiobookPerformanceMode ?? DEFAULT_AUDIOBOOK_PERFORMANCE_MODE;
 
 	const basePlan = buildSpeechPlanFromMessages(messages, {
 		playerName: options.playerName,
 		narrationTts: options.narrationTts,
 		characterRegistry,
+		audiobookPerformanceMode: performanceMode,
 	});
 
 	if (!basePlan) {
@@ -865,7 +916,7 @@ export function buildChapterSpeechPlan(
 	}
 
 	const scriptLines = prependChapterTitleScriptLines(basePlan.scriptLines, options.chapterTitle);
-	return finalizeSpeechPlan(scriptLines, characterRegistry, options.narrationTts);
+	return finalizeSpeechPlan(scriptLines, characterRegistry, options.narrationTts, performanceMode);
 }
 
 export function buildCharacterTtsRegistryForStory(

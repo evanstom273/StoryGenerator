@@ -14,6 +14,11 @@ import {
 	clampAudiobookParallelChapters,
 	DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
 } from "../lib/ai/storyAudiobookParallel";
+import {
+	DEFAULT_AUDIOBOOK_PERFORMANCE_MODE,
+	normalizeAudiobookPerformanceMode,
+	type AudiobookPerformanceMode,
+} from "../lib/ai/audiobookPerformance";
 
 export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterName: string) {
 	const {
@@ -36,10 +41,14 @@ export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterNam
 	const [audiobookParallelChapters, setAudiobookParallelChapters] = useState(
 		DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
 	);
+	const [audiobookPerformanceMode, setAudiobookPerformanceMode] = useState<AudiobookPerformanceMode>(
+		DEFAULT_AUDIOBOOK_PERFORMANCE_MODE,
+	);
 
 	useEffect(() => {
 		if (!storyId) {
 			setAudiobookParallelChapters(DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS);
+			setAudiobookPerformanceMode(DEFAULT_AUDIOBOOK_PERFORMANCE_MODE);
 			return;
 		}
 
@@ -52,6 +61,9 @@ export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterNam
 
 			setAudiobookParallelChapters(
 				clampAudiobookParallelChapters(config?.audiobookParallelChapters),
+			);
+			setAudiobookPerformanceMode(
+				normalizeAudiobookPerformanceMode(config?.audiobookPerformanceMode),
 			);
 		});
 
@@ -112,5 +124,6 @@ export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterNam
 		characterRegistry,
 		hasGeminiKey: Boolean(aiSettings?.apiKeys?.gemini?.trim()),
 		audiobookParallelChapters,
+		audiobookPerformanceMode,
 	};
 }
