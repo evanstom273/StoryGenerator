@@ -1,4 +1,5 @@
 import type { AIProviderType, Universe } from "../../types/models";
+import { formatCharacterConceptGuideForPrompt } from "./characterConceptGuide";
 import { formatUniverseWikiSources } from "../universeSources";
 
 export type CharacterConceptConstraintField =
@@ -62,7 +63,10 @@ export function buildCharacterGeneratorSystemPrompt({
     ? `Imported Lore (reference only):\n${importedLoreText.trim()}`
     : "No imported lore is available.";
   const conceptBlock = characterConcept?.trim()
-    ? `Character Concept (authoritative):\n${characterConcept.trim()}`
+    ? [
+        "Character Concept (authoritative creative pitch — inspires the sheet; do not contradict it):",
+        characterConcept.trim(),
+      ].join("\n")
     : "No character concept was provided.";
 
   const lockedFields = (existing
@@ -191,17 +195,16 @@ export const CHARACTER_CONCEPT_MAX_ATTEMPTS = 3;
 export function buildCharacterConceptUserPrompt(attempt: number) {
 	if (attempt <= 0) {
 		return [
-			"Write the character concept now.",
-			"Output 2–4 complete sentences as a creative pitch.",
-			"End with proper punctuation. Do not stop mid-sentence.",
+			"Write the Character Concept now.",
+			"Follow the definition and example above.",
+			"Output a few complete sentences. End with proper punctuation. Do not stop mid-sentence.",
 		].join(" ");
 	}
 
 	return [
-		"Your previous attempt was incomplete, truncated, or read like a biography opener.",
-		"Write a NEW complete character concept: 2–4 full sentences.",
-		"Pitch the role, core tension, and what makes them fun to play.",
-		'Do not start with "[Name] is a...". Do not stop mid-sentence.',
+		"Your previous attempt was incomplete, truncated, read like a biography, or read like a character sheet.",
+		"Write a NEW Character Concept following the definition and example above.",
+		"Do not start with \"[Name] is a...\". Do not stop mid-sentence.",
 	].join(" ");
 }
 
@@ -228,21 +231,22 @@ export function buildCharacterConceptGeneratorSystemPrompt({
 
 	return [
 		"You are a creative writing assistant generating a Character Concept for a roleplay character.",
-		"This is a creative brief for the author/player — not a biography, not an opening paragraph of a novel, and not a character sheet.",
-		"Output 2–4 complete sentences as a pitch: role, vibe, core tension, and what makes them fun to play.",
-		"Each sentence must be grammatically complete. Never stop mid-sentence or mid-thought.",
-		"Do not open with \"[Name] is a...\" or similar encyclopedia-style intros.",
-		"Do not list appearance traits, timelines, or stat blocks.",
-		"Honor all provided character constraints; weave them into the pitch naturally.",
-		"If a universe is provided, make the concept authentic to that setting.",
-		"If no universe is provided, keep the concept original and setting-flexible.",
-		"Return plain text only. No markdown. No JSON. No headings. No labels. No commentary.",
-		"Asterisks are reserved for actions in story text; do not use asterisks for emphasis.",
 		"",
-		"GOOD example (pitch):",
-		"\"A sharp-tongued rookie detective who plays the clown to hide how carefully they're watching everyone in the room. Core tension: protect their friends vs. blow the whistle on corruption they can't yet prove. Fun to play as the one who jokes first and notices second.\"",
+		formatCharacterConceptGuideForPrompt(),
 		"",
-		"BAD example (do not do this):",
+		"Generation requirements:",
+		"- Output a few complete sentences only (typically 2–4).",
+		"- Each sentence must be grammatically complete. Never stop mid-sentence or mid-thought.",
+		"- Do not open with \"[Name] is a...\" or similar encyclopedia-style intros.",
+		"- Do not write a biography, timeline, or completed character sheet.",
+		"- Do not fill in detailed Appearance, Personality, Background, or Notes — leave those for Character Generation.",
+		"- Honor all provided character constraints; weave them into the pitch naturally.",
+		"- If a universe is provided, show how the character fits that setting.",
+		"- If no universe is provided, keep the concept original and setting-flexible.",
+		"- Return plain text only. No markdown. No JSON. No headings. No labels. No commentary.",
+		"- Asterisks are reserved for actions in story text; do not use asterisks for emphasis.",
+		"",
+		"BAD example (truncated biography opener — never do this):",
 		"\"Jamie Peralta is a fast-talking, fifteen-year-old high schooler caught in an\"",
 		"",
 		universeBlock,

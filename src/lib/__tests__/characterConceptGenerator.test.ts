@@ -48,8 +48,8 @@ describe("buildCharacterConceptGeneratorSystemPrompt", () => {
 
 		expect(prompt).toContain("Neon Harbor");
 		expect(prompt).toContain("name: Jamie Potter");
-		expect(prompt).toContain("creative brief");
-		expect(prompt).toContain("GOOD example");
+		expect(prompt).toContain("inspire the rest of the character sheet");
+		expect(prompt).toContain("Jake and Amy's son");
 	});
 
 	it("falls back to a setting-flexible concept when no universe is selected", () => {
@@ -102,6 +102,6 @@ describe("isCompleteCharacterConcept", () => {
 
 describe("buildCharacterConceptUserPrompt", () => {
 	it("asks for a stronger retry on later attempts", () => {
-		expect(buildCharacterConceptUserPrompt(1)).toContain("biography opener");
+		expect(buildCharacterConceptUserPrompt(1)).toContain("character sheet");
 	});
 });
