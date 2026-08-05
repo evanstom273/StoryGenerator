@@ -1041,10 +1041,11 @@ export function StoryCreatePage() {
         submitLabel="Save Story History Plan"
         initialOverallDirection={formState.currentSummary}
         resolveChapterLabels={resolveCreateChapterLabels}
-        onGeneratePlan={async ({ overallDirection, chapterLabels }) => {
+        onGeneratePlan={async ({ overallDirection, chapterLabels, chapters }) => {
           const plan = await generateGuidedChapterPlan({
             overallDirection,
             chapterLabels,
+            chapters,
             universeName: selectedUniverseName || "Universe",
             playerName: selectedPlayerName,
             currentSituation: formState.currentSummary.trim() || undefined,

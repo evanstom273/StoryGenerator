@@ -1,5 +1,12 @@
+import { intToRoman } from "../ai/chapterBannerLabel";
+
 const CHAPTER_HEADER_RE = /^\s*Chapter\s+([IVXLC\d]+)\s*[:.\-]\s*(.*)$/i;
 const SCENE_HEADER_RE = /^\s*Scene\s+([IVXLC\d]+)\s*[:.\-]\s*(.*)$/i;
+
+export function sceneIndexToLabel(index: number): string {
+	const roman = intToRoman(index + 1);
+	return roman ? `Scene ${roman}` : `Scene ${index + 1}`;
+}
 
 export function stripChapterHeadingPrefix(label: string, overview: string): {
 	label: string;
@@ -60,6 +67,37 @@ export function parseSceneOverviews(overview: string): string[] {
 	}
 
 	return scenes.filter((scene) => scene.length > 0);
+}
+
+export function hydrateSceneOverviews(overview: string, scenesPerChapter: number): string[] {
+	const count = Math.max(1, Math.min(10, scenesPerChapter));
+	const parsedScenes = parseSceneOverviews(overview);
+
+	if (parsedScenes.length > 0) {
+		return Array.from({ length: count }, (_, index) => parsedScenes[index] ?? "");
+	}
+
+	const trimmed = overview.trim();
+	if (count === 1) {
+		return [trimmed];
+	}
+
+	return Array.from({ length: count }, (_, index) => (index === 0 ? trimmed : ""));
+}
+
+export function serializeSceneOverviews(scenes: string[]): string {
+	const trimmed = scenes.map((scene) => scene.trim()).filter(Boolean);
+	if (!trimmed.length) {
+		return "";
+	}
+
+	if (trimmed.length === 1) {
+		return trimmed[0];
+	}
+
+	return trimmed
+		.map((scene, index) => `${sceneIndexToLabel(index)}: ${scene}`)
+		.join("\n\n");
 }
 
 export function resolveScenesForChapter(overview: string, scenesPerChapter: number): {

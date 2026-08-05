@@ -454,6 +454,11 @@ interface StoryEngineContextValue {
     storyId?: string;
     overallDirection: string;
     chapterLabels: string[];
+    chapters?: Array<{
+      label: string;
+      overview: string;
+      scenesPerChapter: number;
+    }>;
     universeName: string;
     playerName: string;
     currentSituation?: string;
@@ -2322,6 +2327,11 @@ export function StoryEngineProvider({
       storyId?: string;
       overallDirection: string;
       chapterLabels: string[];
+      chapters?: Array<{
+        label: string;
+        overview: string;
+        scenesPerChapter: number;
+      }>;
       universeName: string;
       playerName: string;
       currentSituation?: string;
@@ -2362,6 +2372,7 @@ export function StoryEngineProvider({
       const messages = buildChapterPlanPrompt({
         overallDirection: input.overallDirection,
         chapterLabels: input.chapterLabels,
+        chapters: input.chapters,
         universeName: input.universeName,
         playerName: input.playerName,
         currentSituation: input.currentSituation,

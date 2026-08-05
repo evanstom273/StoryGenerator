@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canGenerateGuidedChaptersAtWorkspace, isStoryEligibleForGuidedGeneration } from "../guidedChapterGeneration/eligibility";
 import { normalizeGuidedChapterPlan } from "../guidedChapterGeneration/planGeneration";
-import { parseSceneOverviews, resolveScenesForChapter, shouldStageDirectorBeatForScene } from "../guidedChapterGeneration/parsePlanText";
+import { parseSceneOverviews, resolveScenesForChapter, shouldStageDirectorBeatForScene, hydrateSceneOverviews, serializeSceneOverviews } from "../guidedChapterGeneration/parsePlanText";
 import {
 	buildGuidedChapterContinuityLedger,
 	formatGuidedChapterContinuityNotes,
@@ -331,6 +331,19 @@ describe("guidedChapterGeneration", () => {
 		});
 
 		expect(beat).toBe("*Kelly opens the door.*");
+	});
+
+	it("hydrates and serializes per-scene chapter notes", () => {
+		const scenes = ["Jamie meets Kelly.", "Jamie tours the bridge."];
+		const serialized = serializeSceneOverviews(scenes);
+		expect(serialized).toContain("Scene I:");
+		expect(serialized).toContain("Scene II:");
+		expect(hydrateSceneOverviews(serialized, 2)).toEqual(scenes);
+	});
+
+	it("keeps single-scene chapters as plain text without Scene headers", () => {
+		expect(serializeSceneOverviews(["Jamie arrives aboard."])).toBe("Jamie arrives aboard.");
+		expect(hydrateSceneOverviews("Jamie arrives aboard.", 1)).toEqual(["Jamie arrives aboard."]);
 	});
 
 	it("parses Scene I / Scene II blocks from chapter overview", () => {

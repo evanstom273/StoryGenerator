@@ -10,12 +10,38 @@ import {
 	GUIDED_CHAPTER_MIN_SCENES,
 } from "../../lib/guidedChapterGeneration/types";
 import type { GuidedChapterPlan, GuidedChapterPlanChapter } from "../../lib/guidedChapterGeneration/types";
+import {
+	hydrateSceneOverviews,
+	sceneIndexToLabel,
+	serializeSceneOverviews,
+} from "../../lib/guidedChapterGeneration/parsePlanText";
 
 type ChapterRow = {
 	label: string;
-	overview: string;
 	scenesPerChapter: number;
+	sceneOverviews: string[];
 };
+
+function createChapterRow(
+	label: string,
+	scenesPerChapter: number,
+	overview = "",
+): ChapterRow {
+	const clampedScenes = clampScenes(scenesPerChapter);
+	return {
+		label,
+		scenesPerChapter: clampedScenes,
+		sceneOverviews: hydrateSceneOverviews(overview, clampedScenes),
+	};
+}
+
+function clampScenes(value: number) {
+	return Math.min(GUIDED_CHAPTER_MAX_SCENES, Math.max(GUIDED_CHAPTER_MIN_SCENES, value));
+}
+
+function chapterHasSceneContent(chapter: ChapterRow) {
+	return chapter.sceneOverviews.some((scene) => scene.trim());
+}
 
 export function GuidedChapterPlanModal(props: {
 	open: boolean;
@@ -25,11 +51,20 @@ export function GuidedChapterPlanModal(props: {
 	submitLabel: string;
 	initialOverallDirection?: string;
 	initialChapterCount?: number;
-	initialChapters?: ChapterRow[];
+	initialChapters?: Array<{
+		label: string;
+		overview: string;
+		scenesPerChapter: number;
+	}>;
 	resolveChapterLabels: (count: number) => string[];
 	onGeneratePlan?: (input: {
 		overallDirection: string;
 		chapterLabels: string[];
+		chapters: Array<{
+			label: string;
+			overview: string;
+			scenesPerChapter: number;
+		}>;
 	}) => Promise<GuidedChapterPlanChapter[] | null>;
 	onSubmit: (plan: GuidedChapterPlan) => Promise<void>;
 }) {
@@ -73,25 +108,33 @@ export function GuidedChapterPlanModal(props: {
 		}
 
 		const labels = props.resolveChapterLabels(chapterCount);
-		setChapters((current) => {
-			const next: ChapterRow[] = labels.map((label, index) => {
+		setChapters((current) =>
+			labels.map((label, index) => {
 				const existing = current[index];
 				const seeded = props.initialChapters?.[index];
-				return {
-					label,
-					overview: existing?.overview ?? seeded?.overview ?? "",
-					scenesPerChapter:
-						existing?.scenesPerChapter ??
-						seeded?.scenesPerChapter ??
-						3,
-				};
-			});
-			return next;
-		});
+				const scenesPerChapter =
+					existing?.scenesPerChapter ?? seeded?.scenesPerChapter ?? 3;
+				const overview = existing
+					? serializeSceneOverviews(existing.sceneOverviews)
+					: (seeded?.overview ?? "");
+
+				return createChapterRow(label, scenesPerChapter, overview);
+			}),
+		);
 	}, [chapterCount, props.initialChapters, props.open, props.resolveChapterLabels]);
 
-	function clampScenes(value: number) {
-		return Math.min(GUIDED_CHAPTER_MAX_SCENES, Math.max(GUIDED_CHAPTER_MIN_SCENES, value));
+	function updateChapter(index: number, updater: (chapter: ChapterRow) => ChapterRow) {
+		setChapters((current) =>
+			current.map((row, rowIndex) => (rowIndex === index ? updater(row) : row)),
+		);
+	}
+
+	function buildChapterPayload(chapter: ChapterRow) {
+		return {
+			label: chapter.label,
+			overview: serializeSceneOverviews(chapter.sceneOverviews),
+			scenesPerChapter: clampScenes(chapter.scenesPerChapter),
+		};
 	}
 
 	async function handleGeneratePlan() {
@@ -99,8 +142,11 @@ export function GuidedChapterPlanModal(props: {
 			return;
 		}
 
-		if (!overallDirection.trim()) {
-			setErrorMessage("Enter an overall direction before generating a chapter plan.");
+		const hasChapterContent = chapters.some((chapter) => chapterHasSceneContent(chapter));
+		if (!overallDirection.trim() && !hasChapterContent) {
+			setErrorMessage(
+				"Enter an overall direction or fill in at least one chapter scene before generating a plan.",
+			);
 			return;
 		}
 
@@ -111,6 +157,7 @@ export function GuidedChapterPlanModal(props: {
 			const generated = await props.onGeneratePlan({
 				overallDirection,
 				chapterLabels,
+				chapters: chapters.map((chapter) => buildChapterPayload(chapter)),
 			});
 			if (!generated?.length) {
 				setErrorMessage("Plan generation returned no chapters. Try again or fill chapters manually.");
@@ -118,13 +165,18 @@ export function GuidedChapterPlanModal(props: {
 			}
 
 			setChapters((current) =>
-				chapterLabels.map((label, index) => ({
-					label,
-					overview: generated[index]?.overview ?? current[index]?.overview ?? "",
-					scenesPerChapter: clampScenes(
-						current[index]?.scenesPerChapter ?? generated[index]?.scenesPerChapter ?? 3,
-					),
-				})),
+				chapterLabels.map((label, index) => {
+					const existing = current[index];
+					const generatedChapter = generated[index];
+					const scenesPerChapter = clampScenes(
+						existing?.scenesPerChapter ?? generatedChapter?.scenesPerChapter ?? 3,
+					);
+					const overview = generatedChapter?.overview ?? existing
+						? serializeSceneOverviews(existing?.sceneOverviews ?? [])
+						: "";
+
+					return createChapterRow(label, scenesPerChapter, overview);
+				}),
 			);
 		} catch (error) {
 			setErrorMessage(
@@ -136,14 +188,9 @@ export function GuidedChapterPlanModal(props: {
 	}
 
 	async function handleSubmit() {
-		if (!overallDirection.trim()) {
-			setErrorMessage("Enter an overall direction for the generated chapters.");
-			return;
-		}
-
-		const missingOverview = chapters.find((chapter) => !chapter.overview.trim());
-		if (missingOverview) {
-			setErrorMessage(`Add an overview for ${missingOverview.label}.`);
+		const missingChapter = chapters.find((chapter) => !chapterHasSceneContent(chapter));
+		if (missingChapter) {
+			setErrorMessage(`Add at least one scene for ${missingChapter.label}.`);
 			return;
 		}
 
@@ -152,12 +199,8 @@ export function GuidedChapterPlanModal(props: {
 
 		try {
 			await props.onSubmit({
-				overallDirection: overallDirection.trim(),
-				chapters: chapters.map((chapter) => ({
-					label: chapter.label,
-					overview: chapter.overview.trim(),
-					scenesPerChapter: clampScenes(chapter.scenesPerChapter),
-				})),
+				overallDirection: overallDirection.trim() || undefined,
+				chapters: chapters.map((chapter) => buildChapterPayload(chapter)),
 			});
 			props.onClose();
 		} catch (error) {
@@ -204,11 +247,14 @@ export function GuidedChapterPlanModal(props: {
 					</div>
 
 					<div className="mt-6 min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
-						<Field label="Overall direction" hint="Required · e.g. Continue from the end of the previous chapter">
+						<Field
+							label="Overall direction"
+							hint="Optional · use when you want a high-level arc across all chapters"
+						>
 							<TextAreaInput
 								value={overallDirection}
 								onChange={(event) => setOverallDirection(event.target.value)}
-								placeholder="Continue from the end of the previous chapter. What should these chapters accomplish?"
+								placeholder="Optional. e.g. Continue from the end of the previous chapter, or leave blank and plan each chapter below."
 							/>
 						</Field>
 
@@ -251,54 +297,77 @@ export function GuidedChapterPlanModal(props: {
 									padding="md"
 								>
 									<div className="text-sm font-semibold text-ink">{chapter.label}</div>
-									<div className="mt-4 grid gap-4 lg:grid-cols-[1fr_140px]">
-										<Field label="Chapter overview" hint="Required · use Scene I:, Scene II:, … for each beat">
-											<TextAreaInput
-												value={chapter.overview}
-												onChange={(event) =>
-													setChapters((current) =>
-														current.map((row, rowIndex) =>
-															rowIndex === index
-																? { ...row, overview: event.target.value }
-																: row,
-														),
-													)
-												}
-												placeholder="Scene I: Jamie meets Cmdr Grayson (Kelly) in her office.\nScene II: ..."
-											/>
-										</Field>
-										<Field label="Scenes per chapter" hint={`${GUIDED_CHAPTER_MIN_SCENES}–${GUIDED_CHAPTER_MAX_SCENES}`}>
+									<div className="mt-4">
+										<Field
+											label="Scenes in this chapter"
+											hint={`${GUIDED_CHAPTER_MIN_SCENES}–${GUIDED_CHAPTER_MAX_SCENES} scene beats`}
+										>
 											<SelectInput
 												value={String(chapter.scenesPerChapter)}
-												onChange={(event) =>
-													setChapters((current) =>
-														current.map((row, rowIndex) =>
-															rowIndex === index
-																? {
-																		...row,
-																		scenesPerChapter: clampScenes(
-																			Number(event.target.value),
-																		),
-																	}
-																: row,
+												onChange={(event) => {
+													const nextCount = clampScenes(Number(event.target.value));
+													updateChapter(index, (row) => ({
+														...row,
+														scenesPerChapter: nextCount,
+														sceneOverviews: hydrateSceneOverviews(
+															serializeSceneOverviews(row.sceneOverviews),
+															nextCount,
 														),
-													)
-												}
+													}));
+												}}
 											>
 												{Array.from(
-													{ length: GUIDED_CHAPTER_MAX_SCENES - GUIDED_CHAPTER_MIN_SCENES + 1 },
+													{
+														length:
+															GUIDED_CHAPTER_MAX_SCENES -
+															GUIDED_CHAPTER_MIN_SCENES +
+															1,
+													},
 													(_, sceneIndex) => {
-														const value =
-															sceneIndex + GUIDED_CHAPTER_MIN_SCENES;
+														const value = sceneIndex + GUIDED_CHAPTER_MIN_SCENES;
 														return (
 															<option key={value} value={value}>
-																{value} scenes
+																{value} {value === 1 ? "scene" : "scenes"}
 															</option>
 														);
 													},
 												)}
 											</SelectInput>
 										</Field>
+									</div>
+
+									<div className="mt-4 space-y-4">
+										{chapter.sceneOverviews.map((sceneOverview, sceneIndex) => (
+											<Field
+												key={`${chapter.label}-${sceneIndex}`}
+												label={sceneIndexToLabel(sceneIndex)}
+												hint={
+													chapter.scenesPerChapter === 1
+														? "Required · what should happen in this chapter"
+														: "What should happen in this scene beat"
+												}
+											>
+												<TextAreaInput
+													value={sceneOverview}
+													onChange={(event) =>
+														updateChapter(index, (row) => ({
+															...row,
+															sceneOverviews: row.sceneOverviews.map(
+																(currentScene, currentSceneIndex) =>
+																	currentSceneIndex === sceneIndex
+																		? event.target.value
+																		: currentScene,
+															),
+														}))
+													}
+													placeholder={
+														sceneIndex === 0
+															? "Jamie meets Cmdr Grayson in her office."
+															: "What happens next in this chapter?"
+													}
+												/>
+											</Field>
+										))}
 									</div>
 								</Panel>
 							))}
