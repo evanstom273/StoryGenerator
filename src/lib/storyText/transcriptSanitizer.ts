@@ -6,8 +6,7 @@ import {
   splitDialogueQuoteRegions,
 } from "./dialogueQuoteRegions";
 import { normalizeSpeakerNamesInTranscript } from "./speakerLabels";
-import { repairMalformedTranscriptFormat, needsSpeakerAttributionRewrite, repairStrayAsteriskArtifacts } from "./transcriptFormatRepair";
-import { stripMisattributedPlayerSpeakerLabel } from "./playerDialogueVoice";
+import { repairMalformedTranscriptFormat, needsSpeakerAttributionRewrite, repairPlayerOrphanActionLines, repairStrayAsteriskArtifacts } from "./transcriptFormatRepair";
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -231,6 +230,12 @@ function formatInlineSpeakerText(remainder: string) {
 
   const actionPart = trimmed.slice(0, quoteIndex).trim();
   const dialoguePart = trimmed.slice(quoteIndex).trim();
+
+  // Nickname quotes inside an unclosed *action block are prose, not dialogue.
+  if (actionPart.startsWith("*") && !actionPart.endsWith("*")) {
+    return trimmed;
+  }
+
   const parts: string[] = [];
   if (actionPart && !/^[A-Za-z][a-zA-Z''-]*(?:\s+[A-Za-z][a-zA-Z''-]*){0,3}:\s*$/i.test(actionPart)) {
     parts.push(wrapAsAction(actionPart));
@@ -523,6 +528,13 @@ function stripInlineAsteriskEmphasis(text: string) {
       return prefix + remainder;
     }
 
+    if (remainder.startsWith("*")) {
+      const closeAction = remainder.indexOf("*", 1);
+      if (closeAction > quoteIndex) {
+        return line;
+      }
+    }
+
     const beforeQuote = remainder.slice(0, quoteIndex);
     const afterQuote = remainder.slice(quoteIndex);
     return prefix + beforeQuote + stripSingleWordAsteriskEmphasis(afterQuote);
@@ -787,23 +799,6 @@ export function shouldAcceptRepairedTranscriptDespiteFormatIssues(result: {
 	return !result.formatValid && isSubstantialTranscriptText(result.text);
 }
 
-function stripMisattributedPlayerSpeakerLabels(text: string, playerName?: string | null) {
-	if (!playerName?.trim()) {
-		return { text, changed: false };
-	}
-
-	let changed = false;
-	const lines = text.replace(/\r\n/g, "\n").split("\n").map((line) => {
-		const next = stripMisattributedPlayerSpeakerLabel(line, playerName);
-		if (next !== line) {
-			changed = true;
-		}
-		return next;
-	});
-
-	return { text: lines.join("\n"), changed };
-}
-
 export function sanitizeAssistantTranscript(args: {
   text: string;
   latestUserMessage?: string | null;
@@ -814,24 +809,21 @@ export function sanitizeAssistantTranscript(args: {
   const narratorStripped = stripNarratorHeaders(echoed.text);
   const markdownStripped = stripMarkdownArtifacts(narratorStripped.text);
   const bareNamesFixed = fixBareNameHeaders(markdownStripped.text);
-  const speakerNamesNormalized = normalizeSpeakerNamesInTranscript(
-    repairMalformedTranscriptFormat(bareNamesFixed, {
-      playerName: args.playerName,
-    }),
-  );
-  const dialogueColonsFixed = fixDialogueColons(speakerNamesNormalized);
+  const dialogueColonsFixed = fixDialogueColons(bareNamesFixed);
   const quotedDialogueRepaired = repairQuotedDialogueMarkers(dialogueColonsFixed);
   const actionPeriodsFixed = ensureActionPeriods(quotedDialogueRepaired);
   const normalizedActions = normalizeThirdPersonActions(actionPeriodsFixed, args.playerName);
   const emphasisStripped = stripInlineAsteriskEmphasis(normalizedActions);
-  const narrationRepaired = repairUnlabelledNarration(emphasisStripped);
-  const formatRepaired = repairMalformedTranscriptFormat(narrationRepaired.text, {
-    playerName: args.playerName,
-  });
+  const orphanActionsFixed = repairPlayerOrphanActionLines(emphasisStripped, args.playerName);
+  const narrationRepaired = repairUnlabelledNarration(orphanActionsFixed);
+  const formatRepaired = normalizeSpeakerNamesInTranscript(
+    repairMalformedTranscriptFormat(narrationRepaired.text, {
+      playerName: args.playerName,
+    }),
+  );
   if (needsSpeakerAttributionRewrite(formatRepaired, args.playerName)) {
-    const stripped = stripMisattributedPlayerSpeakerLabels(formatRepaired, args.playerName);
     const normalized = normalizeTranscriptWhitespace(
-      repairStrayAsteriskArtifacts(stripped.text),
+      repairStrayAsteriskArtifacts(formatRepaired),
     );
     return {
       text: normalized,
@@ -839,7 +831,7 @@ export function sanitizeAssistantTranscript(args: {
       removedNarratorLabels: narratorStripped.changed,
       removedMarkdownArtifacts: markdownStripped.changed,
       autoRepairedNarration: narrationRepaired.repaired,
-      strippedMisattributedPlayer: stripped.changed,
+      strippedMisattributedPlayer: false,
       needsSpeakerAttributionRewrite: true,
       formatValid: false,
       formatIssues: [],
@@ -867,6 +859,10 @@ export function sanitizeAssistantTranscript(args: {
   };
 }
 
+export function normalizeTranscriptForDisplay(text: string): string {
+	return capitalizeFirstLetter(normalizeTranscriptWhitespace(text));
+}
+
 export function sanitizeMessageForDisplay(args: {
   message: StoryMessage;
   latestUserMessage?: string | null;
@@ -876,17 +872,9 @@ export function sanitizeMessageForDisplay(args: {
     return args.message.content;
   }
 
-  // Respect manual transcript fixes. If the user edited the assistant message,
-  // render the saved text as-is instead of re-sanitising it back into a different shape.
-  if (args.message.editedAt) {
-    return capitalizeFirstLetter(normalizeTranscriptWhitespace(args.message.content));
-  }
-
-  return capitalizeFirstLetter(sanitizeAssistantTranscript({
-    text: args.message.content,
-    latestUserMessage: args.latestUserMessage,
-    playerName: args.playerName,
-  }).text);
+  // Assistant messages are sanitized once at save time. Re-running the full
+  // repair pipeline on every render can strip speaker labels and corrupt scenes.
+  return normalizeTranscriptForDisplay(args.message.content);
 }
 
 function capitalizeFirstLetter(text: string): string {
