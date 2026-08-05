@@ -1,4 +1,4 @@
-import type { PlayerCharacter } from "../types/models";
+import type { PlayerCharacter, PlayerCharacterDraft } from "../types/models";
 
 export function normalizePlayerCharacterAliases(value: unknown): string[] {
 	if (!Array.isArray(value)) {
@@ -47,4 +47,42 @@ export function formatPlayerCharacterAliasesForPrompt(
 	}
 
 	return `Also known as: ${aliases.join(", ")}`;
+}
+
+const CHARACTER_CONCEPT_CONSTRAINT_FIELDS = [
+	"name",
+	"age",
+	"gender",
+	"species",
+	"pronouns",
+	"appearance",
+	"personality",
+	"background",
+	"notes",
+] as const;
+
+export function buildCharacterConceptConstraintsFromDraft(
+	draft?: Partial<PlayerCharacterDraft>,
+): Partial<Record<(typeof CHARACTER_CONCEPT_CONSTRAINT_FIELDS)[number] | "aliases", string>> {
+	if (!draft) {
+		return {};
+	}
+
+	const constraints: Partial<
+		Record<(typeof CHARACTER_CONCEPT_CONSTRAINT_FIELDS)[number] | "aliases", string>
+	> = {};
+
+	for (const key of CHARACTER_CONCEPT_CONSTRAINT_FIELDS) {
+		const value = draft[key];
+		if (typeof value === "string" && value.trim()) {
+			constraints[key] = value.trim();
+		}
+	}
+
+	const aliases = normalizePlayerCharacterAliases(draft.aliases);
+	if (aliases.length) {
+		constraints.aliases = aliases.join(", ");
+	}
+
+	return constraints;
 }

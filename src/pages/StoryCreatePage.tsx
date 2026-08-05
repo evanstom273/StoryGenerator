@@ -5,6 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Field, MultiUniversePicker, SelectInput, TextAreaInput, TextInput, AliasesInput } from "../components/forms/Fields";
 import { getUniverseIds } from "../lib/universeIds";
 import { Button, buttonClasses } from "../components/ui/Button";
+import { SparklesIcon } from "../components/icons";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import type { AIProviderType, PlayerCharacterDraft } from "../types/models";
@@ -51,6 +52,7 @@ export function StoryCreatePage() {
     createSequel,
     createStory,
     generatePlayerCharacterDraft,
+    generatePlayerCharacterConcept,
     getPlayerCharacterById,
     getStoryAIConfig,
     getStoryById,
@@ -72,6 +74,7 @@ export function StoryCreatePage() {
   );
   const [quickCharacterError, setQuickCharacterError] = useState<string | null>(null);
   const [isQuickGenerating, setIsQuickGenerating] = useState(false);
+  const [isQuickGeneratingConcept, setIsQuickGeneratingConcept] = useState(false);
   const [storyProviderType, setStoryProviderType] = useState(
     aiSettings?.activeProviderType ?? "openai",
   );
@@ -358,6 +361,26 @@ export function StoryCreatePage() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleRandomizeQuickCharacterConcept() {
+    setIsQuickGeneratingConcept(true);
+    setQuickCharacterError(null);
+
+    try {
+      const universeId = formState.universeIds[0] ?? formState.universeId ?? "";
+      const concept = await generatePlayerCharacterConcept(
+        universeId || undefined,
+        quickCharacterState,
+      );
+      setQuickCharacterState((current) => ({ ...current, characterConcept: concept }));
+    } catch (error) {
+      setQuickCharacterError(
+        error instanceof Error ? error.message : "Unable to generate a character concept.",
+      );
+    } finally {
+      setIsQuickGeneratingConcept(false);
     }
   }
 
@@ -679,7 +702,21 @@ export function StoryCreatePage() {
                     placeholder="Human, Twi'lek, Khajiit, ..."
                   />
                 </Field>
-                <Field label="Character Concept">
+                <Field
+                  label="Character Concept"
+                  action={
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void handleRandomizeQuickCharacterConcept()}
+                      disabled={isQuickGenerating || isQuickGeneratingConcept || isSubmitting}
+                    >
+                      <SparklesIcon className="h-4 w-4" />
+                      {isQuickGeneratingConcept ? "Randomising..." : "Randomise"}
+                    </Button>
+                  }
+                >
                   <TextAreaInput
                     value={quickCharacterState.characterConcept ?? ""}
                     onChange={(event) =>
