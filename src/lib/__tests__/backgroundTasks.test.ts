@@ -4,9 +4,11 @@ import {
 	audiobookProgressToBackgroundJobProgress,
 	backgroundJobProgressFromSteps,
 	buildChapterDocumentSteps,
+	formatBackgroundJobStepFraction,
 	formatEstimatedRemainingSeconds,
 	getBackgroundTaskNavigationTarget,
 	getBackgroundTaskProgressLabel,
+	getBackgroundTaskStatusLine,
 	getBackgroundTaskRemainingLabel,
 	getBackgroundTaskTypeLabel,
 	isAudiobookExportBackgroundJob,
@@ -181,6 +183,67 @@ describe("backgroundTasks", () => {
 				}),
 			),
 		).toBe("");
+	});
+
+	it("formats consolidated status line with active step and total eta", () => {
+		const startedAt = "2026-01-01T00:00:00.000Z";
+		const nowMs = new Date("2026-01-01T00:01:00.000Z").getTime();
+		const steps = buildChapterDocumentSteps({
+			introLabel: "Writing title",
+			chapterLabels: ["Chapter I", "Chapter II", "Chapter III"],
+		});
+		const runningSteps = steps.map((step, index) =>
+			index === 1
+				? { ...step, status: "running" as const }
+				: index === 0
+					? { ...step, status: "done" as const }
+					: step,
+		);
+
+		expect(formatBackgroundJobStepFraction(runningSteps[1]!, runningSteps)).toBe(" (1/3)");
+
+		const statusLine = getBackgroundTaskStatusLine(
+			makeJob({
+				id: "1",
+				type: "ai_document",
+				status: "running",
+				startedAt,
+				payload: { aiDocumentPresetId: "novelisation" },
+				progress: backgroundJobProgressFromSteps("Generating Novelisation", runningSteps),
+			}),
+			"Jamie's Tales",
+			nowMs,
+		);
+
+		expect(statusLine).toMatch(/^Jamie's Tales - Chapter I \(1\/3\) - ~/);
+	});
+
+	it("formats consolidated status line without fraction for intro step", () => {
+		const startedAt = "2026-01-01T00:00:00.000Z";
+		const nowMs = new Date("2026-01-01T00:00:30.000Z").getTime();
+		const steps = buildChapterDocumentSteps({
+			introLabel: "Writing title",
+			chapterLabels: ["Chapter I", "Chapter II"],
+		});
+		const runningSteps = steps.map((step, index) =>
+			index === 0 ? { ...step, status: "running" as const } : step,
+		);
+
+		const statusLine = getBackgroundTaskStatusLine(
+			makeJob({
+				id: "1",
+				type: "ai_document",
+				status: "running",
+				startedAt,
+				payload: { aiDocumentPresetId: "novelisation" },
+				progress: backgroundJobProgressFromSteps("Generating Novelisation", runningSteps),
+			}),
+			"Jamie's Tales",
+			nowMs,
+		);
+
+		expect(statusLine).toMatch(/^Jamie's Tales - Writing title - ~/);
+		expect(statusLine).not.toContain("(1/");
 	});
 
 	it("formats estimated remaining time", () => {
