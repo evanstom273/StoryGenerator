@@ -183,11 +183,11 @@ export function LibrarySearchOverlay({
 		if (!open) {
 			return;
 		}
-		const frame = window.requestAnimationFrame(() => {
-			inputRef.current?.focus();
-			inputRef.current?.select();
-		});
-		return () => window.cancelAnimationFrame(frame);
+		const previousOverflow = document.body.style.overflow;
+		document.body.style.overflow = "hidden";
+		return () => {
+			document.body.style.overflow = previousOverflow;
+		};
 	}, [open]);
 
 	useEffect(() => {
@@ -202,6 +202,17 @@ export function LibrarySearchOverlay({
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [onClose, open]);
+
+	useEffect(() => {
+		if (!open) {
+			return;
+		}
+		const frame = window.requestAnimationFrame(() => {
+			inputRef.current?.focus();
+			inputRef.current?.select();
+		});
+		return () => window.cancelAnimationFrame(frame);
+	}, [open]);
 
 	const libraryCharacters = useMemo(
 		() => playerCharacters.filter((character) => (character.scope ?? "library") === "library"),
@@ -277,28 +288,39 @@ export function LibrarySearchOverlay({
 			<button
 				type="button"
 				aria-label="Close library search"
-				className={cn("absolute inset-0 bg-app/85 backdrop-blur-sm", OVERLAY_BACKDROP_CLASS)}
+				className={cn(
+					"absolute inset-x-0 bottom-0 bg-app/85 backdrop-blur-sm lg:inset-0",
+					OVERLAY_BACKDROP_CLASS,
+					"top-14 lg:top-0",
+				)}
 				onClick={onClose}
 			/>
-			<div className="absolute inset-x-0 top-0 flex max-h-[100dvh] flex-col border-b border-divider bg-app shadow-hero sm:inset-x-4 sm:top-6 sm:max-h-[calc(100dvh-3rem)] sm:rounded-[14px] sm:border lg:inset-x-auto lg:left-1/2 lg:top-10 lg:w-[min(980px,calc(100vw-2rem))] lg:-translate-x-1/2">
-				<div className="border-b border-divider/[0.35] px-4 py-4 sm:px-5">
+			<div
+				className={cn(
+					"absolute inset-x-0 bottom-0 flex flex-col overflow-hidden border-divider bg-app shadow-hero",
+					"top-14 border-t lg:top-10 lg:bottom-auto lg:left-1/2 lg:max-h-[min(85dvh,calc(100dvh-5rem))] lg:w-[min(980px,calc(100vw-2rem))] lg:-translate-x-1/2 lg:rounded-[14px] lg:border",
+					"pb-[env(safe-area-inset-bottom,0px)]",
+				)}
+			>
+				<div className="shrink-0 border-b border-divider/[0.35] px-4 py-3 sm:px-5 sm:py-4">
 					<div className="flex items-center gap-3">
-						<SearchIcon className="h-4 w-4 text-ink-muted" />
+						<SearchIcon className="h-4 w-4 shrink-0 text-ink-muted" />
 						<input
 							ref={inputRef}
 							value={filters.query}
 							onChange={(event) => updateFilter("query", event.target.value)}
-							placeholder="Search stories, universes, and characters…"
+							placeholder="Search stories, universes, characters…"
 							className="min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-muted"
 						/>
-						<Button variant="ghost" size="sm" onClick={onClose}>
+						<Button variant="ghost" size="sm" className="shrink-0" onClick={onClose}>
 							Close
 						</Button>
 					</div>
 				</div>
 
-				<div className="border-b border-divider/[0.35] px-4 py-3 sm:px-5">
-					<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+				<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+					<div className="border-b border-divider/[0.35] px-4 py-3 sm:px-5">
+						<div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
 						<label className="space-y-1.5">
 							<FilterLabel>Content</FilterLabel>
 							<select
@@ -522,31 +544,36 @@ export function LibrarySearchOverlay({
 							/>
 						</div>
 					) : null}
-				</div>
-
-				<div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 sm:px-3">
-					<div className="flex items-center justify-between gap-3 px-3 py-2">
-						<div className="text-[11px] font-medium text-ink-muted">
-							{results.length} result{results.length === 1 ? "" : "s"}
-							{filters.contentType === "all"
-								? ` · ${groupedCounts.story} stories · ${groupedCounts.universe} universes · ${groupedCounts.character} characters`
-								: null}
-						</div>
 					</div>
 
-					{results.length ? (
-						<div className="space-y-1">
-							{results.map((result) => (
-								<LibrarySearchResultRow key={`${result.type}-${result.id}`} result={result} onNavigate={onClose} />
-							))}
+					<div className="px-2 py-2 sm:px-3">
+						<div className="flex items-center justify-between gap-3 px-3 py-2">
+							<div className="text-[11px] font-medium text-ink-muted">
+								{results.length} result{results.length === 1 ? "" : "s"}
+								{filters.contentType === "all"
+									? ` · ${groupedCounts.story} stories · ${groupedCounts.universe} universes · ${groupedCounts.character} characters`
+									: null}
+							</div>
 						</div>
-					) : (
-						<div className="px-3 py-10 text-center text-sm text-ink-muted">
-							{filters.query.trim()
-								? "No matches for that search. Try different keywords or broaden your filters."
-								: "Type to search your library, or adjust filters to browse everything."}
-						</div>
-					)}
+
+						{results.length ? (
+							<div className="space-y-1">
+								{results.map((result) => (
+									<LibrarySearchResultRow
+										key={`${result.type}-${result.id}`}
+										result={result}
+										onNavigate={onClose}
+									/>
+								))}
+							</div>
+						) : (
+							<div className="px-3 py-10 text-center text-sm text-ink-muted">
+								{filters.query.trim()
+									? "No matches for that search. Try different keywords or broaden your filters."
+									: "Type to search your library, or adjust filters to browse everything."}
+							</div>
+						)}
+					</div>
 				</div>
 			</div>
 		</div>

@@ -21,12 +21,14 @@ interface V2LeftSidebarProps {
   activeStoryId?: string;
   className?: string;
   onNavigate?: () => void;
+  onOpenMetaChat?: () => void;
 }
 
 export function V2LeftSidebar({
   activeStoryId,
   className,
   onNavigate,
+  onOpenMetaChat,
 }: V2LeftSidebarProps) {
   const navigate = useNavigate();
   const {
@@ -86,20 +88,21 @@ export function V2LeftSidebar({
           </Link>
           </div>
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              aria-label="Search library"
-              onClick={() => {
-                openSearch();
-                onNavigate?.();
-              }}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-white/35 transition hover:bg-white/[0.06] hover:text-white/70"
-            >
-              <SearchIcon className="h-4 w-4" />
-            </button>
             <BackgroundTasksButton />
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            openSearch();
+            onNavigate?.();
+          }}
+          className="mb-3 flex w-full items-center gap-2.5 rounded-[8px] border border-[#252525] bg-[#1A1A1A] px-3 py-2.5 text-left transition hover:border-[#333] hover:bg-[#222]"
+        >
+          <SearchIcon className="h-4 w-4 shrink-0 text-white/35" />
+          <span className="text-xs text-white/35">Search library…</span>
+        </button>
 
         <div className="flex gap-2">
           <Link
@@ -117,6 +120,35 @@ export function V2LeftSidebar({
             New Universe
           </Link>
         </div>
+
+        {onOpenMetaChat ? (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenMetaChat();
+              onNavigate?.();
+            }}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-[7px] border border-[#252525] bg-[#111] py-2 text-xs font-medium text-white/55 transition hover:border-[#333] hover:bg-[#1A1A1A] hover:text-white/75"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="8" width="18" height="11" rx="2" />
+              <path d="M8 8V5" />
+              <path d="M16 8V5" />
+              <circle cx="9" cy="13.5" r="1" fill="currentColor" stroke="none" />
+              <circle cx="15" cy="13.5" r="1" fill="currentColor" stroke="none" />
+            </svg>
+            Library MetaChat
+          </button>
+        ) : null}
       </div>
 
       {/* My Worlds header */}

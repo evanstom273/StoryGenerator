@@ -5,10 +5,23 @@ import { APP_VERSION } from "../app/versioning/version";
 
 interface BrandMarkProps {
   compact?: boolean;
+  iconOnly?: boolean;
   className?: string;
 }
 
-export function BrandMark({ compact = false, className }: BrandMarkProps) {
+export function BrandMark({ compact = false, iconOnly = false, className }: BrandMarkProps) {
+  if (iconOnly) {
+    return (
+      <Link
+        to="/"
+        aria-label="Go to Home"
+        className={cn("flex shrink-0 items-center", className)}
+      >
+        <BrandLogo className="h-9 w-9" />
+      </Link>
+    );
+  }
+
   return (
     <Link to="/" aria-label="Go to Home" className={cn("flex items-center gap-4", className)}>
       <BrandLogo className="h-12 w-12" />

@@ -22,6 +22,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     ],
     fixed: [
       "Help bubble tooltips no longer clip off-screen on narrow phone layouts",
+      "Library search panel now sits below the mobile header, scrolls correctly, and keeps the top bar visible",
     ],
     knownIssues: [],
   },
