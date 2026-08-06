@@ -62,6 +62,20 @@
     min-height: 100vh;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
   ::selection {
     background: rgb(var(--accent-rgb) / 0.35);
     color: #ffffff;
@@ -111,3 +125,77 @@
   border-left: 2px solid rgb(var(--accent-rgb) / 0.4); padding-left: 0.75em;
   color: rgb(var(--ink-muted-rgb)); margin: 0.5em 0;
 }
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes splash-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes splash-logo-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes dropdown-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-page-enter {
+  animation: page-enter 180ms ease-out both;
+}
+
+.animate-splash-enter {
+  animation: splash-enter 160ms ease-out both;
+}
+
+.animate-splash-logo {
+  animation: splash-logo-enter 200ms ease-out 60ms both;
+}
+
+.animate-modal-enter {
+  animation: modal-enter 180ms ease-out both;
+}
+
+.animate-dropdown-enter {
+  animation: dropdown-enter 180ms ease-out both;
+}
+

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BrandMark } from "../../components/BrandMark";
+import { AnimatedOutlet } from "../../components/ui/AnimatedOutlet";
+import { DRAWER_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../ui/motion";
 import { MenuIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
 import { MetaChatOverlay } from "../../components/story/MetaChatOverlay";
@@ -254,7 +256,7 @@ export function V2Shell() {
 
             <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
               <PwaInstallBanner />
-              <Outlet />
+              <AnimatedOutlet />
             </main>
 
             {readerActive || rightSidebarCollapsed || !effectiveShowChrome ? null : (
@@ -278,14 +280,16 @@ export function V2Shell() {
             type="button"
             aria-label="Close navigation overlay"
             className={cn(
-              "absolute inset-0 bg-slate-950/65 backdrop-blur-sm transition-opacity duration-200",
+              "absolute inset-0 bg-slate-950/65 backdrop-blur-sm",
+              OVERLAY_BACKDROP_CLASS,
               leftOpen ? "opacity-100" : "opacity-0",
             )}
             onClick={() => setLeftOpen(false)}
           />
           <div
             className={cn(
-              "absolute inset-y-0 left-0 flex w-[min(88vw,24rem)] flex-col border-r border-divider bg-app-elevated shadow-hero transition-transform duration-200",
+              "absolute inset-y-0 left-0 flex w-[min(88vw,24rem)] flex-col border-r border-divider bg-app-elevated shadow-hero",
+              DRAWER_PANEL_CLASS,
               leftOpen ? "translate-x-0" : "-translate-x-full",
             )}
           >

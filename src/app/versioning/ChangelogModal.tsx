@@ -1,5 +1,6 @@
 import { Button } from "../../components/ui/Button";
 import { Panel } from "../../components/ui/Panel";
+import { MODAL_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../ui/motion";
 import { cn } from "../../utils/cn";
 import { formatChangelogReleaseLabel } from "./changelogExport";
 import type { ChangelogEntry } from "./version";
@@ -24,18 +25,20 @@ export function ChangelogModal({
         type="button"
         aria-label="Close changelog"
         className={cn(
-          "absolute inset-0 bg-slate-950/65 backdrop-blur-sm transition-opacity duration-200",
+          "absolute inset-0 bg-slate-950/65 backdrop-blur-sm",
+          OVERLAY_BACKDROP_CLASS,
           open ? "opacity-100" : "opacity-0",
         )}
         onClick={onClose}
       />
       <div
         className={cn(
-          "absolute inset-0 flex items-center justify-center p-4 transition-opacity duration-200",
-          open ? "opacity-100" : "opacity-0",
+          "absolute inset-0 flex items-center justify-center p-4",
+          MODAL_PANEL_CLASS,
+          open ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       >
-        <div className="w-full max-w-2xl">
+        <div className={cn("w-full max-w-2xl", open ? "animate-modal-enter" : undefined)}>
           <Panel variant="flat" padding="lg" role="dialog" aria-modal="true">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Changelog

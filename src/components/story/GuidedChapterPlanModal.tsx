@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Field, SelectInput, TextAreaInput } from "../forms/Fields";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
+import { BOTTOM_SHEET_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../../app/ui/motion";
 import { cn } from "../../utils/cn";
 import {
 	GUIDED_CHAPTER_MAX_COUNT,
@@ -224,15 +225,18 @@ export function GuidedChapterPlanModal(props: {
 				type="button"
 				aria-label="Close guided chapter planner"
 				className={cn(
-					"absolute inset-0 bg-black/60 transition-opacity",
+					"absolute inset-0 bg-app/80 backdrop-blur-sm",
+					OVERLAY_BACKDROP_CLASS,
 					props.open ? "opacity-100" : "opacity-0",
 				)}
 				onClick={props.onClose}
 			/>
 			<div
 				className={cn(
-					"absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col overflow-hidden rounded-t-[18px] border border-divider bg-app shadow-hero transition-transform sm:inset-0 sm:mx-auto sm:my-8 sm:max-w-3xl sm:rounded-[18px]",
-					props.open ? "translate-y-0" : "translate-y-full sm:translate-y-4 sm:opacity-0",
+					"absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col overflow-hidden rounded-t-[18px] border border-divider bg-app shadow-hero sm:inset-0 sm:mx-auto sm:my-8 sm:max-w-3xl sm:rounded-[18px]",
+					BOTTOM_SHEET_PANEL_CLASS,
+					"transition-opacity duration-[180ms] ease-out sm:transition-[transform,opacity]",
+					props.open ? "translate-y-0 opacity-100" : "translate-y-full sm:translate-y-4 sm:opacity-0",
 				)}
 			>
 				<Panel variant="flat" padding="lg" className="flex min-h-0 flex-1 flex-col overflow-hidden border-0">

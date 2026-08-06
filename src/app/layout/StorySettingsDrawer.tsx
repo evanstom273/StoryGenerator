@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DownloadIcon, TrashIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
+import { DRAWER_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../ui/motion";
 import { MarkdownText } from "../../components/ui/MarkdownText";
 import { Panel } from "../../components/ui/Panel";
 
@@ -818,14 +819,16 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         type="button"
         aria-label="Close story settings"
         className={cn(
-          "absolute inset-0 bg-app/80 backdrop-blur-sm transition-opacity duration-200",
+          "absolute inset-0 bg-app/80 backdrop-blur-sm",
+          OVERLAY_BACKDROP_CLASS,
           storySettingsOpen ? "opacity-100" : "opacity-0",
         )}
         onClick={() => setStorySettingsOpen(false)}
       />
       <div
         className={cn(
-          "absolute inset-y-0 right-0 flex w-[min(92vw,28rem)] flex-col border-l border-divider/[0.4] bg-app shadow-2xl transition-transform duration-200",
+          "absolute inset-y-0 right-0 flex w-[min(92vw,28rem)] flex-col border-l border-divider/[0.4] bg-app shadow-2xl",
+          DRAWER_PANEL_CLASS,
           storySettingsOpen ? "translate-x-0" : "translate-x-full",
         )}
       >
