@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "icons:generate": "node scripts/generate-app-icons.mjs",
+    "splash:generate": "node scripts/generate-ios-startup-images.mjs",
     "build": "tsc --noEmit && npx vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run"

@@ -7,7 +7,7 @@ export default defineConfig({
 		react(),
 		VitePWA({
 			registerType: "autoUpdate",
-			includeAssets: ["favicon.svg", "apple-touch-icon.png", "mask-icon.svg"],
+			includeAssets: ["favicon.svg", "apple-touch-icon.png", "mask-icon.svg", "ios-splash/*.png"],
 			manifest: {
 				name: "Story Engine",
 				short_name: "Story Engine",
