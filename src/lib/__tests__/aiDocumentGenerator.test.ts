@@ -5,6 +5,7 @@ import {
 	buildAiDocumentFilename,
 	getAiDocumentPreset,
 } from "../aiDocumentGenerator/presets";
+import { buildNovelisationSystemPrompt } from "../aiDocumentGenerator/novelisationPrompt";
 import { extractPodcastDialogueFromMarkdown } from "../aiDocumentGenerator/podcastScript";
 import { buildAudioFilenameFromMarkdownUpload } from "../aiDocumentGenerator/sourceMaterial";
 import { planGeminiPodcastTtsChunks } from "../aiDocumentGenerator/geminiAudio";
@@ -22,6 +23,30 @@ describe("aiDocumentGenerator", () => {
 		expect(messages.length).toBe(2);
 		expect(messages[0].content).toContain("companion Markdown document");
 		expect(messages[1].content).toContain("Example Story");
+	});
+
+	it("registers novelisation preset with format-conversion instructions", () => {
+		const preset = getAiDocumentPreset("novelisation");
+		expect(preset.displayName).toBe("Novelisation");
+		expect(preset.defaultStructure).toBe("chapter-by-chapter");
+		expect(preset.systemPrompt).toBe(buildNovelisationSystemPrompt());
+		expect(preset.systemPrompt).toContain("FORMAT CONVERSION");
+		expect(preset.systemPrompt).not.toContain("companion Markdown document");
+	});
+
+	it("includes novelisation chapter structure instructions", () => {
+		const preset = getAiDocumentPreset("novelisation");
+		const messages = buildAiDocumentMessages({
+			preset,
+			sourceLabel: "Example Story",
+			sourceMaterial: "Chapter source",
+			structure: "chapter-by-chapter",
+			section: "chapter",
+			chapterLabel: "Chapter II",
+		});
+
+		expect(messages[0].content).toContain("Write ONLY the novel prose for Chapter II");
+		expect(messages[0].content).not.toContain("Sam");
 	});
 
 	it("includes podcast structure for chapter breakdown preset", () => {
@@ -54,6 +79,7 @@ describe("aiDocumentGenerator", () => {
 
 	it("builds filenames with extensions", () => {
 		expect(buildAiDocumentFilename("story-summary")).toBe("story-summary.md");
+		expect(buildAiDocumentFilename("novelisation", "Peralta")).toBe("peralta-novelisation.md");
 		expect(buildAiDocumentFilename("podcast-chapter-breakdown", "Peralta", "wav")).toBe(
 			"peralta-podcast-chapter-breakdown.wav",
 		);
