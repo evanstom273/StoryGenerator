@@ -286,7 +286,7 @@ export function buildCharacterConceptGeneratorSystemPrompt({
 		"- Asterisks are reserved for actions in story text; do not use asterisks for emphasis.",
 		"",
 		"BAD example (truncated biography opener — never do this):",
-		"\"Jamie Peralta is a fast-talking, fifteen-year-old high schooler caught in an\"",
+		"\"Alex Rivera is a sharp-eyed Harbor District investigator caught in an\"",
 		"",
 		universeBlock,
 		"",

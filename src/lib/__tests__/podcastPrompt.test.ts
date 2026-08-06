@@ -4,8 +4,8 @@ import { getAiDocumentPreset } from "../aiDocumentGenerator/presets";
 import {
 	estimateChapterDiscussionCoverage,
 	formatPriorDiscussionsForPrompt,
-	PODCAST_HOST_ALEX,
-	PODCAST_HOST_SAM,
+	PODCAST_HOST_ONE,
+	PODCAST_HOST_TWO,
 } from "../aiDocumentGenerator/podcastPrompt";
 import type { ChapterSourceSegment } from "../aiDocumentGenerator/types";
 
@@ -25,7 +25,7 @@ describe("podcastPrompt", () => {
 			{ label: "Chapter I", transcript: "Short opener." },
 			{
 				label: "Chapter II",
-				transcript: `${emotional}\nJamie: We have to run!\nDoctor: No!\n`.repeat(30),
+				transcript: `${emotional}\nRiley: We have to run!\nDoctor: No!\n`.repeat(30),
 			},
 		];
 		const coverage = estimateChapterDiscussionCoverage(segments[1]!, segments);
@@ -40,14 +40,14 @@ describe("podcastPrompt", () => {
 		];
 		const formatted = formatPriorDiscussionsForPrompt(
 			segments,
-			["**Sam:** I thought Liam would return.", "**Alex:** Same."],
+			["**Morgan:** I thought that ally would return.", "**Casey:** Same."],
 			1,
 		);
 		expect(formatted).toContain("Chapter I");
-		expect(formatted).toContain("Liam");
+		expect(formatted).toContain("that ally");
 	});
 
-	it("includes Sam and Alex in podcast chapter breakdown prompts", () => {
+	it("includes Host One and Host Two in podcast chapter breakdown prompts", () => {
 		const preset = getAiDocumentPreset("podcast-chapter-breakdown");
 		const messages = buildAiDocumentMessages({
 			preset,
@@ -57,8 +57,8 @@ describe("podcastPrompt", () => {
 			section: "introduction",
 		});
 
-		expect(messages[0].content).toContain(PODCAST_HOST_SAM);
-		expect(messages[0].content).toContain(PODCAST_HOST_ALEX);
+		expect(messages[0].content).toContain(PODCAST_HOST_ONE);
+		expect(messages[0].content).toContain(PODCAST_HOST_TWO);
 		expect(messages[0].content).toContain("Final Thoughts");
 		expect(messages[0].content).not.toContain("Summary Table");
 	});
@@ -84,12 +84,12 @@ describe("podcastPrompt", () => {
 				chapterIndex: 2,
 				totalChapters: 3,
 				coverage,
-				priorDiscussions: "**Chapter I**\nSam: Early prediction about Bertha.",
+				priorDiscussions: "**Chapter I**\nMorgan: Early prediction about the harbor signal.",
 			},
 		});
 
 		expect(messages[0].content).toContain("Do not spoil");
 		expect(messages[0].content).toContain(coverage.targetGuidance);
-		expect(messages[0].content).toContain("Bertha");
+		expect(messages[0].content).toContain("harbor signal");
 	});
 });

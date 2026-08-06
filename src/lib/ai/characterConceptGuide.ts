@@ -17,7 +17,7 @@ export const CHARACTER_CONCEPT_DEFINITION = [
 ].join("\n");
 
 export const CHARACTER_CONCEPT_EXAMPLE =
-	"Jake and Amy's son. Quiet, funny, and exceptionally intelligent. A STEM prodigy who adores his parents but is hiding a life-changing secret from them: he's Spider-Man.";
+	"Alex Rivera is a Harbor District investigator who keeps her cool under pressure. Loyal to her sister Elena, skeptical of authority, and hiding a dangerous secret from Captain Reyes: she was the anonymous tipster who started the Starfall Saga inquiry.";
 
 export function formatCharacterConceptGuideForPrompt() {
 	return [

@@ -1,7 +1,7 @@
 import type { ChapterSourceSegment } from "./types";
 
-export const PODCAST_HOST_SAM = "Sam";
-export const PODCAST_HOST_ALEX = "Alex";
+export const PODCAST_HOST_ONE = "Morgan";
+export const PODCAST_HOST_TWO = "Casey";
 
 export type ChapterDiscussionTier = "brief" | "standard" | "extended" | "deep";
 
@@ -106,20 +106,20 @@ export function estimateChapterDiscussionCoverage(
 export const PODCAST_HOST_PERSONALITIES = `
 ## Recurring hosts (always use these names and personalities)
 
-**${PODCAST_HOST_SAM}**
+**Host One (${PODCAST_HOST_ONE})**
 - optimistic, emotional, relationship-focused
 - tends to defend characters and notice heartfelt moments
 - gets invested in character writing and bonds between people
 - warm, reactive, sometimes swept up in the moment
 
-**${PODCAST_HOST_ALEX}**
+**Host Two (${PODCAST_HOST_TWO})**
 - analytical, slightly cynical, structure-minded
 - loves plotting, foreshadowing, and worldbuilding
 - notices mechanics, setups, and whether the story earns its turns
 - dry humor, skeptical but fair
 
 They are the same hosts every episode. Their voices must stay consistent.
-Always label dialogue as **${PODCAST_HOST_SAM}:** and **${PODCAST_HOST_ALEX}:** on every spoken line.
+Always label dialogue as **${PODCAST_HOST_ONE}:** and **${PODCAST_HOST_TWO}:** on every spoken line.
 `;
 
 export const PODCAST_CONVERSATION_CRAFT = `
@@ -130,7 +130,7 @@ Write a genuine long-form podcast transcript. Two real presenters discussing the
 - Progress through the story in order. React as if experiencing each chapter when it arrives — not with full hindsight unless you have already discussed later events.
 - Vary chapter coverage. Major emotional or plot-heavy chapters get more time. Short transition chapters get a paragraph or two.
 - Allow natural disagreement sometimes (not constantly): "I wasn't convinced by that." / "That was my favourite chapter." / "You're giving him too much credit."
-- Make predictions as you go: "I thought Liam was going to stick around." / "I assumed she wasn't surviving this." Later, revisit wrong predictions: "I was completely wrong about that."
+- Make predictions as you go: "I thought that ally was going to stick around." / "I assumed she wasn't surviving this." Later, revisit wrong predictions: "I was completely wrong about that."
 - Use callbacks and running jokes when they emerge naturally: "This is where the trainers officially died." / "Remember what we said back in Chapter II?"
 - Occasionally pause with "Hang on…" / "Did you notice…" / "I missed that the first time."
 - Let themes surface during the story — do not hoard all theme talk for the end.
@@ -164,9 +164,9 @@ export function buildPodcastIntroductionSectionPrompt() {
 Write ONLY the opening of the podcast episode:
 1. A title line (# heading) with an evocative podcast episode title and story name
 2. A one-line topic/subtitle under the title
-3. ### Introduction — ${PODCAST_HOST_SAM} and ${PODCAST_HOST_ALEX} welcome listeners, introduce themselves briefly as the regular hosts, and set up what story they are covering tonight
+3. ### Introduction — Host One (${PODCAST_HOST_ONE}) and Host Two (${PODCAST_HOST_TWO}) welcome listeners, introduce themselves briefly as the regular hosts, and set up what story they are covering tonight
 4. Tease the journey ahead without spoiling specific later chapters
-5. Use labelled dialogue (**${PODCAST_HOST_SAM}:** / **${PODCAST_HOST_ALEX}:**) throughout
+5. Use labelled dialogue (**${PODCAST_HOST_ONE}:** / **${PODCAST_HOST_TWO}:**) throughout
 
 Do NOT discuss individual chapters yet. Do NOT write Final Thoughts or any chapter sections.
 `;
@@ -213,7 +213,7 @@ Rules for this chapter:
 - React in sequence: speculate about what might happen next based only on what has been covered so far.
 - Reference prior host predictions or jokes from the "already discussed" block when natural.
 - Match emotional pacing to the chapter — serious after tragedy, lighter when the story allows.
-- Label every spoken line as **${PODCAST_HOST_SAM}:** or **${PODCAST_HOST_ALEX}:**.
+- Label every spoken line as **${PODCAST_HOST_ONE}:** or **${PODCAST_HOST_TWO}:**.
 
 Do NOT write Introduction, other chapters, or Final Thoughts.
 ${priorBlock}
@@ -224,7 +224,7 @@ export function buildPodcastFinalThoughtsSectionPrompt() {
 	return `
 Write ONLY the closing section: ### Final Thoughts
 
-This must be a rich, conversational wrap-up between ${PODCAST_HOST_SAM} and ${PODCAST_HOST_ALEX} — not a bullet summary.
+This must be a rich, conversational wrap-up between Host One (${PODCAST_HOST_ONE}) and Host Two (${PODCAST_HOST_TWO}) — not a bullet summary.
 
 Cover naturally through dialogue (when the story supports it):
 - Favourite chapter and why
@@ -240,7 +240,7 @@ Cover naturally through dialogue (when the story supports it):
 - Final reflections and sign-off
 
 Revisit predictions that were wrong or right. Allow disagreement on the score or favourites.
-Use **${PODCAST_HOST_SAM}:** and **${PODCAST_HOST_ALEX}:** on every spoken line.
+Use **${PODCAST_HOST_ONE}:** and **${PODCAST_HOST_TWO}:** on every spoken line.
 
 Do NOT repeat full chapter-by-chapter recaps. Do NOT write a markdown summary table unless a very brief table helps — dialogue is the priority.
 `;
@@ -257,7 +257,7 @@ export function buildPodcastDiscussionSystemPrompt() {
 		"",
 		"Write a single long-form thematic podcast discussion of the full story.",
 		"Include Introduction and Final Thoughts. Progress through major beats in order where possible.",
-		"Label all dialogue as **Sam:** and **Alex:**.",
+		"Label all dialogue as **Host One:** and **Host Two:** (or **Morgan:** / **Casey:**).",
 	].join("\n");
 }
 
