@@ -11,6 +11,40 @@ import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } fr
 import { cn } from "../../utils/cn";
 import { HelpBubble } from "../ui/HelpBubble";
 
+export function FieldLabel({
+	label,
+	hint,
+	help,
+	action,
+	className,
+	labelClassName,
+}: {
+	label: string;
+	hint?: string;
+	help?: string;
+	action?: ReactNode;
+	className?: string;
+	labelClassName?: string;
+}) {
+	return (
+		<div className={cn("flex items-center justify-between gap-3", className)}>
+			<span
+				className={cn(
+					"flex items-center gap-1.5",
+					labelClassName ?? "text-[13px] font-medium text-ink-soft",
+				)}
+			>
+				{label}
+				{help ? <HelpBubble text={help} label={`Help: ${label}`} /> : null}
+			</span>
+			<div className="flex items-center gap-2">
+				{hint ? <span className="text-[11px] text-ink-muted">{hint}</span> : null}
+				{action}
+			</div>
+		</div>
+	);
+}
+
 export function Field({
   label,
   hint,
@@ -26,16 +60,7 @@ export function Field({
 }) {
   return (
     <label className="block space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink-soft">
-          {label}
-          {help ? <HelpBubble text={help} label={`Help: ${label}`} /> : null}
-        </span>
-        <div className="flex items-center gap-2">
-          {hint ? <span className="text-[11px] text-ink-muted">{hint}</span> : null}
-          {action}
-        </div>
-      </div>
+      <FieldLabel label={label} hint={hint} help={help} action={action} />
       {children}
     </label>
   );

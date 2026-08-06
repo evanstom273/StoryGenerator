@@ -354,7 +354,11 @@ export function AiDocumentGeneratorTab() {
 								Story & MetaChat playback
 							</div>
 							<div className="grid gap-6 md:grid-cols-2">
-								<Field label="Narration voice" hint="Clear story narration — default Iapetus">
+								<Field
+									label="Narration voice"
+									hint="Clear story narration — default Iapetus"
+									help="Voice for narrator lines when you use Listen to Chapter or message play buttons."
+								>
 									<SelectInput
 										value={narrationTts.voice}
 										onChange={(event) =>
@@ -379,7 +383,11 @@ export function AiDocumentGeneratorTab() {
 										})}
 									</SelectInput>
 								</Field>
-								<Field label="Character dialogue voice" hint="NPC lines — default Aoede">
+								<Field
+									label="Character dialogue voice"
+									hint="NPC lines — default Aoede"
+									help="Voice for quoted character dialogue in story playback. Narration still uses the narration voice."
+								>
 									<SelectInput
 										value={narrationTts.characterVoice}
 										onChange={(event) =>
@@ -405,7 +413,10 @@ export function AiDocumentGeneratorTab() {
 									</SelectInput>
 								</Field>
 							</div>
-							<Field label="Story TTS model">
+							<Field
+								label="Story TTS model"
+								help="Gemini text-to-speech model for in-story playback. Flash is faster; Pro may sound richer on long passages."
+							>
 								<SelectInput
 									value={narrationTts.model}
 									onChange={(event) => void persistNarrationTts({ model: event.target.value })}
@@ -485,7 +496,10 @@ export function AiDocumentGeneratorTab() {
 							</Field>
 							</div>
 
-							<Field label="Podcast TTS model">
+							<Field
+								label="Podcast TTS model"
+								help="Gemini model used when exporting podcast audio from generated Markdown scripts."
+							>
 								<SelectInput
 									value={podcastTts.model}
 									onChange={(event) => void persistPodcastTts({ model: event.target.value })}
@@ -543,7 +557,11 @@ export function AiDocumentGeneratorTab() {
 								</SelectInput>
 							</Field>
 						) : (
-							<Field label="Export file" hint="Archive PDF, Markdown, or TXT">
+							<Field
+								label="Export file"
+								hint="Archive PDF, Markdown, or TXT"
+								help="Upload a story export instead of picking from your library. Useful for sharing files from another device."
+							>
 								<input
 									type="file"
 									accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain"
@@ -596,6 +614,7 @@ export function AiDocumentGeneratorTab() {
 										? "Gemini audio uses your Gemini API key"
 										: "Add a Gemini API key in Settings → AI for audio"
 								}
+								help="Markdown saves a readable document. Gemini podcast audio renders a WAV file with the configured host voices."
 							>
 								<SelectInput
 									value={outputFormat}
@@ -683,6 +702,7 @@ export function AiDocumentGeneratorTab() {
 								? "Podcast chapter breakdown or discussion exports (.md)"
 								: "Add a Gemini API key in Settings → AI for audio"
 						}
+						help="Skip document generation and convert an existing podcast Markdown export straight to audio."
 					>
 						<input
 							type="file"

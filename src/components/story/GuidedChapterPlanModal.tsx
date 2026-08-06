@@ -254,6 +254,7 @@ export function GuidedChapterPlanModal(props: {
 						<Field
 							label="Overall direction"
 							hint="Optional · use when you want a high-level arc across all chapters"
+							help="Optional arc spanning all chapters. Leave blank to plan each chapter individually below."
 						>
 							<TextAreaInput
 								value={overallDirection}
@@ -263,7 +264,10 @@ export function GuidedChapterPlanModal(props: {
 						</Field>
 
 						<div className="grid gap-4 sm:grid-cols-2">
-							<Field label="Chapter count">
+							<Field
+								label="Chapter count"
+								help="How many chapters to generate in one batch. Each becomes a playable section in the transcript."
+							>
 								<SelectInput
 									value={String(chapterCount)}
 									onChange={(event) => setChapterCount(Number(event.target.value))}
@@ -305,6 +309,7 @@ export function GuidedChapterPlanModal(props: {
 										<Field
 											label="Scenes in this chapter"
 											hint={`${GUIDED_CHAPTER_MIN_SCENES}–${GUIDED_CHAPTER_MAX_SCENES} scene beats`}
+											help="Number of scene beats the AI will write for this chapter. More beats mean a longer chapter."
 										>
 											<SelectInput
 												value={String(chapter.scenesPerChapter)}
@@ -350,6 +355,7 @@ export function GuidedChapterPlanModal(props: {
 														? "Required · what should happen in this chapter"
 														: "What should happen in this scene beat"
 												}
+												help="Brief beat the AI should dramatise — who is involved, what changes, and where it happens."
 											>
 												<TextAreaInput
 													value={sceneOverview}

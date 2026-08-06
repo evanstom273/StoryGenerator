@@ -586,7 +586,10 @@ export function UniverseFormPage() {
                 </div>
               </Field>
 
-              <Field label="Notes (optional)">
+              <Field
+                label="Notes (optional)"
+                help="Private reminders about this reference-based universe — import quirks, gaps, or things to fix later."
+              >
                 <TextAreaInput
                   value={formState.notes ?? ""}
                   onChange={(event) =>
@@ -602,7 +605,10 @@ export function UniverseFormPage() {
           ) : (
             <>
               <div className="grid gap-6 md:grid-cols-2">
-                <Field label="Genre / Theme">
+                <Field
+                  label="Genre / Theme"
+                  help="High-level genre tags that steer the generated blueprint and AI tone."
+                >
                   <TextInput
                     value={formState.genreTheme ?? ""}
                     onChange={(event) =>
@@ -615,7 +621,10 @@ export function UniverseFormPage() {
                   />
                 </Field>
 
-                <Field label="Tone">
+                <Field
+                  label="Tone"
+                  help="Emotional register for the world — hopeful, grim, campy, mysterious, and so on."
+                >
                   <TextInput
                     value={formState.tone ?? ""}
                     onChange={(event) =>

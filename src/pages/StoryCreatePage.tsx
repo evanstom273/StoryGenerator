@@ -576,7 +576,11 @@ export function StoryCreatePage() {
           </div>
 
           {protagonistMode === "existing" ? (
-            <Field label="Player Character" hint="Required">
+            <Field
+              label="Player Character"
+              hint="Required"
+              help="Pick a saved protagonist from your library. They must belong to at least one of the selected universes."
+            >
               <SelectInput
                 value={formState.playerCharacterId}
                 onChange={(event) =>
@@ -630,7 +634,11 @@ export function StoryCreatePage() {
                 Quick Story Character
               </div>
               <div className="mt-4 grid gap-6 md:grid-cols-2">
-                <Field label="Name" hint="Required">
+                <Field
+                  label="Name"
+                  hint="Required"
+                  help="The primary name the AI uses when this character speaks or is mentioned."
+                >
                   <TextInput
                     value={quickCharacterState.name}
                     onChange={(event) =>
@@ -642,7 +650,10 @@ export function StoryCreatePage() {
                     placeholder="Alex Rivera"
                   />
                 </Field>
-                <Field label="Pronouns">
+                <Field
+                  label="Pronouns"
+                  help="How others address this character in narration and dialogue."
+                >
                   <TextInput
                     value={quickCharacterState.pronouns}
                     onChange={(event) =>
@@ -657,7 +668,11 @@ export function StoryCreatePage() {
               </div>
 
               <div className="mt-6">
-                <Field label="Aliases" hint="Alternative names the AI should recognise">
+                <Field
+                  label="Aliases"
+                  hint="Alternative names the AI should recognise"
+                  help="Nicknames, titles, or surnames the model should treat as the same person."
+                >
                   <AliasesInput
                     value={normalizePlayerCharacterAliases(quickCharacterState.aliases)}
                     disabled={isQuickGenerating || isSubmitting}
@@ -672,7 +687,11 @@ export function StoryCreatePage() {
               </div>
 
               <div className="mt-6">
-                <Field label="Known ties" hint="Optional canon characters and relationships the AI may reference">
+                <Field
+                  label="Known ties"
+                  hint="Optional canon characters and relationships the AI may reference"
+                  help="List important NPCs and how they relate — for example mentor, sibling, or rival — without importing an entire cast."
+                >
                   <KnownTiesInput
                     value={normalizePlayerCharacterKnownTies(quickCharacterState.knownTies)}
                     disabled={isQuickGenerating || isSubmitting}
@@ -687,7 +706,10 @@ export function StoryCreatePage() {
               </div>
 
               <div className="mt-6 grid gap-6 md:grid-cols-2">
-                <Field label="Age">
+                <Field
+                  label="Age"
+                  help="Approximate age or life stage. Helps the AI match tone and references."
+                >
                   <TextInput
                     value={quickCharacterState.age}
                     onChange={(event) =>
@@ -699,7 +721,10 @@ export function StoryCreatePage() {
                     placeholder="29"
                   />
                 </Field>
-                <Field label="Gender">
+                <Field
+                  label="Gender"
+                  help="How the character identifies. Free text — use whatever fits your setting."
+                >
                   <TextInput
                     value={quickCharacterState.gender}
                     onChange={(event) =>
@@ -714,7 +739,10 @@ export function StoryCreatePage() {
               </div>
 
               <div className="mt-6 grid gap-6 md:grid-cols-2">
-                <Field label="Species">
+                <Field
+                  label="Species"
+                  help="Biological or fantasy race. Matters for lore-heavy universes."
+                >
                   <TextInput
                     value={quickCharacterState.species}
                     onChange={(event) =>
@@ -728,6 +756,7 @@ export function StoryCreatePage() {
                 </Field>
                 <Field
                   label="Character Concept"
+                  help="A one-line pitch: role, vibe, and core conflict. Used when generating or randomising the rest of the sheet."
                   action={
                     <Button
                       type="button"
@@ -755,7 +784,10 @@ export function StoryCreatePage() {
               </div>
 
               <div className="mt-6 grid gap-6 md:grid-cols-2">
-                <Field label="Appearance">
+                <Field
+                  label="Appearance"
+                  help="Physical description the AI can reference in narration and dialogue."
+                >
                   <TextAreaInput
                     value={quickCharacterState.appearance}
                     onChange={(event) =>
@@ -766,7 +798,10 @@ export function StoryCreatePage() {
                     }
                   />
                 </Field>
-                <Field label="Personality">
+                <Field
+                  label="Personality"
+                  help="Traits, habits, fears, and social style the AI should keep consistent."
+                >
                   <TextAreaInput
                     value={quickCharacterState.personality}
                     onChange={(event) =>
@@ -780,7 +815,10 @@ export function StoryCreatePage() {
               </div>
 
               <div className="mt-6 grid gap-6 md:grid-cols-2">
-                <Field label="Background">
+                <Field
+                  label="Background"
+                  help="Where they came from, formative experiences, and what they did before the story."
+                >
                   <TextAreaInput
                     value={quickCharacterState.background}
                     onChange={(event) =>
@@ -791,7 +829,10 @@ export function StoryCreatePage() {
                     }
                   />
                 </Field>
-                <Field label="Notes">
+                <Field
+                  label="Notes"
+                  help="Anything else you want the AI to remember — secrets, hooks, or play constraints."
+                >
                   <TextAreaInput
                     value={quickCharacterState.notes}
                     onChange={(event) =>

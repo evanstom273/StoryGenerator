@@ -430,6 +430,7 @@ export function PlayerCharacterFormPage() {
             <Field
               label="Age"
               hint={resolveFieldHint(formState.age)}
+              help="Approximate age or life stage. Helps the AI match tone and references."
               action={renderFieldRandomizeAction(["age"])}
             >
               <TextInput
@@ -449,6 +450,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Appearance"
             hint={resolveFieldHint(formState.appearance)}
+            help="Physical description the AI can reference in narration and dialogue."
             action={renderFieldRandomizeAction(["appearance"])}
           >
             <TextAreaInput
@@ -470,6 +472,7 @@ export function PlayerCharacterFormPage() {
             <Field
               label="Gender"
               hint={resolveFieldHint(formState.gender)}
+              help="How the character identifies. Free text — use whatever fits your setting."
               action={renderFieldRandomizeAction(["gender"])}
             >
               <TextInput
@@ -487,6 +490,7 @@ export function PlayerCharacterFormPage() {
             <Field
               label="Species"
               hint={resolveFieldHint(formState.species)}
+              help="Biological or fantasy race. Matters for lore-heavy universes."
               action={renderFieldRandomizeAction(["species"])}
             >
               <TextInput
@@ -506,6 +510,7 @@ export function PlayerCharacterFormPage() {
             <Field
               label="Pronouns"
               hint={resolveFieldHint(formState.pronouns)}
+              help="How others address this character in narration and dialogue."
               action={renderFieldRandomizeAction(["pronouns"])}
             >
               <TextInput
@@ -524,6 +529,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Background"
             hint={resolveFieldHint(formState.background)}
+            help="Where they came from, formative experiences, and what they did before the story."
             action={renderFieldRandomizeAction(["background"])}
           >
             <TextAreaInput
@@ -540,6 +546,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Personality"
             hint={resolveFieldHint(formState.personality)}
+            help="Traits, habits, fears, and social style the AI should keep consistent."
             action={renderFieldRandomizeAction(["personality"])}
           >
             <TextAreaInput
@@ -556,6 +563,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Notes"
             hint={resolveFieldHint(formState.notes)}
+            help="Anything else you want the AI to remember — secrets, hooks, or play constraints."
             action={renderFieldRandomizeAction(["notes"])}
           >
             <TextAreaInput
