@@ -235,7 +235,7 @@ export function GuidedChapterPlanModal(props: {
 				className={cn(
 					"absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col overflow-hidden rounded-t-[18px] border border-divider bg-app shadow-hero sm:inset-0 sm:mx-auto sm:my-8 sm:max-w-3xl sm:rounded-[18px]",
 					BOTTOM_SHEET_PANEL_CLASS,
-					"transition-opacity duration-[180ms] ease-out sm:transition-[transform,opacity]",
+					"transition-opacity duration-[280ms] ease-out sm:transition-[transform,opacity]",
 					props.open ? "translate-y-0 opacity-100" : "translate-y-full sm:translate-y-4 sm:opacity-0",
 				)}
 			>
