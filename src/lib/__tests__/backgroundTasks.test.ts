@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
 	countActiveBackgroundTasks,
 	audiobookProgressToBackgroundJobProgress,
+	formatEstimatedRemainingSeconds,
 	getBackgroundTaskNavigationTarget,
+	getBackgroundTaskRemainingLabel,
 	getBackgroundTaskTypeLabel,
 	isAudiobookExportBackgroundJob,
 	isAudiobookListenBackgroundJob,
@@ -148,6 +150,42 @@ describe("backgroundTasks", () => {
 			total: 2,
 			label: "1/2 chapters ready",
 		});
+	});
+
+	it("formats estimated remaining time", () => {
+		expect(formatEstimatedRemainingSeconds(13)).toBe("~13s");
+		expect(formatEstimatedRemainingSeconds(133)).toBe("~2m13s");
+		expect(formatEstimatedRemainingSeconds(120)).toBe("~2m");
+		expect(formatEstimatedRemainingSeconds(3661)).toBe("~1h1m");
+	});
+
+	it("estimates remaining time from job progress", () => {
+		const startedAt = "2026-01-01T00:00:00.000Z";
+		const nowMs = new Date("2026-01-01T00:01:00.000Z").getTime();
+
+		expect(
+			getBackgroundTaskRemainingLabel(
+				makeJob({
+					id: "1",
+					type: "story_audiobook",
+					status: "running",
+					startedAt,
+					progress: { current: 1, total: 4, label: "Chapter 1" },
+				}),
+				nowMs,
+			),
+		).toBe("~3m");
+
+		expect(
+			getBackgroundTaskRemainingLabel(
+				makeJob({
+					id: "2",
+					type: "ai_document",
+					status: "queued",
+				}),
+				nowMs,
+			),
+		).toBe("Queued");
 	});
 
 	it("routes navigation targets for story and settings jobs", () => {
