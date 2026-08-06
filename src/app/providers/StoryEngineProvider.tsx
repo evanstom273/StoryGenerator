@@ -167,6 +167,8 @@ import { buildStoryAudiobookFilename } from "../../lib/exportFilename";
 import { downloadFile } from "../../lib/download";
 import {
 	isBackgroundTaskJob,
+	isAudiobookExportBackgroundJob,
+	isAudiobookListenBackgroundJob,
 	resolveMaxConcurrentBackgroundTasks,
 	getNextBackgroundTaskQueueOrder,
 	moveQueuedBackgroundTaskInOrder,
@@ -471,6 +473,8 @@ interface StoryEngineContextValue {
     storyId: string;
     playId: string;
     chapterCount?: number;
+    purpose?: "playback" | "chapter_listen";
+    progressLabel?: string;
   }) => Promise<BackgroundJob>;
   updateAudiobookPlaybackBackgroundTask: (
     jobId: string,
@@ -2731,8 +2735,7 @@ export function StoryEngineProvider({
       const existingJobs = await repository.listBackgroundJobs();
       const existing = existingJobs.find(
         (job) =>
-          job.type === "story_audiobook" &&
-          job.payload?.audiobookPurpose !== "playback" &&
+          isAudiobookExportBackgroundJob(job) &&
           job.storyId === storyId &&
           (job.status === "queued" || job.status === "running"),
       );
@@ -3447,8 +3450,15 @@ export function StoryEngineProvider({
   );
 
   const beginAudiobookPlaybackBackgroundTask = useCallback(
-    async (input: { storyId: string; playId: string; chapterCount?: number }) => {
-      const dedupeKey = `story_audiobook:playback:${input.playId}`;
+    async (input: {
+      storyId: string;
+      playId: string;
+      chapterCount?: number;
+      purpose?: "playback" | "chapter_listen";
+      progressLabel?: string;
+    }) => {
+      const purpose = input.purpose ?? "playback";
+      const dedupeKey = `story_audiobook:${purpose}:${input.playId}`;
       const existingJobs = await repository.listBackgroundJobs();
       const existing = existingJobs.find(
         (job) =>
@@ -3472,13 +3482,19 @@ export function StoryEngineProvider({
         status: "running",
         dedupeKey,
         payload: {
-          audiobookPurpose: "playback",
+          audiobookPurpose: purpose,
           audiobookPlayId: input.playId,
         },
         progress: {
           current: 0,
           total: chapterCount,
-          label: chapterCount > 1 ? `Preparing ${chapterCount} chapters…` : "Preparing audiobook…",
+          label:
+            input.progressLabel ??
+            (purpose === "chapter_listen"
+              ? "Preparing chapter audio…"
+              : chapterCount > 1
+                ? `Preparing ${chapterCount} chapters…`
+                : "Preparing audiobook…"),
         },
       };
 
@@ -3506,7 +3522,7 @@ export function StoryEngineProvider({
       error?: string,
     ) => {
       const liveJob = await repository.getBackgroundJob(jobId);
-      if (!liveJob || liveJob.payload?.audiobookPurpose !== "playback") {
+      if (!liveJob || !isAudiobookListenBackgroundJob(liveJob)) {
         return;
       }
 
@@ -4182,7 +4198,7 @@ export function StoryEngineProvider({
             );
           }, 8_000);
         } else if (job.type === "story_audiobook") {
-          if (job.payload?.audiobookPurpose === "playback") {
+          if (isAudiobookListenBackgroundJob(job)) {
             return;
           }
           const storyId = job.storyId ?? "";

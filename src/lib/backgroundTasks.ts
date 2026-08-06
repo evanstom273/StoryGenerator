@@ -33,9 +33,14 @@ export function getBackgroundTaskTypeLabel(job: BackgroundJob): string {
 		case "story_index":
 			return job.payload?.incremental ? "Update Index" : "Full Re-index";
 		case "story_audiobook":
-			return job.payload?.audiobookPurpose === "playback"
-				? "Prepare Audiobook"
-				: "Generate Audiobook";
+			switch (job.payload?.audiobookPurpose) {
+				case "playback":
+					return "Prepare Audiobook";
+				case "chapter_listen":
+					return "Prepare Chapter Audio";
+				default:
+					return "Generate Audiobook";
+			}
 		case "ai_document":
 			return getAiDocumentTaskLabel(job);
 		case "podcast_audio":
@@ -188,8 +193,16 @@ export function moveQueuedBackgroundTaskInOrder(
 	}));
 }
 
+export function isAudiobookListenBackgroundJob(job: BackgroundJob): boolean {
+	return (
+		job.type === "story_audiobook" &&
+		(job.payload?.audiobookPurpose === "playback" ||
+			job.payload?.audiobookPurpose === "chapter_listen")
+	);
+}
+
 export function isAudiobookExportBackgroundJob(job: BackgroundJob): boolean {
-	return job.type === "story_audiobook" && job.payload?.audiobookPurpose !== "playback";
+	return job.type === "story_audiobook" && !isAudiobookListenBackgroundJob(job);
 }
 
 export function audiobookProgressToBackgroundJobProgress(progress: StoryAudiobookProgress): {

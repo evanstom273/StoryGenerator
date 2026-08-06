@@ -5,6 +5,7 @@ import {
 	getBackgroundTaskNavigationTarget,
 	getBackgroundTaskTypeLabel,
 	isAudiobookExportBackgroundJob,
+	isAudiobookListenBackgroundJob,
 	isBackgroundTaskJob,
 	moveQueuedBackgroundTaskInOrder,
 	partitionBackgroundTasks,
@@ -87,17 +88,37 @@ describe("backgroundTasks", () => {
 					id: "2",
 					type: "story_audiobook",
 					status: "running",
+					payload: { audiobookPurpose: "chapter_listen" },
+				}),
+			),
+		).toBe("Prepare Chapter Audio");
+		expect(
+			getBackgroundTaskTypeLabel(
+				makeJob({
+					id: "3",
+					type: "story_audiobook",
+					status: "running",
 					payload: { audiobookPurpose: "export" },
 				}),
 			),
 		).toBe("Generate Audiobook");
 		expect(
-			isAudiobookExportBackgroundJob(
+			isAudiobookListenBackgroundJob(
 				makeJob({
-					id: "3",
+					id: "4",
 					type: "story_audiobook",
 					status: "running",
-					payload: { audiobookPurpose: "playback" },
+					payload: { audiobookPurpose: "chapter_listen" },
+				}),
+			),
+		).toBe(true);
+		expect(
+			isAudiobookExportBackgroundJob(
+				makeJob({
+					id: "5",
+					type: "story_audiobook",
+					status: "running",
+					payload: { audiobookPurpose: "chapter_listen" },
 				}),
 			),
 		).toBe(false);
