@@ -126,14 +126,25 @@
   color: rgb(var(--ink-muted-rgb)); margin: 0.5em 0;
 }
 
+@keyframes page-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1) translateZ(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.992) translateZ(0);
+  }
+}
+
 @keyframes page-enter {
   from {
     opacity: 0;
-    transform: scale(0.992) translateZ(0);
+    transform: translateY(18px) scale(0.988) translateZ(0);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateZ(0);
+    transform: translateY(0) scale(1) translateZ(0);
   }
 }
 
@@ -179,8 +190,12 @@
   }
 }
 
+.animate-page-exit {
+  animation: page-exit 240ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
 .animate-page-enter {
-  animation: page-enter 340ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: page-enter 580ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .animate-splash-enter {
