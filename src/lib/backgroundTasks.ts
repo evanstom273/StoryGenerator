@@ -217,17 +217,6 @@ export function getActiveBackgroundJobStep(steps: BackgroundJobStep[]): Backgrou
 	return steps.find((step) => step.status === "running") ?? null;
 }
 
-function getStepProgressFraction(steps: BackgroundJobStep[]): number {
-	if (!steps.length) {
-		return 0;
-	}
-
-	const done = countCompletedBackgroundJobSteps(steps);
-	const hasRunning = steps.some((step) => step.status === "running");
-	const effective = hasRunning ? done + 0.5 : done;
-	return effective / steps.length;
-}
-
 export function formatBackgroundJobStepFraction(
 	step: BackgroundJobStep,
 	steps: BackgroundJobStep[],
@@ -266,7 +255,7 @@ export function formatBackgroundJobStepFraction(
 export function getBackgroundTaskStatusLine(
 	job: BackgroundJob,
 	storyLabel: string,
-	nowMs = Date.now(),
+	remainingLabel?: string,
 ): string {
 	if (job.status === "queued") {
 		return `${storyLabel} - Queued`;
@@ -276,8 +265,7 @@ export function getBackgroundTaskStatusLine(
 		return storyLabel;
 	}
 
-	const eta = getBackgroundTaskRemainingLabel(job, nowMs);
-	const etaSuffix = eta ? ` - ${eta}` : "";
+	const etaSuffix = remainingLabel ? ` - ${remainingLabel}` : "";
 	const steps = job.progress?.steps;
 
 	if (steps?.length) {
@@ -361,11 +349,59 @@ function getFallbackTotalSeconds(job: BackgroundJob): number {
 		case "story_audiobook":
 			return isAudiobookListenBackgroundJob(job) ? 90 : 600;
 		case "ai_document":
+			if (job.payload?.aiDocumentPresetId === "novelisation") {
+				return 480;
+			}
+			return 180;
 		case "podcast_audio":
 			return 180;
 		default:
 			return 120;
 	}
+}
+
+export function getBackgroundTaskRemainingSeconds(
+	job: BackgroundJob,
+	nowMs = Date.now(),
+): number | null {
+	if (job.status !== "running") {
+		return null;
+	}
+
+	const reference = job.startedAt ?? job.createdAt;
+	if (!reference) {
+		return null;
+	}
+
+	const startedMs = new Date(reference).getTime();
+	const elapsedSec = Math.max(0, (nowMs - startedMs) / 1000);
+	const progress = job.progress;
+	const fallbackTotalSec = getFallbackTotalSeconds(job);
+
+	if (progress?.steps?.length) {
+		const totalSteps = progress.steps.length;
+		const doneSteps = countCompletedBackgroundJobSteps(progress.steps);
+
+		if (doneSteps === 0) {
+			return Math.max(0, fallbackTotalSec - elapsedSec);
+		}
+
+		return Math.max(0, (elapsedSec / doneSteps) * (totalSteps - doneSteps));
+	}
+
+	if (progress && progress.total > 0) {
+		if (progress.current >= progress.total) {
+			return 0;
+		}
+
+		if (progress.current > 0) {
+			const fraction = progress.current / progress.total;
+			const estimatedTotalSec = elapsedSec / fraction;
+			return Math.max(0, estimatedTotalSec - elapsedSec);
+		}
+	}
+
+	return Math.max(0, fallbackTotalSec - elapsedSec);
 }
 
 export function getBackgroundTaskRemainingLabel(job: BackgroundJob, nowMs = Date.now()): string {
@@ -377,43 +413,12 @@ export function getBackgroundTaskRemainingLabel(job: BackgroundJob, nowMs = Date
 		return "";
 	}
 
-	const reference = job.startedAt ?? job.createdAt;
-	if (!reference) {
+	const remainingSec = getBackgroundTaskRemainingSeconds(job, nowMs);
+	if (remainingSec === null) {
 		return "~…";
 	}
 
-	const startedMs = new Date(reference).getTime();
-	const elapsedSec = Math.max(0, (nowMs - startedMs) / 1000);
-	const progress = job.progress;
-
-	if (progress?.steps?.length) {
-		const fraction = getStepProgressFraction(progress.steps);
-		if (fraction > 0 && fraction < 1) {
-			const estimatedTotalSec = elapsedSec / fraction;
-			const remainingSec = Math.max(0, estimatedTotalSec - elapsedSec);
-			return formatEstimatedRemainingSeconds(remainingSec);
-		}
-
-		if (fraction >= 1) {
-			return "~0s";
-		}
-	}
-
-	if (progress && progress.total > 0) {
-		if (progress.current >= progress.total) {
-			return "~0s";
-		}
-
-		if (progress.current > 0) {
-			const fraction = progress.current / progress.total;
-			const estimatedTotalSec = elapsedSec / fraction;
-			const remainingSec = Math.max(0, estimatedTotalSec - elapsedSec);
-			return formatEstimatedRemainingSeconds(remainingSec);
-		}
-	}
-
-	const fallbackTotalSec = getFallbackTotalSeconds(job);
-	return formatEstimatedRemainingSeconds(Math.max(0, fallbackTotalSec - elapsedSec));
+	return formatEstimatedRemainingSeconds(remainingSec);
 }
 
 /** @deprecated Use getBackgroundTaskRemainingLabel */
