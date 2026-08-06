@@ -7,9 +7,24 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "3.2.0";
+export const APP_VERSION = "3.3.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "3.3.0": {
+    title: "Background Task Manager & Streaming Reliability",
+    releasedAt: "2026-08-06T16:30:00+00:00",
+    added: [
+      "Background Task Manager for long-running AI work: update index, full re-index, audiobook export, AI document generation, and podcast audio",
+      "Global background queue with configurable max concurrent tasks (Settings → AI, default 2)",
+      "Background Tasks button in the app bar with running/queued/completed progress, cancel, tap-to-navigate, and up/down reorder for queued tasks",
+      "Long-running jobs continue when you navigate away; on-page progress UI remains when you stay on the screen where the task started",
+    ],
+    fixed: [
+      "Story generation now treats the live stream as the source of truth — a good streamed response is saved instead of being discarded for a hidden non-streaming retry",
+      "Validation rewrites stream visibly in the workspace; the streaming panel shows Attempt N/10, a 180s idle timeout, and up to 10 rewrite attempts",
+    ],
+    knownIssues: [],
+  },
   "3.2.0": {
     title: "Character Aliases & AI Model Roles",
     releasedAt: "2026-08-04T23:59:59+00:00",
