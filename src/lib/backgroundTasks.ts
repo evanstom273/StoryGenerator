@@ -1,5 +1,6 @@
 import type { StoryAudiobookProgress } from "./ai/storyAudiobookProgress";
-import type { BackgroundJob, BackgroundJobType } from "../types/models";
+import type { AudiobookChapterSynthStatus } from "./ai/storyAudiobookProgress";
+import type { BackgroundJob, BackgroundJobStep, BackgroundJobStepStatus, BackgroundJobType } from "../types/models";
 
 export const BACKGROUND_TASK_JOB_TYPES = [
 	"story_index",
@@ -99,9 +100,134 @@ export function getBackgroundTaskNavigationTarget(job: BackgroundJob): string {
 	return "/settings?tab=documents";
 }
 
+export function countCompletedBackgroundJobSteps(steps: BackgroundJobStep[]): number {
+	return steps.filter((step) => step.status === "done").length;
+}
+
+export function buildChapterDocumentSteps(params: {
+	introLabel: string;
+	chapterLabels: string[];
+	epilogueLabel?: string | null;
+}): BackgroundJobStep[] {
+	const steps: BackgroundJobStep[] = [
+		{ id: "intro", label: params.introLabel, status: "pending" },
+	];
+	params.chapterLabels.forEach((label, index) => {
+		steps.push({
+			id: `chapter-${index}`,
+			label,
+			status: "pending",
+		});
+	});
+	if (params.epilogueLabel?.trim()) {
+		steps.push({
+			id: "epilogue",
+			label: params.epilogueLabel.trim(),
+			status: "pending",
+		});
+	}
+	return steps;
+}
+
+export function setBackgroundJobStepStatus(
+	steps: BackgroundJobStep[],
+	activeStepId: string,
+	mode: "start" | "complete",
+): BackgroundJobStep[] {
+	return steps.map((step) => {
+		if (mode === "start") {
+			if (step.id === activeStepId) {
+				return { ...step, status: "running" };
+			}
+			if (step.status === "running") {
+				return { ...step, status: "done" };
+			}
+			return step;
+		}
+
+		if (step.id === activeStepId) {
+			return { ...step, status: "done" };
+		}
+		return step;
+	});
+}
+
+export function backgroundJobProgressFromSteps(
+	label: string,
+	steps: BackgroundJobStep[],
+): NonNullable<BackgroundJob["progress"]> {
+	const total = Math.max(1, steps.length);
+	const current = countCompletedBackgroundJobSteps(steps);
+	return {
+		current,
+		total,
+		label,
+		steps,
+	};
+}
+
+function mapAudiobookChapterStepStatus(
+	status: AudiobookChapterSynthStatus,
+): BackgroundJobStepStatus {
+	switch (status) {
+		case "synthesizing":
+			return "running";
+		case "done":
+		case "cached":
+			return "done";
+		default:
+			return "pending";
+	}
+}
+
+export function mapAudiobookProgressToSteps(progress: StoryAudiobookProgress): BackgroundJobStep[] {
+	const chapterSteps = progress.chapters.map((chapter, index) => ({
+		id: chapter.segmentId || `chapter-${index}`,
+		label: chapter.detail
+			? `${chapter.displayLabel} — ${chapter.detail}`
+			: chapter.displayLabel,
+		status: mapAudiobookChapterStepStatus(chapter.status),
+	}));
+
+	const allChaptersDone =
+		progress.chapters.length > 0 &&
+		progress.chapters.every(
+			(chapter) => chapter.status === "done" || chapter.status === "cached",
+		);
+	const isStitching = /stitching/i.test(progress.summary);
+
+	if (progress.chapters.length <= 1 && !isStitching) {
+		return chapterSteps;
+	}
+
+	const stitchingStep: BackgroundJobStep = {
+		id: "stitching",
+		label: "Stitching audiobook",
+		status: isStitching ? "running" : allChaptersDone ? "pending" : "pending",
+	};
+
+	if (isStitching) {
+		return [...chapterSteps.map((step) => ({ ...step, status: "done" as const })), stitchingStep];
+	}
+
+	return [...chapterSteps, stitchingStep];
+}
+
 export function getBackgroundTaskProgressPercent(job: BackgroundJob): number | null {
 	const progress = job.progress;
-	if (!progress || progress.total <= 0) {
+	if (!progress) {
+		return null;
+	}
+
+	if (progress.steps?.length) {
+		const total = progress.steps.length;
+		const done = countCompletedBackgroundJobSteps(progress.steps);
+		const hasRunning = progress.steps.some((step) => step.status === "running");
+		const current = hasRunning ? done + 0.5 : done;
+		return Math.min(100, Math.round((current / total) * 100));
+	}
+
+	if (progress.total <= 0) {
 		return null;
 	}
 	return Math.min(100, Math.round((progress.current / progress.total) * 100));
@@ -110,7 +236,11 @@ export function getBackgroundTaskProgressPercent(job: BackgroundJob): number | n
 export function getBackgroundTaskProgressLabel(job: BackgroundJob): string {
 	const progress = job.progress;
 	if (!progress) {
-		return getBackgroundTaskTypeLabel(job);
+		return "";
+	}
+
+	if (progress.steps?.length) {
+		return "";
 	}
 
 	if (progress.label?.trim()) {
@@ -121,7 +251,7 @@ export function getBackgroundTaskProgressLabel(job: BackgroundJob): string {
 		return `${progress.current} / ${progress.total}`;
 	}
 
-	return getBackgroundTaskTypeLabel(job);
+	return "";
 }
 
 export function formatEstimatedRemainingSeconds(totalSeconds: number): string {
@@ -286,21 +416,12 @@ export function isAudiobookExportBackgroundJob(job: BackgroundJob): boolean {
 	return job.type === "story_audiobook" && !isAudiobookListenBackgroundJob(job);
 }
 
-export function audiobookProgressToBackgroundJobProgress(progress: StoryAudiobookProgress): {
-	current: number;
-	total: number;
-	label: string;
-} {
-	const total = Math.max(1, progress.chapters.length);
-	const doneCount = progress.chapters.filter(
-		(chapter) => chapter.status === "done" || chapter.status === "cached",
-	).length;
-
-	return {
-		current: doneCount,
-		total,
-		label: progress.summary,
-	};
+export function audiobookProgressToBackgroundJobProgress(
+	progress: StoryAudiobookProgress,
+	parentLabel: string,
+): NonNullable<BackgroundJob["progress"]> {
+	const steps = mapAudiobookProgressToSteps(progress);
+	return backgroundJobProgressFromSteps(parentLabel, steps);
 }
 
 export function partitionBackgroundTasks(jobs: BackgroundJob[]) {

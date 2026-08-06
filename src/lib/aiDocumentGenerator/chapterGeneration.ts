@@ -1,4 +1,9 @@
 import type { GenerateResponseResult } from "../ai/types";
+import type { BackgroundJobStep } from "../../types/models";
+import {
+	buildChapterDocumentSteps,
+	setBackgroundJobStepStatus,
+} from "../backgroundTasks";
 import type { ChapterSourceSegment } from "./types";
 import {
 	buildAiDocumentMessages,
@@ -14,6 +19,10 @@ import { buildChapterSegmentedSourceMaterial, buildSourceMaterialFromStoryBundle
 
 type GenerateChunk = (messages: Array<{ role: "system" | "user"; content: string }>) => Promise<string>;
 
+export type ChapterDocumentProgressUpdate = {
+	steps: BackgroundJobStep[];
+};
+
 export async function generateChapterStructuredDocument(params: {
 	preset: AiDocumentPreset;
 	customPrompt?: string;
@@ -21,7 +30,7 @@ export async function generateChapterStructuredDocument(params: {
 	chapterSegments: ChapterSourceSegment[];
 	fullSourceMaterial: string;
 	generateChunk: GenerateChunk;
-	onProgress?: (message: string) => void;
+	onProgress?: (update: ChapterDocumentProgressUpdate) => void;
 	signal?: AbortSignal;
 }) {
 	if (params.signal?.aborted) {
@@ -42,8 +51,31 @@ export async function generateChapterStructuredDocument(params: {
 
 	const isPodcastBreakdown = params.preset.id === "podcast-chapter-breakdown";
 	const isNovelisation = isNovelisationPreset(params.preset.id);
+	const introLabel = isNovelisation ? "Writing title" : "Writing introduction";
+	const epilogueLabel = isNovelisation
+		? null
+		: isPodcastBreakdown
+			? "Writing final thoughts"
+			: "Writing closing sections";
 
-	params.onProgress?.(isNovelisation ? "Writing title…" : "Writing introduction…");
+	let steps = buildChapterDocumentSteps({
+		introLabel,
+		chapterLabels: segments.map((segment) => {
+			if (!isPodcastBreakdown) {
+				return segment.label;
+			}
+			const coverage = estimateChapterDiscussionCoverage(segment, segments);
+			return `${segment.label} (${coverage.tier} coverage)`;
+		}),
+		epilogueLabel,
+	});
+
+	const reportStep = (activeStepId: string, mode: "start" | "complete") => {
+		steps = setBackgroundJobStepStatus(steps, activeStepId, mode);
+		params.onProgress?.({ steps });
+	};
+
+	reportStep("intro", "start");
 	const introMessages = buildAiDocumentMessages({
 		preset: params.preset,
 		customPrompt: params.customPrompt,
@@ -53,6 +85,7 @@ export async function generateChapterStructuredDocument(params: {
 		section: "introduction",
 	});
 	const introduction = await params.generateChunk(introMessages);
+	reportStep("intro", "complete");
 
 	const chapterSections: string[] = [];
 	for (let index = 0; index < segments.length; index += 1) {
@@ -62,11 +95,8 @@ export async function generateChapterStructuredDocument(params: {
 		}
 
 		const coverage = estimateChapterDiscussionCoverage(segment, segments);
-		const progressLabel =
-			isPodcastBreakdown
-				? `${segment.label} (${coverage.tier} coverage)`
-				: segment.label;
-		params.onProgress?.(`Chapter: ${progressLabel}`);
+		const stepId = `chapter-${index}`;
+		reportStep(stepId, "start");
 
 		const priorDiscussions = isPodcastBreakdown
 			? formatPriorDiscussionsForPrompt(segments, chapterSections, index)
@@ -91,15 +121,14 @@ export async function generateChapterStructuredDocument(params: {
 		});
 		const section = await params.generateChunk(chapterMessages);
 		chapterSections.push(section.trim());
+		reportStep(stepId, "complete");
 	}
 
 	if (isNovelisation) {
 		return [introduction.trim(), ...chapterSections].filter(Boolean).join("\n\n");
 	}
 
-	params.onProgress?.(
-		isPodcastBreakdown ? "Writing final thoughts…" : "Writing closing sections…",
-	);
+	reportStep("epilogue", "start");
 	const chapterLabels = segments.map((segment) => segment.label);
 	const epilogueMessages = buildAiDocumentMessages({
 		preset: params.preset,
@@ -110,6 +139,7 @@ export async function generateChapterStructuredDocument(params: {
 		section: "epilogue",
 	});
 	const epilogue = await params.generateChunk(epilogueMessages);
+	reportStep("epilogue", "complete");
 
 	return [introduction.trim(), ...chapterSections, epilogue.trim()].filter(Boolean).join("\n\n---\n\n");
 }

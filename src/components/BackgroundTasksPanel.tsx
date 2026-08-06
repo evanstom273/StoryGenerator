@@ -22,7 +22,7 @@ import {
 	getBackgroundTaskTypeLabel,
 	partitionBackgroundTasks,
 } from "../lib/backgroundTasks";
-import type { BackgroundJob } from "../types/models";
+import type { BackgroundJob, BackgroundJobStep, BackgroundJobStepStatus } from "../types/models";
 import { Button } from "./ui/Button";
 import { cn } from "../utils/cn";
 
@@ -95,6 +95,62 @@ function TaskRemainingSuffix({ job }: { job: BackgroundJob }) {
 	return <> · {label}</>;
 }
 
+function TaskStepIcon({ status }: { status: BackgroundJobStepStatus }) {
+	if (status === "done") {
+		return (
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-emerald-400/90" aria-hidden="true">
+				<path d="M20 6 9 17l-5-5" />
+			</svg>
+		);
+	}
+
+	if (status === "running") {
+		return <span className="inline-flex h-3 w-3 shrink-0 items-center justify-center" aria-hidden="true"><span className="h-2 w-2 animate-pulse rounded-full bg-accent" /></span>;
+	}
+
+	if (status === "failed") {
+		return (
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-rose-400/90" aria-hidden="true">
+				<path d="M18 6 6 18" /><path d="m6 6 12 12" />
+			</svg>
+		);
+	}
+
+	return <span className="inline-flex h-3 w-3 shrink-0 items-center justify-center" aria-hidden="true"><span className="h-1.5 w-1.5 rounded-full bg-white/20" /></span>;
+}
+
+function TaskSubtaskList({ steps }: { steps: BackgroundJobStep[] }) {
+	if (!steps.length) {
+		return null;
+	}
+
+	return (
+		<ul className="mt-2 space-y-1 border-t border-white/[0.06] pt-2">
+			{steps.map((step) => (
+				<li key={step.id} className="flex items-start gap-2 text-xs">
+					<span className="mt-0.5">
+						<TaskStepIcon status={step.status} />
+					</span>
+					<span
+						className={cn(
+							"min-w-0 flex-1 leading-snug",
+							step.status === "running"
+								? "text-ink"
+								: step.status === "done"
+									? "text-ink-muted"
+									: step.status === "failed"
+										? "text-rose-300/90"
+										: "text-ink-muted/70",
+						)}
+					>
+						{step.label}
+					</span>
+				</li>
+			))}
+		</ul>
+	);
+}
+
 const TaskRow = memo(function TaskRow({
 	job,
 	storyLabel,
@@ -121,6 +177,7 @@ const TaskRow = memo(function TaskRow({
 	const typeLabel = getBackgroundTaskTypeLabel(job);
 	const progressLabel = getBackgroundTaskProgressLabel(job);
 	const percent = getBackgroundTaskProgressPercent(job);
+	const subtasks = job.progress?.steps ?? [];
 	const isFailed = job.status === "failed";
 	const isCancelled = job.status === "cancelled";
 	const isComplete = job.status === "complete";
@@ -143,10 +200,19 @@ const TaskRow = memo(function TaskRow({
 					<div className="min-w-0 flex-1">
 						<div className="text-sm font-medium text-ink">{typeLabel}</div>
 						<div className="mt-0.5 truncate text-xs text-ink-muted">{storyLabel}</div>
-						<div className="mt-1 text-xs text-ink-muted">
-							{progressLabel}
-							<TaskRemainingSuffix job={job} />
-						</div>
+						{progressLabel ? (
+							<div className="mt-1 text-xs text-ink-muted">
+								{progressLabel}
+								<TaskRemainingSuffix job={job} />
+							</div>
+						) : subtasks.length ? (
+							<div className="mt-1 text-xs text-ink-muted">
+								<TaskRemainingSuffix job={job} />
+							</div>
+						) : null}
+						{subtasks.length > 0 && (job.status === "running" || job.status === "queued") ? (
+							<TaskSubtaskList steps={subtasks} />
+						) : null}
 						{job.status === "running" || job.status === "queued" ? (
 							<div className="mt-2">
 								<TaskProgressBar percent={job.status === "queued" ? null : percent} />

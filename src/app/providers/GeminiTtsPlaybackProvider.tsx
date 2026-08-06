@@ -23,6 +23,7 @@ import {
 import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
 import {
 	audiobookProgressToBackgroundJobProgress,
+	backgroundJobProgressFromSteps,
 	findAudiobookListenJobForPlayId,
 } from "../../lib/backgroundTasks";
 import { synthesizeGeminiSpeechPlan } from "../../lib/ai/geminiTtsSynthesis";
@@ -485,11 +486,16 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 						}
 						updateSynthesisMeta(playId, { loadingMessage: message });
 						if (jobId) {
-							void updateAudiobookPlaybackBackgroundTask(jobId, {
-								current: 0,
-								total: 1,
-								label: message,
-							});
+							void updateAudiobookPlaybackBackgroundTask(
+								jobId,
+								backgroundJobProgressFromSteps("Prepare Chapter Audio", [
+									{
+										id: "synthesis",
+										label: title ? `Preparing ${title}` : "Preparing chapter audio",
+										status: "running",
+									},
+								]),
+							);
 						}
 						setForegroundLoadingState(playId, {
 							loadingMessage: message,
@@ -509,11 +515,16 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				await writeGeminiTtsCache(cacheDigest, playId, wavBuffer);
 				loadPreparedSpeech(playId, wavBuffer, cacheDigest);
 				if (jobId) {
-					void updateAudiobookPlaybackBackgroundTask(jobId, {
-						current: 1,
-						total: 1,
-						label: "Ready",
-					});
+					void updateAudiobookPlaybackBackgroundTask(
+						jobId,
+						backgroundJobProgressFromSteps("Prepare Chapter Audio", [
+							{
+								id: "synthesis",
+								label: title ? `Preparing ${title}` : "Preparing chapter audio",
+								status: "done",
+							},
+						]),
+					);
 					void finishAudiobookPlaybackBackgroundTask(jobId, "complete");
 				}
 				clearSynthesis(playId);
@@ -641,7 +652,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 						if (jobId) {
 							void updateAudiobookPlaybackBackgroundTask(
 								jobId,
-								audiobookProgressToBackgroundJobProgress(progress),
+								audiobookProgressToBackgroundJobProgress(progress, "Prepare Audiobook"),
 							);
 						}
 						setForegroundLoadingState(playId, {
