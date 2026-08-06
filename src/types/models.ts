@@ -403,6 +403,8 @@ export interface BackgroundJob {
     aiDocumentSourceText?: string;
     audiobookParallelChapters?: number;
     audiobookPerformanceMode?: "radio_drama" | "single_narrator";
+    audiobookPurpose?: "export" | "playback" | "chapter_listen";
+    audiobookPlayId?: string;
   };
   result?: {
     messageId?: EntityId;

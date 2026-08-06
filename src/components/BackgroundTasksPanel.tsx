@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useNavigate } from "react-router-dom";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import {
@@ -157,10 +157,12 @@ function TaskRow({
 export function BackgroundTasksPanel({
 	open,
 	onClose,
+	containerRef,
 	className,
 }: {
 	open: boolean;
 	onClose: () => void;
+	containerRef?: RefObject<HTMLDivElement | null>;
 	className?: string;
 }) {
 	const navigate = useNavigate();
@@ -183,14 +185,16 @@ export function BackgroundTasksPanel({
 		}
 
 		function handlePointerDown(event: MouseEvent) {
-			if (!panelRef.current?.contains(event.target as Node)) {
-				onClose();
+			const target = event.target as Node;
+			if (containerRef?.current?.contains(target) || panelRef.current?.contains(target)) {
+				return;
 			}
+			onClose();
 		}
 
 		document.addEventListener("mousedown", handlePointerDown);
 		return () => document.removeEventListener("mousedown", handlePointerDown);
-	}, [onClose, open]);
+	}, [containerRef, onClose, open]);
 
 	const storyTitleById = useMemo(
 		() => (storyId: string) => stories.find((story) => story.id === storyId)?.title,
@@ -303,11 +307,12 @@ export function BackgroundTasksPanel({
 
 export function BackgroundTasksButton({ className }: { className?: string }) {
 	const [open, setOpen] = useState(false);
+	const containerRef = useRef<HTMLDivElement | null>(null);
 	const { backgroundJobs } = useStoryEngine();
 	const activeCount = countActiveBackgroundTasks(backgroundJobs);
 
 	return (
-		<div className={cn("relative", className)}>
+		<div ref={containerRef} className={cn("relative", className)}>
 			<button
 				type="button"
 				aria-label={
@@ -315,6 +320,7 @@ export function BackgroundTasksButton({ className }: { className?: string }) {
 						? `Background tasks (${activeCount} active)`
 						: "Background tasks"
 				}
+				aria-expanded={open}
 				onClick={() => setOpen((current) => !current)}
 				className="relative flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
 			>
@@ -329,15 +335,8 @@ export function BackgroundTasksButton({ className }: { className?: string }) {
 					strokeLinejoin="round"
 					aria-hidden="true"
 				>
-					<path d="M12 2v2" />
-					<path d="M12 20v2" />
-					<path d="M4.93 4.93l1.41 1.41" />
-					<path d="M17.66 17.66l1.41 1.41" />
-					<path d="M2 12h2" />
-					<path d="M20 12h2" />
-					<path d="M4.93 19.07l1.41-1.41" />
-					<path d="M17.66 6.34l1.41-1.41" />
-					<circle cx="12" cy="12" r="4" />
+					<path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+					<path d="M13.73 21a2 2 0 01-3.46 0" />
 				</svg>
 				{activeCount > 0 ? (
 					<span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
@@ -345,7 +344,11 @@ export function BackgroundTasksButton({ className }: { className?: string }) {
 					</span>
 				) : null}
 			</button>
-			<BackgroundTasksPanel open={open} onClose={() => setOpen(false)} />
+			<BackgroundTasksPanel
+				open={open}
+				onClose={() => setOpen(false)}
+				containerRef={containerRef}
+			/>
 		</div>
 	);
 }

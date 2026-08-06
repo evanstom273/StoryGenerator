@@ -7,6 +7,7 @@ import { cn } from "../../utils/cn";
 interface MessagePlayButtonProps {
 	playId: string;
 	plan: SpeechSynthesisPlan | null;
+	storyId?: string;
 	className?: string;
 	label?: string;
 	playerTitle?: string;
@@ -76,6 +77,7 @@ function formatElapsedSeconds(startedAtMs: number) {
 export function MessagePlayButton({
 	playId,
 	plan,
+	storyId,
 	className,
 	label = "Play",
 	playerTitle,
@@ -166,7 +168,10 @@ export function MessagePlayButton({
 					if (!plan) {
 						return;
 					}
-					void prepareSpeechPlan(playId, plan, { title: playerTitle ?? label });
+					void prepareSpeechPlan(playId, plan, {
+						title: playerTitle ?? label,
+						storyId,
+					});
 				}}
 			>
 				{isLoading ? (
