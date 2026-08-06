@@ -1,4 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+	memo,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+	type CSSProperties,
+	type RefObject,
+} from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import {
@@ -15,6 +26,32 @@ import type { BackgroundJob } from "../types/models";
 import { Button } from "./ui/Button";
 import { cn } from "../utils/cn";
 
+const PANEL_Z_INDEX = 55;
+const DESKTOP_PANEL_WIDTH = 384;
+const VIEWPORT_MARGIN = 8;
+
+function computeDesktopPanelStyle(anchor: DOMRect): CSSProperties {
+	const width = Math.min(DESKTOP_PANEL_WIDTH, window.innerWidth - VIEWPORT_MARGIN * 2);
+	const left = Math.max(
+		VIEWPORT_MARGIN,
+		Math.min(anchor.right - width, window.innerWidth - width - VIEWPORT_MARGIN),
+	);
+	const belowTop = anchor.bottom + VIEWPORT_MARGIN;
+	const panelMaxHeight = Math.min(window.innerHeight * 0.7, 448);
+	const fitsBelow = belowTop + panelMaxHeight <= window.innerHeight - VIEWPORT_MARGIN;
+	const top = fitsBelow
+		? belowTop
+		: Math.max(VIEWPORT_MARGIN, anchor.top - panelMaxHeight - VIEWPORT_MARGIN);
+
+	return {
+		position: "fixed",
+		top,
+		left,
+		width,
+		zIndex: PANEL_Z_INDEX,
+	};
+}
+
 function TaskProgressBar({ percent }: { percent: number | null }) {
 	if (percent === null) {
 		return (
@@ -27,17 +64,35 @@ function TaskProgressBar({ percent }: { percent: number | null }) {
 	return (
 		<div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
 			<div
-				className="h-full rounded-full bg-accent/80 transition-all duration-500"
+				className="h-full rounded-full bg-accent/80 transition-[width] duration-300"
 				style={{ width: `${percent}%` }}
 			/>
 		</div>
 	);
 }
 
-function TaskRow({
+function TaskElapsedSuffix({ job }: { job: BackgroundJob }) {
+	const [nowMs, setNowMs] = useState(() => Date.now());
+
+	useEffect(() => {
+		if (job.status !== "running") {
+			return;
+		}
+
+		const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
+		return () => window.clearInterval(intervalId);
+	}, [job.id, job.status]);
+
+	if (job.status !== "running") {
+		return null;
+	}
+
+	return <> · {getBackgroundTaskElapsedLabel(job, nowMs)}</>;
+}
+
+const TaskRow = memo(function TaskRow({
 	job,
 	storyLabel,
-	elapsedLabel,
 	onNavigate,
 	onCancel,
 	onMoveUp,
@@ -49,7 +104,6 @@ function TaskRow({
 }: {
 	job: BackgroundJob;
 	storyLabel: string;
-	elapsedLabel: string;
 	onNavigate: () => void;
 	onCancel?: () => void;
 	onMoveUp?: () => void;
@@ -79,18 +133,14 @@ function TaskRow({
 							: "border-accent/20 bg-accent/5",
 			)}
 		>
-			<button
-				type="button"
-				onClick={onNavigate}
-				className="w-full text-left"
-			>
+			<button type="button" onClick={onNavigate} className="w-full text-left">
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0 flex-1">
 						<div className="text-sm font-medium text-ink">{typeLabel}</div>
 						<div className="mt-0.5 truncate text-xs text-ink-muted">{storyLabel}</div>
 						<div className="mt-1 text-xs text-ink-muted">
 							{progressLabel}
-							{job.status === "running" ? ` · ${elapsedLabel}` : null}
+							<TaskElapsedSuffix job={job} />
 						</div>
 						{job.status === "running" || job.status === "queued" ? (
 							<div className="mt-2">
@@ -152,49 +202,17 @@ function TaskRow({
 			) : null}
 		</div>
 	);
-}
+});
 
-export function BackgroundTasksPanel({
-	open,
+function BackgroundTasksPanelBody({
 	onClose,
-	containerRef,
 	className,
 }: {
-	open: boolean;
 	onClose: () => void;
-	containerRef?: RefObject<HTMLDivElement | null>;
 	className?: string;
 }) {
 	const navigate = useNavigate();
-	const panelRef = useRef<HTMLDivElement | null>(null);
 	const { backgroundJobs, stories, cancelBackgroundJob, reorderBackgroundTaskJob } = useStoryEngine();
-	const [, setTick] = useState(0);
-
-	useEffect(() => {
-		if (!open) {
-			return;
-		}
-
-		const intervalId = window.setInterval(() => setTick((value) => value + 1), 1000);
-		return () => window.clearInterval(intervalId);
-	}, [open]);
-
-	useEffect(() => {
-		if (!open) {
-			return;
-		}
-
-		function handlePointerDown(event: MouseEvent) {
-			const target = event.target as Node;
-			if (containerRef?.current?.contains(target) || panelRef.current?.contains(target)) {
-				return;
-			}
-			onClose();
-		}
-
-		document.addEventListener("mousedown", handlePointerDown);
-		return () => document.removeEventListener("mousedown", handlePointerDown);
-	}, [containerRef, onClose, open]);
 
 	const storyTitleById = useMemo(
 		() => (storyId: string) => stories.find((story) => story.id === storyId)?.title,
@@ -206,24 +224,17 @@ export function BackgroundTasksPanel({
 		[backgroundJobs],
 	);
 
-	if (!open) {
-		return null;
-	}
-
-	function navigateToJob(job: BackgroundJob) {
-		onClose();
-		navigate(getBackgroundTaskNavigationTarget(job));
-	}
+	const navigateToJob = useCallback(
+		(job: BackgroundJob) => {
+			onClose();
+			navigate(getBackgroundTaskNavigationTarget(job));
+		},
+		[navigate, onClose],
+	);
 
 	return (
-		<div
-			ref={panelRef}
-			className={cn(
-				"absolute right-0 top-full z-50 mt-2 w-[min(92vw,24rem)] rounded-[10px] border border-divider bg-app-elevated p-3 shadow-hero",
-				className,
-			)}
-		>
-			<div className="mb-3 flex items-center justify-between gap-2">
+		<div className={cn("flex min-h-0 flex-col", className)}>
+			<div className="mb-3 flex shrink-0 items-center justify-between gap-2">
 				<div className="text-sm font-semibold text-ink">Background Tasks</div>
 				<button
 					type="button"
@@ -234,7 +245,7 @@ export function BackgroundTasksPanel({
 				</button>
 			</div>
 
-			<div className="max-h-[min(70vh,28rem)] space-y-4 overflow-y-auto pr-1">
+			<div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
 				{running.length ? (
 					<section className="space-y-2">
 						<div className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent-soft">
@@ -245,7 +256,6 @@ export function BackgroundTasksPanel({
 								key={job.id}
 								job={job}
 								storyLabel={getBackgroundTaskStoryLabel(job, storyTitleById)}
-								elapsedLabel={getBackgroundTaskElapsedLabel(job)}
 								onNavigate={() => navigateToJob(job)}
 								onCancel={() => void cancelBackgroundJob(job.id)}
 								showCancel
@@ -264,7 +274,6 @@ export function BackgroundTasksPanel({
 								key={job.id}
 								job={job}
 								storyLabel={getBackgroundTaskStoryLabel(job, storyTitleById)}
-								elapsedLabel={getBackgroundTaskElapsedLabel(job)}
 								onNavigate={() => navigateToJob(job)}
 								onCancel={() => void cancelBackgroundJob(job.id)}
 								onMoveUp={() => void reorderBackgroundTaskJob(job.id, "up")}
@@ -288,7 +297,6 @@ export function BackgroundTasksPanel({
 								key={job.id}
 								job={job}
 								storyLabel={getBackgroundTaskStoryLabel(job, storyTitleById)}
-								elapsedLabel={getBackgroundTaskElapsedLabel(job)}
 								onNavigate={() => navigateToJob(job)}
 							/>
 						))}
@@ -305,50 +313,200 @@ export function BackgroundTasksPanel({
 	);
 }
 
+function BackgroundTasksPortal({
+	open,
+	onClose,
+	anchorRef,
+}: {
+	open: boolean;
+	onClose: () => void;
+	anchorRef: RefObject<HTMLDivElement | null>;
+}) {
+	const desktopPanelRef = useRef<HTMLDivElement | null>(null);
+	const mobilePanelRef = useRef<HTMLDivElement | null>(null);
+	const [desktopStyle, setDesktopStyle] = useState<CSSProperties | null>(null);
+
+	useLayoutEffect(() => {
+		if (!open || !anchorRef.current) {
+			setDesktopStyle(null);
+			return;
+		}
+
+		const updatePosition = () => {
+			if (!anchorRef.current) {
+				return;
+			}
+			setDesktopStyle(computeDesktopPanelStyle(anchorRef.current.getBoundingClientRect()));
+		};
+
+		updatePosition();
+		window.addEventListener("resize", updatePosition);
+		window.addEventListener("scroll", updatePosition, true);
+		return () => {
+			window.removeEventListener("resize", updatePosition);
+			window.removeEventListener("scroll", updatePosition, true);
+		};
+	}, [anchorRef, open]);
+
+	useEffect(() => {
+		if (!open) {
+			return;
+		}
+
+		const mobileQuery = window.matchMedia("(max-width: 1023px)");
+		if (!mobileQuery.matches) {
+			return;
+		}
+
+		const previousOverflow = document.body.style.overflow;
+		document.body.style.overflow = "hidden";
+		return () => {
+			document.body.style.overflow = previousOverflow;
+		};
+	}, [open]);
+
+	useEffect(() => {
+		if (!open) {
+			return;
+		}
+
+		function handleKeyDown(event: KeyboardEvent) {
+			if (event.key === "Escape") {
+				onClose();
+			}
+		}
+
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [onClose, open]);
+
+	useEffect(() => {
+		if (!open) {
+			return;
+		}
+
+		const desktopQuery = window.matchMedia("(min-width: 1024px)");
+		if (!desktopQuery.matches) {
+			return;
+		}
+
+		let removeListener: (() => void) | undefined;
+		const timeoutId = window.setTimeout(() => {
+			function handlePointerDown(event: PointerEvent) {
+				const target = event.target as Node;
+				if (
+					anchorRef.current?.contains(target) ||
+					desktopPanelRef.current?.contains(target) ||
+					mobilePanelRef.current?.contains(target)
+				) {
+					return;
+				}
+				onClose();
+			}
+
+			document.addEventListener("pointerdown", handlePointerDown, true);
+			removeListener = () => document.removeEventListener("pointerdown", handlePointerDown, true);
+		}, 0);
+
+		return () => {
+			window.clearTimeout(timeoutId);
+			removeListener?.();
+		};
+	}, [anchorRef, onClose, open]);
+
+	if (!open || typeof document === "undefined") {
+		return null;
+	}
+
+	return createPortal(
+		<>
+			<div className="fixed inset-0 z-[55] lg:hidden" role="presentation">
+				<button
+					type="button"
+					aria-label="Close background tasks"
+					className="absolute inset-0 bg-black/60 backdrop-blur-[1px]"
+					onClick={onClose}
+				/>
+				<div
+					ref={mobilePanelRef}
+					role="dialog"
+					aria-modal="true"
+					aria-label="Background tasks"
+					className="absolute inset-x-0 bottom-0 max-h-[min(85dvh,32rem)] overflow-hidden rounded-t-[14px] border border-divider bg-app-elevated p-4 shadow-hero pb-[max(1rem,env(safe-area-inset-bottom))]"
+				>
+					<div className="mx-auto mb-3 h-1 w-10 shrink-0 rounded-full bg-white/15" aria-hidden="true" />
+					<BackgroundTasksPanelBody onClose={onClose} className="max-h-[calc(min(85dvh,32rem)-2.5rem)]" />
+				</div>
+			</div>
+
+			{desktopStyle ? (
+				<div
+					ref={desktopPanelRef}
+					role="dialog"
+					aria-modal="false"
+					aria-label="Background tasks"
+					className="hidden rounded-[10px] border border-divider bg-app-elevated p-3 shadow-hero lg:block"
+					style={desktopStyle}
+				>
+					<BackgroundTasksPanelBody onClose={onClose} className="max-h-[min(70vh,28rem)]" />
+				</div>
+			) : null}
+		</>,
+		document.body,
+	);
+}
+
 export function BackgroundTasksButton({ className }: { className?: string }) {
 	const [open, setOpen] = useState(false);
-	const containerRef = useRef<HTMLDivElement | null>(null);
+	const anchorRef = useRef<HTMLDivElement | null>(null);
 	const { backgroundJobs } = useStoryEngine();
 	const activeCount = countActiveBackgroundTasks(backgroundJobs);
+	const close = useCallback(() => setOpen(false), []);
 
 	return (
-		<div ref={containerRef} className={cn("relative", className)}>
-			<button
-				type="button"
-				aria-label={
-					activeCount
-						? `Background tasks (${activeCount} active)`
-						: "Background tasks"
-				}
-				aria-expanded={open}
-				onClick={() => setOpen((current) => !current)}
-				className="relative flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+		<>
+			<div
+				ref={anchorRef}
+				className={cn("relative", className)}
+				onPointerDown={(event) => event.stopPropagation()}
 			>
-				<svg
-					width="16"
-					height="16"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="1.8"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-					aria-hidden="true"
+				<button
+					type="button"
+					aria-label={
+						activeCount
+							? `Background tasks (${activeCount} active)`
+							: "Background tasks"
+					}
+					aria-expanded={open}
+					aria-haspopup="dialog"
+					onClick={(event) => {
+						event.stopPropagation();
+						setOpen((current) => !current);
+					}}
+					className="relative flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
 				>
-					<path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-					<path d="M13.73 21a2 2 0 01-3.46 0" />
-				</svg>
-				{activeCount > 0 ? (
-					<span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
-						{activeCount}
-					</span>
-				) : null}
-			</button>
-			<BackgroundTasksPanel
-				open={open}
-				onClose={() => setOpen(false)}
-				containerRef={containerRef}
-			/>
-		</div>
+					<svg
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.8"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						aria-hidden="true"
+					>
+						<path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+						<path d="M13.73 21a2 2 0 01-3.46 0" />
+					</svg>
+					{activeCount > 0 ? (
+						<span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
+							{activeCount}
+						</span>
+					) : null}
+				</button>
+			</div>
+			<BackgroundTasksPortal open={open} onClose={close} anchorRef={anchorRef} />
+		</>
 	);
 }
