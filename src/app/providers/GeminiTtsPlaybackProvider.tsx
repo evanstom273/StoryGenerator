@@ -16,6 +16,7 @@ import {
 } from "../../lib/ai/geminiTtsCache";
 import { synthesizeStoryAudiobookWav, type StoryAudiobookChapterSegment, computeStoryAudiobookPreparedDigest } from "../../lib/ai/storyAudiobook";
 import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
+import { audiobookProgressToBackgroundJobProgress } from "../../lib/backgroundTasks";
 import { synthesizeGeminiSpeechPlan } from "../../lib/ai/geminiTtsSynthesis";
 import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
 import type { SpeechSynthesisPlan } from "../../lib/storyText/messageSpeechText";
@@ -45,6 +46,7 @@ export interface BackgroundAudiobookJob {
 	playerTitle: string;
 	startedAtMs: number;
 	progress: StoryAudiobookProgress | null;
+	backgroundTaskJobId?: string;
 }
 
 interface PreparedSpeechAudio {
@@ -73,7 +75,7 @@ interface GeminiTtsPlaybackContextValue {
 		playId: string,
 		segments: StoryAudiobookChapterSegment[],
 		title: string,
-		options?: { parallelChapters?: number },
+		options?: { parallelChapters?: number; storyId?: string },
 	) => Promise<void>;
 	playPreparedSpeech: (playId: string) => Promise<void>;
 	togglePlaybackPause: () => Promise<void>;
@@ -100,7 +102,13 @@ const IDLE_STATE: GeminiTtsPlaybackState = {
 };
 
 export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode }) {
-	const { aiSettings } = useStoryEngine();
+	const {
+		aiSettings,
+		backgroundJobs,
+		beginAudiobookPlaybackBackgroundTask,
+		updateAudiobookPlaybackBackgroundTask,
+		finishAudiobookPlaybackBackgroundTask,
+	} = useStoryEngine();
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const objectUrlRef = useRef<string | null>(null);
 	const preparedRef = useRef<Map<string, PreparedSpeechAudio>>(new Map());
@@ -232,17 +240,56 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				return;
 			}
 
+			const backgroundTaskJobId = backgroundAudiobookJob.backgroundTaskJobId;
 			audiobookAbortRef.current?.abort();
 			audiobookAbortRef.current = null;
 			setBackgroundAudiobookJob(null);
+
+			if (backgroundTaskJobId) {
+				void finishAudiobookPlaybackBackgroundTask(backgroundTaskJobId, "cancelled");
+			}
 
 			if (state.activeId === playId && state.status === "loading") {
 				releasePreparedAudio(playId);
 				setState(IDLE_STATE);
 			}
 		},
-		[backgroundAudiobookJob, releasePreparedAudio, state.activeId, state.status],
+		[
+			backgroundAudiobookJob,
+			finishAudiobookPlaybackBackgroundTask,
+			releasePreparedAudio,
+			state.activeId,
+			state.status,
+		],
 	);
+
+	useEffect(() => {
+		const jobId = backgroundAudiobookJob?.backgroundTaskJobId;
+		const playId = backgroundAudiobookJob?.playId;
+		if (!jobId || !playId) {
+			return;
+		}
+
+		const job = backgroundJobs.find((entry) => entry.id === jobId);
+		if (job?.status !== "cancelled") {
+			return;
+		}
+
+		audiobookAbortRef.current?.abort();
+		audiobookAbortRef.current = null;
+		setBackgroundAudiobookJob(null);
+
+		if (state.activeId === playId && state.status === "loading") {
+			releasePreparedAudio(playId);
+			setState(IDLE_STATE);
+		}
+	}, [
+		backgroundAudiobookJob,
+		backgroundJobs,
+		releasePreparedAudio,
+		state.activeId,
+		state.status,
+	]);
 
 	useEffect(() => {
 		return () => {
@@ -590,7 +637,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			playId: string,
 			segments: StoryAudiobookChapterSegment[],
 			title: string,
-			options?: { parallelChapters?: number },
+			options?: { parallelChapters?: number; storyId?: string },
 		) => {
 			const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
 			if (!apiKey) {
@@ -648,12 +695,23 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			audiobookAbortRef.current?.abort();
 			audiobookAbortRef.current = controller;
 			const startedAtMs = Date.now();
+			let backgroundTaskJobId: string | undefined;
+
+			if (options?.storyId) {
+				const job = await beginAudiobookPlaybackBackgroundTask({
+					storyId: options.storyId,
+					playId,
+					chapterCount: segments.length,
+				});
+				backgroundTaskJobId = job.id;
+			}
 
 			setBackgroundAudiobookJob({
 				playId,
 				playerTitle: title,
 				startedAtMs,
 				progress: null,
+				backgroundTaskJobId,
 			});
 
 			setState({
@@ -679,6 +737,12 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 						if (controller.signal.aborted) {
 							return;
 						}
+						if (backgroundTaskJobId) {
+							void updateAudiobookPlaybackBackgroundTask(
+								backgroundTaskJobId,
+								audiobookProgressToBackgroundJobProgress(progress),
+							);
+						}
 						setBackgroundAudiobookJob((current) =>
 							current?.playId === playId ? { ...current, progress } : current,
 						);
@@ -703,6 +767,10 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				loadPreparedSpeech(playId, wavBuffer, cacheDigest);
 				setBackgroundAudiobookJob(null);
 
+				if (backgroundTaskJobId) {
+					void finishAudiobookPlaybackBackgroundTask(backgroundTaskJobId, "complete");
+				}
+
 				setState((current) => {
 					if (current.activeId !== playId) {
 						return current;
@@ -722,9 +790,19 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				});
 			} catch (error) {
 				if (controller.signal.aborted) {
+					if (backgroundTaskJobId) {
+						void finishAudiobookPlaybackBackgroundTask(backgroundTaskJobId, "cancelled");
+					}
 					return;
 				}
 				setBackgroundAudiobookJob(null);
+				if (backgroundTaskJobId) {
+					void finishAudiobookPlaybackBackgroundTask(
+						backgroundTaskJobId,
+						"failed",
+						error instanceof Error ? error.message : "Unable to synthesize story audiobook.",
+					);
+				}
 				setState((current) => {
 					if (current.activeId !== playId) {
 						return current;
@@ -752,11 +830,14 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		[
 			aiSettings,
 			backgroundAudiobookJob,
+			beginAudiobookPlaybackBackgroundTask,
 			cancelStoryAudiobookPreparation,
 			cleanupActiveAudio,
+			finishAudiobookPlaybackBackgroundTask,
 			loadPreparedSpeech,
 			state.activeId,
 			state.status,
+			updateAudiobookPlaybackBackgroundTask,
 		],
 	);
 

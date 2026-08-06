@@ -41,6 +41,7 @@ import type {
 	RelationshipIndexEntry,
 } from "../../types/models";
 import { cn } from "../../utils/cn";
+import { isAudiobookExportBackgroundJob } from "../../lib/backgroundTasks";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useTheme } from "../theming/ThemeContext";
 import { themes, type AccentThemeKey, isAccentThemeKey } from "../theming/themes";
@@ -692,7 +693,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const activeAudiobookJob = story
     ? backgroundJobs.find(
         (job) =>
-          job.type === "story_audiobook" &&
+          isAudiobookExportBackgroundJob(job) &&
           job.storyId === story.id &&
           (job.status === "queued" || job.status === "running"),
       )

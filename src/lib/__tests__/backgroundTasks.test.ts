@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
 	countActiveBackgroundTasks,
+	audiobookProgressToBackgroundJobProgress,
 	getBackgroundTaskNavigationTarget,
 	getBackgroundTaskTypeLabel,
+	isAudiobookExportBackgroundJob,
 	isBackgroundTaskJob,
 	moveQueuedBackgroundTaskInOrder,
 	partitionBackgroundTasks,
@@ -66,6 +68,65 @@ describe("backgroundTasks", () => {
 		expect(grouped.queued.map((job) => job.id)).toEqual(["queued"]);
 		expect(grouped.completed.map((job) => job.id)).toEqual(["done"]);
 		expect(countActiveBackgroundTasks(jobs)).toBe(2);
+	});
+
+	it("labels playback audiobook jobs separately from export", () => {
+		expect(
+			getBackgroundTaskTypeLabel(
+				makeJob({
+					id: "1",
+					type: "story_audiobook",
+					status: "running",
+					payload: { audiobookPurpose: "playback" },
+				}),
+			),
+		).toBe("Prepare Audiobook");
+		expect(
+			getBackgroundTaskTypeLabel(
+				makeJob({
+					id: "2",
+					type: "story_audiobook",
+					status: "running",
+					payload: { audiobookPurpose: "export" },
+				}),
+			),
+		).toBe("Generate Audiobook");
+		expect(
+			isAudiobookExportBackgroundJob(
+				makeJob({
+					id: "3",
+					type: "story_audiobook",
+					status: "running",
+					payload: { audiobookPurpose: "playback" },
+				}),
+			),
+		).toBe(false);
+	});
+
+	it("maps audiobook chapter progress to background job progress", () => {
+		expect(
+			audiobookProgressToBackgroundJobProgress({
+				summary: "1/2 chapters ready",
+				chapters: [
+					{
+						segmentId: "a",
+						label: "Chapter 1",
+						displayLabel: "Chapter 1",
+						status: "done",
+					},
+					{
+						segmentId: "b",
+						label: "Chapter 2",
+						displayLabel: "Chapter 2",
+						status: "synthesizing",
+					},
+				],
+			}),
+		).toEqual({
+			current: 1,
+			total: 2,
+			label: "1/2 chapters ready",
+		});
 	});
 
 	it("routes navigation targets for story and settings jobs", () => {

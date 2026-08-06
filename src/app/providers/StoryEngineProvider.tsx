@@ -467,6 +467,20 @@ interface StoryEngineContextValue {
     storyId: string,
     opts?: { force?: boolean },
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
+  beginAudiobookPlaybackBackgroundTask: (input: {
+    storyId: string;
+    playId: string;
+    chapterCount?: number;
+  }) => Promise<BackgroundJob>;
+  updateAudiobookPlaybackBackgroundTask: (
+    jobId: string,
+    progress: { current: number; total: number; label?: string },
+  ) => Promise<void>;
+  finishAudiobookPlaybackBackgroundTask: (
+    jobId: string,
+    outcome: "complete" | "failed" | "cancelled",
+    error?: string,
+  ) => Promise<void>;
   queueAiDocumentJob: (input: {
     source:
       | { type: "story"; storyId: string; label: string }
@@ -2718,6 +2732,7 @@ export function StoryEngineProvider({
       const existing = existingJobs.find(
         (job) =>
           job.type === "story_audiobook" &&
+          job.payload?.audiobookPurpose !== "playback" &&
           job.storyId === storyId &&
           (job.status === "queued" || job.status === "running"),
       );
@@ -2746,8 +2761,9 @@ export function StoryEngineProvider({
         createdAt: new Date().toISOString(),
         status: "queued",
         queueOrder: getNextBackgroundTaskQueueOrder(existingJobs),
-        dedupeKey: `story_audiobook:${storyId}`,
+        dedupeKey: `story_audiobook:export:${storyId}`,
         payload: {
+          audiobookPurpose: "export",
           audiobookParallelChapters: clampAudiobookParallelChapters(
             storyConfig?.audiobookParallelChapters,
           ),
@@ -3430,6 +3446,94 @@ export function StoryEngineProvider({
     [repository],
   );
 
+  const beginAudiobookPlaybackBackgroundTask = useCallback(
+    async (input: { storyId: string; playId: string; chapterCount?: number }) => {
+      const dedupeKey = `story_audiobook:playback:${input.playId}`;
+      const existingJobs = await repository.listBackgroundJobs();
+      const existing = existingJobs.find(
+        (job) =>
+          job.type === "story_audiobook" &&
+          job.dedupeKey === dedupeKey &&
+          (job.status === "queued" || job.status === "running"),
+      );
+
+      if (existing) {
+        return existing;
+      }
+
+      const now = new Date().toISOString();
+      const chapterCount = Math.max(1, input.chapterCount ?? 1);
+      const job: BackgroundJob = {
+        id: createEntityId("background-job"),
+        type: "story_audiobook",
+        storyId: input.storyId,
+        createdAt: now,
+        startedAt: now,
+        status: "running",
+        dedupeKey,
+        payload: {
+          audiobookPurpose: "playback",
+          audiobookPlayId: input.playId,
+        },
+        progress: {
+          current: 0,
+          total: chapterCount,
+          label: chapterCount > 1 ? `Preparing ${chapterCount} chapters…` : "Preparing audiobook…",
+        },
+      };
+
+      await repository.saveBackgroundJob(job);
+      setBackgroundJobs((current) => [job, ...current.filter((entry) => entry.id !== job.id)]);
+      return job;
+    },
+    [repository],
+  );
+
+  const updateAudiobookPlaybackBackgroundTask = useCallback(
+    async (
+      jobId: string,
+      progress: { current: number; total: number; label?: string },
+    ) => {
+      await updateBackgroundJobProgress(jobId, progress);
+    },
+    [updateBackgroundJobProgress],
+  );
+
+  const finishAudiobookPlaybackBackgroundTask = useCallback(
+    async (
+      jobId: string,
+      outcome: "complete" | "failed" | "cancelled",
+      error?: string,
+    ) => {
+      const liveJob = await repository.getBackgroundJob(jobId);
+      if (!liveJob || liveJob.payload?.audiobookPurpose !== "playback") {
+        return;
+      }
+
+      if (
+        liveJob.status === "complete" ||
+        liveJob.status === "failed" ||
+        liveJob.status === "cancelled"
+      ) {
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const next: BackgroundJob = {
+        ...liveJob,
+        status: outcome,
+        finishedAt: now,
+        error: outcome === "failed" ? error : undefined,
+      };
+
+      await repository.saveBackgroundJob(next);
+      setBackgroundJobs((current) =>
+        current.map((entry) => (entry.id === jobId ? next : entry)),
+      );
+    },
+    [repository],
+  );
+
   const runAudiobookExportProcess = useCallback(
     async (
       storyId: string,
@@ -4078,6 +4182,9 @@ export function StoryEngineProvider({
             );
           }, 8_000);
         } else if (job.type === "story_audiobook") {
+          if (job.payload?.audiobookPurpose === "playback") {
+            return;
+          }
           const storyId = job.storyId ?? "";
           const summaryLine = await runAudiobookExportProcess(storyId, {
             signal,
@@ -6496,6 +6603,9 @@ export function StoryEngineProvider({
       },
       queueStoryIndexJob,
       queueAudiobookJob,
+      beginAudiobookPlaybackBackgroundTask,
+      updateAudiobookPlaybackBackgroundTask,
+      finishAudiobookPlaybackBackgroundTask,
       queueAiDocumentJob,
       queuePodcastAudioJob,
       cancelBackgroundJob,

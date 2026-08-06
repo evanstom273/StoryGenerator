@@ -160,6 +160,7 @@ export function FullStoryAudiobookControls({
 						}
 						void prepareStoryAudiobook(playId, segments, storyTitle, {
 							parallelChapters: parallel,
+							storyId: storyId ?? undefined,
 						});
 					})();
 				}}

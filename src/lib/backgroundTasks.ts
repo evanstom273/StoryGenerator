@@ -1,4 +1,5 @@
 import { formatElapsedSeconds } from "./ai/storyAudiobookProgress";
+import type { StoryAudiobookProgress } from "./ai/storyAudiobookProgress";
 import type { BackgroundJob, BackgroundJobType } from "../types/models";
 
 export const BACKGROUND_TASK_JOB_TYPES = [
@@ -32,7 +33,9 @@ export function getBackgroundTaskTypeLabel(job: BackgroundJob): string {
 		case "story_index":
 			return job.payload?.incremental ? "Update Index" : "Full Re-index";
 		case "story_audiobook":
-			return "Generate Audiobook";
+			return job.payload?.audiobookPurpose === "playback"
+				? "Prepare Audiobook"
+				: "Generate Audiobook";
 		case "ai_document":
 			return getAiDocumentTaskLabel(job);
 		case "podcast_audio":
@@ -183,6 +186,27 @@ export function moveQueuedBackgroundTaskInOrder(
 		...job,
 		queueOrder: index + 1,
 	}));
+}
+
+export function isAudiobookExportBackgroundJob(job: BackgroundJob): boolean {
+	return job.type === "story_audiobook" && job.payload?.audiobookPurpose !== "playback";
+}
+
+export function audiobookProgressToBackgroundJobProgress(progress: StoryAudiobookProgress): {
+	current: number;
+	total: number;
+	label: string;
+} {
+	const total = Math.max(1, progress.chapters.length);
+	const doneCount = progress.chapters.filter(
+		(chapter) => chapter.status === "done" || chapter.status === "cached",
+	).length;
+
+	return {
+		current: doneCount,
+		total,
+		label: progress.summary,
+	};
 }
 
 export function partitionBackgroundTasks(jobs: BackgroundJob[]) {
