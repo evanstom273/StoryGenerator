@@ -213,6 +213,89 @@ export function mapAudiobookProgressToSteps(progress: StoryAudiobookProgress): B
 	return [...chapterSteps, stitchingStep];
 }
 
+export function getActiveBackgroundJobStep(steps: BackgroundJobStep[]): BackgroundJobStep | null {
+	return steps.find((step) => step.status === "running") ?? null;
+}
+
+function getStepProgressFraction(steps: BackgroundJobStep[]): number {
+	if (!steps.length) {
+		return 0;
+	}
+
+	const done = countCompletedBackgroundJobSteps(steps);
+	const hasRunning = steps.some((step) => step.status === "running");
+	const effective = hasRunning ? done + 0.5 : done;
+	return effective / steps.length;
+}
+
+export function formatBackgroundJobStepFraction(
+	step: BackgroundJobStep,
+	steps: BackgroundJobStep[],
+): string {
+	if (step.id === "intro" || step.id === "epilogue" || step.id === "stitching" || step.id === "synthesis") {
+		return "";
+	}
+
+	if (step.id.startsWith("chapter-")) {
+		const chapterSteps = steps.filter((entry) => entry.id.startsWith("chapter-"));
+		if (chapterSteps.length <= 1) {
+			return "";
+		}
+
+		const index = chapterSteps.findIndex((entry) => entry.id === step.id);
+		if (index >= 0) {
+			return ` (${index + 1}/${chapterSteps.length})`;
+		}
+	}
+
+	if (step.id.startsWith("audio-")) {
+		const audioSteps = steps.filter((entry) => entry.id.startsWith("audio-"));
+		if (audioSteps.length <= 1) {
+			return "";
+		}
+
+		const index = audioSteps.findIndex((entry) => entry.id === step.id);
+		if (index >= 0) {
+			return ` (${index + 1}/${audioSteps.length})`;
+		}
+	}
+
+	return "";
+}
+
+export function getBackgroundTaskStatusLine(
+	job: BackgroundJob,
+	storyLabel: string,
+	nowMs = Date.now(),
+): string {
+	if (job.status === "queued") {
+		return `${storyLabel} - Queued`;
+	}
+
+	if (job.status !== "running") {
+		return storyLabel;
+	}
+
+	const eta = getBackgroundTaskRemainingLabel(job, nowMs);
+	const etaSuffix = eta ? ` - ${eta}` : "";
+	const steps = job.progress?.steps;
+
+	if (steps?.length) {
+		const activeStep = getActiveBackgroundJobStep(steps);
+		if (activeStep) {
+			const fraction = formatBackgroundJobStepFraction(activeStep, steps);
+			return `${storyLabel} - ${activeStep.label}${fraction}${etaSuffix}`;
+		}
+	}
+
+	const progressLabel = getBackgroundTaskProgressLabel(job);
+	if (progressLabel) {
+		return `${storyLabel} - ${progressLabel}${etaSuffix}`;
+	}
+
+	return `${storyLabel}${etaSuffix}`;
+}
+
 export function getBackgroundTaskProgressPercent(job: BackgroundJob): number | null {
 	const progress = job.progress;
 	if (!progress) {
@@ -302,6 +385,19 @@ export function getBackgroundTaskRemainingLabel(job: BackgroundJob, nowMs = Date
 	const startedMs = new Date(reference).getTime();
 	const elapsedSec = Math.max(0, (nowMs - startedMs) / 1000);
 	const progress = job.progress;
+
+	if (progress?.steps?.length) {
+		const fraction = getStepProgressFraction(progress.steps);
+		if (fraction > 0 && fraction < 1) {
+			const estimatedTotalSec = elapsedSec / fraction;
+			const remainingSec = Math.max(0, estimatedTotalSec - elapsedSec);
+			return formatEstimatedRemainingSeconds(remainingSec);
+		}
+
+		if (fraction >= 1) {
+			return "~0s";
+		}
+	}
 
 	if (progress && progress.total > 0) {
 		if (progress.current >= progress.total) {
