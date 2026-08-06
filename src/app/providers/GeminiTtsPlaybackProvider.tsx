@@ -3,6 +3,7 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 	type ReactNode,
@@ -14,9 +15,16 @@ import {
 	readGeminiTtsCache,
 	writeGeminiTtsCache,
 } from "../../lib/ai/geminiTtsCache";
-import { synthesizeStoryAudiobookWav, type StoryAudiobookChapterSegment, computeStoryAudiobookPreparedDigest } from "../../lib/ai/storyAudiobook";
+import {
+	synthesizeStoryAudiobookWav,
+	type StoryAudiobookChapterSegment,
+	computeStoryAudiobookPreparedDigest,
+} from "../../lib/ai/storyAudiobook";
 import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
-import { audiobookProgressToBackgroundJobProgress } from "../../lib/backgroundTasks";
+import {
+	audiobookProgressToBackgroundJobProgress,
+	findAudiobookListenJobForPlayId,
+} from "../../lib/backgroundTasks";
 import { synthesizeGeminiSpeechPlan } from "../../lib/ai/geminiTtsSynthesis";
 import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
 import type { SpeechSynthesisPlan } from "../../lib/storyText/messageSpeechText";
@@ -53,6 +61,36 @@ interface PreparedSpeechAudio {
 	audio: HTMLAudioElement;
 	objectUrl: string;
 }
+
+interface ActiveSynthesis {
+	playId: string;
+	jobId?: string;
+	kind: "speech_plan" | "story_audiobook";
+	controller: AbortController;
+	startedAtMs: number;
+	playerTitle: string | null;
+	loadingMessage: string | null;
+	audiobookProgress: StoryAudiobookProgress | null;
+}
+
+type PendingSpeechPlanWork = {
+	kind: "speech_plan";
+	jobId: string;
+	playId: string;
+	plan: SpeechSynthesisPlan;
+	title?: string;
+};
+
+type PendingStoryAudiobookWork = {
+	kind: "story_audiobook";
+	jobId: string;
+	playId: string;
+	segments: StoryAudiobookChapterSegment[];
+	title: string;
+	parallelChapters?: number;
+};
+
+type PendingListenWork = PendingSpeechPlanWork | PendingStoryAudiobookWork;
 
 interface GeminiTtsPlaybackContextValue {
 	activeId: string | null;
@@ -113,14 +151,32 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	const objectUrlRef = useRef<string | null>(null);
 	const preparedRef = useRef<Map<string, PreparedSpeechAudio>>(new Map());
 	const preparedDigestRef = useRef<Map<string, string>>(new Map());
-	const abortRef = useRef<AbortController | null>(null);
-	const audiobookAbortRef = useRef<AbortController | null>(null);
-	const speechPlanBackgroundTaskRef = useRef<{ playId: string; jobId: string } | null>(null);
+	const activeSynthesisRef = useRef<Map<string, ActiveSynthesis>>(new Map());
+	const pendingListenWorkRef = useRef<PendingListenWork[]>([]);
 	const [state, setState] = useState<GeminiTtsPlaybackState>(IDLE_STATE);
-	const [backgroundAudiobookJob, setBackgroundAudiobookJob] =
-		useState<BackgroundAudiobookJob | null>(null);
+	const [synthesisTick, setSynthesisTick] = useState(0);
+
+	const bumpSynthesisUi = useCallback(() => {
+		setSynthesisTick((value) => value + 1);
+	}, []);
 
 	const hasGeminiKey = Boolean(aiSettings?.apiKeys?.gemini?.trim());
+
+	const backgroundAudiobookJob = useMemo((): BackgroundAudiobookJob | null => {
+		for (const synthesis of activeSynthesisRef.current.values()) {
+			if (synthesis.kind !== "story_audiobook") {
+				continue;
+			}
+			return {
+				playId: synthesis.playId,
+				playerTitle: synthesis.playerTitle ?? "Story audiobook",
+				startedAtMs: synthesis.startedAtMs,
+				progress: synthesis.audiobookProgress,
+				backgroundTaskJobId: synthesis.jobId,
+			};
+		}
+		return null;
+	}, [synthesisTick]);
 
 	const releasePreparedAudio = useCallback((playId: string) => {
 		const prepared = preparedRef.current.get(playId);
@@ -142,6 +198,26 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		}
 		objectUrlRef.current = null;
 	}, []);
+
+	const clearSynthesis = useCallback(
+		(playId: string) => {
+			activeSynthesisRef.current.delete(playId);
+			bumpSynthesisUi();
+		},
+		[bumpSynthesisUi],
+	);
+
+	const abortSynthesisForPlayId = useCallback(
+		(playId: string) => {
+			const synthesis = activeSynthesisRef.current.get(playId);
+			if (!synthesis) {
+				return;
+			}
+			synthesis.controller.abort();
+			clearSynthesis(playId);
+		},
+		[clearSynthesis],
+	);
 
 	const attachAudioHandlers = useCallback(
 		(audio: HTMLAudioElement, playId: string) => {
@@ -195,25 +271,51 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		[cleanupActiveAudio, state.playerTitle],
 	);
 
+	const updateSynthesisMeta = useCallback(
+		(playId: string, patch: Partial<ActiveSynthesis>) => {
+			const current = activeSynthesisRef.current.get(playId);
+			if (!current) {
+				return;
+			}
+			activeSynthesisRef.current.set(playId, { ...current, ...patch });
+			bumpSynthesisUi();
+		},
+		[bumpSynthesisUi],
+	);
+
+	const setForegroundLoadingState = useCallback(
+		(
+			playId: string,
+			patch: Partial<GeminiTtsPlaybackState> & {
+				playerTitle?: string | null;
+			},
+		) => {
+			setState((current) => {
+				if (current.activeId !== playId) {
+					return current;
+				}
+				return { ...current, ...patch };
+			});
+		},
+		[],
+	);
+
 	const stop = useCallback(() => {
-		const wasLoading = state.status === "loading";
 		const activeId = state.activeId;
-
-		const speechPlanTask = speechPlanBackgroundTaskRef.current;
-		if (wasLoading && activeId && speechPlanTask?.playId === activeId) {
-			void finishAudiobookPlaybackBackgroundTask(speechPlanTask.jobId, "cancelled");
-			speechPlanBackgroundTaskRef.current = null;
-		}
-
-		abortRef.current?.abort();
-		abortRef.current = null;
-		cleanupActiveAudio();
+		const wasLoading = state.status === "loading";
 
 		if (wasLoading && activeId) {
+			const synthesis = activeSynthesisRef.current.get(activeId);
+			if (synthesis?.jobId) {
+				void finishAudiobookPlaybackBackgroundTask(synthesis.jobId, "cancelled");
+			}
+			abortSynthesisForPlayId(activeId);
 			releasePreparedAudio(activeId);
 			setState(IDLE_STATE);
 			return;
 		}
+
+		cleanupActiveAudio();
 
 		if (state.status === "playing" && activeId && preparedRef.current.has(activeId)) {
 			setState({
@@ -232,30 +334,31 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 
 		setState(IDLE_STATE);
 	}, [
+		abortSynthesisForPlayId,
 		cleanupActiveAudio,
+		finishAudiobookPlaybackBackgroundTask,
 		releasePreparedAudio,
 		state.activeId,
 		state.currentTimeSec,
 		state.durationSec,
 		state.playerTitle,
 		state.status,
-		finishAudiobookPlaybackBackgroundTask,
 	]);
 
 	const cancelStoryAudiobookPreparation = useCallback(
 		(playId: string) => {
-			if (backgroundAudiobookJob?.playId !== playId) {
+			const synthesis = activeSynthesisRef.current.get(playId);
+			if (!synthesis || synthesis.kind !== "story_audiobook") {
 				return;
 			}
 
-			const backgroundTaskJobId = backgroundAudiobookJob.backgroundTaskJobId;
-			audiobookAbortRef.current?.abort();
-			audiobookAbortRef.current = null;
-			setBackgroundAudiobookJob(null);
-
-			if (backgroundTaskJobId) {
-				void finishAudiobookPlaybackBackgroundTask(backgroundTaskJobId, "cancelled");
+			if (synthesis.jobId) {
+				void finishAudiobookPlaybackBackgroundTask(synthesis.jobId, "cancelled");
 			}
+			abortSynthesisForPlayId(playId);
+			pendingListenWorkRef.current = pendingListenWorkRef.current.filter(
+				(work) => work.playId !== playId,
+			);
 
 			if (state.activeId === playId && state.status === "loading") {
 				releasePreparedAudio(playId);
@@ -263,7 +366,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			}
 		},
 		[
-			backgroundAudiobookJob,
+			abortSynthesisForPlayId,
 			finishAudiobookPlaybackBackgroundTask,
 			releasePreparedAudio,
 			state.activeId,
@@ -272,53 +375,27 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	);
 
 	useEffect(() => {
-		const jobId = backgroundAudiobookJob?.backgroundTaskJobId;
-		const playId = backgroundAudiobookJob?.playId;
-		if (!jobId || !playId) {
-			return;
-		}
+		for (const synthesis of [...activeSynthesisRef.current.values()]) {
+			if (!synthesis.jobId) {
+				continue;
+			}
+			const job = backgroundJobs.find((entry) => entry.id === synthesis.jobId);
+			if (job?.status !== "cancelled") {
+				continue;
+			}
 
-		const job = backgroundJobs.find((entry) => entry.id === jobId);
-		if (job?.status !== "cancelled") {
-			return;
-		}
+			abortSynthesisForPlayId(synthesis.playId);
+			pendingListenWorkRef.current = pendingListenWorkRef.current.filter(
+				(work) => work.playId !== synthesis.playId,
+			);
 
-		audiobookAbortRef.current?.abort();
-		audiobookAbortRef.current = null;
-		setBackgroundAudiobookJob(null);
-
-		if (state.activeId === playId && state.status === "loading") {
-			releasePreparedAudio(playId);
-			setState(IDLE_STATE);
-		}
-	}, [
-		backgroundAudiobookJob,
-		backgroundJobs,
-		releasePreparedAudio,
-		state.activeId,
-		state.status,
-	]);
-
-	useEffect(() => {
-		const speechPlanTask = speechPlanBackgroundTaskRef.current;
-		if (!speechPlanTask) {
-			return;
-		}
-
-		const job = backgroundJobs.find((entry) => entry.id === speechPlanTask.jobId);
-		if (job?.status !== "cancelled") {
-			return;
-		}
-
-		abortRef.current?.abort();
-		abortRef.current = null;
-		speechPlanBackgroundTaskRef.current = null;
-
-		if (state.activeId === speechPlanTask.playId && state.status === "loading") {
-			releasePreparedAudio(speechPlanTask.playId);
-			setState(IDLE_STATE);
+			if (state.activeId === synthesis.playId && state.status === "loading") {
+				releasePreparedAudio(synthesis.playId);
+				setState(IDLE_STATE);
+			}
 		}
 	}, [
+		abortSynthesisForPlayId,
 		backgroundJobs,
 		releasePreparedAudio,
 		state.activeId,
@@ -327,8 +404,10 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 
 	useEffect(() => {
 		return () => {
-			abortRef.current?.abort();
-			audiobookAbortRef.current?.abort();
+			for (const synthesis of activeSynthesisRef.current.values()) {
+				synthesis.controller.abort();
+			}
+			activeSynthesisRef.current.clear();
 			cleanupActiveAudio();
 			for (const playId of preparedRef.current.keys()) {
 				releasePreparedAudio(playId);
@@ -351,6 +430,329 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		},
 		[attachAudioHandlers, releasePreparedAudio],
 	);
+
+	const runSpeechPlanSynthesis = useCallback(
+		async (work: PendingSpeechPlanWork) => {
+			const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
+			if (!apiKey) {
+				return;
+			}
+
+			const { playId, plan, jobId, title } = work;
+			if (activeSynthesisRef.current.has(playId)) {
+				return;
+			}
+
+			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
+			const cacheDigest = await computeGeminiTtsCacheDigest(playId, plan, narrationTts.model);
+			const controller = new AbortController();
+			const startedAtMs = Date.now();
+
+			activeSynthesisRef.current.set(playId, {
+				playId,
+				jobId,
+				kind: "speech_plan",
+				controller,
+				startedAtMs,
+				playerTitle: title ?? null,
+				loadingMessage: "Preparing voice synthesis…",
+				audiobookProgress: null,
+			});
+			bumpSynthesisUi();
+
+			setState((current) => ({
+				...current,
+				activeId: playId,
+				status: "loading",
+				errorMessage: null,
+				loadingMessage: "Preparing voice synthesis…",
+				loadingAudiobookProgress: null,
+				loadingStartedAtMs: startedAtMs,
+				playerTitle: title ?? current.playerTitle,
+				currentTimeSec: 0,
+				durationSec: 0,
+			}));
+
+			try {
+				const wavBuffer = await synthesizeGeminiSpeechPlan({
+					apiKey,
+					plan,
+					model: narrationTts.model,
+					signal: controller.signal,
+					onProgress: (message) => {
+						if (controller.signal.aborted) {
+							return;
+						}
+						updateSynthesisMeta(playId, { loadingMessage: message });
+						if (jobId) {
+							void updateAudiobookPlaybackBackgroundTask(jobId, {
+								current: 0,
+								total: 1,
+								label: message,
+							});
+						}
+						setForegroundLoadingState(playId, {
+							loadingMessage: message,
+							loadingStartedAtMs: startedAtMs,
+						});
+					},
+				});
+
+				if (controller.signal.aborted) {
+					if (jobId) {
+						void finishAudiobookPlaybackBackgroundTask(jobId, "cancelled");
+					}
+					clearSynthesis(playId);
+					return;
+				}
+
+				await writeGeminiTtsCache(cacheDigest, playId, wavBuffer);
+				loadPreparedSpeech(playId, wavBuffer, cacheDigest);
+				if (jobId) {
+					void updateAudiobookPlaybackBackgroundTask(jobId, {
+						current: 1,
+						total: 1,
+						label: "Ready",
+					});
+					void finishAudiobookPlaybackBackgroundTask(jobId, "complete");
+				}
+				clearSynthesis(playId);
+
+				setState((current) => {
+					if (current.activeId !== playId) {
+						return current;
+					}
+					return {
+						activeId: playId,
+						status: "ready",
+						errorMessage: null,
+						loadingMessage: null,
+						loadingAudiobookProgress: null,
+						loadingStartedAtMs: null,
+						playerTitle: title ?? current.playerTitle,
+						currentTimeSec: 0,
+						durationSec: 0,
+					};
+				});
+			} catch (error) {
+				if (controller.signal.aborted) {
+					if (jobId) {
+						void finishAudiobookPlaybackBackgroundTask(jobId, "cancelled");
+					}
+					clearSynthesis(playId);
+					return;
+				}
+				if (jobId) {
+					void finishAudiobookPlaybackBackgroundTask(
+						jobId,
+						"failed",
+						error instanceof Error ? error.message : "Unable to synthesize speech audio.",
+					);
+				}
+				clearSynthesis(playId);
+				setState((current) => {
+					if (current.activeId !== playId) {
+						return current;
+					}
+					return {
+						activeId: playId,
+						status: "error",
+						errorMessage:
+							error instanceof Error ? error.message : "Unable to synthesize speech audio.",
+						loadingMessage: null,
+						loadingAudiobookProgress: null,
+						loadingStartedAtMs: null,
+						playerTitle: title ?? null,
+						currentTimeSec: 0,
+						durationSec: 0,
+					};
+				});
+			}
+		},
+		[
+			aiSettings,
+			bumpSynthesisUi,
+			clearSynthesis,
+			finishAudiobookPlaybackBackgroundTask,
+			loadPreparedSpeech,
+			setForegroundLoadingState,
+			updateAudiobookPlaybackBackgroundTask,
+			updateSynthesisMeta,
+		],
+	);
+
+	const runStoryAudiobookSynthesis = useCallback(
+		async (work: PendingStoryAudiobookWork) => {
+			const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
+			if (!apiKey) {
+				return;
+			}
+
+			const { playId, segments, jobId, title, parallelChapters } = work;
+			if (activeSynthesisRef.current.has(playId)) {
+				return;
+			}
+
+			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
+			const cacheDigest = await computeStoryAudiobookPreparedDigest(playId, segments, narrationTts.model);
+			const controller = new AbortController();
+			const startedAtMs = Date.now();
+
+			activeSynthesisRef.current.set(playId, {
+				playId,
+				jobId,
+				kind: "story_audiobook",
+				controller,
+				startedAtMs,
+				playerTitle: title,
+				loadingMessage: "Preparing story audiobook…",
+				audiobookProgress: null,
+			});
+			bumpSynthesisUi();
+
+			setState((current) => ({
+				...current,
+				activeId: playId,
+				status: "loading",
+				errorMessage: null,
+				loadingMessage: "Preparing story audiobook…",
+				loadingAudiobookProgress: null,
+				loadingStartedAtMs: startedAtMs,
+				playerTitle: title,
+				currentTimeSec: 0,
+				durationSec: 0,
+			}));
+
+			try {
+				const wavBuffer = await synthesizeStoryAudiobookWav({
+					apiKey,
+					segments,
+					model: narrationTts.model,
+					parallelChapters,
+					signal: controller.signal,
+					onProgress: (progress) => {
+						if (controller.signal.aborted) {
+							return;
+						}
+						updateSynthesisMeta(playId, {
+							loadingMessage: progress.summary,
+							audiobookProgress: progress,
+						});
+						if (jobId) {
+							void updateAudiobookPlaybackBackgroundTask(
+								jobId,
+								audiobookProgressToBackgroundJobProgress(progress),
+							);
+						}
+						setForegroundLoadingState(playId, {
+							loadingMessage: progress.summary,
+							loadingAudiobookProgress: progress,
+							loadingStartedAtMs: startedAtMs,
+						});
+					},
+				});
+
+				if (controller.signal.aborted) {
+					if (jobId) {
+						void finishAudiobookPlaybackBackgroundTask(jobId, "cancelled");
+					}
+					clearSynthesis(playId);
+					return;
+				}
+
+				loadPreparedSpeech(playId, wavBuffer, cacheDigest);
+				if (jobId) {
+					void finishAudiobookPlaybackBackgroundTask(jobId, "complete");
+				}
+				clearSynthesis(playId);
+
+				setState((current) => {
+					if (current.activeId !== playId) {
+						return current;
+					}
+					return {
+						activeId: playId,
+						status: "ready",
+						errorMessage: null,
+						loadingMessage: null,
+						loadingAudiobookProgress: null,
+						loadingStartedAtMs: null,
+						playerTitle: title,
+						currentTimeSec: 0,
+						durationSec: 0,
+					};
+				});
+			} catch (error) {
+				if (controller.signal.aborted) {
+					if (jobId) {
+						void finishAudiobookPlaybackBackgroundTask(jobId, "cancelled");
+					}
+					clearSynthesis(playId);
+					return;
+				}
+				if (jobId) {
+					void finishAudiobookPlaybackBackgroundTask(
+						jobId,
+						"failed",
+						error instanceof Error ? error.message : "Unable to synthesize story audiobook.",
+					);
+				}
+				clearSynthesis(playId);
+				setState((current) => {
+					if (current.activeId !== playId) {
+						return current;
+					}
+					return {
+						activeId: playId,
+						status: "error",
+						errorMessage:
+							error instanceof Error ? error.message : "Unable to synthesize story audiobook.",
+						loadingMessage: null,
+						loadingAudiobookProgress: null,
+						loadingStartedAtMs: null,
+						playerTitle: title,
+						currentTimeSec: 0,
+						durationSec: 0,
+					};
+				});
+			}
+		},
+		[
+			aiSettings,
+			bumpSynthesisUi,
+			clearSynthesis,
+			finishAudiobookPlaybackBackgroundTask,
+			loadPreparedSpeech,
+			setForegroundLoadingState,
+			updateAudiobookPlaybackBackgroundTask,
+			updateSynthesisMeta,
+		],
+	);
+
+	useEffect(() => {
+		const stillPending: PendingListenWork[] = [];
+
+		for (const work of pendingListenWorkRef.current) {
+			const job = backgroundJobs.find((entry) => entry.id === work.jobId);
+			if (
+				job?.status === "running" &&
+				!activeSynthesisRef.current.has(work.playId)
+			) {
+				if (work.kind === "speech_plan") {
+					void runSpeechPlanSynthesis(work);
+				} else {
+					void runStoryAudiobookSynthesis(work);
+				}
+				continue;
+			}
+
+			if (job && (job.status === "queued" || job.status === "running")) {
+				stillPending.push(work);
+			}
+		}
+
+		pendingListenWorkRef.current = stillPending;
+	}, [backgroundJobs, runSpeechPlanSynthesis, runStoryAudiobookSynthesis]);
 
 	const playPreparedSpeech = useCallback(
 		async (playId: string) => {
@@ -513,207 +915,100 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
 			const cacheDigest = await computeGeminiTtsCacheDigest(playId, plan, narrationTts.model);
 
-			if (state.activeId === playId && state.status === "loading") {
-				stop();
-				return;
+			if (activeSynthesisRef.current.has(playId)) {
+				const synthesis = activeSynthesisRef.current.get(playId);
+				if (synthesis?.jobId) {
+					void finishAudiobookPlaybackBackgroundTask(synthesis.jobId, "cancelled");
+				}
+				abortSynthesisForPlayId(playId);
 			}
 
 			if (state.activeId === playId && state.status === "playing") {
 				stop();
-				return;
 			}
 
 			if (
-				state.activeId === playId &&
-				state.status === "ready" &&
-				preparedDigestRef.current.get(playId) === cacheDigest
+				preparedDigestRef.current.get(playId) === cacheDigest &&
+				preparedRef.current.has(playId)
 			) {
 				return;
 			}
 
-			abortRef.current?.abort();
-			cleanupActiveAudio();
-			const controller = new AbortController();
-			abortRef.current = controller;
-			const startedAtMs = Date.now();
-
-			setState({
-				activeId: playId,
-				status: "loading",
-				errorMessage: null,
-				loadingMessage: "Preparing voice synthesis…",
-				loadingAudiobookProgress: null,
-				loadingStartedAtMs: startedAtMs,
-				playerTitle: options?.title ?? state.playerTitle,
-				currentTimeSec: 0,
-				durationSec: 0,
-			});
-
 			const cachedWav =
 				getGeminiTtsMemoryCache(cacheDigest) ?? (await readGeminiTtsCache(cacheDigest));
 
-			if (cachedWav && !controller.signal.aborted) {
-				setState((current) => {
-					if (current.activeId !== playId || controller.signal.aborted) {
-						return current;
-					}
-					return {
-						...current,
-						loadingMessage: "Loading cached audio…",
-					};
-				});
-
-				try {
-					loadPreparedSpeech(playId, cachedWav, cacheDigest);
-					if (!controller.signal.aborted) {
-						setState({
-							activeId: playId,
-							status: "ready",
-							errorMessage: null,
-							loadingMessage: null,
-							loadingAudiobookProgress: null,
-							loadingStartedAtMs: null,
-							playerTitle: options?.title ?? state.playerTitle,
-							currentTimeSec: 0,
-							durationSec: 0,
-						});
-					}
-				} catch {
-					if (!controller.signal.aborted) {
-						setState({
-							activeId: playId,
-							status: "error",
-							errorMessage: "Unable to load cached audio.",
-							loadingMessage: null,
-							loadingAudiobookProgress: null,
-							loadingStartedAtMs: null,
-							playerTitle: options?.title ?? null,
-							currentTimeSec: 0,
-							durationSec: 0,
-						});
-					}
+			if (cachedWav) {
+				if (state.activeId === playId) {
+					cleanupActiveAudio();
 				}
-
-				if (abortRef.current === controller) {
-					abortRef.current = null;
-				}
-				return;
-			}
-
-			try {
-				let backgroundTaskJobId: string | undefined;
-
-				if (options?.storyId) {
-					const job = await beginAudiobookPlaybackBackgroundTask({
-						storyId: options.storyId,
-						playId,
-						purpose: "chapter_listen",
-						progressLabel: options.title
-							? `Preparing ${options.title}…`
-							: "Preparing chapter audio…",
-					});
-					backgroundTaskJobId = job.id;
-					speechPlanBackgroundTaskRef.current = { playId, jobId: job.id };
-				}
-
-				const wavBuffer = await synthesizeGeminiSpeechPlan({
-					apiKey,
-					plan,
-					model: narrationTts.model,
-					signal: controller.signal,
-					onProgress: (message) => {
-						if (controller.signal.aborted) {
-							return;
-						}
-						if (backgroundTaskJobId) {
-							void updateAudiobookPlaybackBackgroundTask(backgroundTaskJobId, {
-								current: 0,
-								total: 1,
-								label: message,
-							});
-						}
-						setState((current) => {
-							if (current.activeId !== playId || current.status !== "loading") {
-								return current;
-							}
-							return {
-								...current,
-								loadingMessage: message,
-								loadingStartedAtMs: current.loadingStartedAtMs ?? startedAtMs,
-							};
-						});
-					},
-				});
-
-				if (controller.signal.aborted) {
-					if (backgroundTaskJobId) {
-						void finishAudiobookPlaybackBackgroundTask(backgroundTaskJobId, "cancelled");
-						speechPlanBackgroundTaskRef.current = null;
-					}
-					return;
-				}
-
-				await writeGeminiTtsCache(cacheDigest, playId, wavBuffer);
-				loadPreparedSpeech(playId, wavBuffer, cacheDigest);
-
-				if (backgroundTaskJobId) {
-					void updateAudiobookPlaybackBackgroundTask(backgroundTaskJobId, {
-						current: 1,
-						total: 1,
-						label: "Ready",
-					});
-					void finishAudiobookPlaybackBackgroundTask(backgroundTaskJobId, "complete");
-					speechPlanBackgroundTaskRef.current = null;
-				}
-
-				setState({
+				loadPreparedSpeech(playId, cachedWav, cacheDigest);
+				setState((current) => ({
+					...current,
 					activeId: playId,
 					status: "ready",
 					errorMessage: null,
 					loadingMessage: null,
 					loadingAudiobookProgress: null,
 					loadingStartedAtMs: null,
-					playerTitle: options?.title ?? state.playerTitle,
+					playerTitle: options?.title ?? current.playerTitle,
 					currentTimeSec: 0,
 					durationSec: 0,
-				});
-			} catch (error) {
-				if (controller.signal.aborted) {
-					const speechPlanTask = speechPlanBackgroundTaskRef.current;
-					if (speechPlanTask?.playId === playId) {
-						void finishAudiobookPlaybackBackgroundTask(speechPlanTask.jobId, "cancelled");
-						speechPlanBackgroundTaskRef.current = null;
-					}
-					return;
-				}
-				const speechPlanTask = speechPlanBackgroundTaskRef.current;
-				if (speechPlanTask?.playId === playId) {
-					void finishAudiobookPlaybackBackgroundTask(
-						speechPlanTask.jobId,
-						"failed",
-						error instanceof Error ? error.message : "Unable to synthesize speech audio.",
-					);
-					speechPlanBackgroundTaskRef.current = null;
-				}
-				setState({
-					activeId: playId,
-					status: "error",
-					errorMessage:
-						error instanceof Error ? error.message : "Unable to synthesize speech audio.",
-					loadingMessage: null,
-					loadingAudiobookProgress: null,
-					loadingStartedAtMs: null,
-					playerTitle: options?.title ?? null,
-					currentTimeSec: 0,
-					durationSec: 0,
-				});
-			} finally {
-				if (abortRef.current === controller) {
-					abortRef.current = null;
-				}
+				}));
+				return;
 			}
+
+			if (!options?.storyId) {
+				await runSpeechPlanSynthesis({
+					kind: "speech_plan",
+					jobId: "",
+					playId,
+					plan,
+					title: options?.title,
+				});
+				return;
+			}
+
+			const { job, shouldStartNow } = await beginAudiobookPlaybackBackgroundTask({
+				storyId: options.storyId,
+				playId,
+				purpose: "chapter_listen",
+				progressLabel: options.title
+					? `Preparing ${options.title}…`
+					: "Preparing chapter audio…",
+			});
+
+			const work: PendingSpeechPlanWork = {
+				kind: "speech_plan",
+				jobId: job.id,
+				playId,
+				plan,
+				title: options.title,
+			};
+
+			if (!shouldStartNow) {
+				pendingListenWorkRef.current = [
+					...pendingListenWorkRef.current.filter((entry) => entry.playId !== playId),
+					work,
+				];
+				bumpSynthesisUi();
+				return;
+			}
+
+			await runSpeechPlanSynthesis(work);
 		},
-		[aiSettings, beginAudiobookPlaybackBackgroundTask, cleanupActiveAudio, finishAudiobookPlaybackBackgroundTask, loadPreparedSpeech, state.activeId, state.playerTitle, state.status, stop, updateAudiobookPlaybackBackgroundTask],
+		[
+			abortSynthesisForPlayId,
+			aiSettings,
+			beginAudiobookPlaybackBackgroundTask,
+			bumpSynthesisUi,
+			cleanupActiveAudio,
+			finishAudiobookPlaybackBackgroundTask,
+			loadPreparedSpeech,
+			runSpeechPlanSynthesis,
+			state.activeId,
+			state.status,
+			stop,
+		],
 	);
 
 	const prepareStoryAudiobook = useCallback(
@@ -757,178 +1052,74 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
 			const cacheDigest = await computeStoryAudiobookPreparedDigest(playId, segments, narrationTts.model);
 
-			if (
-				(state.activeId === playId && state.status === "loading") ||
-				(backgroundAudiobookJob?.playId === playId && audiobookAbortRef.current)
-			) {
+			if (activeSynthesisRef.current.has(playId)) {
 				cancelStoryAudiobookPreparation(playId);
 				return;
 			}
 
 			if (
-				state.activeId === playId &&
-				state.status === "ready" &&
-				preparedDigestRef.current.get(playId) === cacheDigest
+				preparedDigestRef.current.get(playId) === cacheDigest &&
+				preparedRef.current.has(playId)
 			) {
 				return;
 			}
 
-			abortRef.current?.abort();
-			cleanupActiveAudio();
-			const controller = new AbortController();
-			audiobookAbortRef.current?.abort();
-			audiobookAbortRef.current = controller;
-			const startedAtMs = Date.now();
-			let backgroundTaskJobId: string | undefined;
-
-			if (options?.storyId) {
-				const job = await beginAudiobookPlaybackBackgroundTask({
-					storyId: options.storyId,
+			if (!options?.storyId) {
+				await runStoryAudiobookSynthesis({
+					kind: "story_audiobook",
+					jobId: "",
 					playId,
-					chapterCount: segments.length,
-					purpose: "playback",
-				});
-				backgroundTaskJobId = job.id;
-			}
-
-			setBackgroundAudiobookJob({
-				playId,
-				playerTitle: title,
-				startedAtMs,
-				progress: null,
-				backgroundTaskJobId,
-			});
-
-			setState({
-				activeId: playId,
-				status: "loading",
-				errorMessage: null,
-				loadingMessage: "Preparing story audiobook…",
-				loadingAudiobookProgress: null,
-				loadingStartedAtMs: startedAtMs,
-				playerTitle: title,
-				currentTimeSec: 0,
-				durationSec: 0,
-			});
-
-			try {
-				const wavBuffer = await synthesizeStoryAudiobookWav({
-					apiKey,
 					segments,
-					model: narrationTts.model,
+					title,
 					parallelChapters: options?.parallelChapters,
-					signal: controller.signal,
-					onProgress: (progress) => {
-						if (controller.signal.aborted) {
-							return;
-						}
-						if (backgroundTaskJobId) {
-							void updateAudiobookPlaybackBackgroundTask(
-								backgroundTaskJobId,
-								audiobookProgressToBackgroundJobProgress(progress),
-							);
-						}
-						setBackgroundAudiobookJob((current) =>
-							current?.playId === playId ? { ...current, progress } : current,
-						);
-						setState((current) => {
-							if (current.activeId !== playId || current.status !== "loading") {
-								return current;
-							}
-							return {
-								...current,
-								loadingMessage: progress.summary,
-								loadingAudiobookProgress: progress,
-								loadingStartedAtMs: current.loadingStartedAtMs ?? startedAtMs,
-							};
-						});
-					},
 				});
-
-				if (controller.signal.aborted) {
-					return;
-				}
-
-				loadPreparedSpeech(playId, wavBuffer, cacheDigest);
-				setBackgroundAudiobookJob(null);
-
-				if (backgroundTaskJobId) {
-					void finishAudiobookPlaybackBackgroundTask(backgroundTaskJobId, "complete");
-				}
-
-				setState((current) => {
-					if (current.activeId !== playId) {
-						return current;
-					}
-
-					return {
-						activeId: playId,
-						status: "ready",
-						errorMessage: null,
-						loadingMessage: null,
-						loadingAudiobookProgress: null,
-						loadingStartedAtMs: null,
-						playerTitle: title,
-						currentTimeSec: 0,
-						durationSec: 0,
-					};
-				});
-			} catch (error) {
-				if (controller.signal.aborted) {
-					if (backgroundTaskJobId) {
-						void finishAudiobookPlaybackBackgroundTask(backgroundTaskJobId, "cancelled");
-					}
-					return;
-				}
-				setBackgroundAudiobookJob(null);
-				if (backgroundTaskJobId) {
-					void finishAudiobookPlaybackBackgroundTask(
-						backgroundTaskJobId,
-						"failed",
-						error instanceof Error ? error.message : "Unable to synthesize story audiobook.",
-					);
-				}
-				setState((current) => {
-					if (current.activeId !== playId) {
-						return current;
-					}
-
-					return {
-						activeId: playId,
-						status: "error",
-						errorMessage:
-							error instanceof Error ? error.message : "Unable to synthesize story audiobook.",
-						loadingMessage: null,
-						loadingAudiobookProgress: null,
-						loadingStartedAtMs: null,
-						playerTitle: title,
-						currentTimeSec: 0,
-						durationSec: 0,
-					};
-				});
-			} finally {
-				if (audiobookAbortRef.current === controller) {
-					audiobookAbortRef.current = null;
-				}
+				return;
 			}
+
+			const { job, shouldStartNow } = await beginAudiobookPlaybackBackgroundTask({
+				storyId: options.storyId,
+				playId,
+				chapterCount: segments.length,
+				purpose: "playback",
+			});
+
+			const work: PendingStoryAudiobookWork = {
+				kind: "story_audiobook",
+				jobId: job.id,
+				playId,
+				segments,
+				title,
+				parallelChapters: options?.parallelChapters,
+			};
+
+			if (!shouldStartNow) {
+				pendingListenWorkRef.current = [
+					...pendingListenWorkRef.current.filter((entry) => entry.playId !== playId),
+					work,
+				];
+				bumpSynthesisUi();
+				return;
+			}
+
+			await runStoryAudiobookSynthesis(work);
 		},
 		[
 			aiSettings,
-			backgroundAudiobookJob,
 			beginAudiobookPlaybackBackgroundTask,
+			bumpSynthesisUi,
 			cancelStoryAudiobookPreparation,
-			cleanupActiveAudio,
-			finishAudiobookPlaybackBackgroundTask,
-			loadPreparedSpeech,
-			state.activeId,
-			state.status,
-			updateAudiobookPlaybackBackgroundTask,
+			runStoryAudiobookSynthesis,
 		],
 	);
 
 	const getItemStatus = useCallback(
 		(playId: string): GeminiTtsPlaybackStatus => {
-			if (backgroundAudiobookJob?.playId === playId && audiobookAbortRef.current) {
+			if (activeSynthesisRef.current.has(playId)) {
+				return "loading";
+			}
+
+			const queuedJob = findAudiobookListenJobForPlayId(backgroundJobs, playId);
+			if (queuedJob?.status === "queued" || queuedJob?.status === "running") {
 				return "loading";
 			}
 
@@ -940,19 +1131,30 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			}
 			return state.status;
 		},
-		[backgroundAudiobookJob, state.activeId, state.status],
+		[backgroundJobs, state.activeId, state.status, synthesisTick],
 	);
 
 	const getLoadingDetail = useCallback(
 		(playId: string): GeminiTtsLoadingDetail | null => {
-			if (backgroundAudiobookJob?.playId === playId && audiobookAbortRef.current) {
+			const synthesis = activeSynthesisRef.current.get(playId);
+			if (synthesis) {
 				return {
 					message:
-						backgroundAudiobookJob.progress?.summary ??
-						state.loadingMessage ??
-						"Preparing story audiobook…",
-					startedAtMs: backgroundAudiobookJob.startedAtMs,
-					audiobookProgress: backgroundAudiobookJob.progress ?? undefined,
+						synthesis.audiobookProgress?.summary ??
+						synthesis.loadingMessage ??
+						(synthesis.kind === "story_audiobook"
+							? "Preparing story audiobook…"
+							: "Synthesizing voice…"),
+					startedAtMs: synthesis.startedAtMs,
+					audiobookProgress: synthesis.audiobookProgress ?? undefined,
+				};
+			}
+
+			const queuedJob = findAudiobookListenJobForPlayId(backgroundJobs, playId);
+			if (queuedJob?.status === "queued") {
+				return {
+					message: queuedJob.progress?.label ?? "Queued for synthesis…",
+					startedAtMs: new Date(queuedJob.createdAt).getTime(),
 				};
 			}
 
@@ -966,12 +1168,13 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			};
 		},
 		[
-			backgroundAudiobookJob,
+			backgroundJobs,
 			state.activeId,
 			state.loadingAudiobookProgress,
 			state.loadingMessage,
 			state.loadingStartedAtMs,
 			state.status,
+			synthesisTick,
 		],
 	);
 

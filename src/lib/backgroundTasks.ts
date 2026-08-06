@@ -140,6 +140,24 @@ export function countActiveBackgroundTasks(jobs: BackgroundJob[]): number {
 	).length;
 }
 
+export function countRunningBackgroundTasks(jobs: BackgroundJob[]): number {
+	return jobs.filter(
+		(job) => isBackgroundTaskJob(job) && job.status === "running",
+	).length;
+}
+
+export function findAudiobookListenJobForPlayId(
+	jobs: BackgroundJob[],
+	playId: string,
+): BackgroundJob | undefined {
+	return jobs.find(
+		(job) =>
+			isAudiobookListenBackgroundJob(job) &&
+			job.payload?.audiobookPlayId === playId &&
+			(job.status === "queued" || job.status === "running"),
+	);
+}
+
 export function resolveBackgroundTaskQueueOrder(job: BackgroundJob): number {
 	if (typeof job.queueOrder === "number" && Number.isFinite(job.queueOrder)) {
 		return job.queueOrder;
