@@ -7,11 +7,16 @@ export function AnimatedOutlet() {
 	const reducedMotion = usePrefersReducedMotion();
 
 	return (
-		<div
-			key={location.pathname}
-			className={cn(reducedMotion ? undefined : "animate-page-enter")}
-		>
-			<Outlet />
+		<div className="relative min-h-full bg-app">
+			<div
+				key={location.pathname}
+				className={cn(
+					"min-h-full transform-gpu backface-hidden",
+					reducedMotion ? undefined : "animate-page-enter",
+				)}
+			>
+				<Outlet />
+			</div>
 		</div>
 	);
 }

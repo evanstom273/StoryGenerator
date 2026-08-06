@@ -3,9 +3,9 @@ import { RouterProvider } from "react-router-dom";
 import { router } from "../router";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { LaunchSplash } from "./LaunchSplash";
-import { MOTION_DURATION_MS, usePrefersReducedMotion } from "../ui/motion";
+import { SPLASH_EXIT_MS, usePrefersReducedMotion } from "../ui/motion";
 
-const SPLASH_MIN_VISIBLE_MS = 380;
+const SPLASH_MIN_VISIBLE_MS = 1400;
 
 export function AppBootstrap() {
 	const { loading } = useStoryEngine();
@@ -21,7 +21,7 @@ export function AppBootstrap() {
 
 		const elapsed = Date.now() - mountAtRef.current;
 		const minWait = reducedMotion ? 0 : Math.max(0, SPLASH_MIN_VISIBLE_MS - elapsed);
-		const fadeMs = reducedMotion ? 0 : MOTION_DURATION_MS;
+		const fadeMs = reducedMotion ? 0 : SPLASH_EXIT_MS;
 
 		const exitTimer = window.setTimeout(() => setSplashExiting(true), minWait);
 		const hideTimer = window.setTimeout(() => setSplashVisible(false), minWait + fadeMs);

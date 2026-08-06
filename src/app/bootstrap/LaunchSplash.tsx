@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { APP_VERSION } from "../versioning/version";
 import { BrandLogo } from "../../components/BrandLogo";
 import { cn } from "../../utils/cn";
+import { SPLASH_EXIT_CLASS } from "../ui/motion";
 
 export function LaunchSplash({
 	exiting,
@@ -9,19 +11,32 @@ export function LaunchSplash({
 	exiting: boolean;
 	reducedMotion: boolean;
 }) {
+	const [skipEnterAnimation] = useState(() => Boolean(document.getElementById("boot-splash")));
+
+	useEffect(() => {
+		document.getElementById("boot-splash")?.remove();
+	}, []);
+
 	return (
 		<div
 			className={cn(
 				"fixed inset-0 z-[200] flex flex-col items-center justify-center bg-app px-6",
-				reducedMotion ? "transition-none" : "transition-opacity duration-[180ms] ease-out",
+				reducedMotion
+					? "transition-none"
+					: `transition-opacity ${SPLASH_EXIT_CLASS} ease-out`,
 				exiting ? "pointer-events-none opacity-0" : "opacity-100",
-				!exiting && !reducedMotion ? "animate-splash-enter" : null,
+				!exiting && !reducedMotion && !skipEnterAnimation ? "animate-splash-enter" : null,
 			)}
 			role="status"
 			aria-live="polite"
 			aria-label="Loading Story Engine"
 		>
-			<BrandLogo className="h-20 w-20 animate-splash-logo" />
+			<BrandLogo
+				className={cn(
+					"h-20 w-20",
+					!exiting && !reducedMotion && !skipEnterAnimation ? "animate-splash-logo" : null,
+				)}
+			/>
 			<div className="mt-6 text-center">
 				<div className="text-xl font-semibold tracking-tight text-ink">Story Engine</div>
 				<div className="mt-1 text-xs tracking-[0.18em] text-ink-muted">v{APP_VERSION}</div>
