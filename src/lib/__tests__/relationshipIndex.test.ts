@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	applyRelationshipDeltas,
 	buildCharacterAllowlist,
 	canTrackRelationshipParticipant,
 	findPlayerNpcRelationshipIndex,
@@ -12,6 +11,7 @@ import {
 	reconcileRelationshipEntries,
 	resolveMergedTier,
 	sanitizeRelationshipTier,
+	simplifyRelationshipEntry,
 	stripRelationshipEndpointAnnotations,
 } from "../relationshipIndex";
 import type { RelationshipIndexEntry } from "../types/models";
@@ -42,7 +42,7 @@ describe("relationshipIndex", () => {
 		expect(merged?.length).toBe(1);
 		expect(merged?.[0]?.tier).toBe("confidant");
 		expect(merged?.[0]?.summary).toBe("They are reconnecting.");
-		expect(merged?.[0]?.trust).toBe(70);
+		expect(merged?.[0]?.trust).toBeUndefined();
 	});
 
 	it("merges near-duplicate relationship history beats", () => {
@@ -86,25 +86,6 @@ describe("relationshipIndex", () => {
 		expect(findPlayerNpcRelationshipIndex(entries, "Jamie", "Amy")).toBe(-1);
 	});
 
-	it("applyRelationshipDeltas only creates allowlisted characters", () => {
-		const allowlist = buildCharacterAllowlist({
-			playerName: "Jamie",
-			indexedCharacters: {
-				Jake: { name: "Jake" },
-			},
-		});
-		const result = applyRelationshipDeltas(
-			[],
-			[],
-			"Jamie",
-			[{ characterName: "Sun", emotionalState: "bright", howTheyDescribeYou: "n/a" }],
-			[{ characterName: "Jake", statusPhrase: "close but tense" }],
-			{ allowlist },
-		);
-		expect(result.length).toBe(1);
-		expect(result[0]?.b).toBe("Jake");
-	});
-
 	it("filters invalid Sun relationships on reconcile", () => {
 		const allowlist = buildCharacterAllowlist({
 			playerName: "Jamie",
@@ -131,7 +112,7 @@ describe("relationshipIndex", () => {
 		expect(makeRelationshipPairKey("Jamie", "Jake")).toBe(makeRelationshipPairKey("Jake", "Jamie"));
 	});
 
-	it("mergeRelationshipEntries combines inner life from both sides", () => {
+	it("mergeRelationshipEntries keeps summary and drops advanced RP fields", () => {
 		const merged = mergeRelationshipEntries(
 			{
 				a: "Jamie",
@@ -151,9 +132,26 @@ describe("relationshipIndex", () => {
 		);
 		expect(merged.tier).toBe("friend");
 		expect(merged.summary).toBe("Updated bond.");
-		expect(merged.npcInnerLife?.emotionalState).toBe("worried");
-		expect(merged.npcInnerLife?.howTheyDescribeYou).toBe("My kid.");
-		expect(merged.trust).toBe(65);
+		expect(merged.npcInnerLife).toBeUndefined();
+		expect(merged.trust).toBeUndefined();
+	});
+
+	it("simplifyRelationshipEntry strips stats and inner life", () => {
+		const simplified = simplifyRelationshipEntry({
+			a: "Jamie",
+			b: "Jake",
+			tier: "devoted",
+			summary: "Close family.",
+			trust: 90,
+			arc: { statusPhrase: "warm" },
+			npcInnerLife: { emotionalState: "proud" },
+		});
+		expect(simplified).toEqual({
+			a: "Jamie",
+			b: "Jake",
+			tier: "devoted",
+			summary: "Close family.",
+		});
 	});
 
 	it("collapses player name variants and removes garbage pairs from screenshot scenario", () => {

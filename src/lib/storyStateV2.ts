@@ -9,7 +9,6 @@ import {
 	buildCharacterAllowlist,
 	isIndexedPlayerCharacterDuplicate,
 	buildResolvedPlayerNameVariants,
-	mergePerTurnRelationshipFields,
 	reconcileRelationshipEntries,
 } from "./relationshipIndex";
 import { ensureIndexedCharacterStatus, dedupeStatusBullets } from "./characterStatus";
@@ -757,17 +756,6 @@ export function finalizeStoryStateForSave(params: {
     playerAliases: params.playerAliases,
     universeImportedCharacters: params.universeImportedCharacters,
   });
-
-  // For deep reindex, preserve per-turn data (npcInnerLife, arc, numeric metrics)
-  // accumulated in the existing relationship entries — the AI reindex only produces
-  // structural fields (tier, summary, history, evidence) and must not wipe live data.
-  if (params.mode === "deep" && reconciledIndexes?.relationships && previousV2.indexes?.relationships) {
-    const merged = mergePerTurnRelationshipFields(
-      reconciledIndexes.relationships,
-      previousV2.indexes.relationships,
-    );
-    reconciledIndexes = { ...reconciledIndexes, ...(merged ? { relationships: merged } : {}) };
-  }
 
   const base: StoryStateDataV2 = {
     ...previousV2,

@@ -709,7 +709,6 @@ export function StoryWorkspacePage() {
         const lastGoldChange = allGoldChanges?.at(-1);
         if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
-        if (result.appliedRelationshipDeltas?.length) setRelationshipsRefreshKey((k) => k + 1);
       }
       if (isStoryEndingMarker) {
         setShowSequelPrompt(true);
@@ -819,7 +818,6 @@ export function StoryWorkspacePage() {
         const lastGoldChange = allGoldChanges?.at(-1);
         if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
-        if (result.appliedRelationshipDeltas?.length) setRelationshipsRefreshKey((k) => k + 1);
       }
 
       // Write dice roll to eventLog after extractor has already saved rpStats

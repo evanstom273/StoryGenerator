@@ -154,17 +154,10 @@ import {
   resolveUserSpeakerNameForContinue,
   resolveUserSpeakerTypeForContinue,
 } from "../../lib/storyText/continueMode";
-import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { clampAudiobookParallelChapters } from "../../lib/ai/storyAudiobookParallel";
 import { normalizeAudiobookPerformanceMode } from "../../lib/ai/audiobookPerformance";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
-import { extractRpStatChanges, type RpRelationshipDelta, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
-import {
-  applyRelationshipDeltas,
-  buildCharacterAllowlist,
-  canTrackRelationshipParticipant,
-  findPlayerNpcRelationshipIndex,
-} from "../../lib/relationshipIndex";
+import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import {
   reconcileRelationshipsFromStateJson,
 } from "../../lib/storyRelationshipLoad";
@@ -519,7 +512,7 @@ interface StoryEngineContextValue {
     universeId?: string,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<string>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string; previousChapterContext?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void; onGenerationAttempt?: (attempt: number, maxAttempts: number) => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null; appliedRelationshipDeltas: RpRelationshipDelta[] | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string; previousChapterContext?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void; onGenerationAttempt?: (attempt: number, maxAttempts: number) => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string, opts?: { onChunk?: (chunk: string) => void; onChunkReset?: () => void; onGenerationAttempt?: (attempt: number, maxAttempts: number) => void; signal?: AbortSignal }) => Promise<StoryMessage>;
 }
@@ -6473,7 +6466,6 @@ export function StoryEngineProvider({
             appliedRpChanges: null,
             pendingCoreStatChanges: null,
             rpEventSummary: null,
-            appliedRelationshipDeltas: null,
           };
         }
 
@@ -6553,7 +6545,6 @@ export function StoryEngineProvider({
         let appliedRpChanges: RpChangelogEntry[] | null = null;
         let pendingCoreStatChanges: RpStatDelta[] | null = null;
         let rpEventSummary: string | null = null;
-        let appliedRelationshipDeltas: RpRelationshipDelta[] | null = null;
         let updatedMessages: StoryMessage[] = [];
 
         if (!shouldSkipAssistantReply) {
@@ -6974,50 +6965,6 @@ export function StoryEngineProvider({
 
           if (story.rpMode && story.rpConfig && currentRpStats) {
             try {
-              const rpPlayerName = playerCharacter.name;
-              // Load existing relationships before extraction so we can pass tiers to the extractor
-              const preExtractState = await repository.getStoryState(storyId);
-              const preExtractParsed = preExtractState?.stateJson
-                ? (() => { try { return JSON.parse(preExtractState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
-                : {} as Record<string, unknown>;
-              const preExtractRelationships: RelationshipIndexEntry[] = (() => {
-                try {
-                  const idx = (preExtractParsed as any)?.indexes?.relationships;
-                  return Array.isArray(idx) ? idx : [];
-                } catch { return []; }
-              })();
-              const preExtractIndexes = (preExtractParsed as any)?.indexes as Record<string, unknown> | undefined;
-              const indexedCharacters = preExtractIndexes?.characters as StoryIndexesV2["characters"] | undefined;
-              const universeImportedCharacters = effectiveUniverse.importedCharacters ?? [];
-
-              const relationshipAllowlist = buildCharacterAllowlist({
-                playerName: rpPlayerName,
-                indexedCharacters,
-                universeImportedCharacters,
-                existingRelationships: preExtractRelationships,
-              });
-
-              // Parse which established characters spoke in this scene (exclude player and Narrator)
-              const playerNameNorm = rpPlayerName.toLowerCase().trim();
-              const speakerNamesInScene = [
-                ...new Set(
-                  parseSceneBlocks(finalStreamText)
-                    .map((b) => b.speakerLabel?.trim())
-                    .filter(
-                      (l): l is string =>
-                        !!l &&
-                        l !== "Narrator" &&
-                        l.toLowerCase() !== playerNameNorm &&
-                        canTrackRelationshipParticipant(l, relationshipAllowlist, rpPlayerName),
-                    ),
-                ),
-              ];
-              const charactersInScene = speakerNamesInScene.map((name) => {
-                const idx = findPlayerNpcRelationshipIndex(preExtractRelationships, rpPlayerName, name);
-                const existing = idx !== -1 ? preExtractRelationships[idx] : undefined;
-                return existing ? { name, tier: existing.tier as string } : { name };
-              });
-
               const extracted = await extractRpStatChanges(
                 finalStreamText,
                 currentRpStats,
@@ -7030,11 +6977,10 @@ export function StoryEngineProvider({
                   universeLore: effectiveUniverse.description ?? undefined,
                   playerMessage: trimmed,
                   pendingTransaction: currentRpStats.pendingTransaction,
-                  charactersInScene: charactersInScene.length ? charactersInScene : undefined,
                 },
               );
               if (extracted) {
-                const { deltas: autoDeltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx, relationshipDeltas, npcInnerLifeUpdates, arcUpdates, suggestedCondition, characterStateSummary } = extracted;
+                const { deltas: autoDeltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx, suggestedCondition, characterStateSummary } = extracted;
 
                 let nextStats = currentRpStats;
                 const applied: RpChangelogEntry[] = [];
@@ -7156,39 +7102,6 @@ export function StoryEngineProvider({
                 const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" · ") : null;
                 const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" · ") || narrative || null;
 
-                const totalMessagesForIndex =
-                  typeof preExtractIndexes?.messageCount === "number" && Number.isFinite(preExtractIndexes.messageCount as number)
-                    ? Math.trunc(preExtractIndexes.messageCount as number)
-                    : sanitizedHistoryMessages.length + 1;
-
-                function buildIndexesWithRelationships(relationships: RelationshipIndexEntry[]) {
-                  const reconciled = reconcileStoryIndexes(
-                    { ...(preExtractIndexes ?? {}), relationships } as StoryIndexesV2,
-                    totalMessagesForIndex,
-                    {
-                      playerName: rpPlayerName,
-                      playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
-                      universeImportedCharacters,
-                    },
-                  );
-                  return reconciled ?? { ...(preExtractIndexes ?? {}), relationships };
-                }
-
-                // Compute updated relationships if any relationship data was returned
-                let updatedRelationships: RelationshipIndexEntry[] | null = null;
-                if (relationshipDeltas?.length || npcInnerLifeUpdates?.length || arcUpdates?.length) {
-                  const merged = applyRelationshipDeltas(
-                    preExtractRelationships,
-                    relationshipDeltas ?? [],
-                    rpPlayerName,
-                    npcInnerLifeUpdates,
-                    arcUpdates,
-                    { allowlist: relationshipAllowlist },
-                  );
-                  updatedRelationships = buildIndexesWithRelationships(merged).relationships ?? merged;
-                  if (relationshipDeltas?.length) appliedRelationshipDeltas = relationshipDeltas;
-                }
-
                 if (summary) {
                   const eventEntry: RpEventLogEntry = { ts: Date.now(), summary };
                   const prevLog: RpEventLogEntry[] = Array.isArray(nextStats.eventLog) ? nextStats.eventLog : [];
@@ -7198,30 +7111,23 @@ export function StoryEngineProvider({
                   const latestParsed = latestState?.stateJson
                     ? (() => { try { return JSON.parse(latestState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
                     : {} as Record<string, unknown>;
-                  const mergedState = updatedRelationships
-                    ? { ...latestParsed, rpStats: nextStats, indexes: { ...(latestParsed.indexes as object | undefined ?? {}), relationships: updatedRelationships } }
-                    : { ...latestParsed, rpStats: nextStats };
                   await repository.saveStoryState({
                     id: `story-state:${storyId}`,
                     storyId,
-                    stateJson: JSON.stringify(mergedState),
+                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
                     updatedAt: new Date().toISOString(),
                   });
                   appliedRpChanges = applied;
                   rpEventSummary = summary;
-                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState || extractedPendingTx !== undefined || characterStateSummary || suggestedCondition || updatedRelationships) {
-                  // NPC-only, time-only, pending-transaction, character-state, condition, or relationship-only changes still need to be saved
+                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState || extractedPendingTx !== undefined || characterStateSummary || suggestedCondition) {
                   const latestState = await repository.getStoryState(storyId);
                   const latestParsed = latestState?.stateJson
                     ? (() => { try { return JSON.parse(latestState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
                     : {} as Record<string, unknown>;
-                  const mergedState = updatedRelationships
-                    ? { ...latestParsed, rpStats: nextStats, indexes: { ...(latestParsed.indexes as object | undefined ?? {}), relationships: updatedRelationships } }
-                    : { ...latestParsed, rpStats: nextStats };
                   await repository.saveStoryState({
                     id: `story-state:${storyId}`,
                     storyId,
-                    stateJson: JSON.stringify(mergedState),
+                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
                     updatedAt: new Date().toISOString(),
                   });
                 }
@@ -7475,7 +7381,7 @@ export function StoryEngineProvider({
           } catch {}
         })();
 
-        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary, appliedRelationshipDeltas };
+        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary };
       },
     };
   }, [

@@ -75,8 +75,6 @@ export function RelationshipOverviewList({
 						</div>
 						{entry.summary ? (
 							<p className="mt-1 text-xs text-ink-muted line-clamp-2">{entry.summary}</p>
-						) : entry.arc?.statusPhrase ? (
-							<p className="mt-1 text-xs text-ink-muted line-clamp-2">{entry.arc.statusPhrase}</p>
 						) : null}
 					</div>
 				);

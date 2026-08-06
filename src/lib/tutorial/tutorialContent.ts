@@ -142,7 +142,7 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 						{
 							label: "Relationships",
 							description:
-								"Track bonds between characters with trust, affection, and other metrics the AI can reference.",
+								"Track bonds between characters with tier tags (Devoted, Family, Rival, etc.) and short summaries, updated when you index.",
 						},
 						{
 							label: "Manual entry",
@@ -279,7 +279,7 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 				},
 				{
 					type: "paragraph",
-					text: "Relationships tracks how characters feel about each other. Update or full reindex to sync with the transcript. The Archive view also surfaces relationship metrics with evidence links.",
+					text: "Relationships tracks how characters feel about each other using tier tags and short descriptions. Update or full reindex to sync with the transcript. The Archive view also surfaces relationships with evidence links.",
 				},
 			],
 		},
