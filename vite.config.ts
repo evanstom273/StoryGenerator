@@ -7,8 +7,18 @@ export default defineConfig({
 		react(),
 		VitePWA({
 			registerType: "autoUpdate",
-			includeAssets: ["favicon.svg", "apple-touch-icon.png", "mask-icon.svg"],
+			includeAssets: [
+				"favicon.svg",
+				"apple-touch-icon.png",
+				"mask-icon.svg",
+				"pwa-192x192.png",
+				"pwa-512x512.png",
+				"pwa-maskable-192x192.png",
+				"pwa-maskable-512x512.png",
+				"ios-splash/*.png",
+			],
 			manifest: {
+				id: "/",
 				name: "Story Engine",
 				short_name: "Story Engine",
 				description:
@@ -24,14 +34,22 @@ export default defineConfig({
 						src: "pwa-192x192.png",
 						sizes: "192x192",
 						type: "image/png",
+						purpose: "any",
 					},
 					{
 						src: "pwa-512x512.png",
 						sizes: "512x512",
 						type: "image/png",
+						purpose: "any",
 					},
 					{
-						src: "pwa-512x512.png",
+						src: "pwa-maskable-192x192.png",
+						sizes: "192x192",
+						type: "image/png",
+						purpose: "maskable",
+					},
+					{
+						src: "pwa-maskable-512x512.png",
 						sizes: "512x512",
 						type: "image/png",
 						purpose: "maskable",
