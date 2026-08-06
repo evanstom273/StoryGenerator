@@ -2,11 +2,13 @@ import {
 	buildPodcastChapterBreakdownSystemPrompt,
 	buildPodcastDiscussionSystemPrompt,
 } from "./podcastPrompt";
+import { buildNovelisationSystemPrompt } from "./novelisationPrompt";
 
 export type AiDocumentPresetId =
 	| "podcast-chapter-breakdown"
 	| "podcast-discussion"
 	| "story-summary"
+	| "novelisation"
 	| "character-guide"
 	| "timeline"
 	| "lore-bible"
@@ -60,6 +62,13 @@ export const AI_DOCUMENT_PRESETS: AiDocumentPreset[] = [
 
 Write a polished story summary suitable for a back-cover or wiki entry.
 Include setup, major turns, and where the story stands without spoiling beyond the source.`,
+	},
+	{
+		id: "novelisation",
+		displayName: "Novelisation",
+		filenameStem: "novelisation",
+		defaultStructure: "chapter-by-chapter",
+		systemPrompt: buildNovelisationSystemPrompt(),
 	},
 	{
 		id: "character-guide",

@@ -7,6 +7,11 @@ import {
 	buildPodcastFinalThoughtsSectionPrompt,
 	buildPodcastIntroductionSectionPrompt,
 } from "./podcastPrompt";
+import {
+	buildNovelisationChapterSectionPrompt,
+	buildNovelisationTitleSectionPrompt,
+	isNovelisationPreset,
+} from "./novelisationPrompt";
 
 function isPodcastPreset(preset: AiDocumentPreset) {
 	return preset.id === "podcast-chapter-breakdown" || preset.id === "podcast-discussion";
@@ -78,6 +83,26 @@ function buildChapterStructureInstructions(
 		priorDiscussions: string;
 	},
 ) {
+	if (isNovelisationPreset(preset.id)) {
+		if (section === "introduction") {
+			return buildNovelisationTitleSectionPrompt();
+		}
+
+		if (section === "chapter" && chapterLabel?.trim()) {
+			return buildNovelisationChapterSectionPrompt(chapterLabel);
+		}
+
+		if (section === "epilogue") {
+			return "";
+		}
+
+		return `
+Structure requirements:
+- A single top-level title heading
+- One ## chapter heading per source chapter in order
+- Continuous novel prose under each chapter heading`;
+	}
+
 	if (preset.id === "podcast-chapter-breakdown") {
 		if (section === "introduction") {
 			return buildPodcastIntroductionSectionPrompt();

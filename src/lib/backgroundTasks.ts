@@ -57,6 +57,7 @@ function getAiDocumentTaskLabel(job: BackgroundJob): string {
 		"podcast-chapter-breakdown": "Generating Podcast Breakdown",
 		"podcast-discussion": "Generating Podcast Discussion",
 		"story-summary": "Generating Story Summary",
+		novelisation: "Generating Novelisation",
 		"character-guide": "Generating Character Guide",
 		"timeline": "Generating Timeline",
 		"lore-bible": "Generating Lore Bible",

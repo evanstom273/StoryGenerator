@@ -9,6 +9,7 @@ import {
 	estimateChapterDiscussionCoverage,
 	formatPriorDiscussionsForPrompt,
 } from "./podcastPrompt";
+import { isNovelisationPreset } from "./novelisationPrompt";
 import { buildChapterSegmentedSourceMaterial, buildSourceMaterialFromStoryBundle } from "./sourceMaterial";
 
 type GenerateChunk = (messages: Array<{ role: "system" | "user"; content: string }>) => Promise<string>;
@@ -40,8 +41,9 @@ export async function generateChapterStructuredDocument(params: {
 	}
 
 	const isPodcastBreakdown = params.preset.id === "podcast-chapter-breakdown";
+	const isNovelisation = isNovelisationPreset(params.preset.id);
 
-	params.onProgress?.("Writing introduction…");
+	params.onProgress?.(isNovelisation ? "Writing title…" : "Writing introduction…");
 	const introMessages = buildAiDocumentMessages({
 		preset: params.preset,
 		customPrompt: params.customPrompt,
@@ -89,6 +91,10 @@ export async function generateChapterStructuredDocument(params: {
 		});
 		const section = await params.generateChunk(chapterMessages);
 		chapterSections.push(section.trim());
+	}
+
+	if (isNovelisation) {
+		return [introduction.trim(), ...chapterSections].filter(Boolean).join("\n\n");
 	}
 
 	params.onProgress?.(
