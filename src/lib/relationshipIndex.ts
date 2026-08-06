@@ -548,7 +548,6 @@ export function filterRelationshipEntries(
 			const involvesPlayer = relationshipInvolvesPlayer(entry, opts.playerName, playerVariants);
 			if (involvesPlayer) {
 				const aNorm = normalizeRelationshipKey(entry.a);
-				const bNorm = normalizeRelationshipKey(entry.b);
 				const other = playerVariants.has(aNorm) ? entry.b : entry.a;
 				if (!canTrackRelationshipParticipant(other, opts.allowlist)) return false;
 			} else {

@@ -154,7 +154,6 @@ import {
   resolveUserSpeakerNameForContinue,
   resolveUserSpeakerTypeForContinue,
 } from "../../lib/storyText/continueMode";
-import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { clampAudiobookParallelChapters } from "../../lib/ai/storyAudiobookParallel";
 import { normalizeAudiobookPerformanceMode } from "../../lib/ai/audiobookPerformance";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
