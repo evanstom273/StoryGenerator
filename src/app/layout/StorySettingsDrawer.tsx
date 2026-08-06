@@ -4,16 +4,9 @@ import { DownloadIcon, TrashIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
 import { MarkdownText } from "../../components/ui/MarkdownText";
 import { Panel } from "../../components/ui/Panel";
+
 import { downloadFile } from "../../lib/download";
-import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
-import {
-	buildCharacterGenderHintsFromStoryState,
-} from "../../lib/ai/characterTtsVoices";
-import { createStoryExportFilename, buildStoryAudiobookFilename } from "../../lib/exportFilename";
-import {
-	listStoryAudiobookChapterSegments,
-	synthesizeStoryAudiobookWav,
-} from "../../lib/ai/storyAudiobook";
+import { createStoryExportFilename } from "../../lib/exportFilename";
 import {
 	clampAudiobookParallelChapters,
 	DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
@@ -24,8 +17,7 @@ import {
 	normalizeAudiobookPerformanceMode,
 	type AudiobookPerformanceMode,
 } from "../../lib/ai/audiobookPerformance";
-import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
-import { buildCharacterTtsRegistryForStory } from "../../lib/storyText/messageSpeechText";
+import { AudiobookChapterProgressList } from "../../components/story/AudiobookChapterProgressList";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
 import { serializeStoryExport } from "../../lib/storyExport";
 import { buildStorySupportBundleZip } from "../../lib/supportBundle";
@@ -37,7 +29,6 @@ import {
 } from "../../lib/characterStatus";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { RelationshipOverviewList } from "../../components/story/RelationshipOverviewList";
-import { AudiobookChapterProgressList } from "../../components/story/AudiobookChapterProgressList";
 import { IndexingProgressPanel } from "../../components/story/IndexingProgressPanel";
 import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
 import { normalizePlayerCharacterAliases } from "../../lib/playerCharacterPrompt";
@@ -48,7 +39,6 @@ import type {
 	AutoIndexMode,
 	ExportFormat,
 	RelationshipIndexEntry,
-	StoryStateData,
 } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
@@ -170,7 +160,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     getPlayerCharacterById,
     getMessagesForStory,
     getChaptersForStory,
-    getStoryCharacterTtsRegistry,
     exportStory,
     fetchStoryState,
     loadStoryRelationships,
@@ -181,12 +170,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     getStoryAIConfig,
     saveStoryAIConfig,
     queueStoryIndexJob,
+    queueAudiobookJob,
     cancelBackgroundJob,
     cancelStoryIndexing,
     backgroundJobs,
     dismissJobNotice,
     jobNotice,
     rebuildStatus,
+    audiobookExportStatus,
   } = useStoryEngine();
 
   const story = storyId ? getStoryById(storyId) : undefined;
@@ -207,11 +198,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   });
   const { themeKey } = useTheme();
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
-  const [isExportingAudiobook, setIsExportingAudiobook] = useState(false);
   const [exportStage, setExportStage] = useState<string | null>(null);
-  const [exportAudiobookProgress, setExportAudiobookProgress] = useState<StoryAudiobookProgress | null>(
-    null,
-  );
   const [isSavingStory, setIsSavingStory] = useState(false);
   const [aiProviderType, setAiProviderType] = useState<AIProviderType>(
     aiSettings?.activeProviderType ?? "openai",
@@ -570,7 +557,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   }
 
   async function handleExportStoryAudiobook() {
-    if (!story || !playerCharacter) {
+    if (!story) {
       return;
     }
 
@@ -582,66 +569,16 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
     showError(null);
     showNotice(null);
-    setIsExportingAudiobook(true);
-    setExportStage("Preparing story audiobook…");
-    setExportAudiobookProgress(null);
 
     try {
-      const messages = getMessagesForStory(story.id);
-      const chapters = getChaptersForStory(story.id);
-      const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
-      const existingRegistry = getStoryCharacterTtsRegistry(story.id);
-      const characterGenders = buildCharacterGenderHintsFromStoryState(
-        storyStateData as StoryStateData | null,
-        {
-          playerName: playerCharacter.name,
-          playerGender: playerCharacter.gender,
-          playerPronouns: playerCharacter.pronouns,
-        },
-      );
-      const characterRegistry = buildCharacterTtsRegistryForStory(messages, {
-        playerName: playerCharacter.name,
-        narrationTts,
-        existingRegistry,
-        characterGenders,
-      });
-      const segments = listStoryAudiobookChapterSegments(messages, {
-        playerName: playerCharacter.name,
-        narrationTts,
-        characterRegistry,
-        chapters,
-        audiobookPerformanceMode,
-      });
-
-      if (!segments.length) {
-        showError("No speakable story content for audiobook export.");
-        return;
+      const result = await queueAudiobookJob(story.id);
+      if (result.duplicate) {
+        showNotice("Audiobook export already queued for this story.");
+      } else {
+        showNotice("Audiobook export queued. You can leave this page while it runs.");
       }
-
-      const wavBuffer = await synthesizeStoryAudiobookWav({
-        apiKey,
-        segments,
-        model: narrationTts.model,
-        parallelChapters: audiobookParallelChapters,
-        onProgress: (progress) => {
-          setExportAudiobookProgress(progress);
-          setExportStage(progress.summary);
-        },
-      });
-
-      setExportStage("Saving WAV…");
-      await downloadFile(
-        buildStoryAudiobookFilename(story.title),
-        wavBuffer,
-        "audio/wav",
-      );
-      showNotice("Story audiobook exported.");
     } catch (error) {
-      showError(error instanceof Error ? error.message : "Unable to export story audiobook.");
-    } finally {
-      setIsExportingAudiobook(false);
-      setExportStage(null);
-      setExportAudiobookProgress(null);
+      showError(error instanceof Error ? error.message : "Unable to queue audiobook export.");
     }
   }
 
@@ -752,6 +689,29 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       ? rebuildStatus
       : null;
   const isRebuilding = rebuildInfo ? rebuildInfo.phase === "loading" || rebuildInfo.phase === "extracting" || rebuildInfo.phase === "saving" : false;
+  const activeAudiobookJob = story
+    ? backgroundJobs.find(
+        (job) =>
+          job.type === "story_audiobook" &&
+          job.storyId === story.id &&
+          (job.status === "queued" || job.status === "running"),
+      )
+    : undefined;
+  const isExportingAudiobook = Boolean(
+    activeAudiobookJob ||
+      (audiobookExportStatus?.storyId === story?.id &&
+        audiobookExportStatus?.phase === "running"),
+  );
+  const audiobookExportProgress =
+    audiobookExportStatus?.storyId === story?.id
+      ? audiobookExportStatus?.progress ?? null
+      : null;
+  const audiobookExportStage =
+    audiobookExportStatus?.storyId === story?.id && audiobookExportStatus?.message
+      ? audiobookExportStatus.message
+      : activeAudiobookJob?.status === "queued"
+        ? "Queued for audiobook export…"
+        : null;
   const storyJobs = story
     ? backgroundJobs.filter((job) => job.storyId === story.id && job.status !== "cancelled")
     : [];
@@ -1227,9 +1187,12 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   {exportStage && (
                     <p className="text-xs text-muted-foreground px-1">{exportStage}</p>
                   )}
-                  {exportAudiobookProgress ? (
+                  {audiobookExportStage ? (
+                    <p className="text-xs text-muted-foreground px-1">{audiobookExportStage}</p>
+                  ) : null}
+                  {audiobookExportProgress ? (
                     <AudiobookChapterProgressList
-                      progress={exportAudiobookProgress}
+                      progress={audiobookExportProgress}
                       className="px-1"
                     />
                   ) : null}

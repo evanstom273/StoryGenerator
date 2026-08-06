@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Field, SelectInput, TextAreaInput } from "../forms/Fields";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
-import { downloadFile } from "../../lib/download";
-import { isGenerationFailureError } from "../../lib/ai/errors";
+import { getBackgroundTaskProgressLabel } from "../../lib/backgroundTasks";
 import {
 	GEMINI_TTS_MODEL_OPTIONS,
 	GEMINI_TTS_VOICE_CATALOG,
@@ -30,8 +29,10 @@ export function AiDocumentGeneratorTab() {
 		stories,
 		aiSettings,
 		saveAISettings,
-		generateAiDocument,
-		generateAiDocumentAudioFromMarkdown,
+		queueAiDocumentJob,
+		queuePodcastAudioJob,
+		cancelBackgroundJob,
+		backgroundJobs,
 	} = useStoryEngine();
 	const [sourceMode, setSourceMode] = useState<SourceMode>("library");
 	const [storyId, setStoryId] = useState("");
@@ -46,9 +47,8 @@ export function AiDocumentGeneratorTab() {
 	const [audioStatusMessage, setAudioStatusMessage] = useState<string | null>(null);
 	const [audioErrorMessage, setAudioErrorMessage] = useState<string | null>(null);
 	const [isGenerating, setIsGenerating] = useState(false);
-	const abortRef = useRef<AbortController | null>(null);
-	const uploadAudioResumeRef = useRef<{ key: string; pcmParts: Uint8Array[] } | null>(null);
-	const documentAudioResumeRef = useRef<{ key: string; pcmParts: Uint8Array[] } | null>(null);
+	const [activeDocumentJobId, setActiveDocumentJobId] = useState<string | null>(null);
+	const [activeAudioJobId, setActiveAudioJobId] = useState<string | null>(null);
 
 	const selectedPreset = getAiDocumentPreset(presetId);
 	const hasGeminiKey = Boolean(aiSettings?.apiKeys?.gemini?.trim());
@@ -127,6 +127,88 @@ export function AiDocumentGeneratorTab() {
 		}
 	}, [outputFormat, selectedPreset.supportsGeminiTts]);
 
+	useEffect(() => {
+		if (!activeDocumentJobId) {
+			return;
+		}
+
+		const job = backgroundJobs.find((entry) => entry.id === activeDocumentJobId);
+		if (!job) {
+			return;
+		}
+
+		if (job.status === "running" || job.status === "queued") {
+			setIsGenerating(true);
+			setStatusMessage(
+				job.status === "queued"
+					? "Queued…"
+					: getBackgroundTaskProgressLabel(job),
+			);
+			return;
+		}
+
+		if (job.status === "complete") {
+			setIsGenerating(false);
+			setStatusMessage(job.result?.notificationBody ?? "Document generation complete.");
+			setActiveDocumentJobId(null);
+			return;
+		}
+
+		if (job.status === "failed") {
+			setIsGenerating(false);
+			setErrorMessage(job.error ?? "Document generation failed.");
+			setActiveDocumentJobId(null);
+			return;
+		}
+
+		if (job.status === "cancelled") {
+			setIsGenerating(false);
+			setStatusMessage("Generation cancelled.");
+			setActiveDocumentJobId(null);
+		}
+	}, [activeDocumentJobId, backgroundJobs]);
+
+	useEffect(() => {
+		if (!activeAudioJobId) {
+			return;
+		}
+
+		const job = backgroundJobs.find((entry) => entry.id === activeAudioJobId);
+		if (!job) {
+			return;
+		}
+
+		if (job.status === "running" || job.status === "queued") {
+			setIsGenerating(true);
+			setAudioStatusMessage(
+				job.status === "queued"
+					? "Queued…"
+					: getBackgroundTaskProgressLabel(job),
+			);
+			return;
+		}
+
+		if (job.status === "complete") {
+			setIsGenerating(false);
+			setAudioStatusMessage(job.result?.notificationBody ?? "Podcast audio ready.");
+			setActiveAudioJobId(null);
+			return;
+		}
+
+		if (job.status === "failed") {
+			setIsGenerating(false);
+			setAudioErrorMessage(job.error ?? "Podcast audio generation failed.");
+			setActiveAudioJobId(null);
+			return;
+		}
+
+		if (job.status === "cancelled") {
+			setIsGenerating(false);
+			setAudioStatusMessage("Generation cancelled.");
+			setActiveAudioJobId(null);
+		}
+	}, [activeAudioJobId, backgroundJobs]);
+
 	async function handleGenerate() {
 		setErrorMessage(null);
 		setStatusMessage(null);
@@ -152,9 +234,6 @@ export function AiDocumentGeneratorTab() {
 		}
 
 		setIsGenerating(true);
-		const controller = new AbortController();
-		abortRef.current = controller;
-
 		try {
 			let source:
 				| { type: "story"; storyId: string; label: string }
@@ -179,70 +258,33 @@ export function AiDocumentGeneratorTab() {
 				};
 			}
 
-			setStatusMessage(
-				outputFormat === "gemini-audio-wav"
-					? "Generating document and Gemini audio…"
-					: "Generating document…",
-			);
-
-			const sourceKey =
-				sourceMode === "library"
-					? `story:${storyId}`
-					: `upload:${uploadFile!.name}:${uploadFile!.size}`;
-			const audioResume =
-				outputFormat === "gemini-audio-wav" &&
-				documentAudioResumeRef.current?.key === sourceKey
-					? { pcmParts: documentAudioResumeRef.current.pcmParts }
-					: undefined;
-
-			const result = await generateAiDocument({
+			const result = await queueAiDocumentJob({
 				source,
 				presetId,
 				customPrompt: presetId === AI_DOCUMENT_CUSTOM_PRESET_ID ? customPrompt : undefined,
 				structure,
 				outputFormat,
-				signal: controller.signal,
-				onProgress: (message) => setStatusMessage(message),
-				audioResume,
-				onAudioChunkComplete:
-					outputFormat === "gemini-audio-wav"
-						? (state) => {
-								documentAudioResumeRef.current = {
-									key: sourceKey,
-									pcmParts: state.pcmParts,
-								};
-								setStatusMessage(`Generating audio ${state.index + 1}/${state.total}…`);
-							}
-						: undefined,
 			});
 
-			await downloadFile(result.filename, result.content, result.mimeType);
-			documentAudioResumeRef.current = null;
-			setStatusMessage(`Downloaded ${result.filename}`);
-		} catch (error) {
-			if (isGenerationFailureError(error)) {
-				const failure = error.failure;
-				const isSilentCancel = failure.kind === "cancelled";
-				if (isSilentCancel) {
-					setStatusMessage("Generation cancelled.");
-				} else {
-					setErrorMessage(failure.summaryMessage);
-				}
-			} else if (error instanceof Error && /abort/i.test(error.message)) {
-				setStatusMessage("Generation cancelled.");
+			if (result.duplicate) {
+				setStatusMessage("This document is already queued or running.");
 			} else {
-				setErrorMessage(error instanceof Error ? error.message : "Unable to generate the document.");
+				setStatusMessage("Generation queued. You can leave this page while it runs.");
 			}
-		} finally {
+			setActiveDocumentJobId(result.job.id);
+		} catch (error) {
 			setIsGenerating(false);
-			abortRef.current = null;
+			setErrorMessage(error instanceof Error ? error.message : "Unable to queue document generation.");
 		}
 	}
 
 	function handleCancel() {
-		abortRef.current?.abort();
-		documentAudioResumeRef.current = null;
-		uploadAudioResumeRef.current = null;
+		if (activeDocumentJobId) {
+			void cancelBackgroundJob(activeDocumentJobId);
+		}
+		if (activeAudioJobId) {
+			void cancelBackgroundJob(activeAudioJobId);
+		}
 	}
 
 	async function handleGenerateAudioFromMarkdown() {
@@ -260,58 +302,22 @@ export function AiDocumentGeneratorTab() {
 		}
 
 		setIsGenerating(true);
-		const controller = new AbortController();
-		abortRef.current = controller;
-
 		try {
 			const markdown = await readMarkdownUploadFile(markdownAudioFile);
-			const resumeKey = `${markdownAudioFile.name}:${markdown.length}`;
-			const resume =
-				uploadAudioResumeRef.current?.key === resumeKey
-					? { pcmParts: uploadAudioResumeRef.current.pcmParts }
-					: undefined;
-
-			setAudioStatusMessage(
-				resume
-					? `Resuming audio at ${resume.pcmParts.length + 1}/…`
-					: "Generating Gemini podcast audio…",
-			);
-
-			const result = await generateAiDocumentAudioFromMarkdown({
+			const result = await queuePodcastAudioJob({
 				markdown,
 				label: markdownAudioFile.name,
-				signal: controller.signal,
-				resume,
-				onProgress: (message) => setAudioStatusMessage(message),
-				onChunkComplete: (state) => {
-					uploadAudioResumeRef.current = {
-						key: resumeKey,
-						pcmParts: state.pcmParts,
-					};
-					setAudioStatusMessage(`Generating audio ${state.index + 1}/${state.total}…`);
-				},
 			});
 
-			await downloadFile(result.filename, result.content, result.mimeType);
-			uploadAudioResumeRef.current = null;
-			setAudioStatusMessage(`Downloaded ${result.filename}`);
-		} catch (error) {
-			if (isGenerationFailureError(error)) {
-				const failure = error.failure;
-				const isSilentCancel = failure.kind === "cancelled";
-				if (isSilentCancel) {
-					setAudioStatusMessage("Generation cancelled.");
-				} else {
-					setAudioErrorMessage(failure.summaryMessage);
-				}
-			} else if (error instanceof Error && /abort/i.test(error.message)) {
-				setAudioStatusMessage("Generation cancelled.");
+			if (result.duplicate) {
+				setAudioStatusMessage("Podcast audio is already queued or running for this file.");
 			} else {
-				setAudioErrorMessage(error instanceof Error ? error.message : "Unable to generate audio.");
+				setAudioStatusMessage("Podcast audio queued. You can leave this page while it runs.");
 			}
-		} finally {
+			setActiveAudioJobId(result.job.id);
+		} catch (error) {
 			setIsGenerating(false);
-			abortRef.current = null;
+			setAudioErrorMessage(error instanceof Error ? error.message : "Unable to queue podcast audio.");
 		}
 	}
 
@@ -673,7 +679,6 @@ export function AiDocumentGeneratorTab() {
 							className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-[8px] file:border-0 file:bg-white/[0.06] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
 							onChange={(event) => {
 								setMarkdownAudioFile(event.target.files?.[0] ?? null);
-								uploadAudioResumeRef.current = null;
 							}}
 						/>
 					</Field>

@@ -4,6 +4,7 @@ import { buttonClasses } from "../../components/ui/Button";
 import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { APP_VERSION } from "../versioning/version";
+import { BackgroundTasksButton } from "../../components/BackgroundTasksPanel";
 
 function getInitials(name: string): string {
   return name
@@ -56,7 +57,8 @@ export function V2LeftSidebar({
 
       {/* Header: brandmark + quick actions */}
       <div className="flex-shrink-0 border-b border-[#161616] px-5 pb-4 pt-[22px]">
-        <div className="mb-4 flex items-center gap-2.5">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
           <svg
             width="22"
             height="22"
@@ -79,6 +81,8 @@ export function V2LeftSidebar({
           >
             STORY ENGINE
           </Link>
+          </div>
+          <BackgroundTasksButton />
         </div>
 
         <div className="flex gap-2">

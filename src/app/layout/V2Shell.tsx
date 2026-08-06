@@ -19,6 +19,7 @@ import { StorySettingsDrawer } from "./StorySettingsDrawer";
 import { PwaInstallBanner } from "../../components/PwaInstallBanner";
 import { V2LeftSidebar } from "./V2LeftSidebar";
 import { V2RightSidebar } from "./V2RightSidebar";
+import { BackgroundTasksButton } from "../../components/BackgroundTasksPanel";
 
 export function V2Shell() {
   const { storyId } = useParams();
@@ -197,6 +198,7 @@ export function V2Shell() {
           <header className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-divider bg-app/80 px-4 py-4 backdrop-blur-xl lg:hidden">
             <BrandMark compact />
             <div className="flex items-center gap-2">
+              <BackgroundTasksButton />
               <Button
                 variant="secondary"
                 size="sm"
