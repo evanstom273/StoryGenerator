@@ -30,7 +30,8 @@ describe("aiDocumentGenerator", () => {
 		expect(preset.displayName).toBe("Novelisation");
 		expect(preset.defaultStructure).toBe("chapter-by-chapter");
 		expect(preset.systemPrompt).toBe(buildNovelisationSystemPrompt());
-		expect(preset.systemPrompt).toContain("FORMAT CONVERSION");
+		expect(preset.systemPrompt).toContain("professional novel adaptor");
+		expect(preset.systemPrompt).toContain("FORMAT ADAPTATION");
 		expect(preset.systemPrompt).not.toContain("companion Markdown document");
 	});
 
@@ -46,7 +47,23 @@ describe("aiDocumentGenerator", () => {
 		});
 
 		expect(messages[0].content).toContain("Write ONLY the novel prose for Chapter II");
+		expect(messages[0].content).toContain("concise chapter title");
 		expect(messages[0].content).not.toContain("Sam");
+	});
+
+	it("includes author chapter title rules when a subtitle exists", () => {
+		const preset = getAiDocumentPreset("novelisation");
+		const messages = buildAiDocumentMessages({
+			preset,
+			sourceLabel: "Example Story",
+			sourceMaterial: "Chapter source",
+			structure: "chapter-by-chapter",
+			section: "chapter",
+			chapterLabel: "Chapter II: Principal's Office",
+		});
+
+		expect(messages[0].content).toContain("## Chapter II: Principal's Office");
+		expect(messages[0].content).not.toContain("concise chapter title");
 	});
 
 	it("includes podcast structure for chapter breakdown preset", () => {

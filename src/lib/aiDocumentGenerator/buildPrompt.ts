@@ -98,8 +98,8 @@ function buildChapterStructureInstructions(
 
 		return `
 Structure requirements:
-- A single top-level title heading
-- One ## chapter heading per source chapter in order
+- A single top-level title heading only when generating the full document in one pass
+- One ## chapter heading per source chapter in order, each appearing exactly once
 - Continuous novel prose under each chapter heading`;
 	}
 
