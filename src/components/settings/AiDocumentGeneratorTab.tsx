@@ -426,8 +426,9 @@ export function AiDocumentGeneratorTab() {
 							</div>
 							<div className="grid gap-6 md:grid-cols-2">
 							<Field
-								label="Sam voice (host one)"
+								label="Morgan voice (host one)"
 								hint={podcastTts.hostOneVoice}
+								help="Voice for the first podcast host in generated recap scripts."
 							>
 								<SelectInput
 									value={podcastTts.hostOneVoice}
@@ -454,8 +455,9 @@ export function AiDocumentGeneratorTab() {
 								</SelectInput>
 							</Field>
 							<Field
-								label="Alex voice (host two)"
+								label="Casey voice (host two)"
 								hint={podcastTts.hostTwoVoice}
+								help="Voice for the second podcast host in generated recap scripts."
 							>
 								<SelectInput
 									value={podcastTts.hostTwoVoice}
@@ -525,7 +527,7 @@ export function AiDocumentGeneratorTab() {
 						</div>
 
 						{sourceMode === "library" ? (
-							<Field label="Story" hint="From your Story Engine library">
+							<Field label="Story" hint="From your Story Engine library" help="Pick a saved story to convert into a document or audio script.">
 								<SelectInput
 									value={storyId}
 									onChange={(event) => setStoryId(event.target.value)}
@@ -555,7 +557,10 @@ export function AiDocumentGeneratorTab() {
 
 					<div className="space-y-4">
 						<div className="grid gap-6 md:grid-cols-2">
-							<Field label="Document type">
+							<Field
+								label="Document type"
+								help="Choose a preset such as novelisation, podcast recap, or timeline summary. Each preset shapes structure and tone."
+							>
 								<SelectInput
 									value={presetId}
 									onChange={(event) => setPresetId(event.target.value as AiDocumentPresetId)}
@@ -566,7 +571,10 @@ export function AiDocumentGeneratorTab() {
 									))}
 								</SelectInput>
 							</Field>
-							<Field label="Structure">
+							<Field
+								label="Structure"
+								help="Chapter-by-chapter writes one section per story chapter. Single document merges everything into one file."
+							>
 								<SelectInput
 									value={structure}
 									onChange={(event) =>
@@ -605,7 +613,11 @@ export function AiDocumentGeneratorTab() {
 						) : null}
 
 						{presetId === AI_DOCUMENT_CUSTOM_PRESET_ID ? (
-							<Field label="Custom instructions" hint="Describe the document to generate">
+							<Field
+								label="Custom instructions"
+								hint="Describe the document to generate"
+								help="Optional extra guidance for the AI — tone, audience, sections to include, or things to avoid."
+							>
 								<TextAreaInput
 									value={customPrompt}
 									onChange={(event) => setCustomPrompt(event.target.value)}

@@ -9,22 +9,28 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { EntityId, Universe } from "../../types/models";
 import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } from "../../lib/playerCharacterPrompt";
 import { cn } from "../../utils/cn";
+import { HelpBubble } from "../ui/HelpBubble";
 
 export function Field({
   label,
   hint,
+  help,
   action,
   children,
 }: {
   label: string;
   hint?: string;
+  help?: string;
   action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <label className="block space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[13px] font-medium text-ink-soft">{label}</span>
+        <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink-soft">
+          {label}
+          {help ? <HelpBubble text={help} label={`Help: ${label}`} /> : null}
+        </span>
         <div className="flex items-center gap-2">
           {hint ? <span className="text-[11px] text-ink-muted">{hint}</span> : null}
           {action}
@@ -291,7 +297,7 @@ export function MultiUniversePicker({
 export function AliasesInput({
 	value,
 	onChange,
-	placeholder = "Jamie, Potter, Detective Potter…",
+	placeholder = "Alex, Rivera, Detective Rivera…",
 	disabled,
 }: {
 	value: string[];
@@ -372,7 +378,7 @@ export function AliasesInput({
 export function KnownTiesInput({
 	value,
 	onChange,
-	placeholder = "Jake Peralta — father, Amy Santiago — mother…",
+	placeholder = "Morgan Reyes — mentor, Elena Reyes — sibling…",
 	disabled,
 }: {
 	value: string[];

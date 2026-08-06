@@ -827,7 +827,11 @@ export function SettingsPage() {
                     </SelectInput>
                   </Field>
                 ))}
-                <Field label="API Key" hint={provider.configured ? "Saved locally" : "Required"}>
+                <Field
+                  label="API Key"
+                  hint={provider.configured ? "Saved locally" : "Required"}
+                  help="Stored only on this device. Required before the AI can generate story content."
+                >
                   <TextInput
                     type="password"
                     value={provider.keyInput}
@@ -848,6 +852,7 @@ export function SettingsPage() {
               <Field
                 label="Maximum Concurrent Background Tasks"
                 hint="Long-running index, audiobook, document, and podcast jobs share this queue."
+                help="Lower values reduce API load; higher values finish queued jobs sooner when you run several at once."
               >
                 <SelectInput
                   value={String(maxConcurrentBackgroundTasks)}

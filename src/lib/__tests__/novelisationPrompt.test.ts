@@ -26,9 +26,9 @@ describe("novelisationPrompt", () => {
 
 	it("extracts metadata-only source for the title step", () => {
 		const fullSource = [
-			"Story: Jamie's Tales",
+			"Story: Example Story",
 			"Universe: School Days",
-			"Protagonist: Jamie",
+			"Protagonist: Alex",
 			"Summary: A school adventure.",
 			"",
 			"## Chapter I",
@@ -45,7 +45,7 @@ describe("novelisationPrompt", () => {
 			"Chapter II",
 		]);
 
-		expect(titleSource).toContain("Story: Jamie's Tales");
+		expect(titleSource).toContain("Story: Example Story");
 		expect(titleSource).toContain("Chapters in order (2): Chapter I · Chapter II");
 		expect(titleSource).toContain("Do not novelise transcript content");
 		expect(titleSource).not.toContain("Hello world");
@@ -53,14 +53,14 @@ describe("novelisationPrompt", () => {
 
 	it("strips chapter prose accidentally generated during the title step", () => {
 		const intro = [
-			"# Jamie's Tales",
+			"# Example Story",
 			"",
 			"## Chapter I",
 			"",
 			"Some prose that should not be here.",
 		].join("\n");
 
-		expect(stripNovelisationTitleOverflow(intro)).toBe("# Jamie's Tales");
+		expect(stripNovelisationTitleOverflow(intro)).toBe("# Example Story");
 	});
 
 	it("dedupes repeated chapter sections by heading", () => {
@@ -78,12 +78,12 @@ describe("novelisationPrompt", () => {
 
 	it("assembles the final novel document once per chapter", () => {
 		const output = assembleNovelisationDocument(
-			"# Jamie's Tales\n\n## Chapter I\n\nOverflow.",
+			"# Example Story\n\n## Chapter I\n\nOverflow.",
 			["## Chapter I\n\nOpening scene.", "## Chapter II\n\nNext scene."],
 		);
 
 		expect(output).toBe(
-			["# Jamie's Tales", "## Chapter I\n\nOpening scene.", "## Chapter II\n\nNext scene."].join(
+			["# Example Story", "## Chapter I\n\nOpening scene.", "## Chapter II\n\nNext scene."].join(
 				"\n\n",
 			),
 		);

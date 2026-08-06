@@ -1958,7 +1958,7 @@ export function StoryWorkspacePage() {
                   }))
                 }
                 disabled={isReadOnly}
-                placeholder="Example: Jake Peralta"
+                placeholder="Example: Captain Reyes"
               />
             </Field>
           ) : null}

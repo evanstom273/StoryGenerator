@@ -329,6 +329,7 @@ export function PlayerCharacterFormPage() {
             <Field
               label="Name"
               hint={resolveFieldHint(formState.name, "Required")}
+              help="The primary name the AI uses when this character speaks or is mentioned."
               action={renderFieldRandomizeAction(["name"])}
             >
               <TextInput
@@ -339,11 +340,15 @@ export function PlayerCharacterFormPage() {
                     name: event.target.value,
                   }))
                 }
-                placeholder="Jamie Mercer"
+                placeholder="Alex Rivera"
               />
             </Field>
 
-            <Field label="Universes" hint="Select one or more">
+            <Field
+              label="Universes"
+              hint="Select one or more"
+              help="Attach this character to one or more worlds. They can appear in any story set in those universes."
+            >
               <MultiUniversePicker
                 universes={universes}
                 selectedIds={formState.universeIds ?? (formState.universeId ? [formState.universeId] : [])}
@@ -357,7 +362,11 @@ export function PlayerCharacterFormPage() {
               />
             </Field>
 
-            <Field label="Aliases" hint="Alternative names the AI should recognise">
+            <Field
+              label="Aliases"
+              hint="Alternative names the AI should recognise"
+              help="Nicknames, titles, or surnames the model should treat as the same person."
+            >
               <AliasesInput
                 value={normalizePlayerCharacterAliases(formState.aliases)}
                 disabled={isGenerating || isSubmitting}
@@ -374,6 +383,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Known ties"
             hint="Optional canon characters and relationships the AI may reference when generating this character"
+            help="List important NPCs and how they relate — for example mentor, sibling, or rival — without importing an entire cast."
           >
             <KnownTiesInput
               value={normalizePlayerCharacterKnownTies(formState.knownTies)}
@@ -390,6 +400,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Character Concept"
             hint={resolveFieldHint(formState.characterConcept ?? "")}
+            help="A one-line pitch: role, vibe, and core conflict. Used when generating or randomising the rest of the sheet."
             action={
               <Button
                 type="button"

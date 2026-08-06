@@ -497,7 +497,11 @@ export function StoryCreatePage() {
       <Panel variant="flat" padding="lg">
         <form className="space-y-8" onSubmit={handleSubmit}>
           <div className="grid gap-6 lg:grid-cols-2">
-            <Field label="Universes" hint="Select one or more">
+            <Field
+              label="Universes"
+              hint="Select one or more"
+              help="Stories can use one world or several for crossovers. The AI draws lore from every universe you select."
+            >
               <MultiUniversePicker
                 universes={universes}
                 selectedIds={
@@ -529,7 +533,11 @@ export function StoryCreatePage() {
               />
             </Field>
 
-            <Field label="Protagonist" hint="Required">
+            <Field
+              label="Protagonist"
+              hint="Required"
+              help="The character you control. Everyone else is played by the AI."
+            >
               {isDerivedMode ? (
                 <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/50 px-4 py-3 text-sm text-ink-muted">
                   {isBranchMode
@@ -631,7 +639,7 @@ export function StoryCreatePage() {
                         name: event.target.value,
                       }))
                     }
-                    placeholder="Jamie Mercer"
+                    placeholder="Alex Rivera"
                   />
                 </Field>
                 <Field label="Pronouns">
@@ -828,7 +836,7 @@ export function StoryCreatePage() {
               AI (per story)
             </div>
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <Field label="Provider Type">
+              <Field label="Provider Type" help="Which AI service generates this story. Override the global default from Settings for this story only.">
                 <SelectInput
                   value={storyProviderType}
                   onChange={(event) => {
@@ -846,7 +854,7 @@ export function StoryCreatePage() {
                   <option value="anthropic">Anthropic</option>
                 </SelectInput>
               </Field>
-              <Field label="Model">
+              <Field label="Model" help="The specific model used for chat generation in this story. Faster models respond quicker; larger models may follow complex lore more closely.">
                 <SelectInput
                   value={storyModel}
                   onChange={(event) => setStoryModel(event.target.value)}
@@ -890,7 +898,7 @@ export function StoryCreatePage() {
           ) : null}
 
           <div className="space-y-6">
-            <Field label="Story Title" hint="Required">
+            <Field label="Story Title" hint="Required" help="Shown in your library and story header. You can rename it later in story settings.">
               <TextInput
                 value={formState.title}
                 onChange={(event) =>
@@ -901,10 +909,10 @@ export function StoryCreatePage() {
                 }
                 placeholder={
                   isBranchMode
-                    ? "Example: Davies Chronicles (Branch)"
+                    ? "Example: Starfall Saga (Branch)"
                     : isSequelMode
-                    ? "Example: Davies Chronicles II"
-                    : "Example: Brooklyn Nine-Nine: Jamie Mercer"
+                    ? "Example: Starfall Saga II"
+                    : "Example: The Harbor Job: Alex Rivera"
                 }
               />
             </Field>
@@ -913,6 +921,11 @@ export function StoryCreatePage() {
               <Field
                 label={isSequelMode ? "Sequel Setup Note" : "Current Summary"}
                 hint="Optional"
+                help={
+                  isSequelMode
+                    ? "Optional notes added on top of canon inherited from the previous story."
+                    : "A short overview of where the story begins. The AI uses this for context before you write the first scene."
+                }
               >
                 <TextAreaInput
                   value={formState.currentSummary}
@@ -936,6 +949,7 @@ export function StoryCreatePage() {
                 <Field
                   label="Mature fiction (non-graphic)"
                   hint="Defaults to on for new stories"
+                  help="Allows adult themes and non-graphic intimacy when appropriate to the scene. Does not enable explicit content."
                 >
                   <SelectInput
                     value={formState.matureFictionMode ? "on" : "off"}
@@ -950,7 +964,11 @@ export function StoryCreatePage() {
                     <option value="off">Off</option>
                   </SelectInput>
                 </Field>
-                <Field label="RP mode" hint="Track HP, currency, and core stats">
+                <Field
+                  label="RP mode"
+                  hint="Track HP, currency, and core stats"
+                  help="Turns on health, currency, dice rolls, and a character sheet overlay for tabletop-style play."
+                >
                   <SelectInput
                     value={formState.rpMode ? "on" : "off"}
                     onChange={(event) =>

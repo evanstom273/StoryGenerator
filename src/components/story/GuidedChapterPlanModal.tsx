@@ -366,7 +366,7 @@ export function GuidedChapterPlanModal(props: {
 													}
 													placeholder={
 														sceneIndex === 0
-															? "Jamie meets Cmdr Grayson in her office."
+															? "The protagonist meets the station commander in her office."
 															: "What happens next in this chapter?"
 													}
 												/>

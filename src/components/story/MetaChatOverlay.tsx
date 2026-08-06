@@ -487,7 +487,7 @@ export function MetaChatOverlay(props: {
                     <div><span className="font-semibold text-ink-soft">@Story</span> adds another story to the context.</div>
                     <div><span className="font-semibold text-ink-soft">@Character</span> compares or pulls in a character.</div>
                     <div><span className="font-semibold text-ink-soft">@Universe</span> compares tone, canon fit, and world assumptions.</div>
-                    <div>Partial matches work, so you can use shorthand like <span className="font-semibold text-ink-soft">@Davies</span>, <span className="font-semibold text-ink-soft">@Jamie</span>, or <span className="font-semibold text-ink-soft">@Brooklyn</span>.</div>
+                    <div>Partial matches work, so you can use shorthand like <span className="font-semibold text-ink-soft">@Harbor</span>, <span className="font-semibold text-ink-soft">@Alex</span>, or <span className="font-semibold text-ink-soft">@Saga</span>.</div>
                   </div>
                   {exampleStories.length ? (
                     <div className="mt-3">

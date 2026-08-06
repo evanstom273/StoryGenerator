@@ -354,7 +354,7 @@ export function UniverseFormPage() {
             </div>
           )}
 
-          <Field label="Universe Name" hint="Required">
+          <Field label="Universe Name" hint="Required" help="The display name for this world in your library and story picker.">
             <TextInput
               value={formState.name}
               onChange={(event) =>
@@ -368,7 +368,11 @@ export function UniverseFormPage() {
           </Field>
 
           {effectiveMode === "custom" ? (
-            <Field label="Universe Concept" hint="Required">
+            <Field
+              label="Universe Concept"
+              hint="Required"
+              help="A short prompt describing the kind of world you want. The generator expands this into a full blueprint."
+            >
               <TextAreaInput
                 value={formState.concept ?? ""}
                 onChange={(event) =>
@@ -385,6 +389,7 @@ export function UniverseFormPage() {
           <Field
             label="Description"
             hint="Player-facing (shown in universe lists)"
+            help="What players see when browsing universes. Summarise the setting, rules, and central tensions."
           >
             <TextAreaInput
               value={formState.description}
@@ -400,7 +405,11 @@ export function UniverseFormPage() {
 
           {effectiveMode === "referenced" ? (
             <>
-              <Field label="Reference Sources" hint={isImportMode ? "At least one source is required" : "Ordered highest to lowest precedence"}>
+              <Field
+                label="Reference Sources"
+                hint={isImportMode ? "At least one source is required" : "Ordered highest to lowest precedence"}
+                help="Wiki or reference URLs the AI should treat as canon. Higher entries override lower ones when facts conflict."
+              >
                 <div className="space-y-3">
                   {(formState.wikiUrls?.length
                     ? formState.wikiUrls
@@ -636,7 +645,7 @@ export function UniverseFormPage() {
               </Button>
 
               {(formState.universeBlueprint ?? "").trim() ? (
-                <Field label="Universe Blueprint">
+                <Field label="Universe Blueprint" help="Detailed world bible used by the AI during play. Edit after generating or write your own.">
                   <TextAreaInput
                     value={formState.universeBlueprint ?? ""}
                     onChange={(event) =>

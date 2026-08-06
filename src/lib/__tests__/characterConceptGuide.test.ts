@@ -12,7 +12,8 @@ describe("characterConceptGuide", () => {
 		expect(CHARACTER_CONCEPT_DEFINITION).toContain(
 			"If this character walked into the first chapter of the story",
 		);
-		expect(CHARACTER_CONCEPT_EXAMPLE).toContain("Jake and Amy's son");
+		expect(CHARACTER_CONCEPT_EXAMPLE).toContain("Alex Rivera");
+		expect(CHARACTER_CONCEPT_EXAMPLE).toContain("Harbor District");
 	});
 
 	it("formats the guide for prompts", () => {
@@ -25,7 +26,7 @@ describe("characterConceptGuide", () => {
 describe("buildCharacterConceptGeneratorSystemPrompt", () => {
 	it("embeds the internal character concept guide", () => {
 		const prompt = buildCharacterConceptGeneratorSystemPrompt({});
-		expect(prompt).toContain("Jake and Amy's son");
+		expect(prompt).toContain("Alex Rivera");
 		expect(prompt).toContain("inspire the rest of the character sheet");
 	});
 });
