@@ -291,14 +291,14 @@ export function LibrarySearchOverlay({
 				className={cn(
 					"absolute inset-x-0 bottom-0 bg-app/85 backdrop-blur-sm lg:inset-0",
 					OVERLAY_BACKDROP_CLASS,
-					"top-16 lg:top-0",
+					"top-14 lg:top-0",
 				)}
 				onClick={onClose}
 			/>
 			<div
 				className={cn(
 					"absolute inset-x-0 bottom-0 flex flex-col overflow-hidden border-divider bg-app shadow-hero",
-					"top-16 border-t lg:top-10 lg:bottom-auto lg:left-1/2 lg:max-h-[min(85dvh,calc(100dvh-5rem))] lg:w-[min(980px,calc(100vw-2rem))] lg:-translate-x-1/2 lg:rounded-[14px] lg:border",
+					"top-14 border-t lg:top-10 lg:bottom-auto lg:left-1/2 lg:max-h-[min(85dvh,calc(100dvh-5rem))] lg:w-[min(980px,calc(100vw-2rem))] lg:-translate-x-1/2 lg:rounded-[14px] lg:border",
 					"pb-[env(safe-area-inset-bottom,0px)]",
 				)}
 			>
