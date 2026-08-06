@@ -32,6 +32,7 @@ import { DiceRollModal, type DiceRollResult } from "../components/story/DiceRoll
 import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
 import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
+import { normalizePlayerCharacterAliases } from "../lib/playerCharacterPrompt";
 import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
@@ -1609,6 +1610,7 @@ export function StoryWorkspacePage() {
           <StoryArchiveView
             storyId={activeStory.id}
             playerName={activePlayerCharacter?.name}
+            playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter?.aliases)}
             relationshipsRefreshKey={relationshipsRefreshKey}
           />
         ) : messages.length ? (
@@ -2034,6 +2036,7 @@ export function StoryWorkspacePage() {
           open={relationshipsOpen}
           storyId={storyId}
           playerName={activePlayerCharacter?.name}
+          playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter?.aliases)}
           universeImportedCharacters={activeStory?.universePackSnapshot?.universe?.importedCharacters}
           onClose={() => setRelationshipsOpen(false)}
           refreshKey={relationshipsRefreshKey}

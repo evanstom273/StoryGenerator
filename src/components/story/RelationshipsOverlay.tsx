@@ -3,6 +3,7 @@ import { Button } from "../ui/Button";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import type { RelationshipHistoryEntry, RelationshipIndexEntry, RelationshipTier } from "../../types/models";
 import { makeRelationshipPairKey } from "../../lib/relationshipIndex";
+import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
 import { cn } from "../../utils/cn";
 
 const TIER_GROUPS: { label: string; tiers: RelationshipTier[] }[] = [
@@ -269,6 +270,7 @@ export function RelationshipsOverlay(props: {
 	open: boolean;
 	storyId: string;
 	playerName?: string;
+	playerAliases?: string[];
 	universeImportedCharacters?: string[];
 	onClose: () => void;
 	refreshKey?: number;
@@ -304,7 +306,7 @@ export function RelationshipsOverlay(props: {
 
 	const pcName = props.playerName?.trim().toLowerCase() ?? "";
 	const filtered = filter === "player" && pcName
-		? relationships.filter((r) => r.a.trim().toLowerCase() === pcName || r.b.trim().toLowerCase() === pcName)
+		? filterPlayerRelationships(relationships, props.playerName, props.playerAliases)
 		: relationships;
 	const sorted = sortByTier(filtered);
 

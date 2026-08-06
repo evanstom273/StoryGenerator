@@ -198,4 +198,45 @@ describe("relationshipIndex", () => {
 		expect(canTrackRelationshipParticipant("Sun", allowlist, "Jamie Mercer")).toBe(false);
 		expect(canTrackRelationshipParticipant("Jamie", allowlist, "Jamie Mercer")).toBe(false);
 	});
+
+	it("merges James Peralta and Jamie Peralta when legal name and nickname refer to the same player", () => {
+		const indexedCharacters = {
+			"Jamie Peralta": {
+				name: "Jamie Peralta",
+				aliases: ["Jamie", "James Peralta", "James"],
+			},
+			"Jake Peralta": { name: "Jake Peralta" },
+			"Amy Santiago": { name: "Amy Santiago" },
+		};
+		const allowlist = buildCharacterAllowlist({
+			playerName: "James Peralta",
+			playerAliases: ["Jamie"],
+			indexedCharacters,
+		});
+		const cleaned = reconcileRelationshipEntries(
+			[
+				{ a: "Jake Peralta", b: "Jamie Peralta", tier: "devoted", summary: "Close father and son." },
+				{ a: "James Peralta", b: "Jamie Peralta", tier: "family" },
+				{ a: "Jake Peralta", b: "James Peralta", tier: "family" },
+				{ a: "Amy Santiago", b: "James Peralta", tier: "family" },
+			],
+			new Map([
+				["jamie peralta", "Jamie Peralta"],
+				["jamie", "Jamie Peralta"],
+				["james peralta", "Jamie Peralta"],
+				["james", "Jamie Peralta"],
+			]),
+			{
+				playerName: "James Peralta",
+				playerAliases: ["Jamie"],
+				allowlist,
+				indexedCharacters,
+			},
+		);
+
+		expect(cleaned?.some((entry) => entry.a === "James Peralta" && entry.b === "Jamie Peralta")).toBe(false);
+		expect(cleaned?.some((entry) => entry.a === "Jamie Peralta" && entry.b === "James Peralta")).toBe(false);
+		expect(cleaned?.filter((entry) => entry.a === "James Peralta" || entry.b === "James Peralta").length).toBe(2);
+		expect(cleaned?.find((entry) => entry.b === "Jake Peralta" || entry.a === "Jake Peralta")?.tier).toBe("devoted");
+	});
 });

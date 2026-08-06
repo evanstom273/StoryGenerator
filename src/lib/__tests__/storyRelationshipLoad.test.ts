@@ -38,4 +38,37 @@ describe("storyRelationshipLoad", () => {
 		expect(relationships.length).toBe(1);
 		expect(relationshipCounterparty(relationships[0]!, "Jamie Mercer")).toBe("Dr. Aris");
 	});
+
+	it("collapses James/Jamie protagonist duplicates from archived Brooklyn 99 shape", () => {
+		const stateJson = JSON.stringify({
+			updatedAt: "2026-08-06T00:00:00.000Z",
+			characters: {},
+			worldFacts: [],
+			unresolvedThreads: [],
+			indexes: {
+				characters: {
+					"Jamie Peralta": {
+						name: "Jamie Peralta",
+						aliases: ["Jamie", "James Peralta", "James"],
+					},
+					"Jake Peralta": { name: "Jake Peralta" },
+					"Amy Santiago": { name: "Amy Santiago" },
+				},
+				relationships: [
+					{ a: "Jake Peralta", b: "Jamie Peralta", tier: "devoted", summary: "Loving father and son." },
+					{ a: "Amy Santiago", b: "Jamie Peralta", tier: "devoted", summary: "Close mother and son." },
+					{ a: "James Peralta", b: "Jamie Peralta", tier: "family" },
+					{ a: "Jake Peralta", b: "James Peralta", tier: "family" },
+				],
+			},
+		});
+		const { relationships, indexes } = reconcileRelationshipsFromStateJson(stateJson, {
+			playerName: "James Peralta",
+			playerAliases: ["Jamie"],
+			messageCount: 19,
+		});
+		expect(relationships.some((entry) => entry.a.includes("Jamie Peralta") && entry.b.includes("James Peralta"))).toBe(false);
+		expect(relationships.filter((entry) => entry.a === "James Peralta" || entry.b === "James Peralta").length).toBe(2);
+		expect(indexes?.characters?.["Jamie Peralta"]).toBeUndefined();
+	});
 });
