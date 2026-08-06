@@ -4,7 +4,7 @@ import { cn } from "../utils/cn";
 import { PageHeader } from "../components/PageHeader";
 import { DatabaseIcon } from "../components/icons";
 import { Badge } from "../components/ui/Badge";
-import { Field, SelectInput, TextInput } from "../components/forms/Fields";
+import { Field, FieldLabel, SelectInput, TextInput } from "../components/forms/Fields";
 import { Button } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
@@ -45,21 +45,25 @@ const MODEL_ROLE_OPTIONS = [
     role: "story" as const,
     label: "Story Model",
     hint: "Story generation, Director replies, Continue, guided chapters, and Story History",
+    help: "Used for live play: chat replies, Director beats, Continue, guided chapters, and Story History generation.",
   },
   {
     role: "metachat" as const,
     label: "MetaChat Model",
     hint: "MetaChat only",
+    help: "Powers MetaChat — out-of-character planning and questions without changing the story transcript.",
   },
   {
     role: "indexing" as const,
     label: "Indexing Model",
     hint: "Indexing, archive rebuilding, summaries, relationships, world facts, and memories",
+    help: "Extracts canon state from messages: summaries, relationships, world facts, and archive rebuilds.",
   },
   {
     role: "creation" as const,
     label: "Character & Universe Generation Model",
     hint: "Player character generation, universe generation, and related creation tools",
+    help: "Drafts player characters, universe blueprints, and other creation-tool outputs.",
   },
 ] as const;
 
@@ -713,7 +717,13 @@ export function SettingsPage() {
           </Panel>
 
           <Panel variant="flat">
-            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Text Size</div>
+            <div className="flex items-center justify-between gap-3">
+              <FieldLabel
+                label="Text size"
+                help="Scales readable text across the app. Stored locally on this device."
+                labelClassName="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft"
+              />
+            </div>
             <div className="mt-3">
               <Field label="">
                 <SelectInput
@@ -753,7 +763,11 @@ export function SettingsPage() {
         <div className="space-y-4">
           <Panel variant="flat">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Active Provider</div>
+              <FieldLabel
+                label="Active Provider"
+                help="Default AI service for new stories. Each story can override provider and model in its settings."
+                labelClassName="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft"
+              />
               {providerBadge}
             </div>
             <div className="mt-3">
@@ -813,8 +827,8 @@ export function SettingsPage() {
                 </Badge>
               </div>
               <div className="mt-3 space-y-3">
-                {MODEL_ROLE_OPTIONS.map(({ role, label, hint }) => (
-                  <Field key={role} label={label} hint={hint}>
+                {MODEL_ROLE_OPTIONS.map(({ role, label, hint, help }) => (
+                  <Field key={role} label={label} hint={hint} help={help}>
                     <SelectInput
                       value={roleModels[role][provider.id]}
                       onChange={(event) =>
@@ -827,7 +841,11 @@ export function SettingsPage() {
                     </SelectInput>
                   </Field>
                 ))}
-                <Field label="API Key" hint={provider.configured ? "Saved locally" : "Required"}>
+                <Field
+                  label="API Key"
+                  hint={provider.configured ? "Saved locally" : "Required"}
+                  help="Stored only on this device. Required before the AI can generate story content."
+                >
                   <TextInput
                     type="password"
                     value={provider.keyInput}
@@ -848,6 +866,7 @@ export function SettingsPage() {
               <Field
                 label="Maximum Concurrent Background Tasks"
                 hint="Long-running index, audiobook, document, and podcast jobs share this queue."
+                help="Lower values reduce API load; higher values finish queued jobs sooner when you run several at once."
               >
                 <SelectInput
                   value={String(maxConcurrentBackgroundTasks)}
@@ -936,7 +955,10 @@ export function SettingsPage() {
               and triggers a download so you can save the file.
             </p>
             <div className="mt-4 space-y-3">
-              <Field label="Backup interval">
+              <Field
+                label="Backup interval"
+                help="How often an automatic backup runs after workspace changes. On Android you get a share prompt; on web/PWA the file downloads."
+              >
                 <SelectInput
                   value={String(backupIntervalHours)}
                   onChange={(event) => {
@@ -1007,7 +1029,10 @@ export function SettingsPage() {
           <Panel variant="flat">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Export Item</div>
             <div className="mt-3 space-y-3">
-              <Field label="Type">
+              <Field
+                label="Type"
+                help="What kind of item to export — a full story (with format options), a universe, or a player character."
+              >
                 <SelectInput
                   value={itemExportType}
                   onChange={(event) => setItemExportType(event.target.value as "universe" | "playerCharacter" | "story")}
@@ -1018,25 +1043,37 @@ export function SettingsPage() {
                 </SelectInput>
               </Field>
               {itemExportType === "universe" ? (
-                <Field label="Universe">
+                <Field
+                  label="Universe"
+                  help="Exports the universe definition and imported lore text as JSON."
+                >
                   <SelectInput value={itemExportUniverseId} onChange={(event) => setItemExportUniverseId(event.target.value)}>
                     {universes.length ? universes.map((u) => <option key={u.id} value={u.id}>{u.name}</option>) : <option value="">No universes</option>}
                   </SelectInput>
                 </Field>
               ) : itemExportType === "playerCharacter" ? (
-                <Field label="Player Character">
+                <Field
+                  label="Player Character"
+                  help="Exports the character sheet as JSON, including aliases and ties."
+                >
                   <SelectInput value={itemExportCharacterId} onChange={(event) => setItemExportCharacterId(event.target.value)}>
                     {playerCharacters.length ? playerCharacters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>) : <option value="">No characters</option>}
                   </SelectInput>
                 </Field>
               ) : (
                 <>
-                  <Field label="Story">
+                  <Field
+                    label="Story"
+                    help="Pick which saved story to export."
+                  >
                     <SelectInput value={itemExportStoryId} onChange={(event) => setItemExportStoryId(event.target.value)}>
                       {stories.length ? stories.map((s) => <option key={s.id} value={s.id}>{s.title}</option>) : <option value="">No stories</option>}
                     </SelectInput>
                   </Field>
-                  <Field label="Format">
+                  <Field
+                    label="Format"
+                    help="JSON keeps full machine-readable data. Markdown, TXT, and PDF are human-readable archives."
+                  >
                     <SelectInput value={itemExportStoryFormat} onChange={(event) => setItemExportStoryFormat(event.target.value as "json" | "markdown" | "txt" | "pdf")}>
                       <option value="json">JSON</option>
                       <option value="markdown">Markdown</option>
@@ -1057,7 +1094,10 @@ export function SettingsPage() {
           <Panel variant="flat">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Import Item</div>
             <div className="mt-3 space-y-3">
-              <Field label="Type">
+              <Field
+                label="Type"
+                help="JSON export type must match the file you are importing. Imports always create new records."
+              >
                 <SelectInput value={itemImportType} onChange={(event) => setItemImportType(event.target.value as "universe" | "playerCharacter" | "story")}>
                   <option value="story">Story JSON</option>
                   <option value="universe">Universe JSON</option>
@@ -1071,7 +1111,10 @@ export function SettingsPage() {
               />
               <div className="text-[11px] text-ink-muted">Imports always create new IDs and never overwrite existing data.</div>
               {itemImportType === "playerCharacter" ? (
-                <Field label="Target Universe">
+                <Field
+                  label="Target Universe"
+                  help="Imported characters are attached to this universe. Required because character JSON does not include universe membership."
+                >
                   <SelectInput value={itemImportUniverseId} onChange={(event) => setItemImportUniverseId(event.target.value)}>
                     {universes.length ? universes.map((u) => <option key={u.id} value={u.id}>{u.name}</option>) : <option value="">No universes</option>}
                   </SelectInput>

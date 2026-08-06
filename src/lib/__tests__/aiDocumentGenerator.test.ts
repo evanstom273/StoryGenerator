@@ -76,7 +76,7 @@ describe("aiDocumentGenerator", () => {
 		});
 
 		expect(messages[0].content).toContain("Final Thoughts");
-		expect(messages[0].content).toContain("Sam");
+		expect(messages[0].content).toContain("Morgan");
 		expect(messages[0].content).toContain("predictions");
 	});
 
@@ -84,21 +84,21 @@ describe("aiDocumentGenerator", () => {
 		const markdown = [
 			"### Chapter I: Lunch",
 			"",
-			"**Sam:** Welcome back!",
-			"**Alex:** Let's dive in.",
+			"**Morgan:** Welcome back!",
+			"**Casey:** Let's dive in.",
 		].join("\n");
 
 		const dialogue = extractPodcastDialogueFromMarkdown(markdown);
-		expect(dialogue?.hostOne).toBe("Sam");
-		expect(dialogue?.hostTwo).toBe("Alex");
-		expect(dialogue?.script).toContain("Sam: Welcome back!");
+		expect(dialogue?.hostOne).toBe("Morgan");
+		expect(dialogue?.hostTwo).toBe("Casey");
+		expect(dialogue?.script).toContain("Morgan: Welcome back!");
 	});
 
 	it("builds filenames with extensions", () => {
 		expect(buildAiDocumentFilename("story-summary")).toBe("story-summary.md");
-		expect(buildAiDocumentFilename("novelisation", "Peralta")).toBe("peralta-novelisation.md");
-		expect(buildAiDocumentFilename("podcast-chapter-breakdown", "Peralta", "wav")).toBe(
-			"peralta-podcast-chapter-breakdown.wav",
+		expect(buildAiDocumentFilename("novelisation", "Rivera")).toBe("rivera-novelisation.md");
+		expect(buildAiDocumentFilename("podcast-chapter-breakdown", "Rivera", "wav")).toBe(
+			"rivera-podcast-chapter-breakdown.wav",
 		);
 	});
 
@@ -117,15 +117,15 @@ describe("aiDocumentGenerator", () => {
 		expect(buildAudioFilenameFromMarkdownUpload("podcast-discussion.md")).toBe(
 			"podcast-discussion.wav",
 		);
-		expect(buildAudioFilenameFromMarkdownUpload("Peralta Custom Document.MARKDOWN")).toBe(
-			"peralta-custom-document.wav",
+		expect(buildAudioFilenameFromMarkdownUpload("Rivera Custom Document.MARKDOWN")).toBe(
+			"rivera-custom-document.wav",
 		);
 	});
 
 	it("splits long chapter sections into multiple TTS chunks", () => {
-		const lines = ["### Chapter I", "", "**Sam:** Hello.", "**Alex:** Hi."];
+		const lines = ["### Chapter I", "", "**Morgan:** Hello.", "**Casey:** Hi."];
 		for (let index = 0; index < 120; index += 1) {
-			lines.push(`**Sam:** Line ${index} with enough text to grow the script.`);
+			lines.push(`**Morgan:** Line ${index} with enough text to grow the script.`);
 		}
 		const markdown = lines.join("\n");
 		const chunks = planGeminiPodcastTtsChunks(markdown);

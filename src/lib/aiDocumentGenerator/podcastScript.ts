@@ -1,4 +1,4 @@
-import { PODCAST_HOST_ALEX, PODCAST_HOST_SAM } from "./podcastPrompt";
+import { PODCAST_HOST_ONE, PODCAST_HOST_TWO } from "./podcastPrompt";
 
 function parseSpeakerLine(line: string) {
 	const boldMatch = line.match(/^\*\*(.+?):\*\*\s*(.*)$/);
@@ -53,11 +53,11 @@ function findSpeakerName(names: string[], target: string) {
 
 export function resolvePodcastHosts(markdown: string) {
 	const speakers = collectSpeakerNames(markdown);
-	const sam = findSpeakerName(speakers, PODCAST_HOST_SAM);
-	const alex = findSpeakerName(speakers, PODCAST_HOST_ALEX);
+	const hostOneMatch = findSpeakerName(speakers, PODCAST_HOST_ONE);
+	const hostTwoMatch = findSpeakerName(speakers, PODCAST_HOST_TWO);
 
-	if (sam && alex) {
-		return { hostOne: sam, hostTwo: alex };
+	if (hostOneMatch && hostTwoMatch) {
+		return { hostOne: hostOneMatch, hostTwo: hostTwoMatch };
 	}
 
 	const dialogue = extractPodcastDialogueFromMarkdown(markdown);
@@ -65,7 +65,7 @@ export function resolvePodcastHosts(markdown: string) {
 		return { hostOne: dialogue.hostOne, hostTwo: dialogue.hostTwo };
 	}
 
-	return { hostOne: PODCAST_HOST_SAM, hostTwo: PODCAST_HOST_ALEX };
+	return { hostOne: PODCAST_HOST_ONE, hostTwo: PODCAST_HOST_TWO };
 }
 
 export function normalizePodcastScript(script: string, hostOne: string, hostTwo: string) {
@@ -78,11 +78,11 @@ export function normalizePodcastScript(script: string, hostOne: string, hostTwo:
 			}
 
 			let speaker = parsed.speaker;
-			if (equalsIgnoreCase(speaker, hostOne) || equalsIgnoreCase(speaker, PODCAST_HOST_SAM)) {
+			if (equalsIgnoreCase(speaker, hostOne) || equalsIgnoreCase(speaker, PODCAST_HOST_ONE)) {
 				speaker = hostOne;
 			} else if (
 				equalsIgnoreCase(speaker, hostTwo) ||
-				equalsIgnoreCase(speaker, PODCAST_HOST_ALEX)
+				equalsIgnoreCase(speaker, PODCAST_HOST_TWO)
 			) {
 				speaker = hostTwo;
 			}
@@ -95,8 +95,8 @@ export function normalizePodcastScript(script: string, hostOne: string, hostTwo:
 export function extractPodcastDialogueFromMarkdown(markdown: string) {
 	const lines = markdown.split("\n");
 	const dialogueLines: string[] = [];
-	let hostOne = PODCAST_HOST_SAM;
-	let hostTwo = PODCAST_HOST_ALEX;
+	let hostOne = PODCAST_HOST_ONE;
+	let hostTwo = PODCAST_HOST_TWO;
 
 	for (const line of lines) {
 		const trimmed = line.trim();

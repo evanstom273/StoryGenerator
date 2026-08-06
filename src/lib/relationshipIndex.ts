@@ -388,7 +388,7 @@ function historySummariesSimilar(left: string, right: string) {
 		return true;
 	}
 
-	// Same beat when both describe rushing back for Wands at Four (or similar event).
+	// Same beat when both describe rushing back for a scheduled event (or similar).
 	if (
 		/\bwands\b/.test(normalizedLeft) &&
 		/\bwands\b/.test(normalizedRight) &&

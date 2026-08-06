@@ -212,11 +212,11 @@ describe("backgroundTasks", () => {
 				payload: { aiDocumentPresetId: "novelisation" },
 				progress: backgroundJobProgressFromSteps("Generating Novelisation", runningSteps),
 			}),
-			"Jamie's Tales",
+			"Example Story",
 			"~3m",
 		);
 
-		expect(statusLine).toBe("Jamie's Tales - Chapter I (1/3) - ~3m");
+		expect(statusLine).toBe("Example Story - Chapter I (1/3) - ~3m");
 	});
 
 	it("formats consolidated status line without fraction for intro step", () => {
@@ -238,11 +238,11 @@ describe("backgroundTasks", () => {
 				payload: { aiDocumentPresetId: "novelisation" },
 				progress: backgroundJobProgressFromSteps("Generating Novelisation", runningSteps),
 			}),
-			"Jamie's Tales",
+			"Example Story",
 			"~7m30s",
 		);
 
-		expect(statusLine).toBe("Jamie's Tales - Writing title - ~7m30s");
+		expect(statusLine).toBe("Example Story - Writing title - ~7m30s");
 	});
 
 	it("formats estimated remaining time", () => {

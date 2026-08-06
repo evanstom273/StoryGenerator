@@ -1784,7 +1784,10 @@ export function StoryWorkspacePage() {
               ) : null}
             </div>
 
-            <Field label="Your Message">
+            <Field
+              label="Your Message"
+              help="Your next turn — actions, dialogue, or intent. The AI replies with the following scene."
+            >
               <TextAreaInput
                 defaultHeightPx={220}
                 minHeightPx={180}
@@ -1879,7 +1882,10 @@ export function StoryWorkspacePage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Role">
+            <Field
+              label="Role"
+              help="Timeline slot: user for player turns, assistant for AI/world lines, system for internal notes."
+            >
               <SelectInput
                 value={composerState.role}
                 onChange={(event) => {
@@ -1916,7 +1922,10 @@ export function StoryWorkspacePage() {
               </SelectInput>
             </Field>
 
-            <Field label="Speaker Type">
+            <Field
+              label="Speaker Type"
+              help="Who is speaking — player, narrator, canon NPC, director beat, continue, or author note."
+            >
               <SelectInput
                 value={composerState.speakerType}
                 onChange={(event) =>
@@ -1948,7 +1957,11 @@ export function StoryWorkspacePage() {
           </div>
 
           {composerState.role === "assistant" && composerState.speakerType === "canon" ? (
-            <Field label="Speaker Name" hint="Required for canon lines">
+            <Field
+              label="Speaker Name"
+              hint="Required for canon lines"
+              help="Displayed name for canon NPC dialogue. Required when Speaker Type is canon."
+            >
               <TextInput
                 value={composerState.speakerName}
                 onChange={(event) =>
@@ -1958,12 +1971,15 @@ export function StoryWorkspacePage() {
                   }))
                 }
                 disabled={isReadOnly}
-                placeholder="Example: Jake Peralta"
+                placeholder="Example: Captain Reyes"
               />
             </Field>
           ) : null}
 
-          <Field label="Content">
+          <Field
+            label="Content"
+            help="Full message body inserted into the timeline exactly as written."
+          >
             <TextAreaInput
               defaultHeightPx={260}
               minHeightPx={220}

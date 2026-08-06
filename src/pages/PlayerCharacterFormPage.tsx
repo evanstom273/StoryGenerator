@@ -329,6 +329,7 @@ export function PlayerCharacterFormPage() {
             <Field
               label="Name"
               hint={resolveFieldHint(formState.name, "Required")}
+              help="The primary name the AI uses when this character speaks or is mentioned."
               action={renderFieldRandomizeAction(["name"])}
             >
               <TextInput
@@ -339,11 +340,15 @@ export function PlayerCharacterFormPage() {
                     name: event.target.value,
                   }))
                 }
-                placeholder="Jamie Mercer"
+                placeholder="Alex Rivera"
               />
             </Field>
 
-            <Field label="Universes" hint="Select one or more">
+            <Field
+              label="Universes"
+              hint="Select one or more"
+              help="Attach this character to one or more worlds. They can appear in any story set in those universes."
+            >
               <MultiUniversePicker
                 universes={universes}
                 selectedIds={formState.universeIds ?? (formState.universeId ? [formState.universeId] : [])}
@@ -357,7 +362,11 @@ export function PlayerCharacterFormPage() {
               />
             </Field>
 
-            <Field label="Aliases" hint="Alternative names the AI should recognise">
+            <Field
+              label="Aliases"
+              hint="Alternative names the AI should recognise"
+              help="Nicknames, titles, or surnames the model should treat as the same person."
+            >
               <AliasesInput
                 value={normalizePlayerCharacterAliases(formState.aliases)}
                 disabled={isGenerating || isSubmitting}
@@ -374,6 +383,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Known ties"
             hint="Optional canon characters and relationships the AI may reference when generating this character"
+            help="List important NPCs and how they relate — for example mentor, sibling, or rival — without importing an entire cast."
           >
             <KnownTiesInput
               value={normalizePlayerCharacterKnownTies(formState.knownTies)}
@@ -390,6 +400,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Character Concept"
             hint={resolveFieldHint(formState.characterConcept ?? "")}
+            help="A one-line pitch: role, vibe, and core conflict. Used when generating or randomising the rest of the sheet."
             action={
               <Button
                 type="button"
@@ -419,6 +430,7 @@ export function PlayerCharacterFormPage() {
             <Field
               label="Age"
               hint={resolveFieldHint(formState.age)}
+              help="Approximate age or life stage. Helps the AI match tone and references."
               action={renderFieldRandomizeAction(["age"])}
             >
               <TextInput
@@ -438,6 +450,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Appearance"
             hint={resolveFieldHint(formState.appearance)}
+            help="Physical description the AI can reference in narration and dialogue."
             action={renderFieldRandomizeAction(["appearance"])}
           >
             <TextAreaInput
@@ -459,6 +472,7 @@ export function PlayerCharacterFormPage() {
             <Field
               label="Gender"
               hint={resolveFieldHint(formState.gender)}
+              help="How the character identifies. Free text — use whatever fits your setting."
               action={renderFieldRandomizeAction(["gender"])}
             >
               <TextInput
@@ -476,6 +490,7 @@ export function PlayerCharacterFormPage() {
             <Field
               label="Species"
               hint={resolveFieldHint(formState.species)}
+              help="Biological or fantasy race. Matters for lore-heavy universes."
               action={renderFieldRandomizeAction(["species"])}
             >
               <TextInput
@@ -495,6 +510,7 @@ export function PlayerCharacterFormPage() {
             <Field
               label="Pronouns"
               hint={resolveFieldHint(formState.pronouns)}
+              help="How others address this character in narration and dialogue."
               action={renderFieldRandomizeAction(["pronouns"])}
             >
               <TextInput
@@ -513,6 +529,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Background"
             hint={resolveFieldHint(formState.background)}
+            help="Where they came from, formative experiences, and what they did before the story."
             action={renderFieldRandomizeAction(["background"])}
           >
             <TextAreaInput
@@ -529,6 +546,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Personality"
             hint={resolveFieldHint(formState.personality)}
+            help="Traits, habits, fears, and social style the AI should keep consistent."
             action={renderFieldRandomizeAction(["personality"])}
           >
             <TextAreaInput
@@ -545,6 +563,7 @@ export function PlayerCharacterFormPage() {
           <Field
             label="Notes"
             hint={resolveFieldHint(formState.notes)}
+            help="Anything else you want the AI to remember — secrets, hooks, or play constraints."
             action={renderFieldRandomizeAction(["notes"])}
           >
             <TextAreaInput

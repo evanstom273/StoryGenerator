@@ -163,7 +163,7 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 				{
 					type: "bullets",
 					items: [
-						"Character lines show a blue name label (for example Jake:, Amy:) followed by dialogue and actions.",
+						"Character lines show a blue name label (for example Morgan:, Elena:) followed by dialogue and actions.",
 						"Narrator blocks are gray italic prose without a “Narrator:” header — omniscient description and scene-setting.",
 						"When the AI embeds a character name inside narrator prose, the name stays in the text as natural writing (not a second dialogue label).",
 						"Bubble view uses the same content with per-message edit controls.",

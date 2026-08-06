@@ -125,8 +125,8 @@ Structure requirements:
 		return `
 Structure requirements:
 - Title with podcast name and story topic
-- ### Introduction with Sam and Alex welcoming listeners
-- One ### section per chapter in source order (labelled **Sam:** / **Alex:** dialogue)
+- ### Introduction with Host One and Host Two welcoming listeners
+- One ### section per chapter in source order (labelled **Host One:** / **Host Two:** dialogue)
 - ### Final Thoughts — rich closing discussion`;
 	}
 
@@ -136,7 +136,7 @@ Structure requirements:
 
 	if (section === "chapter" && chapterLabel?.trim()) {
 		const hostNote = isPodcastPreset(preset)
-			? "Use Sam and Alex with **Sam:** / **Alex:** labels."
+			? "Use Host One and Host Two with **Host One:** / **Host Two:** labels (or **Morgan:** / **Casey:**)."
 			: "Use two hosts in dialogue (label them consistently).";
 		return `\n\nWrite ONLY the podcast section for ${chapterLabel.trim()}.
 Use ### ${chapterLabel.trim()}: [short descriptive subtitle] as the heading.

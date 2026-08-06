@@ -26,7 +26,7 @@ export function buildPlayerAssistContinuationRequest(
     "Do NOT repeat any of the existing text. Do NOT rewrite it. Do NOT output the speaker label again.",
     "Output ONLY the continuation text to append after the existing text. No commentary. No other speakers. No narration.",
     "If the existing text ends with an open delimiter (for example *, \", ', or Name: *), continue inline immediately after it.",
-    'Example: `Luna: *` should continue as `I let out a breath...`, not as a new paragraph.',
+    'Example: `Alex Rivera: *` should continue as `I let out a breath...`, not as a new paragraph.',
     "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
     "",
     "Existing text (do not repeat):",

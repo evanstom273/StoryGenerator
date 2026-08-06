@@ -50,7 +50,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Generate Chapters planner no longer requires an overall direction; you can plan each chapter directly with one input box per scene",
       "Story generation now prefers the player character's alias as their scene name and enforces their specified pronouns instead of inferring he/him or she/her from name or gender",
       "Single-narrator audiobook mode no longer inserts awkward \"X said\" attribution; character actions and dialogue read as plain narration with one voice",
-      "Transcript sanitization shortens speaker labels and name mentions to first names, fixing validation failures when the model outputs quoted nicknames like Rebecca \"Becca\" Alvarez",
+      "Transcript sanitization shortens speaker labels and name mentions to first names, fixing validation failures when the model outputs quoted nicknames like Morgan \"Mo\" Ellis",
       "Transcript sanitization now auto-repairs common malformed model output (wrapped narrator labels, orphan action lines, stray *.* markers, truncated names, and missing subjects) before validation and indexing",
       "Story generation no longer discards a good streamed response when only minor format validation remains after auto-repair; the sanitized transcript is saved instead of throwing a validation error",
       "Transcript repair no longer stamps every unlabeled beat as the player character; dialogue addressed to the player is stripped from false player labels and triggers speaker-attribution rewrite",
@@ -111,7 +111,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     fixed: [
       "Gemini TTS reliability: generateContent API path, per-chunk timeouts, retries, and resume after failed podcast audio chunks",
       "Podcast TTS voices stay consistent across chapter sections instead of swapping when a new section opens with the other host",
-      "TTS now includes character names for label-only transcript lines (e.g. Jake Peralta: / puts his pen down → spoken as Jake Peralta puts his pen down)",
+      "TTS now includes character names for label-only transcript lines (e.g. Morgan Ellis: / puts his pen down → spoken as Morgan Ellis puts his pen down)",
       "Archive PDF export skips a full re-index when the story index already matches the live message count",
       "Version wiring aligned to 3.0.0 across the app label, changelog, npm metadata, and Android release metadata",
     ],
@@ -631,7 +631,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     title: "Speaker Attribution Hotfix",
     releasedAt: "2026-07-11T15:16:03+00:00",
     fixed: [
-      "\"As Jamie:\" and similar narrative transition phrases (\"As\", \"With\", \"After\", \"While\", etc.) were being treated as speaker labels, causing the following prose to appear under the wrong character. The parser now rejects any label whose first word is a narrative transition word, and the AI is explicitly instructed never to use \"As [Name]:\" as a speaker prefix.",
+      "\"As Alex:\" and similar narrative transition phrases (\"As\", \"With\", \"After\", \"While\", etc.) were being treated as speaker labels, causing the following prose to appear under the wrong character. The parser now rejects any label whose first word is a narrative transition word, and the AI is explicitly instructed never to use \"As [Name]:\" as a speaker prefix.",
     ],
     knownIssues: [],
   },
@@ -640,7 +640,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
     releasedAt: "2026-07-11T15:02:48+00:00",
     fixed: [
       "Update index (incremental) was completing instantly without doing any work — the indexer was using the lightweight message counter (bumped after every AI turn) as its starting point, so it always saw 0 new messages. It now uses the actual last AI deep-index checkpoint",
-      "Third-person prose describing multiple characters (e.g. \"Jake does X while Amy does Y\") was being written as an action beat inside the first character's block. The output format instructions now explicitly require any prose that mentions another character's actions to be placed in a Narrator: block",
+      "Third-person prose describing multiple characters (e.g. \"Morgan does X while Elena does Y\") was being written as an action beat inside the first character's block. The output format instructions now explicitly require any prose that mentions another character's actions to be placed in a Narrator: block",
     ],
     knownIssues: [],
   },

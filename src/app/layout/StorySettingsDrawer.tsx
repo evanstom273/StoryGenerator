@@ -46,6 +46,7 @@ import { isAudiobookExportBackgroundJob } from "../../lib/backgroundTasks";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { useTheme } from "../theming/ThemeContext";
 import { themes, type AccentThemeKey, isAccentThemeKey } from "../theming/themes";
+import { FieldLabel } from "../../components/forms/Fields";
 import { ThemePicker } from "../../components/settings/ThemePicker";
 import { useUiPrefs } from "../ui/UiPrefsContext";
 
@@ -910,7 +911,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </div>
 
                   <label className="block space-y-2">
-                    <div className="text-xs text-ink-muted">Provider</div>
+                    <FieldLabel
+                      label="Provider"
+                      help="Which AI service generates this story. Overrides the global default from Settings."
+                      labelClassName="text-xs text-ink-muted"
+                    />
                     <select
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={aiProviderType}
@@ -932,7 +937,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </label>
 
                   <label className="block space-y-2">
-                    <div className="text-xs text-ink-muted">Model</div>
+                    <FieldLabel
+                      label="Model"
+                      help="The specific model used for chat generation in this story."
+                      labelClassName="text-xs text-ink-muted"
+                    />
                     <select
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={aiModel}
@@ -955,7 +964,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   ) : null}
 
                   <div className="space-y-2">
-                    <div className="text-xs text-ink-muted">Audiobook performance</div>
+                    <FieldLabel
+                      label="Audiobook performance"
+                      help="Single narrator uses one voice for everything. Radio drama assigns separate voices per character."
+                      labelClassName="text-xs text-ink-muted"
+                    />
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -991,10 +1004,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </div>
 
                   <label className="block space-y-2">
-                    <div className="flex items-center justify-between gap-3 text-xs text-ink-muted">
-                      <span>Audiobook parallel chapters</span>
-                      <span className="font-medium text-ink">{audiobookParallelChapters}</span>
-                    </div>
+                    <FieldLabel
+                      label="Audiobook parallel chapters"
+                      hint={String(audiobookParallelChapters)}
+                      help="How many chapters are synthesized at once for audiobook export. Cached chapters are still reused."
+                      labelClassName="text-xs text-ink-muted"
+                      className="text-xs text-ink-muted"
+                    />
                     <input
                       type="range"
                       min={1}
@@ -1027,7 +1043,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               <CollapsibleSection title="Edit Story">
                 <form className="space-y-3" onSubmit={handleSaveStoryDetails}>
                   <label className="block space-y-2">
-                    <div className="text-xs text-ink-muted">Title</div>
+                    <FieldLabel
+                      label="Title"
+                      help="Shown in your library and story header."
+                      labelClassName="text-xs text-ink-muted"
+                    />
                     <input
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.title}
@@ -1038,7 +1058,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     />
                   </label>
                   <label className="block space-y-2">
-                    <div className="text-xs text-ink-muted">Current Summary</div>
+                    <FieldLabel
+                      label="Current Summary"
+                      help="Rolling overview of where the story stands. The AI uses this for context alongside the index."
+                      labelClassName="text-xs text-ink-muted"
+                    />
                     <textarea
                       className="min-h-[100px] w-full resize-y rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.currentSummary}
@@ -1105,7 +1129,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               <CollapsibleSection title="Automatic Indexing">
                 <div className="space-y-3">
                   <label className="block space-y-2">
-                    <div className="text-xs text-ink-muted">Indexing mode</div>
+                    <FieldLabel
+                      label="Indexing mode"
+                      help="When to automatically rebuild the story index — after N messages, each chapter end, or never."
+                      labelClassName="text-xs text-ink-muted"
+                    />
                     <select
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.autoIndexMode}
@@ -1130,7 +1158,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   </label>
                   {storyFields.autoIndexMode === "messages" ? (
                     <label className="block space-y-2">
-                      <div className="text-xs text-ink-muted">Interval</div>
+                      <FieldLabel
+                        label="Interval"
+                        help="How many new messages trigger an automatic index pass."
+                        labelClassName="text-xs text-ink-muted"
+                      />
                       <select
                         className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                         value={storyFields.autoIndexInterval === "disabled" ? 20 : storyFields.autoIndexInterval}
@@ -1162,7 +1194,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               <CollapsibleSection title="Content Mode">
                 <div className="space-y-3">
                   <label className="block space-y-2">
-                    <div className="text-xs text-ink-muted">Mature fiction (non-graphic)</div>
+                    <FieldLabel
+                      label="Mature fiction (non-graphic)"
+                      help="Allows adult themes and non-graphic intimacy when appropriate. Does not enable explicit content."
+                      labelClassName="text-xs text-ink-muted"
+                    />
                     <select
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
                       value={storyFields.matureFictionMode ? "on" : "off"}

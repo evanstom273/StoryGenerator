@@ -354,7 +354,11 @@ export function AiDocumentGeneratorTab() {
 								Story & MetaChat playback
 							</div>
 							<div className="grid gap-6 md:grid-cols-2">
-								<Field label="Narration voice" hint="Clear story narration — default Iapetus">
+								<Field
+									label="Narration voice"
+									hint="Clear story narration — default Iapetus"
+									help="Voice for narrator lines when you use Listen to Chapter or message play buttons."
+								>
 									<SelectInput
 										value={narrationTts.voice}
 										onChange={(event) =>
@@ -379,7 +383,11 @@ export function AiDocumentGeneratorTab() {
 										})}
 									</SelectInput>
 								</Field>
-								<Field label="Character dialogue voice" hint="NPC lines — default Aoede">
+								<Field
+									label="Character dialogue voice"
+									hint="NPC lines — default Aoede"
+									help="Voice for quoted character dialogue in story playback. Narration still uses the narration voice."
+								>
 									<SelectInput
 										value={narrationTts.characterVoice}
 										onChange={(event) =>
@@ -405,7 +413,10 @@ export function AiDocumentGeneratorTab() {
 									</SelectInput>
 								</Field>
 							</div>
-							<Field label="Story TTS model">
+							<Field
+								label="Story TTS model"
+								help="Gemini text-to-speech model for in-story playback. Flash is faster; Pro may sound richer on long passages."
+							>
 								<SelectInput
 									value={narrationTts.model}
 									onChange={(event) => void persistNarrationTts({ model: event.target.value })}
@@ -426,8 +437,9 @@ export function AiDocumentGeneratorTab() {
 							</div>
 							<div className="grid gap-6 md:grid-cols-2">
 							<Field
-								label="Sam voice (host one)"
+								label="Morgan voice (host one)"
 								hint={podcastTts.hostOneVoice}
+								help="Voice for the first podcast host in generated recap scripts."
 							>
 								<SelectInput
 									value={podcastTts.hostOneVoice}
@@ -454,8 +466,9 @@ export function AiDocumentGeneratorTab() {
 								</SelectInput>
 							</Field>
 							<Field
-								label="Alex voice (host two)"
+								label="Casey voice (host two)"
 								hint={podcastTts.hostTwoVoice}
+								help="Voice for the second podcast host in generated recap scripts."
 							>
 								<SelectInput
 									value={podcastTts.hostTwoVoice}
@@ -483,7 +496,10 @@ export function AiDocumentGeneratorTab() {
 							</Field>
 							</div>
 
-							<Field label="Podcast TTS model">
+							<Field
+								label="Podcast TTS model"
+								help="Gemini model used when exporting podcast audio from generated Markdown scripts."
+							>
 								<SelectInput
 									value={podcastTts.model}
 									onChange={(event) => void persistPodcastTts({ model: event.target.value })}
@@ -525,7 +541,7 @@ export function AiDocumentGeneratorTab() {
 						</div>
 
 						{sourceMode === "library" ? (
-							<Field label="Story" hint="From your Story Engine library">
+							<Field label="Story" hint="From your Story Engine library" help="Pick a saved story to convert into a document or audio script.">
 								<SelectInput
 									value={storyId}
 									onChange={(event) => setStoryId(event.target.value)}
@@ -541,7 +557,11 @@ export function AiDocumentGeneratorTab() {
 								</SelectInput>
 							</Field>
 						) : (
-							<Field label="Export file" hint="Archive PDF, Markdown, or TXT">
+							<Field
+								label="Export file"
+								hint="Archive PDF, Markdown, or TXT"
+								help="Upload a story export instead of picking from your library. Useful for sharing files from another device."
+							>
 								<input
 									type="file"
 									accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain"
@@ -555,7 +575,10 @@ export function AiDocumentGeneratorTab() {
 
 					<div className="space-y-4">
 						<div className="grid gap-6 md:grid-cols-2">
-							<Field label="Document type">
+							<Field
+								label="Document type"
+								help="Choose a preset such as novelisation, podcast recap, or timeline summary. Each preset shapes structure and tone."
+							>
 								<SelectInput
 									value={presetId}
 									onChange={(event) => setPresetId(event.target.value as AiDocumentPresetId)}
@@ -566,7 +589,10 @@ export function AiDocumentGeneratorTab() {
 									))}
 								</SelectInput>
 							</Field>
-							<Field label="Structure">
+							<Field
+								label="Structure"
+								help="Chapter-by-chapter writes one section per story chapter. Single document merges everything into one file."
+							>
 								<SelectInput
 									value={structure}
 									onChange={(event) =>
@@ -588,6 +614,7 @@ export function AiDocumentGeneratorTab() {
 										? "Gemini audio uses your Gemini API key"
 										: "Add a Gemini API key in Settings → AI for audio"
 								}
+								help="Markdown saves a readable document. Gemini podcast audio renders a WAV file with the configured host voices."
 							>
 								<SelectInput
 									value={outputFormat}
@@ -605,7 +632,11 @@ export function AiDocumentGeneratorTab() {
 						) : null}
 
 						{presetId === AI_DOCUMENT_CUSTOM_PRESET_ID ? (
-							<Field label="Custom instructions" hint="Describe the document to generate">
+							<Field
+								label="Custom instructions"
+								hint="Describe the document to generate"
+								help="Optional extra guidance for the AI — tone, audience, sections to include, or things to avoid."
+							>
 								<TextAreaInput
 									value={customPrompt}
 									onChange={(event) => setCustomPrompt(event.target.value)}
@@ -671,6 +702,7 @@ export function AiDocumentGeneratorTab() {
 								? "Podcast chapter breakdown or discussion exports (.md)"
 								: "Add a Gemini API key in Settings → AI for audio"
 						}
+						help="Skip document generation and convert an existing podcast Markdown export straight to audio."
 					>
 						<input
 							type="file"
