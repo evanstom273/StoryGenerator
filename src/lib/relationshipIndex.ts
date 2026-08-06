@@ -380,6 +380,27 @@ export function resolveMergedTier(left?: RelationshipTier, right?: RelationshipT
 	return scoreA >= scoreB ? a : b;
 }
 
+export function simplifyRelationshipEntry(entry: RelationshipIndexEntry): RelationshipIndexEntry {
+	const simplified: RelationshipIndexEntry = {
+		a: entry.a,
+		b: entry.b,
+		tier: sanitizeRelationshipTier(entry.tier),
+	};
+	if (typeof entry.summary === "string" && entry.summary.trim()) {
+		simplified.summary = entry.summary.trim();
+	}
+	if (entry.history?.length) {
+		simplified.history = entry.history;
+	}
+	if (entry.evidence) {
+		simplified.evidence = entry.evidence;
+	}
+	if (typeof entry.playerIntention === "string" && entry.playerIntention.trim()) {
+		simplified.playerIntention = entry.playerIntention.trim();
+	}
+	return simplified;
+}
+
 export function mergeRelationshipEntries(
 	left: RelationshipIndexEntry,
 	right: RelationshipIndexEntry,
@@ -394,61 +415,16 @@ export function mergeRelationshipEntries(
 	const tier = resolveMergedTier(left.tier, right.tier);
 	const history = mergeHistory(left.history, right.history);
 
-	const leftArc = left.arc ?? {};
-	const rightArc = right.arc ?? {};
-	const mergedArc =
-		left.arc || right.arc
-			? {
-				...(leftArc.statusPhrase ? { statusPhrase: leftArc.statusPhrase } : {}),
-				...(rightArc.statusPhrase ? { statusPhrase: rightArc.statusPhrase } : {}),
-				...(leftArc.tension ? { tension: leftArc.tension } : {}),
-				...(rightArc.tension ? { tension: rightArc.tension } : {}),
-				milestones: [...(leftArc.milestones ?? []), ...(rightArc.milestones ?? [])].slice(-10),
-			}
-			: undefined;
-
-	const leftInner = left.npcInnerLife ?? {};
-	const rightInner = right.npcInnerLife ?? {};
-	const mergedInner =
-		left.npcInnerLife || right.npcInnerLife
-			? {
-				...(leftInner.emotionalState ? { emotionalState: leftInner.emotionalState } : {}),
-				...(rightInner.emotionalState ? { emotionalState: rightInner.emotionalState } : {}),
-				...(leftInner.howTheyDescribeYou ? { howTheyDescribeYou: leftInner.howTheyDescribeYou } : {}),
-				...(rightInner.howTheyDescribeYou ? { howTheyDescribeYou: rightInner.howTheyDescribeYou } : {}),
-				...(leftInner.whatTheyWant ? { whatTheyWant: leftInner.whatTheyWant } : {}),
-				...(rightInner.whatTheyWant ? { whatTheyWant: rightInner.whatTheyWant } : {}),
-				...(leftInner.whatTheyreNotSaying ? { whatTheyreNotSaying: leftInner.whatTheyreNotSaying } : {}),
-				...(rightInner.whatTheyreNotSaying ? { whatTheyreNotSaying: rightInner.whatTheyreNotSaying } : {}),
-			}
-			: undefined;
-
-	const numericFields = [
-		"trust", "affection", "fear", "dependency",
-		"friendship", "respect", "loyalty", "comfort", "suspicion", "hostility", "tension",
-	] as const;
-
-	const mergedNumeric: Partial<RelationshipIndexEntry> = {};
-	for (const field of numericFields) {
-		const l = left[field];
-		const r = right[field];
-		if (r !== undefined) mergedNumeric[field] = r;
-		else if (l !== undefined) mergedNumeric[field] = l;
-	}
-
-	return {
+	return simplifyRelationshipEntry({
 		a: left.a,
 		b: left.b,
 		tier,
 		...(history?.length ? { history } : {}),
 		...(summary ? { summary } : {}),
 		...(evidence ? { evidence } : {}),
-		...(mergedInner && Object.keys(mergedInner).length ? { npcInnerLife: mergedInner } : {}),
-		...(mergedArc && Object.keys(mergedArc).length ? { arc: mergedArc } : {}),
 		...(left.playerIntention && !right.playerIntention ? { playerIntention: left.playerIntention } : {}),
 		...(right.playerIntention ? { playerIntention: right.playerIntention } : {}),
-		...mergedNumeric,
-	};
+	});
 }
 
 export function relationshipInvolvesPlayer(entry: RelationshipIndexEntry, playerName: string): boolean {
@@ -551,7 +527,7 @@ export function reconcileRelationshipEntries(
 		byPair.set(pairKey, existing ? mergeRelationshipEntries(existing, normalizedEntry) : normalizedEntry);
 	}
 
-	const merged = Array.from(byPair.values());
+	const merged = Array.from(byPair.values()).map(simplifyRelationshipEntry);
 	return merged.length ? merged : undefined;
 }
 
@@ -567,126 +543,4 @@ export function findPlayerNpcRelationshipIndex(
 			(normalizeRelationshipKey(r.a) === playerNorm && normalizeRelationshipKey(r.b) === npcNorm) ||
 			(normalizeRelationshipKey(r.b) === playerNorm && normalizeRelationshipKey(r.a) === npcNorm),
 	);
-}
-
-export function mergePerTurnRelationshipFields(
-	reindexed: RelationshipIndexEntry[] | undefined,
-	previous: RelationshipIndexEntry[] | undefined,
-): RelationshipIndexEntry[] | undefined {
-	if (!reindexed?.length) return reindexed;
-	if (!previous?.length) return reindexed;
-
-	const prevByPair = new Map<string, RelationshipIndexEntry>();
-	for (const entry of previous) {
-		prevByPair.set(makeRelationshipPairKey(entry.a, entry.b), entry);
-	}
-
-	return reindexed.map((entry) => {
-		const prev = prevByPair.get(makeRelationshipPairKey(entry.a, entry.b));
-		if (!prev) return entry;
-		return mergeRelationshipEntries(prev, entry);
-	});
-}
-
-export type RpRelationshipDelta = {
-	characterName: string;
-	tier?: string;
-	trust?: number;
-	affection?: number;
-	fear?: number;
-	dependency?: number;
-	reason: string;
-};
-
-export type NpcInnerLifeUpdate = {
-	characterName: string;
-	tier?: string;
-	emotionalState?: string;
-	howTheyDescribeYou?: string;
-	whatTheyWant?: string;
-	whatTheyreNotSaying?: string;
-};
-
-export type RelationshipArcUpdate = {
-	characterName: string;
-	tier?: string;
-	statusPhrase?: string;
-	newMilestone?: string;
-	tension?: string;
-};
-
-export function applyRelationshipDeltas(
-	existing: RelationshipIndexEntry[],
-	deltas: RpRelationshipDelta[],
-	playerName: string,
-	innerLifeUpdates?: NpcInnerLifeUpdate[],
-	arcUpdates?: RelationshipArcUpdate[],
-	opts?: {
-		allowlist: Set<string>;
-	},
-): RelationshipIndexEntry[] {
-	const working: RelationshipIndexEntry[] = existing.map((e) => ({ ...e }));
-	const allowlist = opts?.allowlist ?? new Set<string>();
-
-	const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
-
-	function findOrCreate(characterName: string, tier?: string): number | null {
-		if (!canTrackRelationshipParticipant(characterName, allowlist, playerName)) return null;
-		const npcName = stripRelationshipEndpointAnnotations(characterName);
-		const idx = findPlayerNpcRelationshipIndex(working, playerName, npcName);
-		if (idx !== -1) return idx;
-		const resolvedTier = sanitizeRelationshipTier(tier);
-		working.push({
-			a: playerName,
-			b: npcName,
-			tier: resolvedTier,
-			trust: 50,
-			affection: 50,
-			fear: 50,
-			dependency: 50,
-		});
-		return working.length - 1;
-	}
-
-	for (const delta of deltas) {
-		const idx = findOrCreate(delta.characterName, delta.tier);
-		if (idx === null) continue;
-		const entry = working[idx]!;
-		if (delta.tier) entry.tier = sanitizeRelationshipTier(delta.tier);
-		if (delta.trust !== undefined) entry.trust = clamp((entry.trust ?? 50) + delta.trust);
-		if (delta.affection !== undefined) entry.affection = clamp((entry.affection ?? 50) + delta.affection);
-		if (delta.fear !== undefined) entry.fear = clamp((entry.fear ?? 50) + delta.fear);
-		if (delta.dependency !== undefined) entry.dependency = clamp((entry.dependency ?? 50) + delta.dependency);
-	}
-
-	for (const u of innerLifeUpdates ?? []) {
-		const idx = findOrCreate(u.characterName, u.tier);
-		if (idx === null) continue;
-		const entry = working[idx]!;
-		const prev = entry.npcInnerLife ?? {};
-		entry.npcInnerLife = {
-			...prev,
-			...(u.emotionalState ? { emotionalState: u.emotionalState } : {}),
-			...(u.howTheyDescribeYou ? { howTheyDescribeYou: u.howTheyDescribeYou } : {}),
-			...(u.whatTheyWant ? { whatTheyWant: u.whatTheyWant } : {}),
-			...(u.whatTheyreNotSaying ? { whatTheyreNotSaying: u.whatTheyreNotSaying } : {}),
-		};
-		if (u.tier) entry.tier = sanitizeRelationshipTier(u.tier);
-	}
-
-	for (const u of arcUpdates ?? []) {
-		const idx = findOrCreate(u.characterName, u.tier);
-		if (idx === null) continue;
-		const entry = working[idx]!;
-		const prev = entry.arc ?? {};
-		entry.arc = {
-			...prev,
-			...(u.statusPhrase ? { statusPhrase: u.statusPhrase } : {}),
-			...(u.tension ? { tension: u.tension } : {}),
-			...(u.newMilestone ? { milestones: [...(prev.milestones ?? []), u.newMilestone].slice(-10) } : {}),
-		};
-		if (u.tier) entry.tier = sanitizeRelationshipTier(u.tier);
-	}
-
-	return working;
 }
