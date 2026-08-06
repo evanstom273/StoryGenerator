@@ -27,6 +27,10 @@ import {
 import type { BackgroundJob } from "../types/models";
 import { Button } from "./ui/Button";
 import { cn } from "../utils/cn";
+import {
+	BOTTOM_SHEET_PANEL_CLASS,
+	OVERLAY_BACKDROP_CLASS,
+} from "../app/ui/motion";
 
 const PANEL_Z_INDEX = 55;
 const DESKTOP_PANEL_WIDTH = 384;
@@ -459,17 +463,28 @@ function BackgroundTasksPortal({
 		};
 	}, [anchorRef, onClose, open]);
 
-	if (!open || typeof document === "undefined") {
+	if (typeof document === "undefined") {
 		return null;
 	}
 
 	return createPortal(
 		<>
-			<div className="fixed inset-0 z-[55] lg:hidden" role="presentation">
+			<div
+				className={cn(
+					"fixed inset-0 z-[55] lg:hidden",
+					open ? "pointer-events-auto" : "pointer-events-none",
+				)}
+				role="presentation"
+				aria-hidden={!open}
+			>
 				<button
 					type="button"
 					aria-label="Close background tasks"
-					className="absolute inset-0 bg-black/60 backdrop-blur-[1px]"
+					className={cn(
+						"absolute inset-0 bg-app/80 backdrop-blur-[1px]",
+						OVERLAY_BACKDROP_CLASS,
+						open ? "opacity-100" : "opacity-0",
+					)}
 					onClick={onClose}
 				/>
 				<div
@@ -477,7 +492,11 @@ function BackgroundTasksPortal({
 					role="dialog"
 					aria-modal="true"
 					aria-label="Background tasks"
-					className="absolute inset-x-0 bottom-0 max-h-[min(85dvh,32rem)] overflow-hidden rounded-t-[14px] border border-divider bg-app-elevated p-4 shadow-hero pb-[max(1rem,env(safe-area-inset-bottom))]"
+					className={cn(
+						"absolute inset-x-0 bottom-0 max-h-[min(85dvh,32rem)] overflow-hidden rounded-t-[14px] border border-divider bg-app-elevated p-4 shadow-hero pb-[max(1rem,env(safe-area-inset-bottom))]",
+						BOTTOM_SHEET_PANEL_CLASS,
+						open ? "translate-y-0" : "translate-y-full",
+					)}
 				>
 					<div className="mx-auto mb-3 h-1 w-10 shrink-0 rounded-full bg-white/15" aria-hidden="true" />
 					<BackgroundTasksPanelBody onClose={onClose} className="max-h-[calc(min(85dvh,32rem)-2.5rem)]" />
@@ -490,7 +509,10 @@ function BackgroundTasksPortal({
 					role="dialog"
 					aria-modal="false"
 					aria-label="Background tasks"
-					className="hidden rounded-[10px] border border-divider bg-app-elevated p-3 shadow-hero lg:block"
+					className={cn(
+						"hidden rounded-[10px] border border-divider bg-app-elevated p-3 shadow-hero lg:block",
+						open ? "animate-dropdown-enter" : "pointer-events-none opacity-0",
+					)}
 					style={desktopStyle}
 				>
 					<BackgroundTasksPanelBody onClose={onClose} className="max-h-[min(70vh,28rem)]" />

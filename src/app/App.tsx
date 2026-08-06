@@ -1,9 +1,8 @@
-import { RouterProvider } from "react-router-dom";
-import { router } from "./router";
 import { StoryEngineProvider } from "./providers/StoryEngineProvider";
 import { GeminiTtsPlaybackProvider } from "./providers/GeminiTtsPlaybackProvider";
 import { ChangelogProvider } from "./versioning/ChangelogContext";
 import { ThemeProvider } from "./theming/ThemeContext";
+import { AppBootstrap } from "./bootstrap/AppBootstrap";
 
 export function App() {
   return (
@@ -11,7 +10,7 @@ export function App() {
       <StoryEngineProvider>
         <GeminiTtsPlaybackProvider>
           <ChangelogProvider>
-            <RouterProvider router={router} />
+            <AppBootstrap />
           </ChangelogProvider>
         </GeminiTtsPlaybackProvider>
       </StoryEngineProvider>
