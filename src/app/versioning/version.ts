@@ -7,9 +7,24 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "3.3.0";
+export const APP_VERSION = "3.3.1";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "3.3.1": {
+    title: "Library Search Expansion & PWA Updates",
+    releasedAt: "2026-08-06T21:30:00+00:00",
+    added: [
+      "Library search advanced filters: protagonist, story features (RP, mature, sequel/branch, guided history), universe type, character activity, and auto-indexing mode",
+      "Message, chapter, and linked-story count filters with quick preset chips",
+      "New sort options: message count, chapter count, story count, reverse alphabetical, and group-by-type",
+      "Search results now show message/chapter counts and linked-story stats inline",
+      "PWA update banner prompts you to reload when a new production build is available",
+    ],
+    fixed: [
+      "Help bubble tooltips no longer clip off-screen on narrow phone layouts",
+    ],
+    knownIssues: [],
+  },
   "3.3.0": {
     title: "Background Task Manager & Streaming Reliability",
     releasedAt: "2026-08-06T16:30:00+00:00",
