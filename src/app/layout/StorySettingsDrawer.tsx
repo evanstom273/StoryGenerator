@@ -20,6 +20,11 @@ import {
 } from "../../lib/ai/audiobookPerformance";
 import { AudiobookChapterProgressList } from "../../components/story/AudiobookChapterProgressList";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
+import {
+	resolveVisibleProvider,
+	shouldShowProviderPicker,
+} from "../../lib/ai/providerConfig";
+import { ProviderSelect } from "../../components/settings/ProviderSelect";
 import { serializeStoryExport } from "../../lib/storyExport";
 import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
@@ -204,12 +209,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [exportStage, setExportStage] = useState<string | null>(null);
   const [isSavingStory, setIsSavingStory] = useState(false);
   const [aiProviderType, setAiProviderType] = useState<AIProviderType>(
-    aiSettings?.activeProviderType ?? "openai",
+    resolveVisibleProvider(aiSettings?.activeProviderType),
   );
-  const [aiModel, setAiModel] = useState(
-    aiSettings?.defaultModels?.[aiSettings?.activeProviderType ?? "openai"] ??
-      getProviderDefaultModel(aiSettings?.activeProviderType ?? "openai"),
-  );
+  const [aiModel, setAiModel] = useState(() => {
+    const provider = resolveVisibleProvider(aiSettings?.activeProviderType);
+    return (
+      aiSettings?.defaultModels?.[provider] ?? getProviderDefaultModel(provider)
+    );
+  });
   const [audiobookParallelChapters, setAudiobookParallelChapters] = useState(
     DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
   );
@@ -392,8 +399,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           return;
         }
 
-        const providerType =
-          config?.providerType ?? aiSettings?.activeProviderType ?? "openai";
+        const providerType = resolveVisibleProvider(
+          config?.providerType ?? aiSettings?.activeProviderType,
+        );
         const model =
           config?.model?.trim() ||
           aiSettings?.defaultModels?.[providerType]?.trim() ||
@@ -413,7 +421,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           return;
         }
 
-        const providerType = aiSettings?.activeProviderType ?? "openai";
+        const providerType = resolveVisibleProvider(aiSettings?.activeProviderType);
         setAiProviderType(providerType);
         setAiModel(
           aiSettings?.defaultModels?.[providerType]?.trim() ||
@@ -910,31 +918,28 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     {aiProviderType} · {aiModel}
                   </div>
 
-                  <label className="block space-y-2">
-                    <FieldLabel
-                      label="Provider"
-                      help="Which AI service generates this story. Overrides the global default from Settings."
-                      labelClassName="text-xs text-ink-muted"
-                    />
-                    <select
-                      className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
-                      value={aiProviderType}
-                      disabled={isReadOnly}
-                      onChange={(event) => {
-                        const nextProvider = event.target.value as AIProviderType;
-                        setAiProviderType(nextProvider);
-                        setAiModel(
-                          aiSettings?.defaultModels?.[nextProvider]?.trim() ||
-                            getProviderDefaultModel(nextProvider),
-                        );
-                      }}
-                    >
-                      <option value="openai">OpenAI</option>
-                      <option value="gemini">Gemini</option>
-                      <option value="openrouter">OpenRouter</option>
-                      <option value="anthropic">Anthropic</option>
-                    </select>
-                  </label>
+                  {shouldShowProviderPicker() ? (
+                    <label className="block space-y-2">
+                      <FieldLabel
+                        label="Provider"
+                        help="Which AI service generates this story. Overrides the global default from Settings."
+                        labelClassName="text-xs text-ink-muted"
+                      />
+                      <ProviderSelect
+                        className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
+                        value={aiProviderType}
+                        disabled={isReadOnly}
+                        onChange={(event) => {
+                          const nextProvider = event.target.value as AIProviderType;
+                          setAiProviderType(nextProvider);
+                          setAiModel(
+                            aiSettings?.defaultModels?.[nextProvider]?.trim() ||
+                              getProviderDefaultModel(nextProvider),
+                          );
+                        }}
+                      />
+                    </label>
+                  ) : null}
 
                   <label className="block space-y-2">
                     <FieldLabel

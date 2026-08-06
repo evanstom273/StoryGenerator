@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BrandMark } from "../../components/BrandMark";
 import { AnimatedOutlet } from "../../components/ui/AnimatedOutlet";
 import { DRAWER_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../ui/motion";
-import { MenuIcon } from "../../components/icons";
+import { MenuIcon, SearchIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
 import { MetaChatOverlay } from "../../components/story/MetaChatOverlay";
 import { cn } from "../../utils/cn";
@@ -22,6 +22,8 @@ import { PwaInstallBanner } from "../../components/PwaInstallBanner";
 import { V2LeftSidebar } from "./V2LeftSidebar";
 import { V2RightSidebar } from "./V2RightSidebar";
 import { BackgroundTasksButton } from "../../components/BackgroundTasksPanel";
+import { LibrarySearchContext } from "../library/LibrarySearchContext";
+import { LibrarySearchOverlay } from "../../components/library/LibrarySearchOverlay";
 
 export function V2Shell() {
   const { storyId } = useParams();
@@ -29,6 +31,8 @@ export function V2Shell() {
   const navigate = useNavigate();
   const [leftOpen, setLeftOpen] = useState(false);
   const [storySettingsOpen, setStorySettingsOpen] = useState(false);
+  const [librarySearchOpen, setLibrarySearchOpen] = useState(false);
+  const [librarySearchQuery, setLibrarySearchQuery] = useState("");
   const [globalMetaChatOpen, setGlobalMetaChatOpen] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(() =>
     readStoredBoolean(UI_PREFS_KEYS.rightSidebarCollapsed, true),
@@ -49,6 +53,8 @@ export function V2Shell() {
   useEffect(() => {
     setLeftOpen(false);
     setStorySettingsOpen(false);
+    setLibrarySearchOpen(false);
+    setLibrarySearchQuery("");
   }, [location.pathname]);
 
   useEffect(() => {
@@ -76,6 +82,20 @@ export function V2Shell() {
   }, []);
 
   const activeStoryId = useMemo(() => (storyId ? String(storyId) : undefined), [storyId]);
+  const librarySearchContextValue = useMemo(
+    () => ({
+      open: librarySearchOpen,
+      openSearch: (query = "") => {
+        setLibrarySearchQuery(query);
+        setLibrarySearchOpen(true);
+      },
+      closeSearch: () => {
+        setLibrarySearchOpen(false);
+        setLibrarySearchQuery("");
+      },
+    }),
+    [librarySearchOpen],
+  );
   const readerActive = Boolean(activeStoryId) && readerMode;
   const effectiveShowChrome = readerActive ? false : showChrome;
   const showFloatingGlobalMetaChatButton = !activeStoryId;
@@ -179,6 +199,7 @@ export function V2Shell() {
   }, [navigate]);
 
   return (
+    <LibrarySearchContext.Provider value={librarySearchContextValue}>
     <UiPrefsContext.Provider
       value={{
         rightSidebarCollapsed,
@@ -201,6 +222,14 @@ export function V2Shell() {
             <BrandMark compact />
             <div className="flex items-center gap-2">
               <BackgroundTasksButton />
+              <button
+                type="button"
+                aria-label="Search library"
+                onClick={() => librarySearchContextValue.openSearch()}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+              >
+                <SearchIcon className="h-4 w-4" />
+              </button>
               <Button
                 variant="secondary"
                 size="sm"
@@ -322,7 +351,13 @@ export function V2Shell() {
           storyId={GLOBAL_META_CHAT_SCOPE_ID}
           onClose={() => setGlobalMetaChatOpen(false)}
         />
+        <LibrarySearchOverlay
+          open={librarySearchOpen}
+          initialQuery={librarySearchQuery}
+          onClose={librarySearchContextValue.closeSearch}
+        />
       </div>
     </UiPrefsContext.Provider>
+    </LibrarySearchContext.Provider>
   );
 }

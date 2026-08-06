@@ -37,8 +37,16 @@ import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 import { TutorialSettingsTab } from "../components/settings/TutorialSettingsTab";
 import { AiDocumentGeneratorTab } from "../components/settings/AiDocumentGeneratorTab";
 import { ThemePicker } from "../components/settings/ThemePicker";
+import { ProviderSelect } from "../components/settings/ProviderSelect";
+import {
+	ALL_AI_PROVIDERS,
+	DEFAULT_VISIBLE_AI_PROVIDER,
+	isProviderVisible,
+	resolveVisibleProvider,
+	shouldShowProviderPicker,
+} from "../lib/ai/providerConfig";
 
-const AI_PROVIDERS: AIProviderType[] = ["openai", "gemini", "openrouter", "anthropic"];
+const AI_PROVIDERS: AIProviderType[] = ALL_AI_PROVIDERS;
 
 const MODEL_ROLE_OPTIONS = [
   {
@@ -73,7 +81,7 @@ type RoleModelMaps = Record<AIModelRole, ProviderModelMap>;
 function buildRoleModelMaps(settings: AISettings | null): RoleModelMaps {
   const fallback: AISettings = {
     id: "ai-settings",
-    activeProviderType: "openai",
+    activeProviderType: DEFAULT_VISIBLE_AI_PROVIDER,
     apiKeys: {},
     defaultModels: {},
     createdAt: "",
@@ -158,7 +166,7 @@ export function SettingsPage() {
   const { themeKey, setThemeKey, theme, customAccent, setCustomAccent } = useTheme();
   const [customAccentError, setCustomAccentError] = useState<string | null>(null);
   const [activeProviderType, setActiveProviderType] = useState<AIProviderType>(
-    aiSettings?.activeProviderType ?? "openai",
+    resolveVisibleProvider(aiSettings?.activeProviderType),
   );
   const [roleModels, setRoleModels] = useState<RoleModelMaps>(() => buildRoleModelMaps(aiSettings ?? null));
   const [openaiKeyInput, setOpenaiKeyInput] = useState("");
@@ -218,7 +226,7 @@ export function SettingsPage() {
   const [dangerZoneLoading, setDangerZoneLoading] = useState<"stories" | "characters" | "universes" | null>(null);
 
   useEffect(() => {
-    setActiveProviderType(aiSettings?.activeProviderType ?? "openai");
+    setActiveProviderType(resolveVisibleProvider(aiSettings?.activeProviderType));
     setRoleModels(buildRoleModelMaps(aiSettings ?? null));
     setMaxConcurrentBackgroundTasks(
       resolveMaxConcurrentBackgroundTasks(aiSettings?.maxConcurrentBackgroundTasks),
@@ -762,25 +770,33 @@ export function SettingsPage() {
       {activeTab === "ai" && (
         <div className="space-y-4">
           <Panel variant="flat">
-            <div className="flex items-center justify-between gap-3">
-              <FieldLabel
-                label="Active Provider"
-                help="Default AI service for new stories. Each story can override provider and model in its settings."
-                labelClassName="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft"
-              />
-              {providerBadge}
-            </div>
-            <div className="mt-3">
-              <SelectInput
-                value={activeProviderType}
-                onChange={(event) => setActiveProviderType(event.target.value as AIProviderType)}
-              >
-                <option value="openai">OpenAI</option>
-                <option value="gemini">Gemini</option>
-                <option value="openrouter">OpenRouter</option>
-                <option value="anthropic">Anthropic</option>
-              </SelectInput>
-            </div>
+            {shouldShowProviderPicker() ? (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <FieldLabel
+                    label="Active Provider"
+                    help="Default AI service for new stories. Each story can override provider and model in its settings."
+                    labelClassName="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft"
+                  />
+                  {providerBadge}
+                </div>
+                <div className="mt-3">
+                  <ProviderSelect
+                    value={activeProviderType}
+                    onChange={(event) => setActiveProviderType(event.target.value as AIProviderType)}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <FieldLabel
+                  label="AI Provider"
+                  help="Story Engine currently uses Gemini for AI generation."
+                  labelClassName="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft"
+                />
+                {providerBadge}
+              </div>
+            )}
           </Panel>
 
           {(
@@ -818,7 +834,9 @@ export function SettingsPage() {
                 placeholder: "sk-ant-...",
               },
             ] as const
-          ).map((provider) => (
+          )
+            .filter((provider) => isProviderVisible(provider.id))
+            .map((provider) => (
             <Panel variant="flat" key={provider.id}>
               <div className="flex items-center justify-between gap-3">
                 <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">{provider.label}</div>
