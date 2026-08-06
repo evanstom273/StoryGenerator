@@ -373,6 +373,8 @@ export interface BackgroundJob {
   };
   error?: string;
   dedupeKey?: string;
+  /** Lower values run first among queued background tasks. */
+  queueOrder?: number;
   payload?: {
     trigger?: "manual" | "auto";
     incremental?: boolean;

@@ -4,8 +4,10 @@ import {
 	getBackgroundTaskNavigationTarget,
 	getBackgroundTaskTypeLabel,
 	isBackgroundTaskJob,
+	moveQueuedBackgroundTaskInOrder,
 	partitionBackgroundTasks,
 	resolveMaxConcurrentBackgroundTasks,
+	sortQueuedBackgroundTasks,
 } from "../backgroundTasks";
 import type { BackgroundJob } from "../../types/models";
 
@@ -82,5 +84,25 @@ describe("backgroundTasks", () => {
 				}),
 			),
 		).toBe("/settings?tab=documents");
+	});
+
+	it("reorders queued background tasks", () => {
+		const queued = [
+			makeJob({ id: "a", type: "story_index", status: "queued", queueOrder: 1 }),
+			makeJob({ id: "b", type: "story_audiobook", status: "queued", queueOrder: 2 }),
+			makeJob({ id: "c", type: "ai_document", status: "queued", queueOrder: 3 }),
+		];
+
+		const movedDown = moveQueuedBackgroundTaskInOrder(queued, "a", "down");
+		expect(movedDown?.map((job) => job.id)).toEqual(["b", "a", "c"]);
+		expect(movedDown?.map((job) => job.queueOrder)).toEqual([1, 2, 3]);
+
+		const movedUp = moveQueuedBackgroundTaskInOrder(movedDown ?? [], "c", "up");
+		expect(movedUp?.map((job) => job.id)).toEqual(["b", "c", "a"]);
+
+		expect(sortQueuedBackgroundTasks([
+			makeJob({ id: "late", type: "podcast_audio", status: "queued", queueOrder: 5, createdAt: "2026-01-03T00:00:00.000Z" }),
+			makeJob({ id: "early", type: "story_index", status: "queued", queueOrder: 1, createdAt: "2026-01-01T00:00:00.000Z" }),
+		]).map((job) => job.id)).toEqual(["early", "late"]);
 	});
 });

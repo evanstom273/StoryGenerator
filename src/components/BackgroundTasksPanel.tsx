@@ -40,14 +40,24 @@ function TaskRow({
 	elapsedLabel,
 	onNavigate,
 	onCancel,
+	onMoveUp,
+	onMoveDown,
 	showCancel,
+	showReorder,
+	canMoveUp,
+	canMoveDown,
 }: {
 	job: BackgroundJob;
 	storyLabel: string;
 	elapsedLabel: string;
 	onNavigate: () => void;
 	onCancel?: () => void;
+	onMoveUp?: () => void;
+	onMoveDown?: () => void;
 	showCancel?: boolean;
+	showReorder?: boolean;
+	canMoveUp?: boolean;
+	canMoveDown?: boolean;
 }) {
 	const typeLabel = getBackgroundTaskTypeLabel(job);
 	const progressLabel = getBackgroundTaskProgressLabel(job);
@@ -99,11 +109,45 @@ function TaskRow({
 					</div>
 				</div>
 			</button>
-			{showCancel && onCancel ? (
-				<div className="mt-2 flex justify-end">
-					<Button variant="ghost" size="sm" onClick={onCancel}>
-						Cancel
-					</Button>
+			{showReorder || showCancel ? (
+				<div className="mt-2 flex items-center justify-end gap-1">
+					{showReorder ? (
+						<div className="mr-auto flex items-center gap-1">
+							<button
+								type="button"
+								aria-label="Move task up in queue"
+								disabled={!canMoveUp}
+								onClick={(event) => {
+									event.stopPropagation();
+									onMoveUp?.();
+								}}
+								className="flex h-7 w-7 items-center justify-center rounded-[6px] text-ink-muted transition hover:bg-white/[0.06] hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+							>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+									<path d="M12 5v14" /><path d="m5 12 7-7 7 7" />
+								</svg>
+							</button>
+							<button
+								type="button"
+								aria-label="Move task down in queue"
+								disabled={!canMoveDown}
+								onClick={(event) => {
+									event.stopPropagation();
+									onMoveDown?.();
+								}}
+								className="flex h-7 w-7 items-center justify-center rounded-[6px] text-ink-muted transition hover:bg-white/[0.06] hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+							>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+									<path d="M12 5v14" /><path d="m5 12 7 7 7 7" />
+								</svg>
+							</button>
+						</div>
+					) : null}
+					{showCancel && onCancel ? (
+						<Button variant="ghost" size="sm" onClick={onCancel}>
+							Cancel
+						</Button>
+					) : null}
 				</div>
 			) : null}
 		</div>
@@ -121,7 +165,7 @@ export function BackgroundTasksPanel({
 }) {
 	const navigate = useNavigate();
 	const panelRef = useRef<HTMLDivElement | null>(null);
-	const { backgroundJobs, stories, cancelBackgroundJob } = useStoryEngine();
+	const { backgroundJobs, stories, cancelBackgroundJob, reorderBackgroundTaskJob } = useStoryEngine();
 	const [, setTick] = useState(0);
 
 	useEffect(() => {
@@ -211,7 +255,7 @@ export function BackgroundTasksPanel({
 						<div className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent-soft">
 							Queued
 						</div>
-						{queued.map((job) => (
+						{queued.map((job, index) => (
 							<TaskRow
 								key={job.id}
 								job={job}
@@ -219,7 +263,12 @@ export function BackgroundTasksPanel({
 								elapsedLabel={getBackgroundTaskElapsedLabel(job)}
 								onNavigate={() => navigateToJob(job)}
 								onCancel={() => void cancelBackgroundJob(job.id)}
+								onMoveUp={() => void reorderBackgroundTaskJob(job.id, "up")}
+								onMoveDown={() => void reorderBackgroundTaskJob(job.id, "down")}
 								showCancel
+								showReorder
+								canMoveUp={index > 0}
+								canMoveDown={index < queued.length - 1}
 							/>
 						))}
 					</section>

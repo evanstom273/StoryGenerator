@@ -132,6 +132,59 @@ export function countActiveBackgroundTasks(jobs: BackgroundJob[]): number {
 	).length;
 }
 
+export function resolveBackgroundTaskQueueOrder(job: BackgroundJob): number {
+	if (typeof job.queueOrder === "number" && Number.isFinite(job.queueOrder)) {
+		return job.queueOrder;
+	}
+	return new Date(job.createdAt).getTime();
+}
+
+export function compareQueuedBackgroundTasks(left: BackgroundJob, right: BackgroundJob): number {
+	const orderDelta = resolveBackgroundTaskQueueOrder(left) - resolveBackgroundTaskQueueOrder(right);
+	if (orderDelta !== 0) {
+		return orderDelta;
+	}
+	return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+}
+
+export function sortQueuedBackgroundTasks(jobs: BackgroundJob[]): BackgroundJob[] {
+	return [...jobs].sort(compareQueuedBackgroundTasks);
+}
+
+export function getNextBackgroundTaskQueueOrder(jobs: BackgroundJob[]): number {
+	const queued = jobs.filter((job) => isBackgroundTaskJob(job) && job.status === "queued");
+	if (!queued.length) {
+		return 1;
+	}
+	return Math.max(...queued.map((job) => resolveBackgroundTaskQueueOrder(job))) + 1;
+}
+
+export function moveQueuedBackgroundTaskInOrder(
+	queued: BackgroundJob[],
+	jobId: string,
+	direction: "up" | "down",
+): BackgroundJob[] | null {
+	const sorted = sortQueuedBackgroundTasks(queued);
+	const currentIndex = sorted.findIndex((job) => job.id === jobId);
+	if (currentIndex === -1) {
+		return null;
+	}
+
+	const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+	if (targetIndex < 0 || targetIndex >= sorted.length) {
+		return null;
+	}
+
+	const next = [...sorted];
+	const [moved] = next.splice(currentIndex, 1);
+	next.splice(targetIndex, 0, moved);
+
+	return next.map((job, index) => ({
+		...job,
+		queueOrder: index + 1,
+	}));
+}
+
 export function partitionBackgroundTasks(jobs: BackgroundJob[]) {
 	const backgroundTasks = jobs.filter(isBackgroundTaskJob);
 	const running = backgroundTasks
@@ -143,10 +196,7 @@ export function partitionBackgroundTasks(jobs: BackgroundJob[]) {
 		);
 	const queued = backgroundTasks
 		.filter((job) => job.status === "queued")
-		.sort(
-			(left, right) =>
-				new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
-		);
+		.sort(compareQueuedBackgroundTasks);
 	const completed = backgroundTasks
 		.filter(
 			(job) =>

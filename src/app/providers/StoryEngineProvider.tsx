@@ -168,6 +168,9 @@ import { downloadFile } from "../../lib/download";
 import {
 	isBackgroundTaskJob,
 	resolveMaxConcurrentBackgroundTasks,
+	getNextBackgroundTaskQueueOrder,
+	moveQueuedBackgroundTaskInOrder,
+	sortQueuedBackgroundTasks,
 } from "../../lib/backgroundTasks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
@@ -455,6 +458,10 @@ interface StoryEngineContextValue {
     opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean },
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
   cancelBackgroundJob: (jobId: string) => Promise<BackgroundJob | null>;
+  reorderBackgroundTaskJob: (
+    jobId: string,
+    direction: "up" | "down",
+  ) => Promise<BackgroundJob[] | null>;
   cancelStoryIndexing: (storyId: string) => Promise<void>;
   queueAudiobookJob: (
     storyId: string,
@@ -2440,7 +2447,8 @@ export function StoryEngineProvider({
 
   const queueStoryIndexJob = useCallback(
     async (storyId: string, opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean }) => {
-      const existing = (await repository.listBackgroundJobs()).find(
+      const existingJobs = await repository.listBackgroundJobs();
+      const existing = existingJobs.find(
         (job) =>
           job.type === "story_index" &&
           job.storyId === storyId &&
@@ -2473,6 +2481,7 @@ export function StoryEngineProvider({
         storyId,
         createdAt: new Date().toISOString(),
         status: "queued",
+        queueOrder: getNextBackgroundTaskQueueOrder(existingJobs),
         dedupeKey: `story_index:${storyId}`,
         payload: {
           trigger: opts?.trigger ?? "manual",
@@ -2484,6 +2493,24 @@ export function StoryEngineProvider({
       await repository.saveBackgroundJob(job);
       await hydrate(false);
       return { job, duplicate: false };
+    },
+    [hydrate, repository],
+  );
+
+  const reorderBackgroundTaskJob = useCallback(
+    async (jobId: string, direction: "up" | "down") => {
+      const jobs = await repository.listBackgroundJobs();
+      const queued = jobs.filter(
+        (job) => isBackgroundTaskJob(job) && job.status === "queued",
+      );
+      const reordered = moveQueuedBackgroundTaskInOrder(queued, jobId, direction);
+      if (!reordered) {
+        return null;
+      }
+
+      await Promise.all(reordered.map((job) => repository.saveBackgroundJob(job)));
+      await hydrate(false);
+      return reordered;
     },
     [hydrate, repository],
   );
@@ -2687,7 +2714,8 @@ export function StoryEngineProvider({
 
   const queueAudiobookJob = useCallback(
     async (storyId: string, opts?: { force?: boolean }) => {
-      const existing = (await repository.listBackgroundJobs()).find(
+      const existingJobs = await repository.listBackgroundJobs();
+      const existing = existingJobs.find(
         (job) =>
           job.type === "story_audiobook" &&
           job.storyId === storyId &&
@@ -2717,6 +2745,7 @@ export function StoryEngineProvider({
         storyId,
         createdAt: new Date().toISOString(),
         status: "queued",
+        queueOrder: getNextBackgroundTaskQueueOrder(existingJobs),
         dedupeKey: `story_audiobook:${storyId}`,
         payload: {
           audiobookParallelChapters: clampAudiobookParallelChapters(
@@ -2753,7 +2782,8 @@ export function StoryEngineProvider({
           : `ai_document:upload:${input.presetId}:${outputFormat}:${input.source.label}`;
       const jobType = outputFormat === "gemini-audio-wav" ? "podcast_audio" : "ai_document";
 
-      const existing = (await repository.listBackgroundJobs()).find(
+      const existingJobs = await repository.listBackgroundJobs();
+      const existing = existingJobs.find(
         (job) =>
           job.type === jobType &&
           job.dedupeKey === dedupeKey &&
@@ -2773,6 +2803,7 @@ export function StoryEngineProvider({
         storyId: input.source.type === "story" ? input.source.storyId : undefined,
         createdAt: new Date().toISOString(),
         status: "queued",
+        queueOrder: getNextBackgroundTaskQueueOrder(existingJobs),
         dedupeKey,
         payload: {
           aiDocumentPresetId: input.presetId,
@@ -2798,7 +2829,8 @@ export function StoryEngineProvider({
   const queuePodcastAudioJob = useCallback(
     async (input: { markdown: string; label: string; force?: boolean }) => {
       const dedupeKey = `podcast_audio:upload:${input.label}:${input.markdown.length}`;
-      const existing = (await repository.listBackgroundJobs()).find(
+      const existingJobs = await repository.listBackgroundJobs();
+      const existing = existingJobs.find(
         (job) =>
           job.type === "podcast_audio" &&
           job.dedupeKey === dedupeKey &&
@@ -2817,6 +2849,7 @@ export function StoryEngineProvider({
         type: "podcast_audio",
         createdAt: new Date().toISOString(),
         status: "queued",
+        queueOrder: getNextBackgroundTaskQueueOrder(existingJobs),
         dedupeKey,
         payload: {
           aiDocumentSourceType: "upload",
@@ -4264,18 +4297,15 @@ export function StoryEngineProvider({
       return;
     }
 
-    const queuedBtJobs = backgroundJobs
-      .filter(
+    const queuedBtJobs = sortQueuedBackgroundTasks(
+      backgroundJobs.filter(
         (job) =>
           isBackgroundTaskJob(job) &&
           job.status === "queued" &&
           !inFlightBackgroundJobsRef.current.has(job.id) &&
           !activeBackgroundJobIdsRef.current.has(job.id),
-      )
-      .sort(
-        (left, right) =>
-          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
-      );
+      ),
+    );
 
     for (const job of queuedBtJobs.slice(0, slots)) {
       startBackgroundTaskJob(job);
@@ -6469,6 +6499,7 @@ export function StoryEngineProvider({
       queueAiDocumentJob,
       queuePodcastAudioJob,
       cancelBackgroundJob,
+      reorderBackgroundTaskJob,
       cancelStoryIndexing,
       queueGuidedChapterJob,
       cancelGuidedChapterGeneration,
