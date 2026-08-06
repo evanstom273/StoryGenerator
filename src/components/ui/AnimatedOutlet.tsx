@@ -50,7 +50,8 @@ export function AnimatedOutlet() {
 		<div className="relative min-h-full overflow-x-hidden bg-app">
 			<div
 				className={cn(
-					"min-h-full transform-gpu backface-hidden",
+					"min-h-full backface-hidden",
+					animClass !== null && "transform-gpu",
 					animClass === "exit" && "animate-page-exit",
 					animClass === "enter" && "animate-page-enter",
 				)}
