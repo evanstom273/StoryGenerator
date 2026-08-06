@@ -14,8 +14,11 @@ import { useNavigate } from "react-router-dom";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import {
 	countActiveBackgroundTasks,
+	countCompletedBackgroundJobSteps,
+	formatEstimatedRemainingSeconds,
 	getBackgroundTaskNavigationTarget,
 	getBackgroundTaskProgressPercent,
+	getBackgroundTaskRemainingSeconds,
 	getBackgroundTaskStatusLine,
 	getBackgroundTaskStoryLabel,
 	getBackgroundTaskTypeLabel,
@@ -70,17 +73,62 @@ function TaskProgressBar({ percent }: { percent: number | null }) {
 	);
 }
 
-function TaskStatusLine({ job, storyLabel }: { job: BackgroundJob; storyLabel: string }) {
-	const [nowMs, setNowMs] = useState(() => Date.now());
+function useMonotonicTaskRemainingLabel(job: BackgroundJob): string | undefined {
+	const [remainingLabel, setRemainingLabel] = useState<string | undefined>();
+	const displaySecondsRef = useRef<number | null>(null);
+	const lastDoneStepsRef = useRef(0);
+	const doneSteps = countCompletedBackgroundJobSteps(job.progress?.steps ?? []);
 
 	useEffect(() => {
-		if (job.status !== "running" && job.status !== "queued") {
+		displaySecondsRef.current = null;
+		lastDoneStepsRef.current = 0;
+		setRemainingLabel(undefined);
+	}, [job.id]);
+
+	useEffect(() => {
+		if (job.status === "queued") {
+			setRemainingLabel("Queued");
 			return;
 		}
 
-		const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
+		if (job.status !== "running") {
+			setRemainingLabel(undefined);
+			return;
+		}
+
+		const tick = () => {
+			const rawSeconds = getBackgroundTaskRemainingSeconds(job, Date.now());
+			if (rawSeconds === null) {
+				setRemainingLabel(undefined);
+				return;
+			}
+
+			const currentDoneSteps = countCompletedBackgroundJobSteps(job.progress?.steps ?? []);
+			let nextSeconds: number;
+
+			if (currentDoneSteps > lastDoneStepsRef.current) {
+				lastDoneStepsRef.current = currentDoneSteps;
+				nextSeconds = rawSeconds;
+			} else if (displaySecondsRef.current === null) {
+				nextSeconds = rawSeconds;
+			} else {
+				nextSeconds = Math.max(0, Math.min(displaySecondsRef.current - 1, rawSeconds));
+			}
+
+			displaySecondsRef.current = nextSeconds;
+			setRemainingLabel(formatEstimatedRemainingSeconds(nextSeconds));
+		};
+
+		tick();
+		const intervalId = window.setInterval(tick, 1000);
 		return () => window.clearInterval(intervalId);
-	}, [job.id, job.status]);
+	}, [job, doneSteps]);
+
+	return remainingLabel;
+}
+
+function TaskStatusLine({ job, storyLabel }: { job: BackgroundJob; storyLabel: string }) {
+	const remainingLabel = useMonotonicTaskRemainingLabel(job);
 
 	if (job.status === "complete" || job.status === "failed" || job.status === "cancelled") {
 		return (
@@ -88,7 +136,7 @@ function TaskStatusLine({ job, storyLabel }: { job: BackgroundJob; storyLabel: s
 		);
 	}
 
-	const line = getBackgroundTaskStatusLine(job, storyLabel, nowMs);
+	const line = getBackgroundTaskStatusLine(job, storyLabel, remainingLabel);
 	return <div className="mt-0.5 truncate text-xs text-ink-muted">{line}</div>;
 }
 

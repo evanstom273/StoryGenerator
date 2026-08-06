@@ -8,6 +8,7 @@ import {
 	formatEstimatedRemainingSeconds,
 	getBackgroundTaskNavigationTarget,
 	getBackgroundTaskProgressLabel,
+	getBackgroundTaskRemainingSeconds,
 	getBackgroundTaskStatusLine,
 	getBackgroundTaskRemainingLabel,
 	getBackgroundTaskTypeLabel,
@@ -212,15 +213,14 @@ describe("backgroundTasks", () => {
 				progress: backgroundJobProgressFromSteps("Generating Novelisation", runningSteps),
 			}),
 			"Jamie's Tales",
-			nowMs,
+			"~3m",
 		);
 
-		expect(statusLine).toMatch(/^Jamie's Tales - Chapter I \(1\/3\) - ~/);
+		expect(statusLine).toBe("Jamie's Tales - Chapter I (1/3) - ~3m");
 	});
 
 	it("formats consolidated status line without fraction for intro step", () => {
 		const startedAt = "2026-01-01T00:00:00.000Z";
-		const nowMs = new Date("2026-01-01T00:00:30.000Z").getTime();
 		const steps = buildChapterDocumentSteps({
 			introLabel: "Writing title",
 			chapterLabels: ["Chapter I", "Chapter II"],
@@ -239,11 +239,10 @@ describe("backgroundTasks", () => {
 				progress: backgroundJobProgressFromSteps("Generating Novelisation", runningSteps),
 			}),
 			"Jamie's Tales",
-			nowMs,
+			"~7m30s",
 		);
 
-		expect(statusLine).toMatch(/^Jamie's Tales - Writing title - ~/);
-		expect(statusLine).not.toContain("(1/");
+		expect(statusLine).toBe("Jamie's Tales - Writing title - ~7m30s");
 	});
 
 	it("formats estimated remaining time", () => {
@@ -253,7 +252,45 @@ describe("backgroundTasks", () => {
 		expect(formatEstimatedRemainingSeconds(3661)).toBe("~1h1m");
 	});
 
-	it("estimates remaining time from job progress", () => {
+	it("counts down fallback estimate before any steps complete", () => {
+		const startedAt = "2026-01-01T00:00:00.000Z";
+
+		expect(
+			getBackgroundTaskRemainingSeconds(
+				makeJob({
+					id: "1",
+					type: "ai_document",
+					status: "running",
+					startedAt,
+					payload: { aiDocumentPresetId: "novelisation" },
+					progress: backgroundJobProgressFromSteps("Generating Novelisation", [
+						{ id: "intro", label: "Writing title", status: "running" },
+						{ id: "chapter-0", label: "Chapter I", status: "pending" },
+					]),
+				}),
+				new Date("2026-01-01T00:00:30.000Z").getTime(),
+			),
+		).toBe(450);
+
+		expect(
+			getBackgroundTaskRemainingSeconds(
+				makeJob({
+					id: "1",
+					type: "ai_document",
+					status: "running",
+					startedAt,
+					payload: { aiDocumentPresetId: "novelisation" },
+					progress: backgroundJobProgressFromSteps("Generating Novelisation", [
+						{ id: "intro", label: "Writing title", status: "running" },
+						{ id: "chapter-0", label: "Chapter I", status: "pending" },
+					]),
+				}),
+				new Date("2026-01-01T00:01:00.000Z").getTime(),
+			),
+		).toBe(420);
+	});
+
+	it("estimates remaining time from completed steps", () => {
 		const startedAt = "2026-01-01T00:00:00.000Z";
 		const nowMs = new Date("2026-01-01T00:01:00.000Z").getTime();
 
