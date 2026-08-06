@@ -1,24 +1,26 @@
 import { useEffect, useState } from "react";
 
-export const MOTION_DURATION_MS = 280;
-export const MOTION_DURATION_CLASS = "duration-[280ms]";
+export const MOTION_DURATION_MS = 320;
+export const MOTION_DURATION_CLASS = "duration-[320ms]";
 export const MOTION_EASE_CLASS = "ease-out";
 
-export const PAGE_TRANSITION_MS = 340;
-export const PAGE_TRANSITION_CLASS = "duration-[340ms]";
+export const PAGE_TRANSITION_MS = 580;
+export const PAGE_EXIT_MS = 240;
+export const PAGE_ENTER_MS = PAGE_TRANSITION_MS;
+export const PAGE_TRANSITION_CLASS = "duration-[580ms]";
 
 export const SPLASH_EXIT_MS = 450;
 export const SPLASH_EXIT_CLASS = "duration-[450ms]";
 
 export const OVERLAY_BACKDROP_CLASS =
-	"transition-opacity duration-[280ms] ease-out bg-app/80 backdrop-blur-sm";
+	"transition-opacity duration-[320ms] ease-out bg-app/80 backdrop-blur-sm";
 
-export const DRAWER_PANEL_CLASS = "transition-transform duration-[280ms] ease-out";
+export const DRAWER_PANEL_CLASS = "transition-transform duration-[320ms] ease-out";
 
-export const BOTTOM_SHEET_PANEL_CLASS = "transition-transform duration-[280ms] ease-out";
+export const BOTTOM_SHEET_PANEL_CLASS = "transition-transform duration-[320ms] ease-out";
 
 export const MODAL_PANEL_CLASS =
-	"transition-[opacity,transform] duration-[280ms] ease-out";
+	"transition-[opacity,transform] duration-[320ms] ease-out";
 
 export function usePrefersReducedMotion(): boolean {
 	const [reducedMotion, setReducedMotion] = useState(false);
