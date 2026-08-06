@@ -1,5 +1,31 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../../utils/cn";
+
+const VIEWPORT_PADDING_PX = 12;
+const PANEL_GAP_PX = 6;
+const PANEL_WIDTH_PX = 256;
+
+function clampPanelPosition(buttonRect: DOMRect, panelRect: DOMRect) {
+	const maxWidth = Math.min(PANEL_WIDTH_PX, window.innerWidth - VIEWPORT_PADDING_PX * 2);
+
+	let left = buttonRect.left + buttonRect.width / 2 - maxWidth / 2;
+	left = Math.max(
+		VIEWPORT_PADDING_PX,
+		Math.min(left, window.innerWidth - maxWidth - VIEWPORT_PADDING_PX),
+	);
+
+	let top = buttonRect.bottom + PANEL_GAP_PX;
+	if (top + panelRect.height > window.innerHeight - VIEWPORT_PADDING_PX) {
+		top = buttonRect.top - panelRect.height - PANEL_GAP_PX;
+	}
+	top = Math.max(
+		VIEWPORT_PADDING_PX,
+		Math.min(top, window.innerHeight - panelRect.height - VIEWPORT_PADDING_PX),
+	);
+
+	return { left, top, width: maxWidth };
+}
 
 export function HelpBubble({
 	text,
@@ -11,8 +37,48 @@ export function HelpBubble({
 	className?: string;
 }) {
 	const [open, setOpen] = useState(false);
+	const [panelStyle, setPanelStyle] = useState<CSSProperties>({
+		position: "fixed",
+		left: VIEWPORT_PADDING_PX,
+		top: VIEWPORT_PADDING_PX,
+		width: PANEL_WIDTH_PX,
+		visibility: "hidden",
+	});
 	const containerRef = useRef<HTMLDivElement>(null);
+	const panelRef = useRef<HTMLDivElement>(null);
 	const panelId = useId();
+
+	useLayoutEffect(() => {
+		if (!open) {
+			return;
+		}
+
+		function updatePosition() {
+			const container = containerRef.current;
+			const panel = panelRef.current;
+			const button = container?.querySelector("button");
+			if (!container || !panel || !button) {
+				return;
+			}
+
+			const nextPosition = clampPanelPosition(button.getBoundingClientRect(), panel.getBoundingClientRect());
+			setPanelStyle({
+				position: "fixed",
+				left: nextPosition.left,
+				top: nextPosition.top,
+				width: nextPosition.width,
+				visibility: "visible",
+			});
+		}
+
+		updatePosition();
+		window.addEventListener("resize", updatePosition);
+		window.addEventListener("scroll", updatePosition, true);
+		return () => {
+			window.removeEventListener("resize", updatePosition);
+			window.removeEventListener("scroll", updatePosition, true);
+		};
+	}, [open, text]);
 
 	useEffect(() => {
 		if (!open) {
@@ -20,9 +86,11 @@ export function HelpBubble({
 		}
 
 		function handlePointerDown(event: PointerEvent) {
-			if (!containerRef.current?.contains(event.target as Node)) {
-				setOpen(false);
+			const target = event.target as Node;
+			if (containerRef.current?.contains(target) || panelRef.current?.contains(target)) {
+				return;
 			}
+			setOpen(false);
 		}
 
 		document.addEventListener("pointerdown", handlePointerDown);
@@ -41,15 +109,20 @@ export function HelpBubble({
 			>
 				?
 			</button>
-			{open ? (
-				<div
-					id={panelId}
-					role="tooltip"
-					className="absolute right-0 top-[calc(100%+6px)] z-[80] w-56 rounded-[8px] border border-divider bg-panel p-2.5 text-[11px] leading-relaxed text-ink-soft shadow-lg sm:w-64"
-				>
-					{text}
-				</div>
-			) : null}
+			{open
+				? createPortal(
+						<div
+							ref={panelRef}
+							id={panelId}
+							role="tooltip"
+							style={panelStyle}
+							className="z-[120] rounded-[8px] border border-divider bg-panel p-2.5 text-[11px] leading-relaxed text-ink-soft shadow-lg"
+						>
+							{text}
+						</div>,
+						document.body,
+					)
+				: null}
 		</div>
 	);
 }
