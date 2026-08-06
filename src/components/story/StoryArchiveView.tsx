@@ -39,10 +39,12 @@ async function isAndroidNativePlatform() {
 export function StoryArchiveView({
   storyId,
   playerName,
+  playerAliases,
   relationshipsRefreshKey = 0,
 }: {
   storyId: string;
   playerName?: string;
+  playerAliases?: string[];
   relationshipsRefreshKey?: number;
 }) {
   const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, updateIndexesDeep, loadStoryRelationships, cancelStoryIndexing } =
@@ -491,7 +493,7 @@ export function StoryArchiveView({
             </p>
             <div className="mt-3">
               <RelationshipOverviewList
-                relationships={filterPlayerRelationships(archiveRelationships, playerName)}
+                relationships={filterPlayerRelationships(archiveRelationships, playerName, playerAliases)}
                 playerName={playerName}
               />
             </div>

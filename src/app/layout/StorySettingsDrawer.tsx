@@ -40,6 +40,7 @@ import { RelationshipOverviewList } from "../../components/story/RelationshipOve
 import { AudiobookChapterProgressList } from "../../components/story/AudiobookChapterProgressList";
 import { IndexingProgressPanel } from "../../components/story/IndexingProgressPanel";
 import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
+import { normalizePlayerCharacterAliases } from "../../lib/playerCharacterPrompt";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
 import type {
 	AIProviderType,
@@ -1741,10 +1742,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                           {relationships.length
                             ? renderArchiveDropdown({
                                 title: "Relationships",
-                                countLabel: `${Math.min(filterPlayerRelationships(relationships, playerCharacter?.name).length, 12)} shown`,
+                                countLabel: `${Math.min(filterPlayerRelationships(relationships, playerCharacter?.name, normalizePlayerCharacterAliases(playerCharacter?.aliases)).length, 12)} shown`,
                                 children: (
                                   <RelationshipOverviewList
-                                    relationships={filterPlayerRelationships(relationships, playerCharacter?.name)}
+                                    relationships={filterPlayerRelationships(relationships, playerCharacter?.name, normalizePlayerCharacterAliases(playerCharacter?.aliases))}
                                     playerName={playerCharacter?.name}
                                     limit={12}
                                   />

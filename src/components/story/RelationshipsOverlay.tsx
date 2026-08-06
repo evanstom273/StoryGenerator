@@ -3,6 +3,7 @@ import { Button } from "../ui/Button";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import type { NpcInnerLife, RelationshipArc, RelationshipHistoryEntry, RelationshipIndexEntry, RelationshipTier } from "../../types/models";
 import { makeRelationshipPairKey } from "../../lib/relationshipIndex";
+import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
 import { cn } from "../../utils/cn";
 
 // ── Tier metadata ─────────────────────────────────────────────────────────────
@@ -142,9 +143,6 @@ function RelationshipListCard({
       {!entry.arc?.statusPhrase && entry.summary && (
         <p className="mt-1 text-xs text-ink-muted">{entry.summary}</p>
       )}
-      <div className="mt-2">
-        <MetricBars entry={entry} />
-      </div>
     </button>
   );
 }
@@ -513,6 +511,7 @@ export function RelationshipsOverlay(props: {
   open: boolean;
   storyId: string;
   playerName?: string;
+  playerAliases?: string[];
   universeImportedCharacters?: string[];
   onClose: () => void;
   refreshKey?: number;
@@ -548,7 +547,7 @@ export function RelationshipsOverlay(props: {
 
   const pcName = props.playerName?.trim().toLowerCase() ?? "";
   const filtered = filter === "player" && pcName
-    ? relationships.filter((r) => r.a.trim().toLowerCase() === pcName || r.b.trim().toLowerCase() === pcName)
+    ? filterPlayerRelationships(relationships, props.playerName, props.playerAliases)
     : relationships;
   const sorted = sortByTier(filtered);
 

@@ -6,6 +6,7 @@ import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storySta
 import { repairMalformedTranscriptFormat } from "../storyText/transcriptFormatRepair";
 import { normalizeSpeakerNamesInTranscript } from "../storyText/speakerLabels";
 import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing, applyOpenThreadReconciliation } from "../storyStateV2";
+import { normalizePlayerCharacterAliases } from "../playerCharacterPrompt";
 import { ensureIndexedCharacterStatus } from "../characterStatus";
 import { AIError } from "./errors";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
@@ -263,6 +264,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     };
     const reconciledIndexes = reconcileStoryIndexes(combinedIndexes, total, {
       playerName: playerCharacter.name,
+      playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
       universeImportedCharacters,
     });
 
@@ -289,6 +291,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
   const finalIndexes = reconcileStoryIndexes(currentState.indexes, total, {
     playerName: playerCharacter.name,
+    playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
     universeImportedCharacters,
   });
   const finalState = ensureIndexedCharacterStatus(

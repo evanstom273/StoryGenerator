@@ -1,10 +1,11 @@
 import type { RelationshipIndexEntry, StoryIndexesV2 } from "../types/models";
 import { safeParseJsonObject } from "./ai/json";
 import { reconcileStoryIndexes, safeParseStoryStateData } from "./storyStateV2";
-import { makeRelationshipPairKey } from "./relationshipIndex";
+import { makeRelationshipPairKey, relationshipInvolvesPlayer, buildResolvedPlayerNameVariants } from "./relationshipIndex";
 
 export type StoryRelationshipLoadOpts = {
 	playerName?: string;
+	playerAliases?: string[];
 	universeImportedCharacters?: string[];
 	messageCount?: number;
 };
@@ -70,6 +71,7 @@ export function reconcileRelationshipsFromStateJson(
 		messageCount,
 		{
 			playerName: opts.playerName,
+			playerAliases: opts.playerAliases,
 			universeImportedCharacters: opts.universeImportedCharacters,
 		},
 	);
@@ -101,11 +103,12 @@ export function relationshipCounterparty(
 export function filterPlayerRelationships(
 	relationships: RelationshipIndexEntry[],
 	playerName?: string,
+	playerAliases?: string[],
 ): RelationshipIndexEntry[] {
 	if (!playerName?.trim()) return relationships;
-	const playerNorm = playerName.trim().toLowerCase();
-	return relationships.filter(
-		(entry) =>
-			entry.a.trim().toLowerCase() === playerNorm || entry.b.trim().toLowerCase() === playerNorm,
-	);
+	const variants = buildResolvedPlayerNameVariants({
+		playerName,
+		playerAliases,
+	});
+	return relationships.filter((entry) => relationshipInvolvesPlayer(entry, playerName, variants));
 }

@@ -2901,6 +2901,7 @@ export function StoryEngineProvider({
               mode: "deep",
               deepIndexTrigger: opts?.trigger ?? "manual",
               playerName: playerCharacter.name,
+              playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
               universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
             });
           } catch {
@@ -3841,6 +3842,7 @@ export function StoryEngineProvider({
             now,
             mode: "deep",
             playerName: playerCharacter.name,
+            playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
             universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
           });
         } catch {
@@ -5731,6 +5733,7 @@ export function StoryEngineProvider({
           messageCount,
           {
             playerName: playerCharacter?.name,
+            playerAliases: normalizePlayerCharacterAliases(playerCharacter?.aliases),
             universeImportedCharacters: story?.universePackSnapshot?.universe?.importedCharacters ?? [],
           },
         );
@@ -5761,6 +5764,7 @@ export function StoryEngineProvider({
 
         const { relationships, changed } = reconcileRelationshipsFromStateJson(stateJson, {
           playerName: playerCharacter?.name,
+          playerAliases: normalizePlayerCharacterAliases(playerCharacter?.aliases),
           universeImportedCharacters,
           messageCount: messages.length,
         });
@@ -5777,6 +5781,7 @@ export function StoryEngineProvider({
             messages.length,
             {
               playerName: playerCharacter?.name,
+              playerAliases: normalizePlayerCharacterAliases(playerCharacter?.aliases),
               universeImportedCharacters,
             },
           );
@@ -7162,6 +7167,7 @@ export function StoryEngineProvider({
                     totalMessagesForIndex,
                     {
                       playerName: rpPlayerName,
+                      playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
                       universeImportedCharacters,
                     },
                   );
@@ -7395,6 +7401,7 @@ export function StoryEngineProvider({
                 const now = new Date().toISOString();
                 const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages, {
                   playerName: playerCharacter.name,
+                  playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
                   universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
                 });
 

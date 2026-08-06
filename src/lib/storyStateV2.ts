@@ -7,6 +7,8 @@ import type {
 import { safeParseJsonObject } from "./ai/json";
 import {
 	buildCharacterAllowlist,
+	isIndexedPlayerCharacterDuplicate,
+	buildResolvedPlayerNameVariants,
 	mergePerTurnRelationshipFields,
 	reconcileRelationshipEntries,
 } from "./relationshipIndex";
@@ -665,6 +667,7 @@ export function reconcileStoryIndexes(
   totalMessages: number,
   opts?: {
     playerName?: string;
+    playerAliases?: string[];
     universeImportedCharacters?: string[];
   },
 ): StoryIndexesV2 | undefined {
@@ -674,19 +677,41 @@ export function reconcileStoryIndexes(
 
   const messageCount = totalMessages > 0 ? totalMessages : indexes.messageCount;
 
-  const { merged: characters, aliasToCanonical } = reconcileIndexedEntities(indexes.characters);
+  const { merged: rawCharacters, aliasToCanonical } = reconcileIndexedEntities(indexes.characters);
+
+  const playerVariants = opts?.playerName
+    ? buildResolvedPlayerNameVariants({
+        playerName: opts.playerName,
+        playerAliases: opts.playerAliases,
+        indexedCharacters: rawCharacters ?? indexes.characters,
+      })
+    : undefined;
+
+  const characters =
+    rawCharacters && playerVariants
+      ? Object.fromEntries(
+          Object.entries(rawCharacters).filter(
+            ([key, entity]) => !isIndexedPlayerCharacterDuplicate(key, entity, playerVariants),
+          ),
+        )
+      : rawCharacters;
+
+  const normalizedCharacters =
+    characters && Object.keys(characters).length ? characters : undefined;
 
   const allowlist = buildCharacterAllowlist({
     playerName: opts?.playerName ?? "",
-    indexedCharacters: characters ?? indexes.characters,
+    playerAliases: opts?.playerAliases,
+    indexedCharacters: normalizedCharacters ?? indexes.characters,
     universeImportedCharacters: opts?.universeImportedCharacters,
     existingRelationships: indexes.relationships,
   });
 
   const relationships = reconcileRelationshipEntries(indexes.relationships, aliasToCanonical, {
     playerName: opts?.playerName,
+    playerAliases: opts?.playerAliases,
     allowlist,
-    indexedCharacters: characters ?? indexes.characters,
+    indexedCharacters: normalizedCharacters ?? indexes.characters,
     universeImportedCharacters: opts?.universeImportedCharacters,
   });
 
@@ -694,7 +719,7 @@ export function reconcileStoryIndexes(
     ...indexes,
     ...(messageCount ? { messageCount } : {}),
     messageNumberingVersion: "1.0",
-    ...(characters ? { characters } : {}),
+    ...(normalizedCharacters ? { characters: normalizedCharacters } : {}),
     ...(relationships ? { relationships } : {}),
   };
 }
@@ -707,6 +732,7 @@ export function finalizeStoryStateForSave(params: {
   mode: "auto" | "deep";
   deepIndexTrigger?: "auto" | "manual";
   playerName?: string;
+  playerAliases?: string[];
   universeImportedCharacters?: string[];
 }): string {
   const previous = (() => {
@@ -728,6 +754,7 @@ export function finalizeStoryStateForSave(params: {
   const normalized = normalizeStoryStateToV2(params.parsedState);
   let reconciledIndexes = reconcileStoryIndexes(normalized.indexes, params.totalMessages, {
     playerName: params.playerName,
+    playerAliases: params.playerAliases,
     universeImportedCharacters: params.universeImportedCharacters,
   });
 

@@ -130,17 +130,99 @@ export function stripRelationshipEndpointAnnotations(name: string): string {
 	return s.replace(/\s+/g, " ");
 }
 
-export function buildPlayerNameVariants(playerName: string): Set<string> {
-	const variants = new Set<string>();
-	const trimmed = playerName.trim();
-	if (!trimmed) return variants;
+function addNameTokensToVariantSet(variants: Set<string>, raw: string) {
+	const trimmed = raw.trim();
+	if (!trimmed) return;
 	variants.add(normalizeRelationshipKey(trimmed));
-	const tokens = trimmed.split(/\s+/).filter(Boolean);
+	const stripped = stripRelationshipEndpointAnnotations(trimmed);
+	if (!stripped) return;
+	variants.add(normalizeRelationshipKey(stripped));
+	const tokens = stripped.split(/\s+/).filter(Boolean);
 	if (tokens[0]) variants.add(normalizeRelationshipKey(tokens[0]));
 	if (tokens.length > 1) {
 		variants.add(normalizeRelationshipKey(tokens[tokens.length - 1]!));
 	}
+}
+
+export function buildPlayerNameVariants(playerName: string, playerAliases?: string[]): Set<string> {
+	const variants = new Set<string>();
+	const trimmed = playerName.trim();
+	if (!trimmed) return variants;
+	addNameTokensToVariantSet(variants, trimmed);
+	for (const alias of playerAliases ?? []) {
+		addNameTokensToVariantSet(variants, alias);
+	}
 	return variants;
+}
+
+/** Pull in every name/alias for indexed characters that share any label with the player. */
+export function expandPlayerNameVariantsFromIndexedCharacters(
+	variants: Set<string>,
+	indexedCharacters?: StoryIndexesV2["characters"],
+): Set<string> {
+	if (!indexedCharacters || typeof indexedCharacters !== "object") {
+		return variants;
+	}
+
+	const expanded = new Set(variants);
+	let changed = true;
+	while (changed) {
+		changed = false;
+		for (const [key, value] of Object.entries(indexedCharacters)) {
+			if (!value || typeof value !== "object") continue;
+			const entity = value as IndexedEntity;
+			const names = new Set<string>();
+			const push = (raw: unknown) => {
+				if (typeof raw === "string" && raw.trim()) {
+					names.add(normalizeRelationshipKey(raw.trim()));
+				}
+			};
+			push(key);
+			push(entity.name);
+			for (const alias of Array.isArray(entity.aliases) ? entity.aliases : []) {
+				push(alias);
+			}
+			const overlapsPlayer = Array.from(names).some((name) => expanded.has(name));
+			if (!overlapsPlayer) continue;
+			for (const name of names) {
+				if (!expanded.has(name)) {
+					expanded.add(name);
+					changed = true;
+				}
+			}
+		}
+	}
+	return expanded;
+}
+
+export function buildResolvedPlayerNameVariants(params: {
+	playerName: string;
+	playerAliases?: string[];
+	indexedCharacters?: StoryIndexesV2["characters"];
+}): Set<string> {
+	const base = buildPlayerNameVariants(params.playerName, params.playerAliases);
+	return expandPlayerNameVariantsFromIndexedCharacters(base, params.indexedCharacters);
+}
+
+export function isIndexedPlayerCharacterDuplicate(
+	entityKey: string,
+	entity: IndexedEntity | undefined,
+	playerVariants: Set<string>,
+): boolean {
+	const names = new Set<string>();
+	const push = (raw: unknown) => {
+		if (typeof raw === "string" && raw.trim()) {
+			names.add(normalizeRelationshipKey(raw.trim()));
+		}
+	};
+	push(entityKey);
+	if (entity) {
+		push(entity.name);
+		for (const alias of Array.isArray(entity.aliases) ? entity.aliases : []) {
+			push(alias);
+		}
+	}
+	return Array.from(names).some((name) => playerVariants.has(name));
 }
 
 export function isPlayerNameVariant(
@@ -193,12 +275,17 @@ export function isPlausibleCharacterName(name: string): boolean {
 
 export function buildCharacterAllowlist(params: {
 	playerName: string;
+	playerAliases?: string[];
 	indexedCharacters?: StoryIndexesV2["characters"];
 	universeImportedCharacters?: string[];
 	existingRelationships?: RelationshipIndexEntry[];
 }): Set<string> {
 	const allowlist = new Set<string>();
-	const playerVariants = buildPlayerNameVariants(params.playerName);
+	const playerVariants = buildResolvedPlayerNameVariants({
+		playerName: params.playerName,
+		playerAliases: params.playerAliases,
+		indexedCharacters: params.indexedCharacters,
+	});
 
 	const add = (raw: string | null | undefined) => {
 		if (!raw?.trim() || isPossessiveSpeakerLabel(raw.trim())) return;
@@ -451,31 +538,42 @@ export function mergeRelationshipEntries(
 	};
 }
 
-export function relationshipInvolvesPlayer(entry: RelationshipIndexEntry, playerName: string): boolean {
-	const playerNorm = normalizeRelationshipKey(playerName);
-	return normalizeRelationshipKey(entry.a) === playerNorm || normalizeRelationshipKey(entry.b) === playerNorm;
+export function relationshipInvolvesPlayer(
+	entry: RelationshipIndexEntry,
+	playerName: string,
+	playerVariants?: Set<string>,
+): boolean {
+	const variants = playerVariants ?? buildPlayerNameVariants(playerName);
+	const aNorm = normalizeRelationshipKey(entry.a);
+	const bNorm = normalizeRelationshipKey(entry.b);
+	return variants.has(aNorm) || variants.has(bNorm);
 }
 
 export function filterRelationshipEntries(
 	relationships: RelationshipIndexEntry[] | undefined,
 	opts: {
 		playerName?: string;
+		playerVariants?: Set<string>;
 		allowlist: Set<string>;
 	},
 ): RelationshipIndexEntry[] {
 	if (!relationships?.length) return [];
 
+	const playerVariants =
+		opts.playerName && !opts.playerVariants
+			? buildPlayerNameVariants(opts.playerName)
+			: opts.playerVariants;
+
 	return relationships.filter((entry) => {
 		if (!isPlausibleCharacterName(entry.a) || !isPlausibleCharacterName(entry.b)) return false;
 		if (normalizeRelationshipKey(entry.a) === normalizeRelationshipKey(entry.b)) return false;
 
-		if (opts.playerName) {
-			const playerNorm = normalizeRelationshipKey(opts.playerName);
-			const aNorm = normalizeRelationshipKey(entry.a);
-			const bNorm = normalizeRelationshipKey(entry.b);
-			const involvesPlayer = aNorm === playerNorm || bNorm === playerNorm;
+		if (opts.playerName && playerVariants) {
+			const involvesPlayer = relationshipInvolvesPlayer(entry, opts.playerName, playerVariants);
 			if (involvesPlayer) {
-				const other = aNorm === playerNorm ? entry.b : entry.a;
+				const aNorm = normalizeRelationshipKey(entry.a);
+				const bNorm = normalizeRelationshipKey(entry.b);
+				const other = playerVariants.has(aNorm) ? entry.b : entry.a;
 				if (!canTrackRelationshipParticipant(other, opts.allowlist)) return false;
 			} else {
 				if (!canTrackRelationshipParticipant(entry.a, opts.allowlist)) return false;
@@ -492,6 +590,7 @@ export function reconcileRelationshipEntries(
 	aliasToCanonical: Map<string, string>,
 	opts?: {
 		playerName?: string;
+		playerAliases?: string[];
 		allowlist?: Set<string>;
 		indexedCharacters?: StoryIndexesV2["characters"];
 		universeImportedCharacters?: string[];
@@ -499,12 +598,19 @@ export function reconcileRelationshipEntries(
 ): RelationshipIndexEntry[] | undefined {
 	if (!relationships?.length) return undefined;
 
-	const playerVariants = opts?.playerName ? buildPlayerNameVariants(opts.playerName) : undefined;
+	const playerVariants = opts?.playerName
+		? buildResolvedPlayerNameVariants({
+				playerName: opts.playerName,
+				playerAliases: opts.playerAliases,
+				indexedCharacters: opts?.indexedCharacters,
+			})
+		: undefined;
 
 	const allowlist =
 		opts?.allowlist ??
 		buildCharacterAllowlist({
 			playerName: opts?.playerName ?? "",
+			playerAliases: opts?.playerAliases,
 			indexedCharacters: opts?.indexedCharacters,
 			universeImportedCharacters: opts?.universeImportedCharacters,
 			existingRelationships: relationships,
@@ -512,6 +618,7 @@ export function reconcileRelationshipEntries(
 
 	const filtered = filterRelationshipEntries(relationships, {
 		playerName: opts?.playerName,
+		playerVariants,
 		allowlist,
 	});
 
