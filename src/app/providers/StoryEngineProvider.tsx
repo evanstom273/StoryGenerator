@@ -170,6 +170,7 @@ import {
 	isAudiobookExportBackgroundJob,
 	isAudiobookListenBackgroundJob,
 	resolveMaxConcurrentBackgroundTasks,
+	countRunningBackgroundTasks,
 	getNextBackgroundTaskQueueOrder,
 	moveQueuedBackgroundTaskInOrder,
 	sortQueuedBackgroundTasks,
@@ -475,7 +476,8 @@ interface StoryEngineContextValue {
     chapterCount?: number;
     purpose?: "playback" | "chapter_listen";
     progressLabel?: string;
-  }) => Promise<BackgroundJob>;
+  }) => Promise<{ job: BackgroundJob; shouldStartNow: boolean }>;
+  promoteQueuedAudiobookListenTasks: () => Promise<BackgroundJob[]>;
   updateAudiobookPlaybackBackgroundTask: (
     jobId: string,
     progress: { current: number; total: number; label?: string },
@@ -3469,32 +3471,28 @@ export function StoryEngineProvider({
       );
 
       if (existing) {
-        if (existing.status === "queued") {
-          const now = new Date().toISOString();
-          const promoted: BackgroundJob = {
-            ...existing,
-            status: "running",
-            startedAt: existing.startedAt ?? now,
-          };
-          await repository.saveBackgroundJob(promoted);
-          setBackgroundJobs((current) =>
-            current.map((entry) => (entry.id === promoted.id ? promoted : entry)),
-          );
-          return promoted;
-        }
-
-        return existing;
+        return {
+          job: existing,
+          shouldStartNow: existing.status === "running",
+        };
       }
 
       const now = new Date().toISOString();
       const chapterCount = Math.max(1, input.chapterCount ?? 1);
+      const maxConcurrent = resolveMaxConcurrentBackgroundTasks(
+        aiSettings?.maxConcurrentBackgroundTasks,
+      );
+      const shouldStartNow = countRunningBackgroundTasks(existingJobs) < maxConcurrent;
       const job: BackgroundJob = {
         id: createEntityId("background-job"),
         type: "story_audiobook",
         storyId: input.storyId,
         createdAt: now,
-        startedAt: now,
-        status: "running",
+        startedAt: shouldStartNow ? now : undefined,
+        status: shouldStartNow ? "running" : "queued",
+        queueOrder: shouldStartNow
+          ? undefined
+          : getNextBackgroundTaskQueueOrder(existingJobs),
         dedupeKey,
         payload: {
           audiobookPurpose: purpose,
@@ -3515,10 +3513,57 @@ export function StoryEngineProvider({
 
       await repository.saveBackgroundJob(job);
       setBackgroundJobs((current) => [job, ...current.filter((entry) => entry.id !== job.id)]);
-      return job;
+      return { job, shouldStartNow };
     },
-    [repository],
+    [aiSettings?.maxConcurrentBackgroundTasks, repository],
   );
+
+  const promoteQueuedAudiobookListenTasks = useCallback(async () => {
+    const jobs = await repository.listBackgroundJobs();
+    const maxConcurrent = resolveMaxConcurrentBackgroundTasks(
+      aiSettings?.maxConcurrentBackgroundTasks,
+    );
+    let slots = maxConcurrent - countRunningBackgroundTasks(jobs);
+    if (slots <= 0) {
+      return [];
+    }
+
+    const queuedListen = sortQueuedBackgroundTasks(
+      jobs.filter(
+        (job) => isAudiobookListenBackgroundJob(job) && job.status === "queued",
+      ),
+    );
+    if (!queuedListen.length) {
+      return [];
+    }
+
+    const now = new Date().toISOString();
+    const promoted: BackgroundJob[] = [];
+    for (const job of queuedListen.slice(0, slots)) {
+      const next: BackgroundJob = {
+        ...job,
+        status: "running",
+        startedAt: job.startedAt ?? now,
+      };
+      await repository.saveBackgroundJob(next);
+      promoted.push(next);
+    }
+
+    if (promoted.length) {
+      setBackgroundJobs((current) => {
+        const byId = new Map(current.map((entry) => [entry.id, entry]));
+        for (const job of promoted) {
+          byId.set(job.id, job);
+        }
+        return [...byId.values()].sort(
+          (left, right) =>
+            new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+        );
+      });
+    }
+
+    return promoted;
+  }, [aiSettings?.maxConcurrentBackgroundTasks, repository]);
 
   const updateAudiobookPlaybackBackgroundTask = useCallback(
     async (
@@ -3561,8 +3606,11 @@ export function StoryEngineProvider({
       setBackgroundJobs((current) =>
         current.map((entry) => (entry.id === jobId ? next : entry)),
       );
+      if (outcome === "complete" || outcome === "failed" || outcome === "cancelled") {
+        await promoteQueuedAudiobookListenTasks();
+      }
     },
-    [repository],
+    [promoteQueuedAudiobookListenTasks, repository],
   );
 
   const runAudiobookExportProcess = useCallback(
@@ -4405,10 +4453,10 @@ export function StoryEngineProvider({
       void processBackgroundJob(job, controller.signal).finally(() => {
         delete backgroundJobControllersRef.current[job.id];
         activeBackgroundJobIdsRef.current.delete(job.id);
-        void hydrate(false);
+        void promoteQueuedAudiobookListenTasks().finally(() => hydrate(false));
       });
     },
-    [hydrate, processBackgroundJob],
+    [hydrate, processBackgroundJob, promoteQueuedAudiobookListenTasks],
   );
 
   useEffect(() => {
@@ -6640,6 +6688,7 @@ export function StoryEngineProvider({
       queueStoryIndexJob,
       queueAudiobookJob,
       beginAudiobookPlaybackBackgroundTask,
+      promoteQueuedAudiobookListenTasks,
       updateAudiobookPlaybackBackgroundTask,
       finishAudiobookPlaybackBackgroundTask,
       queueAiDocumentJob,
