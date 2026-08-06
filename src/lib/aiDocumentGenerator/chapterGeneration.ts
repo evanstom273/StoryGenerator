@@ -14,7 +14,11 @@ import {
 	estimateChapterDiscussionCoverage,
 	formatPriorDiscussionsForPrompt,
 } from "./podcastPrompt";
-import { isNovelisationPreset } from "./novelisationPrompt";
+import {
+	assembleNovelisationDocument,
+	extractNovelisationTitleSourceMaterial,
+	isNovelisationPreset,
+} from "./novelisationPrompt";
 import { buildChapterSegmentedSourceMaterial, buildSourceMaterialFromStoryBundle } from "./sourceMaterial";
 
 type GenerateChunk = (messages: Array<{ role: "system" | "user"; content: string }>) => Promise<string>;
@@ -76,11 +80,17 @@ export async function generateChapterStructuredDocument(params: {
 	};
 
 	reportStep("intro", "start");
+	const introSourceMaterial = isNovelisation
+		? extractNovelisationTitleSourceMaterial(
+				params.fullSourceMaterial,
+				segments.map((segment) => segment.label),
+			)
+		: params.fullSourceMaterial;
 	const introMessages = buildAiDocumentMessages({
 		preset: params.preset,
 		customPrompt: params.customPrompt,
 		sourceLabel: params.sourceLabel,
-		sourceMaterial: params.fullSourceMaterial,
+		sourceMaterial: introSourceMaterial,
 		structure: "chapter-by-chapter",
 		section: "introduction",
 	});
@@ -125,7 +135,7 @@ export async function generateChapterStructuredDocument(params: {
 	}
 
 	if (isNovelisation) {
-		return [introduction.trim(), ...chapterSections].filter(Boolean).join("\n\n");
+		return assembleNovelisationDocument(introduction, chapterSections);
 	}
 
 	reportStep("epilogue", "start");
