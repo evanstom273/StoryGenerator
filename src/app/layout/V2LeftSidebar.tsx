@@ -5,6 +5,8 @@ import { cn } from "../../utils/cn";
 import { useStoryEngine } from "../providers/StoryEngineProvider";
 import { APP_VERSION } from "../versioning/version";
 import { BackgroundTasksButton } from "../../components/BackgroundTasksPanel";
+import { SearchIcon } from "../../components/icons";
+import { useLibrarySearch } from "../library/LibrarySearchContext";
 
 function getInitials(name: string): string {
   return name
@@ -33,6 +35,7 @@ export function V2LeftSidebar({
     playerCharacters,
     getStoriesForUniverse,
   } = useStoryEngine();
+  const { openSearch } = useLibrarySearch();
 
   const activeStory = useMemo(
     () => (activeStoryId ? stories.find((s) => s.id === activeStoryId) : undefined),
@@ -82,7 +85,20 @@ export function V2LeftSidebar({
             STORY ENGINE
           </Link>
           </div>
-          <BackgroundTasksButton />
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              aria-label="Search library"
+              onClick={() => {
+                openSearch();
+                onNavigate?.();
+              }}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-white/35 transition hover:bg-white/[0.06] hover:text-white/70"
+            >
+              <SearchIcon className="h-4 w-4" />
+            </button>
+            <BackgroundTasksButton />
+          </div>
         </div>
 
         <div className="flex gap-2">

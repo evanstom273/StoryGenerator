@@ -14,6 +14,11 @@ import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanMod
 import { resolveUpcomingChapterLabels } from "../lib/guidedChapterGeneration/chapterLabels";
 import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } from "../lib/playerCharacterPrompt";
 import type { GuidedChapterPlan } from "../lib/guidedChapterGeneration/types";
+import { ProviderSelect } from "../components/settings/ProviderSelect";
+import {
+	resolveVisibleProvider,
+	shouldShowProviderPicker,
+} from "../lib/ai/providerConfig";
 
 const initialFormState = {
   title: "",
@@ -76,13 +81,15 @@ export function StoryCreatePage() {
   const [quickCharacterError, setQuickCharacterError] = useState<string | null>(null);
   const [isQuickGenerating, setIsQuickGenerating] = useState(false);
   const [isQuickGeneratingConcept, setIsQuickGeneratingConcept] = useState(false);
-  const [storyProviderType, setStoryProviderType] = useState(
-    aiSettings?.activeProviderType ?? "openai",
+  const [storyProviderType, setStoryProviderType] = useState(() =>
+    resolveVisibleProvider(aiSettings?.activeProviderType),
   );
-  const [storyModel, setStoryModel] = useState(
-    aiSettings?.defaultModels?.[aiSettings?.activeProviderType ?? "openai"] ??
-      getProviderDefaultModel(aiSettings?.activeProviderType ?? "openai"),
-  );
+  const [storyModel, setStoryModel] = useState(() => {
+    const provider = resolveVisibleProvider(aiSettings?.activeProviderType);
+    return (
+      aiSettings?.defaultModels?.[provider] ?? getProviderDefaultModel(provider)
+    );
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [storyHistoryEnabled, setStoryHistoryEnabled] = useState(false);
@@ -877,36 +884,35 @@ export function StoryCreatePage() {
               AI (per story)
             </div>
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <Field label="Provider Type" help="Which AI service generates this story. Override the global default from Settings for this story only.">
-                <SelectInput
-                  value={storyProviderType}
-                  onChange={(event) => {
-                    const nextProvider = event.target.value as AIProviderType;
-                    setStoryProviderType(nextProvider);
-                    setStoryModel(
-                      aiSettings?.defaultModels?.[nextProvider] ??
-                        getProviderDefaultModel(nextProvider),
-                    );
-                  }}
-                >
-                  <option value="openai">OpenAI</option>
-                  <option value="gemini">Gemini</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="anthropic">Anthropic</option>
-                </SelectInput>
-              </Field>
-              <Field label="Model" help="The specific model used for chat generation in this story. Faster models respond quicker; larger models may follow complex lore more closely.">
-                <SelectInput
-                  value={storyModel}
-                  onChange={(event) => setStoryModel(event.target.value)}
-                >
-                  {getProviderModels(storyProviderType).map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.label}
-                    </option>
-                  ))}
-                </SelectInput>
-              </Field>
+              {shouldShowProviderPicker() ? (
+                <Field label="Provider Type" help="Which AI service generates this story. Override the global default from Settings for this story only.">
+                  <ProviderSelect
+                    value={storyProviderType}
+                    onChange={(event) => {
+                      const nextProvider = event.target.value as AIProviderType;
+                      setStoryProviderType(nextProvider);
+                      setStoryModel(
+                        aiSettings?.defaultModels?.[nextProvider] ??
+                          getProviderDefaultModel(nextProvider),
+                      );
+                    }}
+                  />
+                </Field>
+              ) : null}
+              <div className={shouldShowProviderPicker() ? undefined : "lg:col-span-2"}>
+                <Field label="Model" help="The specific model used for chat generation in this story. Faster models respond quicker; larger models may follow complex lore more closely.">
+                  <SelectInput
+                    value={storyModel}
+                    onChange={(event) => setStoryModel(event.target.value)}
+                  >
+                    {getProviderModels(storyProviderType).map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.label}
+                      </option>
+                    ))}
+                  </SelectInput>
+                </Field>
+              </div>
             </div>
             <p className="mt-4 text-sm leading-7 text-ink-muted">
               Configure your API key and default model in Settings. This story can

@@ -94,6 +94,15 @@ export function MenuIcon(props: IconProps) {
   );
 }
 
+export function SearchIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-4.2-4.2" />
+    </SvgIcon>
+  );
+}
+
 export function CloseIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>
