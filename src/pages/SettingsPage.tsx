@@ -12,7 +12,8 @@ import { UI_PREFS_KEYS, readStoredTextSize, writeStoredTextSize } from "../app/u
 import { useChangelog } from "../app/versioning/ChangelogContext";
 import { APP_NAME, APP_VERSION } from "../app/versioning/version";
 import { useTheme } from "../app/theming/ThemeContext";
-import type { AIModelRole, AIProviderType, AISettings } from "../types/models";
+import { resolveMaxConcurrentBackgroundTasks } from "../lib/backgroundTasks";
+import type { AIModelRole, AIProviderType, AISettings, MaxConcurrentBackgroundTasks } from "../types/models";
 import { getAIModelForRole, getProviderModels, getValidModel } from "../lib/ai/models";
 import { downloadFile } from "../lib/download";
 import {
@@ -160,6 +161,10 @@ export function SettingsPage() {
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
   const [openrouterKeyInput, setOpenrouterKeyInput] = useState("");
   const [anthropicKeyInput, setAnthropicKeyInput] = useState("");
+  const [maxConcurrentBackgroundTasks, setMaxConcurrentBackgroundTasks] =
+    useState<MaxConcurrentBackgroundTasks>(
+      resolveMaxConcurrentBackgroundTasks(aiSettings?.maxConcurrentBackgroundTasks),
+    );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -211,6 +216,9 @@ export function SettingsPage() {
   useEffect(() => {
     setActiveProviderType(aiSettings?.activeProviderType ?? "openai");
     setRoleModels(buildRoleModelMaps(aiSettings ?? null));
+    setMaxConcurrentBackgroundTasks(
+      resolveMaxConcurrentBackgroundTasks(aiSettings?.maxConcurrentBackgroundTasks),
+    );
   }, [aiSettings]);
 
   function setProviderRoleModel(role: AIModelRole, provider: AIProviderType, model: string) {
@@ -379,6 +387,7 @@ export function SettingsPage() {
         metachatModels: roleModels.metachat,
         indexingModels: roleModels.indexing,
         creationModels: roleModels.creation,
+        maxConcurrentBackgroundTasks,
       });
       setOpenaiKeyInput("");
       setGeminiKeyInput("");
@@ -830,6 +839,33 @@ export function SettingsPage() {
               </div>
             </Panel>
           ))}
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+              Background Tasks
+            </div>
+            <div className="mt-3">
+              <Field
+                label="Maximum Concurrent Background Tasks"
+                hint="Long-running index, audiobook, document, and podcast jobs share this queue."
+              >
+                <SelectInput
+                  value={String(maxConcurrentBackgroundTasks)}
+                  onChange={(event) =>
+                    setMaxConcurrentBackgroundTasks(
+                      Number(event.target.value) as MaxConcurrentBackgroundTasks,
+                    )
+                  }
+                >
+                  <option value="1">1</option>
+                  <option value="2">2 (Recommended)</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </SelectInput>
+              </Field>
+            </div>
+          </Panel>
 
           {statusMessage ? (
             <div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">

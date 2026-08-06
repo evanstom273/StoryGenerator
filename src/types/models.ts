@@ -25,10 +25,14 @@ export type BackgroundJobStatus =
   | "cancelled";
 export type BackgroundJobType =
   | "story_index"
+  | "story_audiobook"
+  | "ai_document"
+  | "podcast_audio"
   | "guided_chapter_generate"
   | "metachat_generate"
   | "story_export"
   | "story_archive_export";
+export type MaxConcurrentBackgroundTasks = 1 | 2 | 3 | 4 | 5;
 export type MetaChatScopeKind = "story" | "global";
 export type MetaChatReferenceKind = "story" | "character" | "universe";
 
@@ -317,6 +321,8 @@ export interface AISettings {
   creationModels?: Partial<Record<AIProviderType, string>>;
   geminiPodcastTts?: GeminiPodcastTtsSettings;
   geminiNarrationTts?: GeminiNarrationTtsSettings;
+  /** Max simultaneous long-running background tasks (index, audiobook, documents, podcast). */
+  maxConcurrentBackgroundTasks?: MaxConcurrentBackgroundTasks;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -367,6 +373,8 @@ export interface BackgroundJob {
   };
   error?: string;
   dedupeKey?: string;
+  /** Lower values run first among queued background tasks. */
+  queueOrder?: number;
   payload?: {
     trigger?: "manual" | "auto";
     incremental?: boolean;
@@ -385,6 +393,16 @@ export interface BackgroundJob {
         scenesPerChapter: number;
       }>;
     };
+    aiDocumentPresetId?: string;
+    aiDocumentCustomPrompt?: string;
+    aiDocumentStructure?: "single" | "chapter-by-chapter";
+    aiDocumentOutputFormat?: "markdown" | "gemini-audio-wav";
+    aiDocumentSourceType?: "story" | "upload";
+    aiDocumentSourceStoryId?: EntityId;
+    aiDocumentSourceLabel?: string;
+    aiDocumentSourceText?: string;
+    audiobookParallelChapters?: number;
+    audiobookPerformanceMode?: "radio_drama" | "single_narrator";
   };
   result?: {
     messageId?: EntityId;

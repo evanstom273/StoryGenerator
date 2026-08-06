@@ -27,15 +27,6 @@ function trimStringList(value: unknown, maxItems: number) {
     .slice(0, maxItems);
 }
 
-async function isAndroidNativePlatform() {
-  try {
-    const { Capacitor } = await import("@capacitor/core");
-    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
-  } catch {
-    return false;
-  }
-}
-
 export function StoryArchiveView({
   storyId,
   playerName,
@@ -47,7 +38,7 @@ export function StoryArchiveView({
   playerAliases?: string[];
   relationshipsRefreshKey?: number;
 }) {
-  const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, updateIndexesDeep, loadStoryRelationships, cancelStoryIndexing } =
+  const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, queueStoryIndexJob, loadStoryRelationships, cancelStoryIndexing } =
     useStoryEngine();
   const [storyStateJson, setStoryStateJson] = useState<string>("");
   const [archiveRelationships, setArchiveRelationships] = useState<RelationshipIndexEntry[]>([]);
@@ -113,14 +104,22 @@ export function StoryArchiveView({
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      await updateIndexesDeep(storyId, { incremental });
-      const updated = await fetchStoryState(storyId);
-      setStoryStateJson(updated?.stateJson ?? "");
-      if (await isAndroidNativePlatform()) {
-        setSuccessMessage("Re-index complete on Android. Archive state has been refreshed.");
+      const result = await queueStoryIndexJob(storyId, {
+        trigger: "manual",
+        incremental,
+        force: !incremental,
+      });
+      if (result.duplicate) {
+        setSuccessMessage("Indexing already queued for this story.");
+      } else {
+        setSuccessMessage(
+          incremental
+            ? "Update index queued. You can leave this page while it runs."
+            : "Full re-index queued. You can leave this page while it runs.",
+        );
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to re-index.");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to queue re-index.");
     }
   }
 

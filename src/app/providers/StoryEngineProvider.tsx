@@ -156,6 +156,22 @@ import {
 } from "../../lib/storyText/continueMode";
 import { clampAudiobookParallelChapters } from "../../lib/ai/storyAudiobookParallel";
 import { normalizeAudiobookPerformanceMode } from "../../lib/ai/audiobookPerformance";
+import {
+	listStoryAudiobookChapterSegments,
+	synthesizeStoryAudiobookWav,
+} from "../../lib/ai/storyAudiobook";
+import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
+import { buildCharacterGenderHintsFromStoryState } from "../../lib/ai/characterTtsVoices";
+import { buildCharacterTtsRegistryForStory } from "../../lib/storyText/messageSpeechText";
+import { buildStoryAudiobookFilename } from "../../lib/exportFilename";
+import { downloadFile } from "../../lib/download";
+import {
+	isBackgroundTaskJob,
+	resolveMaxConcurrentBackgroundTasks,
+	getNextBackgroundTaskQueueOrder,
+	moveQueuedBackgroundTaskInOrder,
+	sortQueuedBackgroundTasks,
+} from "../../lib/backgroundTasks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
 import {
@@ -442,7 +458,39 @@ interface StoryEngineContextValue {
     opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean },
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
   cancelBackgroundJob: (jobId: string) => Promise<BackgroundJob | null>;
+  reorderBackgroundTaskJob: (
+    jobId: string,
+    direction: "up" | "down",
+  ) => Promise<BackgroundJob[] | null>;
   cancelStoryIndexing: (storyId: string) => Promise<void>;
+  queueAudiobookJob: (
+    storyId: string,
+    opts?: { force?: boolean },
+  ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
+  queueAiDocumentJob: (input: {
+    source:
+      | { type: "story"; storyId: string; label: string }
+      | { type: "upload"; text: string; label: string };
+    presetId: AiDocumentPresetId;
+    customPrompt?: string;
+    structure?: AiDocumentStructure;
+    outputFormat?: AiDocumentOutputFormat;
+    force?: boolean;
+  }) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
+  queuePodcastAudioJob: (input: {
+    markdown: string;
+    label: string;
+    force?: boolean;
+  }) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
+  audiobookExportStatus?: {
+    storyId: string;
+    jobId?: string;
+    phase: "running" | "done" | "error";
+    progress?: StoryAudiobookProgress;
+    message?: string;
+    error?: string;
+    startedAtMs?: number;
+  };
   queueGuidedChapterJob: (
     storyId: string,
     opts: { entry: GuidedChapterGenerationEntry; plan: GuidedChapterPlan },
@@ -486,6 +534,7 @@ interface StoryEngineContextValue {
     creationModels?: Partial<Record<AIProviderType, string>>;
     geminiPodcastTts?: Partial<GeminiPodcastTtsSettings>;
     geminiNarrationTts?: Partial<GeminiNarrationTtsSettings>;
+    maxConcurrentBackgroundTasks?: 1 | 2 | 3 | 4 | 5;
   }) => Promise<AISettings>;
   validateAIConnection: (providerType?: AIProviderType) => Promise<void>;
   getStoryAIConfig: (storyId: string) => Promise<StoryAIConfig | null>;
@@ -1798,12 +1847,15 @@ export function StoryEngineProvider({
     DeveloperTestingNote[]
   >([]);
   const [rebuildStatus, setRebuildStatus] = useState<StoryEngineContextValue["rebuildStatus"]>();
+  const [audiobookExportStatus, setAudiobookExportStatus] =
+    useState<StoryEngineContextValue["audiobookExportStatus"]>();
   const [guidedGenerationStatus, setGuidedGenerationStatus] =
     useState<StoryEngineContextValue["guidedGenerationStatus"]>();
   const [jobNotice, setJobNotice] = useState<StoryEngineContextValue["jobNotice"]>(null);
   const sendChatMessageRef = useRef<StoryEngineContextValue["sendChatMessage"] | null>(null);
   const rebuildAbortRef = useRef<AbortController | null>(null);
-  const activeBackgroundJobRef = useRef<string | null>(null);
+  const activeBackgroundJobIdsRef = useRef(new Set<string>());
+  const activeNonBackgroundJobRef = useRef<string | null>(null);
   const backgroundJobControllersRef = useRef<Record<string, AbortController>>({});
   const inFlightBackgroundJobsRef = useRef(new Set<string>());
 
@@ -1847,6 +1899,9 @@ export function StoryEngineProvider({
         creationModels,
         geminiPodcastTts: resolveGeminiPodcastTtsSettings(record.geminiPodcastTts),
         geminiNarrationTts: resolveGeminiNarrationTtsSettings(record.geminiNarrationTts),
+        maxConcurrentBackgroundTasks: resolveMaxConcurrentBackgroundTasks(
+          record.maxConcurrentBackgroundTasks,
+        ),
       };
       return normalized;
     }
@@ -1941,7 +1996,8 @@ export function StoryEngineProvider({
           (job) =>
             job.type !== "guided_chapter_generate" &&
             job.status === "running" &&
-            activeBackgroundJobRef.current !== job.id &&
+            !activeBackgroundJobIdsRef.current.has(job.id) &&
+            activeNonBackgroundJobRef.current !== job.id &&
             !backgroundJobControllersRef.current[job.id] &&
             !inFlightBackgroundJobsRef.current.has(job.id),
         );
@@ -2391,7 +2447,8 @@ export function StoryEngineProvider({
 
   const queueStoryIndexJob = useCallback(
     async (storyId: string, opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean }) => {
-      const existing = (await repository.listBackgroundJobs()).find(
+      const existingJobs = await repository.listBackgroundJobs();
+      const existing = existingJobs.find(
         (job) =>
           job.type === "story_index" &&
           job.storyId === storyId &&
@@ -2413,8 +2470,8 @@ export function StoryEngineProvider({
         // waiting for the old job's async cleanup to settle (which can take up to
         // REBUILD_REQUEST_TIMEOUT_MS if the abort signal lands mid-AI-call).
         // The finally block guards against clearing a different job's ref.
-        if (activeBackgroundJobRef.current === existing.id) {
-          activeBackgroundJobRef.current = null;
+        if (activeBackgroundJobIdsRef.current.has(existing.id)) {
+          activeBackgroundJobIdsRef.current.delete(existing.id);
         }
       }
 
@@ -2424,16 +2481,36 @@ export function StoryEngineProvider({
         storyId,
         createdAt: new Date().toISOString(),
         status: "queued",
+        queueOrder: getNextBackgroundTaskQueueOrder(existingJobs),
         dedupeKey: `story_index:${storyId}`,
         payload: {
           trigger: opts?.trigger ?? "manual",
           incremental: opts?.incremental ?? false,
+          rebuild: !(opts?.incremental ?? false),
         },
       };
 
       await repository.saveBackgroundJob(job);
       await hydrate(false);
       return { job, duplicate: false };
+    },
+    [hydrate, repository],
+  );
+
+  const reorderBackgroundTaskJob = useCallback(
+    async (jobId: string, direction: "up" | "down") => {
+      const jobs = await repository.listBackgroundJobs();
+      const queued = jobs.filter(
+        (job) => isBackgroundTaskJob(job) && job.status === "queued",
+      );
+      const reordered = moveQueuedBackgroundTaskInOrder(queued, jobId, direction);
+      if (!reordered) {
+        return null;
+      }
+
+      await Promise.all(reordered.map((job) => repository.saveBackgroundJob(job)));
+      await hydrate(false);
+      return reordered;
     },
     [hydrate, repository],
   );
@@ -2633,6 +2710,160 @@ export function StoryEngineProvider({
       return next;
     },
     [hydrate, repository],
+  );
+
+  const queueAudiobookJob = useCallback(
+    async (storyId: string, opts?: { force?: boolean }) => {
+      const existingJobs = await repository.listBackgroundJobs();
+      const existing = existingJobs.find(
+        (job) =>
+          job.type === "story_audiobook" &&
+          job.storyId === storyId &&
+          (job.status === "queued" || job.status === "running"),
+      );
+
+      if (existing) {
+        if (!opts?.force) {
+          return { job: existing, duplicate: true };
+        }
+
+        await cancelBackgroundJob(existing.id);
+      }
+
+      const [story, storyConfig] = await Promise.all([
+        repository.getStory(storyId),
+        repository.getStoryAIConfig(storyId),
+      ]);
+
+      if (!story) {
+        throw new Error("Story not found.");
+      }
+
+      const job: BackgroundJob = {
+        id: createEntityId("background-job"),
+        type: "story_audiobook",
+        storyId,
+        createdAt: new Date().toISOString(),
+        status: "queued",
+        queueOrder: getNextBackgroundTaskQueueOrder(existingJobs),
+        dedupeKey: `story_audiobook:${storyId}`,
+        payload: {
+          audiobookParallelChapters: clampAudiobookParallelChapters(
+            storyConfig?.audiobookParallelChapters,
+          ),
+          audiobookPerformanceMode: normalizeAudiobookPerformanceMode(
+            storyConfig?.audiobookPerformanceMode,
+          ),
+        },
+      };
+
+      await repository.saveBackgroundJob(job);
+      await hydrate(false);
+      return { job, duplicate: false };
+    },
+    [cancelBackgroundJob, hydrate, repository],
+  );
+
+  const queueAiDocumentJob = useCallback(
+    async (input: {
+      source:
+        | { type: "story"; storyId: string; label: string }
+        | { type: "upload"; text: string; label: string };
+      presetId: AiDocumentPresetId;
+      customPrompt?: string;
+      structure?: AiDocumentStructure;
+      outputFormat?: AiDocumentOutputFormat;
+      force?: boolean;
+    }) => {
+      const outputFormat = input.outputFormat ?? "markdown";
+      const dedupeKey =
+        input.source.type === "story"
+          ? `ai_document:${input.source.storyId}:${input.presetId}:${outputFormat}`
+          : `ai_document:upload:${input.presetId}:${outputFormat}:${input.source.label}`;
+      const jobType = outputFormat === "gemini-audio-wav" ? "podcast_audio" : "ai_document";
+
+      const existingJobs = await repository.listBackgroundJobs();
+      const existing = existingJobs.find(
+        (job) =>
+          job.type === jobType &&
+          job.dedupeKey === dedupeKey &&
+          (job.status === "queued" || job.status === "running"),
+      );
+
+      if (existing) {
+        if (!input.force) {
+          return { job: existing, duplicate: true };
+        }
+        await cancelBackgroundJob(existing.id);
+      }
+
+      const job: BackgroundJob = {
+        id: createEntityId("background-job"),
+        type: jobType,
+        storyId: input.source.type === "story" ? input.source.storyId : undefined,
+        createdAt: new Date().toISOString(),
+        status: "queued",
+        queueOrder: getNextBackgroundTaskQueueOrder(existingJobs),
+        dedupeKey,
+        payload: {
+          aiDocumentPresetId: input.presetId,
+          aiDocumentCustomPrompt: input.customPrompt,
+          aiDocumentStructure: input.structure,
+          aiDocumentOutputFormat: outputFormat,
+          aiDocumentSourceType: input.source.type,
+          aiDocumentSourceStoryId:
+            input.source.type === "story" ? input.source.storyId : undefined,
+          aiDocumentSourceLabel: input.source.label,
+          aiDocumentSourceText:
+            input.source.type === "upload" ? input.source.text : undefined,
+        },
+      };
+
+      await repository.saveBackgroundJob(job);
+      await hydrate(false);
+      return { job, duplicate: false };
+    },
+    [cancelBackgroundJob, hydrate, repository],
+  );
+
+  const queuePodcastAudioJob = useCallback(
+    async (input: { markdown: string; label: string; force?: boolean }) => {
+      const dedupeKey = `podcast_audio:upload:${input.label}:${input.markdown.length}`;
+      const existingJobs = await repository.listBackgroundJobs();
+      const existing = existingJobs.find(
+        (job) =>
+          job.type === "podcast_audio" &&
+          job.dedupeKey === dedupeKey &&
+          (job.status === "queued" || job.status === "running"),
+      );
+
+      if (existing) {
+        if (!input.force) {
+          return { job: existing, duplicate: true };
+        }
+        await cancelBackgroundJob(existing.id);
+      }
+
+      const job: BackgroundJob = {
+        id: createEntityId("background-job"),
+        type: "podcast_audio",
+        createdAt: new Date().toISOString(),
+        status: "queued",
+        queueOrder: getNextBackgroundTaskQueueOrder(existingJobs),
+        dedupeKey,
+        payload: {
+          aiDocumentSourceType: "upload",
+          aiDocumentSourceLabel: input.label,
+          aiDocumentSourceText: input.markdown,
+          aiDocumentOutputFormat: "gemini-audio-wav",
+        },
+      };
+
+      await repository.saveBackgroundJob(job);
+      await hydrate(false);
+      return { job, duplicate: false };
+    },
+    [cancelBackgroundJob, hydrate, repository],
   );
 
   const deliverJobNotice = useCallback(
@@ -3181,6 +3412,310 @@ export function StoryEngineProvider({
     [buildMetaChatContextBlock, getNormalizedAISettings, repository, resolveAIProfile],
   );
 
+  const updateBackgroundJobProgress = useCallback(
+    async (
+      jobId: string,
+      progress: { current: number; total: number; label?: string },
+    ) => {
+      const liveJob = await repository.getBackgroundJob(jobId);
+      if (!liveJob || liveJob.status !== "running") {
+        return;
+      }
+
+      await repository.saveBackgroundJob({ ...liveJob, progress });
+      setBackgroundJobs((current) =>
+        current.map((entry) => (entry.id === jobId ? { ...entry, progress } : entry)),
+      );
+    },
+    [repository],
+  );
+
+  const runAudiobookExportProcess = useCallback(
+    async (
+      storyId: string,
+      opts: {
+        signal: AbortSignal;
+        jobId: string;
+        parallelChapters?: number;
+        performanceMode?: "radio_drama" | "single_narrator";
+      },
+    ) => {
+      const startedAtMs = Date.now();
+      const settings = await getNormalizedAISettings();
+      const apiKey = settings?.apiKeys?.gemini?.trim() ?? "";
+      if (!apiKey) {
+        throw new Error("Add a Gemini API key in Settings → AI to export audiobook audio.");
+      }
+
+      const [story, playerCharacter, messages, chapters, storyState, storyConfig] =
+        await Promise.all([
+          repository.getStory(storyId),
+          repository.getStory(storyId).then(async (entry) =>
+            entry ? repository.getPlayerCharacter(entry.playerCharacterId) : null,
+          ),
+          repository.listStoryMessages(storyId),
+          repository.listStoryChapters(storyId),
+          repository.getStoryState(storyId),
+          repository.getStoryAIConfig(storyId),
+        ]);
+
+      if (!story || !playerCharacter) {
+        throw new Error("Story or player character not found.");
+      }
+
+      const narrationTts = resolveGeminiNarrationTtsSettings(settings?.geminiNarrationTts);
+      const storyStateData = safeParseStoryStateData(storyState?.stateJson ?? "");
+      const uiState = storyUiStates.find((entry) => entry.storyId === storyId);
+      const existingRegistry = uiState?.characterTtsVoices || uiState?.characterTtsLabels
+        ? {
+            voices: uiState.characterTtsVoices ?? {},
+            labels: uiState.characterTtsLabels ?? {},
+          }
+        : undefined;
+      const characterGenders = buildCharacterGenderHintsFromStoryState(storyStateData, {
+        playerName: playerCharacter.name,
+        playerGender: playerCharacter.gender,
+        playerPronouns: playerCharacter.pronouns,
+      });
+      const characterRegistry = buildCharacterTtsRegistryForStory(messages, {
+        playerName: playerCharacter.name,
+        narrationTts,
+        existingRegistry,
+        characterGenders,
+      });
+      const performanceMode = normalizeAudiobookPerformanceMode(
+        opts.performanceMode ?? storyConfig?.audiobookPerformanceMode,
+      );
+      const segments = listStoryAudiobookChapterSegments(messages, {
+        playerName: playerCharacter.name,
+        narrationTts,
+        characterRegistry,
+        chapters,
+        audiobookPerformanceMode: performanceMode,
+      });
+
+      if (!segments.length) {
+        throw new Error("No speakable story content for audiobook export.");
+      }
+
+      setAudiobookExportStatus({
+        storyId,
+        jobId: opts.jobId,
+        phase: "running",
+        startedAtMs,
+        message: "Preparing story audiobook…",
+      });
+
+      await updateBackgroundJobProgress(opts.jobId, {
+        current: 0,
+        total: segments.length,
+        label: "Generating Audiobook",
+      });
+
+      const wavBuffer = await synthesizeStoryAudiobookWav({
+        apiKey,
+        segments,
+        model: narrationTts.model,
+        parallelChapters: clampAudiobookParallelChapters(
+          opts.parallelChapters ?? storyConfig?.audiobookParallelChapters,
+        ),
+        signal: opts.signal,
+        onProgress: (progress) => {
+          const doneCount = progress.chapters.filter(
+            (chapter) => chapter.status === "done" || chapter.status === "cached",
+          ).length;
+          void updateBackgroundJobProgress(opts.jobId, {
+            current: doneCount,
+            total: progress.chapters.length,
+            label:
+              progress.chapters.length > 1
+                ? `Generating Audiobook · Chapter ${Math.min(doneCount + 1, progress.chapters.length)} / ${progress.chapters.length}`
+                : progress.summary,
+          });
+          setAudiobookExportStatus((current) =>
+            current?.storyId === storyId
+              ? {
+                  ...current,
+                  phase: "running",
+                  progress,
+                  message: progress.summary,
+                }
+              : current,
+          );
+        },
+      });
+
+      const filename = buildStoryAudiobookFilename(story.title);
+      await downloadFile(filename, wavBuffer, "audio/wav");
+
+      setAudiobookExportStatus({
+        storyId,
+        jobId: opts.jobId,
+        phase: "done",
+        message: "Story audiobook exported.",
+        startedAtMs,
+      });
+
+      return `Exported ${filename}`;
+    },
+    [getNormalizedAISettings, repository, storyUiStates, updateBackgroundJobProgress],
+  );
+
+  const runAiDocumentBackgroundProcess = useCallback(
+    async (job: BackgroundJob, signal: AbortSignal) => {
+      const settings = await getNormalizedAISettings();
+      if (!settings) {
+        throw new Error("Configure an AI provider in Settings before generating documents.");
+      }
+
+      const presetId = (job.payload?.aiDocumentPresetId ?? "custom") as AiDocumentPresetId;
+      const preset = getAiDocumentPreset(presetId);
+      const structure = job.payload?.aiDocumentStructure ?? preset.defaultStructure ?? "single";
+      const outputFormat = job.payload?.aiDocumentOutputFormat ?? "markdown";
+      const providerType = settings.activeProviderType;
+      const { apiKey, model } = await resolveAIProfile(providerType, undefined, "creation");
+      const provider = createAIProvider(providerType);
+
+      let sourceMaterial = "";
+      let sourceLabel = job.payload?.aiDocumentSourceLabel?.trim() || "Uploaded export";
+      let storyTitle: string | undefined;
+      let chapterSegments: import("../../lib/aiDocumentGenerator/types").ChapterSourceSegment[] =
+        [];
+
+      if (job.type === "podcast_audio" && job.payload?.aiDocumentSourceText) {
+        sourceMaterial = job.payload.aiDocumentSourceText;
+        chapterSegments = segmentUploadedSourceByChapter(sourceMaterial);
+      } else if (job.payload?.aiDocumentSourceType === "story" && job.payload.aiDocumentSourceStoryId) {
+        const bundle = await repository.getStoryExportBundle(job.payload.aiDocumentSourceStoryId);
+        if (!bundle) {
+          throw new Error("Story not found.");
+        }
+        sourceMaterial = resolveSourceMaterialForStructure(bundle, structure);
+        sourceLabel = sourceLabel || bundle.story.title;
+        storyTitle = bundle.story.title;
+        chapterSegments = segmentStoryBundleByChapter(bundle);
+      } else if (job.payload?.aiDocumentSourceText) {
+        sourceMaterial = job.payload.aiDocumentSourceText;
+        chapterSegments = segmentUploadedSourceByChapter(sourceMaterial);
+      } else {
+        throw new Error("AI document job is missing source material.");
+      }
+
+      if (!sourceMaterial.trim()) {
+        throw new Error("Source material is empty.");
+      }
+
+      const updateProgress = (message: string, current = 0, total = 0) =>
+        void updateBackgroundJobProgress(job.id, {
+          current,
+          total,
+          label: message,
+        });
+
+      updateProgress(`Generating ${preset.displayName}…`);
+
+      let streamedDraft = "";
+      const onChunk = (chunk: string) => {
+        streamedDraft += chunk;
+      };
+      const onChunkReset = () => {
+        streamedDraft = "";
+      };
+      const documentMaxTokens = preset.supportsGeminiTts ? 16000 : 12000;
+
+      const generateChunk = async (messages: AIChatMessage[]) => {
+        let response: GenerateResponseResult;
+        try {
+          response = await generateResponseWithRetry({
+            providerType,
+            provider,
+            apiKey,
+            model,
+            messages,
+            maxTokens: documentMaxTokens,
+            temperature: 0.35,
+            signal,
+            onChunk,
+            onChunkReset,
+            debugTrace: {
+              traceId: makeGenerationAuditTraceId("other"),
+              mode: "other",
+              stage: "ai-document",
+            },
+          });
+        } catch (error) {
+          rethrowUserFacingGenerationError(error, providerType);
+        }
+
+        const content = response.content.trim() || streamedDraft.trim();
+        if (!content) {
+          rethrowUserFacingGenerationError(
+            createAIGenerationError("validation", "Document generator returned empty output."),
+            providerType,
+          );
+        }
+        return content;
+      };
+
+      let markdown = "";
+      if (job.type === "ai_document") {
+        if (structure === "chapter-by-chapter" && chapterSegments.length > 1) {
+          markdown = await generateChapterStructuredDocument({
+            preset,
+            customPrompt: job.payload?.aiDocumentCustomPrompt,
+            sourceLabel,
+            chapterSegments,
+            fullSourceMaterial: sourceMaterial,
+            generateChunk,
+            onProgress: (message) => updateProgress(message),
+            signal,
+          });
+        } else {
+          const messages = buildAiDocumentMessages({
+            preset,
+            customPrompt: job.payload?.aiDocumentCustomPrompt,
+            sourceLabel,
+            sourceMaterial,
+            structure,
+          });
+          markdown = await generateChunk(messages);
+        }
+      } else {
+        markdown = sourceMaterial;
+      }
+
+      if (outputFormat === "gemini-audio-wav" || job.type === "podcast_audio") {
+        const geminiApiKey = settings.apiKeys?.gemini?.trim() ?? "";
+        if (!geminiApiKey) {
+          throw new Error("Add a Gemini API key in Settings → AI to generate podcast audio.");
+        }
+
+        updateProgress("Generating Podcast…");
+        const wavBuffer = await generateGeminiPodcastAudioFromMarkdown({
+          apiKey: geminiApiKey,
+          markdown,
+          signal,
+          onProgress: (message) => updateProgress(message),
+          onChunkComplete: ({ index, total }) =>
+            updateProgress(`Generating Podcast · ${index + 1} / ${total}`, index + 1, total),
+          tts: settings.geminiPodcastTts,
+        });
+
+        const filename =
+          job.type === "podcast_audio"
+            ? buildAudioFilenameFromMarkdownUpload(sourceLabel)
+            : buildAiDocumentFilename(preset.filenameStem, storyTitle, "wav");
+        await downloadFile(filename, wavBuffer, "audio/wav");
+        return { filename, summary: `Downloaded ${filename}` };
+      }
+
+      const filename = buildAiDocumentFilename(preset.filenameStem, storyTitle, "md");
+      await downloadFile(filename, markdown, "text/markdown");
+      return { filename, summary: `Downloaded ${filename}` };
+    },
+    [getNormalizedAISettings, repository, resolveAIProfile, updateBackgroundJobProgress],
+  );
+
   const processBackgroundJob = useCallback(
     async (job: BackgroundJob, signal: AbortSignal) => {
       if (inFlightBackgroundJobsRef.current.has(job.id)) {
@@ -3542,6 +4077,88 @@ export function StoryEngineProvider({
               current?.storyId === storyId && current.phase === "done" ? undefined : current,
             );
           }, 8_000);
+        } else if (job.type === "story_audiobook") {
+          const storyId = job.storyId ?? "";
+          const summaryLine = await runAudiobookExportProcess(storyId, {
+            signal,
+            jobId: job.id,
+            parallelChapters: job.payload?.audiobookParallelChapters,
+            performanceMode: job.payload?.audiobookPerformanceMode,
+          });
+          const refreshed = await repository.getBackgroundJob(job.id);
+          if (signal.aborted || refreshed?.status === "cancelled") {
+            await repository.saveBackgroundJob({
+              ...runningJob,
+              status: "cancelled",
+              finishedAt: new Date().toISOString(),
+              error: undefined,
+            });
+            setAudiobookExportStatus((current) =>
+              current?.storyId === storyId ? undefined : current,
+            );
+            await hydrate(false);
+            return;
+          }
+          const story = await repository.getStory(storyId);
+          const completedJob: BackgroundJob = {
+            ...runningJob,
+            status: "complete",
+            finishedAt: new Date().toISOString(),
+            result: {
+              notificationTitle: story
+                ? `Audiobook ready for ${story.title}`
+                : "Audiobook export complete",
+              notificationBody: summaryLine,
+            },
+          };
+          await repository.saveBackgroundJob(completedJob);
+          await deliverJobNotice({
+            jobId: completedJob.id,
+            storyId,
+            title: completedJob.result?.notificationTitle ?? "Audiobook export complete",
+            body: completedJob.result?.notificationBody ?? summaryLine,
+          });
+          window.setTimeout(() => {
+            setAudiobookExportStatus((current) =>
+              current?.storyId === storyId && current.phase === "done" ? undefined : current,
+            );
+          }, 8_000);
+        } else if (job.type === "ai_document" || job.type === "podcast_audio") {
+          const result = await runAiDocumentBackgroundProcess(job, signal);
+          const refreshed = await repository.getBackgroundJob(job.id);
+          if (signal.aborted || refreshed?.status === "cancelled") {
+            await repository.saveBackgroundJob({
+              ...runningJob,
+              status: "cancelled",
+              finishedAt: new Date().toISOString(),
+              error: undefined,
+            });
+            await hydrate(false);
+            return;
+          }
+          const storyId =
+            job.payload?.aiDocumentSourceStoryId ?? job.storyId ?? undefined;
+          const story = storyId ? await repository.getStory(storyId) : null;
+          const completedJob: BackgroundJob = {
+            ...runningJob,
+            status: "complete",
+            finishedAt: new Date().toISOString(),
+            result: {
+              notificationTitle: story
+                ? `Document ready for ${story.title}`
+                : job.type === "podcast_audio"
+                  ? "Podcast audio ready"
+                  : "AI document ready",
+              notificationBody: result.summary,
+            },
+          };
+          await repository.saveBackgroundJob(completedJob);
+          await deliverJobNotice({
+            jobId: completedJob.id,
+            storyId,
+            title: completedJob.result?.notificationTitle ?? "AI document ready",
+            body: completedJob.result?.notificationBody ?? result.summary,
+          });
         }
       } catch (error) {
         const latest = await repository.getBackgroundJob(job.id);
@@ -3574,6 +4191,11 @@ export function StoryEngineProvider({
               current?.storyId === job.storyId ? undefined : current,
             );
           }
+          if (job.type === "story_audiobook" && job.storyId) {
+            setAudiobookExportStatus((current) =>
+              current?.storyId === job.storyId ? undefined : current,
+            );
+          }
           await hydrate(false).catch(() => {});
           return;
         }
@@ -3600,6 +4222,14 @@ export function StoryEngineProvider({
             error: error instanceof Error ? error.message : "Guided chapter generation failed.",
           });
         }
+        if (job.type === "story_audiobook" && job.storyId) {
+          setAudiobookExportStatus({
+            storyId: job.storyId,
+            jobId: job.id,
+            phase: "error",
+            error: error instanceof Error ? error.message : "Audiobook export failed.",
+          });
+        }
         await hydrate(false).catch(() => {});
         if (job.type === "guided_chapter_generate" && job.storyId) {
           void deliverJobNotice({
@@ -3614,7 +4244,29 @@ export function StoryEngineProvider({
         inFlightBackgroundJobsRef.current.delete(job.id);
       }
     },
-    [deliverJobNotice, generateMetaChatAssistantReply, getNormalizedAISettings, hydrate, repository, resolveAIProfile, runDeepIndexProcess],
+    [deliverJobNotice, generateMetaChatAssistantReply, getNormalizedAISettings, hydrate, repository, resolveAIProfile, runAiDocumentBackgroundProcess, runAudiobookExportProcess, runDeepIndexProcess],
+  );
+
+  const startBackgroundTaskJob = useCallback(
+    (job: BackgroundJob) => {
+      if (
+        inFlightBackgroundJobsRef.current.has(job.id) ||
+        activeBackgroundJobIdsRef.current.has(job.id)
+      ) {
+        return;
+      }
+
+      const controller = new AbortController();
+      activeBackgroundJobIdsRef.current.add(job.id);
+      backgroundJobControllersRef.current[job.id] = controller;
+
+      void processBackgroundJob(job, controller.signal).finally(() => {
+        delete backgroundJobControllersRef.current[job.id];
+        activeBackgroundJobIdsRef.current.delete(job.id);
+        void hydrate(false);
+      });
+    },
+    [hydrate, processBackgroundJob],
   );
 
   useEffect(() => {
@@ -3622,26 +4274,71 @@ export function StoryEngineProvider({
       return;
     }
 
-    // If the tracked active job is no longer queued/running in state, the
-    // processBackgroundJob promise must have settled and updated the DB, but
-    // its .finally() cleanup hasn't fired yet (hydrate inside processBackgroundJob
-    // triggers this effect before the outer .finally() runs). Proactively clear the
-    // stale ref so the next queued job can be picked up immediately. The .finally()
-    // guard (`ref === nextJob.id`) prevents it from re-clearing a different job's ref.
-    if (activeBackgroundJobRef.current) {
+    for (const jobId of [...activeBackgroundJobIdsRef.current]) {
       const isStillActive = backgroundJobs.some(
-        (j) =>
-          j.id === activeBackgroundJobRef.current &&
-          (j.status === "queued" || j.status === "running"),
+        (job) =>
+          job.id === jobId && (job.status === "queued" || job.status === "running"),
+      );
+      if (!isStillActive) {
+        activeBackgroundJobIdsRef.current.delete(jobId);
+      }
+    }
+
+    const maxConcurrent = resolveMaxConcurrentBackgroundTasks(
+      aiSettings?.maxConcurrentBackgroundTasks,
+    );
+    const activeBtCount = backgroundJobs.filter(
+      (job) =>
+        isBackgroundTaskJob(job) &&
+        (job.status === "running" || activeBackgroundJobIdsRef.current.has(job.id)),
+    ).length;
+    const slots = maxConcurrent - activeBtCount;
+    if (slots <= 0) {
+      return;
+    }
+
+    const queuedBtJobs = sortQueuedBackgroundTasks(
+      backgroundJobs.filter(
+        (job) =>
+          isBackgroundTaskJob(job) &&
+          job.status === "queued" &&
+          !inFlightBackgroundJobsRef.current.has(job.id) &&
+          !activeBackgroundJobIdsRef.current.has(job.id),
+      ),
+    );
+
+    for (const job of queuedBtJobs.slice(0, slots)) {
+      startBackgroundTaskJob(job);
+    }
+  }, [
+    aiSettings?.maxConcurrentBackgroundTasks,
+    backgroundJobs,
+    errorMessage,
+    loading,
+    startBackgroundTaskJob,
+  ]);
+
+  useEffect(() => {
+    if (loading || errorMessage) {
+      return;
+    }
+
+    if (activeNonBackgroundJobRef.current) {
+      const isStillActive = backgroundJobs.some(
+        (job) =>
+          job.id === activeNonBackgroundJobRef.current &&
+          (job.status === "queued" || job.status === "running"),
       );
       if (isStillActive) {
         return;
       }
-      activeBackgroundJobRef.current = null;
+      activeNonBackgroundJobRef.current = null;
     }
 
     const nextJob = backgroundJobs.find(
-      (job) => job.status === "queued" || job.status === "running",
+      (job) =>
+        (job.type === "metachat_generate" || job.type === "guided_chapter_generate") &&
+        (job.status === "queued" || job.status === "running"),
     );
 
     if (!nextJob) {
@@ -3652,32 +4349,14 @@ export function StoryEngineProvider({
       return;
     }
 
-    // #region debug-point job-cancel-timeout:runner-pick
-    reportJobDebug({
-      hypothesisId: "D",
-      location: "StoryEngineProvider.tsx:jobRunner:pick",
-      msg: "job runner picked job",
-      data: {
-        jobId: nextJob.id,
-        jobType: nextJob.type,
-        storyId: nextJob.storyId ?? null,
-        status: nextJob.status,
-        queuedCount: backgroundJobs.filter((job) => job.status === "queued").length,
-        runningCount: backgroundJobs.filter((job) => job.status === "running").length,
-      },
-    });
-    // #endregion
-
     const controller = new AbortController();
-    activeBackgroundJobRef.current = nextJob.id;
+    activeNonBackgroundJobRef.current = nextJob.id;
     backgroundJobControllersRef.current[nextJob.id] = controller;
 
     void processBackgroundJob(nextJob, controller.signal).finally(() => {
       delete backgroundJobControllersRef.current[nextJob.id];
-      // Only clear the ref if it still points to this job.
-      // A force-cancel path may have already cleared it and set a new job's ref.
-      if (activeBackgroundJobRef.current === nextJob.id) {
-        activeBackgroundJobRef.current = null;
+      if (activeNonBackgroundJobRef.current === nextJob.id) {
+        activeNonBackgroundJobRef.current = null;
       }
       void hydrate(false);
     });
@@ -3902,6 +4581,7 @@ export function StoryEngineProvider({
       developerFeatureRequests,
       developerTestingNotes,
       rebuildStatus,
+      audiobookExportStatus,
       guidedGenerationStatus,
       jobNotice,
       getUniverseById: (id) => universes.find((universe) => universe.id === id),
@@ -5815,7 +6495,11 @@ export function StoryEngineProvider({
         });
       },
       queueStoryIndexJob,
+      queueAudiobookJob,
+      queueAiDocumentJob,
+      queuePodcastAudioJob,
       cancelBackgroundJob,
+      reorderBackgroundTaskJob,
       cancelStoryIndexing,
       queueGuidedChapterJob,
       cancelGuidedChapterGeneration,
@@ -5896,6 +6580,9 @@ export function StoryEngineProvider({
           : current?.geminiNarrationTts
             ? resolveGeminiNarrationTtsSettings(current.geminiNarrationTts)
             : undefined;
+        const maxConcurrentBackgroundTasks = resolveMaxConcurrentBackgroundTasks(
+          next.maxConcurrentBackgroundTasks ?? current?.maxConcurrentBackgroundTasks,
+        );
 
         const settings: AISettings = {
           id: "ai-settings",
@@ -5907,6 +6594,7 @@ export function StoryEngineProvider({
           creationModels,
           geminiPodcastTts,
           geminiNarrationTts,
+          maxConcurrentBackgroundTasks,
           createdAt,
           updatedAt: now,
         };
