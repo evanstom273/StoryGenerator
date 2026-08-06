@@ -2013,6 +2013,7 @@ export function StoryEngineProvider({
         const runningJobsToReset = nextBackgroundJobs.filter(
           (job) =>
             job.type !== "guided_chapter_generate" &&
+            !isAudiobookListenBackgroundJob(job) &&
             job.status === "running" &&
             !activeBackgroundJobIdsRef.current.has(job.id) &&
             activeNonBackgroundJobRef.current !== job.id &&
@@ -3468,6 +3469,20 @@ export function StoryEngineProvider({
       );
 
       if (existing) {
+        if (existing.status === "queued") {
+          const now = new Date().toISOString();
+          const promoted: BackgroundJob = {
+            ...existing,
+            status: "running",
+            startedAt: existing.startedAt ?? now,
+          };
+          await repository.saveBackgroundJob(promoted);
+          setBackgroundJobs((current) =>
+            current.map((entry) => (entry.id === promoted.id ? promoted : entry)),
+          );
+          return promoted;
+        }
+
         return existing;
       }
 
@@ -3838,6 +3853,10 @@ export function StoryEngineProvider({
 
   const processBackgroundJob = useCallback(
     async (job: BackgroundJob, signal: AbortSignal) => {
+      if (isAudiobookListenBackgroundJob(job)) {
+        return;
+      }
+
       if (inFlightBackgroundJobsRef.current.has(job.id)) {
         return;
       }
@@ -4424,6 +4443,7 @@ export function StoryEngineProvider({
       backgroundJobs.filter(
         (job) =>
           isBackgroundTaskJob(job) &&
+          !isAudiobookListenBackgroundJob(job) &&
           job.status === "queued" &&
           !inFlightBackgroundJobsRef.current.has(job.id) &&
           !activeBackgroundJobIdsRef.current.has(job.id),
