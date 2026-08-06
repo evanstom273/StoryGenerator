@@ -1,4 +1,3 @@
-import { formatElapsedSeconds } from "./ai/storyAudiobookProgress";
 import type { StoryAudiobookProgress } from "./ai/storyAudiobookProgress";
 import type { BackgroundJob, BackgroundJobType } from "../types/models";
 
@@ -124,12 +123,75 @@ export function getBackgroundTaskProgressLabel(job: BackgroundJob): string {
 	return getBackgroundTaskTypeLabel(job);
 }
 
-export function getBackgroundTaskElapsedLabel(job: BackgroundJob, nowMs = Date.now()): string {
+export function formatEstimatedRemainingSeconds(totalSeconds: number): string {
+	const seconds = Math.max(0, Math.round(totalSeconds));
+	if (seconds < 60) {
+		return `~${seconds}s`;
+	}
+
+	const minutes = Math.floor(seconds / 60);
+	const remainder = seconds % 60;
+	if (minutes >= 60) {
+		const hours = Math.floor(minutes / 60);
+		const mins = minutes % 60;
+		return mins > 0 ? `~${hours}h${mins}m` : `~${hours}h`;
+	}
+
+	return remainder > 0 ? `~${minutes}m${remainder}s` : `~${minutes}m`;
+}
+
+function getFallbackTotalSeconds(job: BackgroundJob): number {
+	switch (job.type) {
+		case "story_index":
+			return job.payload?.incremental ? 120 : 300;
+		case "story_audiobook":
+			return isAudiobookListenBackgroundJob(job) ? 90 : 600;
+		case "ai_document":
+		case "podcast_audio":
+			return 180;
+		default:
+			return 120;
+	}
+}
+
+export function getBackgroundTaskRemainingLabel(job: BackgroundJob, nowMs = Date.now()): string {
+	if (job.status === "queued") {
+		return "Queued";
+	}
+
+	if (job.status !== "running") {
+		return "";
+	}
+
 	const reference = job.startedAt ?? job.createdAt;
 	if (!reference) {
-		return "0s";
+		return "~…";
 	}
-	return formatElapsedSeconds(new Date(reference).getTime(), nowMs);
+
+	const startedMs = new Date(reference).getTime();
+	const elapsedSec = Math.max(0, (nowMs - startedMs) / 1000);
+	const progress = job.progress;
+
+	if (progress && progress.total > 0) {
+		if (progress.current >= progress.total) {
+			return "~0s";
+		}
+
+		if (progress.current > 0) {
+			const fraction = progress.current / progress.total;
+			const estimatedTotalSec = elapsedSec / fraction;
+			const remainingSec = Math.max(0, estimatedTotalSec - elapsedSec);
+			return formatEstimatedRemainingSeconds(remainingSec);
+		}
+	}
+
+	const fallbackTotalSec = getFallbackTotalSeconds(job);
+	return formatEstimatedRemainingSeconds(Math.max(0, fallbackTotalSec - elapsedSec));
+}
+
+/** @deprecated Use getBackgroundTaskRemainingLabel */
+export function getBackgroundTaskElapsedLabel(job: BackgroundJob, nowMs = Date.now()): string {
+	return getBackgroundTaskRemainingLabel(job, nowMs);
 }
 
 export function countActiveBackgroundTasks(jobs: BackgroundJob[]): number {

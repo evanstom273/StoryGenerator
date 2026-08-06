@@ -14,7 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import {
 	countActiveBackgroundTasks,
-	getBackgroundTaskElapsedLabel,
+	getBackgroundTaskRemainingLabel,
 	getBackgroundTaskNavigationTarget,
 	getBackgroundTaskProgressLabel,
 	getBackgroundTaskProgressPercent,
@@ -71,11 +71,11 @@ function TaskProgressBar({ percent }: { percent: number | null }) {
 	);
 }
 
-function TaskElapsedSuffix({ job }: { job: BackgroundJob }) {
+function TaskRemainingSuffix({ job }: { job: BackgroundJob }) {
 	const [nowMs, setNowMs] = useState(() => Date.now());
 
 	useEffect(() => {
-		if (job.status !== "running") {
+		if (job.status !== "running" && job.status !== "queued") {
 			return;
 		}
 
@@ -83,11 +83,16 @@ function TaskElapsedSuffix({ job }: { job: BackgroundJob }) {
 		return () => window.clearInterval(intervalId);
 	}, [job.id, job.status]);
 
-	if (job.status !== "running") {
+	if (job.status !== "running" && job.status !== "queued") {
 		return null;
 	}
 
-	return <> · {getBackgroundTaskElapsedLabel(job, nowMs)}</>;
+	const label = getBackgroundTaskRemainingLabel(job, nowMs);
+	if (!label) {
+		return null;
+	}
+
+	return <> · {label}</>;
 }
 
 const TaskRow = memo(function TaskRow({
@@ -140,7 +145,7 @@ const TaskRow = memo(function TaskRow({
 						<div className="mt-0.5 truncate text-xs text-ink-muted">{storyLabel}</div>
 						<div className="mt-1 text-xs text-ink-muted">
 							{progressLabel}
-							<TaskElapsedSuffix job={job} />
+							<TaskRemainingSuffix job={job} />
 						</div>
 						{job.status === "running" || job.status === "queued" ? (
 							<div className="mt-2">
