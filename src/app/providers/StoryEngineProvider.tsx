@@ -54,7 +54,7 @@ import {
 	type AiDocumentPresetId,
 } from "../../lib/aiDocumentGenerator/presets";
 import { generateChapterStructuredDocument, resolveSourceMaterialForStructure } from "../../lib/aiDocumentGenerator/chapterGeneration";
-import { generateGeminiPodcastAudioFromMarkdown } from "../../lib/aiDocumentGenerator/geminiAudio";
+import { generateGeminiPodcastAudioFromMarkdown, planGeminiPodcastTtsChunks } from "../../lib/aiDocumentGenerator/geminiAudio";
 import { resolveGeminiPodcastTtsSettings, resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
 import {
 	buildAudioFilenameFromMarkdownUpload,
@@ -174,6 +174,8 @@ import {
 	getNextBackgroundTaskQueueOrder,
 	moveQueuedBackgroundTaskInOrder,
 	sortQueuedBackgroundTasks,
+	audiobookProgressToBackgroundJobProgress,
+	backgroundJobProgressFromSteps,
 } from "../../lib/backgroundTasks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
@@ -3437,7 +3439,7 @@ export function StoryEngineProvider({
   const updateBackgroundJobProgress = useCallback(
     async (
       jobId: string,
-      progress: { current: number; total: number; label?: string },
+      progress: NonNullable<BackgroundJob["progress"]>,
     ) => {
       const liveJob = await repository.getBackgroundJob(jobId);
       if (!liveJob || liveJob.status !== "running") {
@@ -3568,7 +3570,7 @@ export function StoryEngineProvider({
   const updateAudiobookPlaybackBackgroundTask = useCallback(
     async (
       jobId: string,
-      progress: { current: number; total: number; label?: string },
+      progress: NonNullable<BackgroundJob["progress"]>,
     ) => {
       await updateBackgroundJobProgress(jobId, progress);
     },
@@ -3704,17 +3706,10 @@ export function StoryEngineProvider({
         ),
         signal: opts.signal,
         onProgress: (progress) => {
-          const doneCount = progress.chapters.filter(
-            (chapter) => chapter.status === "done" || chapter.status === "cached",
-          ).length;
-          void updateBackgroundJobProgress(opts.jobId, {
-            current: doneCount,
-            total: progress.chapters.length,
-            label:
-              progress.chapters.length > 1
-                ? `Generating Audiobook · Chapter ${Math.min(doneCount + 1, progress.chapters.length)} / ${progress.chapters.length}`
-                : progress.summary,
-          });
+          void updateBackgroundJobProgress(
+            opts.jobId,
+            audiobookProgressToBackgroundJobProgress(progress, "Generating Audiobook"),
+          );
           setAudiobookExportStatus((current) =>
             current?.storyId === storyId
               ? {
@@ -3788,14 +3783,26 @@ export function StoryEngineProvider({
         throw new Error("Source material is empty.");
       }
 
-      const updateProgress = (message: string, current = 0, total = 0) =>
-        void updateBackgroundJobProgress(job.id, {
-          current,
-          total,
-          label: message,
-        });
+      const parentLabel = `Generating ${preset.displayName}`;
+      let activeDocumentSteps: NonNullable<BackgroundJob["progress"]>["steps"];
+      const updateDocumentProgress = (steps?: NonNullable<BackgroundJob["progress"]>["steps"]) => {
+        if (steps?.length) {
+          activeDocumentSteps = steps;
+          void updateBackgroundJobProgress(
+            job.id,
+            backgroundJobProgressFromSteps(parentLabel, steps),
+          );
+          return;
+        }
 
-      updateProgress(`Generating ${preset.displayName}…`);
+        void updateBackgroundJobProgress(job.id, {
+          current: 0,
+          total: 1,
+          label: parentLabel,
+        });
+      };
+
+      updateDocumentProgress();
 
       let streamedDraft = "";
       const onChunk = (chunk: string) => {
@@ -3850,7 +3857,7 @@ export function StoryEngineProvider({
             chapterSegments,
             fullSourceMaterial: sourceMaterial,
             generateChunk,
-            onProgress: (message) => updateProgress(message),
+            onProgress: ({ steps }) => updateDocumentProgress(steps),
             signal,
           });
         } else {
@@ -3873,14 +3880,58 @@ export function StoryEngineProvider({
           throw new Error("Add a Gemini API key in Settings → AI to generate podcast audio.");
         }
 
-        updateProgress("Generating Podcast…");
+        const podcastParentLabel = "Generating Podcast";
+        const ttsChunks = planGeminiPodcastTtsChunks(markdown);
+        const audioSteps: NonNullable<BackgroundJob["progress"]>["steps"] = ttsChunks.map(
+          (_, chunkIndex) => ({
+            id: `audio-${chunkIndex}`,
+            label: `Audio part ${chunkIndex + 1}`,
+            status: "pending" as const,
+          }),
+        );
+        const completedDocumentSteps =
+          activeDocumentSteps?.map((step) => ({ ...step, status: "done" as const })) ?? [];
+        let podcastAudioSteps = [...completedDocumentSteps, ...audioSteps];
+        if (podcastAudioSteps.length) {
+          void updateBackgroundJobProgress(
+            job.id,
+            backgroundJobProgressFromSteps(podcastParentLabel, podcastAudioSteps),
+          );
+        }
+
         const wavBuffer = await generateGeminiPodcastAudioFromMarkdown({
           apiKey: geminiApiKey,
           markdown,
           signal,
-          onProgress: (message) => updateProgress(message),
-          onChunkComplete: ({ index, total }) =>
-            updateProgress(`Generating Podcast · ${index + 1} / ${total}`, index + 1, total),
+          onChunkComplete: ({ index, total }) => {
+            const audioOffset = completedDocumentSteps.length;
+            podcastAudioSteps = podcastAudioSteps.map((step, stepIndex) => {
+              if (stepIndex < audioOffset) {
+                return { ...step, status: "done" as const };
+              }
+
+              const audioIndex = stepIndex - audioOffset;
+              if (audioIndex < index) {
+                return { ...step, status: "done" as const };
+              }
+              if (audioIndex === index) {
+                return { ...step, status: "running" as const };
+              }
+              return step;
+            });
+
+            if (index + 1 >= total) {
+              podcastAudioSteps = podcastAudioSteps.map((step) => ({
+                ...step,
+                status: "done" as const,
+              }));
+            }
+
+            void updateBackgroundJobProgress(
+              job.id,
+              backgroundJobProgressFromSteps(podcastParentLabel, podcastAudioSteps),
+            );
+          },
           tts: settings.geminiPodcastTts,
         });
 
@@ -5104,7 +5155,14 @@ export function StoryEngineProvider({
             chapterSegments,
             fullSourceMaterial: sourceMaterial,
             generateChunk,
-            onProgress: input.onProgress,
+            onProgress: input.onProgress
+              ? ({ steps }) => {
+                  const runningStep = steps.find((step) => step.status === "running");
+                  input.onProgress?.(
+                    runningStep?.label ?? steps[steps.length - 1]?.label ?? "Generating document…",
+                  );
+                }
+              : undefined,
             signal: input.signal,
           });
         } else {

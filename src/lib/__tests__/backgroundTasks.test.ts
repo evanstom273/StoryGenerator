@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
 	countActiveBackgroundTasks,
 	audiobookProgressToBackgroundJobProgress,
+	backgroundJobProgressFromSteps,
+	buildChapterDocumentSteps,
 	formatEstimatedRemainingSeconds,
 	getBackgroundTaskNavigationTarget,
+	getBackgroundTaskProgressLabel,
 	getBackgroundTaskRemainingLabel,
 	getBackgroundTaskTypeLabel,
 	isAudiobookExportBackgroundJob,
@@ -128,28 +131,56 @@ describe("backgroundTasks", () => {
 
 	it("maps audiobook chapter progress to background job progress", () => {
 		expect(
-			audiobookProgressToBackgroundJobProgress({
-				summary: "1/2 chapters ready",
-				chapters: [
-					{
-						segmentId: "a",
-						label: "Chapter 1",
-						displayLabel: "Chapter 1",
-						status: "done",
-					},
-					{
-						segmentId: "b",
-						label: "Chapter 2",
-						displayLabel: "Chapter 2",
-						status: "synthesizing",
-					},
-				],
-			}),
+			audiobookProgressToBackgroundJobProgress(
+				{
+					summary: "1/2 chapters ready",
+					chapters: [
+						{
+							segmentId: "a",
+							label: "Chapter 1",
+							displayLabel: "Chapter 1",
+							status: "done",
+						},
+						{
+							segmentId: "b",
+							label: "Chapter 2",
+							displayLabel: "Chapter 2",
+							status: "synthesizing",
+						},
+					],
+				},
+				"Generate Audiobook",
+			),
 		).toEqual({
 			current: 1,
-			total: 2,
-			label: "1/2 chapters ready",
+			total: 3,
+			label: "Generate Audiobook",
+			steps: [
+				{ id: "a", label: "Chapter 1", status: "done" },
+				{ id: "b", label: "Chapter 2", status: "running" },
+				{ id: "stitching", label: "Stitching audiobook", status: "pending" },
+			],
 		});
+	});
+
+	it("builds chapter document subtasks and hides step text from the main label", () => {
+		const steps = buildChapterDocumentSteps({
+			introLabel: "Writing title",
+			chapterLabels: ["Chapter I", "Chapter II"],
+		});
+
+		expect(steps).toHaveLength(3);
+		expect(
+			getBackgroundTaskProgressLabel(
+				makeJob({
+					id: "1",
+					type: "ai_document",
+					status: "running",
+					payload: { aiDocumentPresetId: "novelisation" },
+					progress: backgroundJobProgressFromSteps("Generating Novelisation", steps),
+				}),
+			),
+		).toBe("");
 	});
 
 	it("formats estimated remaining time", () => {

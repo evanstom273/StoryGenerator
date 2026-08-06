@@ -358,6 +358,14 @@ export interface StoryUiState {
   updatedAt: Timestamp;
 }
 
+export type BackgroundJobStepStatus = "pending" | "running" | "done" | "failed";
+
+export interface BackgroundJobStep {
+	id: string;
+	label: string;
+	status: BackgroundJobStepStatus;
+}
+
 export interface BackgroundJob {
   id: EntityId;
   type: BackgroundJobType;
@@ -370,6 +378,7 @@ export interface BackgroundJob {
     current: number;
     total: number;
     label?: string;
+    steps?: BackgroundJobStep[];
   };
   error?: string;
   dedupeKey?: string;
