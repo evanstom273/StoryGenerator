@@ -50,7 +50,7 @@ export const CHANGELOG: Record<string, ChangelogEntry> = {
       "Generate Chapters planner no longer requires an overall direction; you can plan each chapter directly with one input box per scene",
       "Story generation now prefers the player character's alias as their scene name and enforces their specified pronouns instead of inferring he/him or she/her from name or gender",
       "Single-narrator audiobook mode no longer inserts awkward \"X said\" attribution; character actions and dialogue read as plain narration with one voice",
-      "Transcript sanitization shortens speaker labels and name mentions to first names, fixing validation failures when the model outputs quoted nicknames like Morgan \"Mo\" Alvarez",
+      "Transcript sanitization shortens speaker labels and name mentions to first names, fixing validation failures when the model outputs quoted nicknames like Morgan \"Mo\" Ellis",
       "Transcript sanitization now auto-repairs common malformed model output (wrapped narrator labels, orphan action lines, stray *.* markers, truncated names, and missing subjects) before validation and indexing",
       "Story generation no longer discards a good streamed response when only minor format validation remains after auto-repair; the sanitized transcript is saved instead of throwing a validation error",
       "Transcript repair no longer stamps every unlabeled beat as the player character; dialogue addressed to the player is stripped from false player labels and triggers speaker-attribution rewrite",
