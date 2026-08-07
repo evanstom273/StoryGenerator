@@ -1,3 +1,6 @@
+import { DIRECTOR_SPEAKER_LABEL } from "../storyText/directorMode";
+import { polishDirectorBeatStaging } from "../guidedChapterGeneration/directorBeatPolish";
+
 export function buildPlayerAssistRequest(playerCharacterName: string) {
   return [
     "Player Assist request:",
@@ -34,4 +37,67 @@ export function buildPlayerAssistContinuationRequest(
     existingText.replace(/\r\n/g, "\n"),
     "```",
   ].join("\n");
+}
+
+export function buildDirectorAssistRequest(playerCharacterName: string) {
+  return [
+    "Director Assist request:",
+    "Write the next Director staging note for the story.",
+    "A Director note tells the AI how to stage the next scene — who is present, what happens, and any key beats.",
+    "Output ONLY the Director note. No commentary, options, or extra text.",
+    "Formatting requirements:",
+    `- First token on the line: ${DIRECTOR_SPEAKER_LABEL}:`,
+    "- Staging beats go inside asterisks: Director: *Beat description.*",
+    "- Write prose staging beats, not a full script. Use first names for characters.",
+    '- Optional: after a character beat, add ("gist of dialogue") in parentheses for approximate dialogue the model should paraphrase — never copy verbatim.',
+    '- Example: Director: *Morgan confronts Alex about the file. Alex ("I didn\'t take it") tries to deflect.*',
+    "- Advance the story from where the transcript left off. Do not repeat or summarize the last scene.",
+    `Keep the player character (${playerCharacterName}) consistent with canon and the current scene state.`,
+  ].join("\n");
+}
+
+export function buildDirectorAssistContinuationRequest(existingText: string) {
+  return [
+    "Director Assist request:",
+    "Continue the Director staging note the user has started writing below.",
+    "The user has already started writing. Treat it as the exact beginning of the Director note.",
+    "Do NOT repeat any of the existing text. Do NOT rewrite it. Do NOT output the 'Director:' prefix again if it is already present.",
+    "Output ONLY the continuation text to append after the existing text. No commentary.",
+    "If the existing text ends with an open delimiter (for example *, \", ', or Director: *), continue inline immediately after it.",
+    'Example: `Director: *` should continue as `Morgan steps into the room...`, not as a new `Director:` line.',
+    "",
+    "Existing text (do not repeat):",
+    "```",
+    existingText.replace(/\r\n/g, "\n"),
+    "```",
+  ].join("\n");
+}
+
+export function formatDirectorAssistOutput(raw: string): string {
+  let content = raw.trim();
+  if (!content) {
+    return `${DIRECTOR_SPEAKER_LABEL}: `;
+  }
+
+  content = content.replace(/^\s*Director:\s*/i, "").trim();
+  const polished = polishDirectorBeatStaging(content);
+  const beat = polished ?? `*${content.replace(/^\*+|\*+$/g, "").trim()}*`;
+
+  return `${DIRECTOR_SPEAKER_LABEL}: ${beat}`;
+}
+
+export function formatDirectorAssistContinuation(raw: string, existingText: string): string {
+  const trimmedExisting = existingText.trimEnd();
+  const normalizedRaw = raw.replace(/\r\n/g, "\n");
+  const normalizedExisting = trimmedExisting.replace(/\r\n/g, "\n");
+
+  if (normalizedRaw.startsWith(normalizedExisting)) {
+    return normalizedRaw.slice(normalizedExisting.length).trimStart();
+  }
+
+  if (/^\s*Director:/i.test(trimmedExisting) && /^\s*Director:\s*/i.test(normalizedRaw)) {
+    return normalizedRaw.replace(/^\s*Director:\s*/i, "").trimStart();
+  }
+
+  return raw;
 }
