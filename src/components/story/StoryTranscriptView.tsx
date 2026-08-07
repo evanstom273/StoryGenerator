@@ -399,7 +399,7 @@ export function StoryTranscriptView({
           const isAuthorDirective = isAuthorDirectiveMessage(message);
           const isContinue = isContinueMessage(message);
           const isDirector = isDirectorMessage(message);
-          if (isContinue) {
+          if (isContinue || isDirector) {
             return chapterStartLabel ? (
               <Fragment key={message.id}>
                 <ChapterListenBanner
@@ -414,16 +414,10 @@ export function StoryTranscriptView({
           }
           const label = isAuthorDirective
             ? message.speakerName?.trim() || "Author"
-            : isDirector
-            ? "Director"
             : message.speakerName?.trim() || playerCharacterName || "Player";
           const tag = getSpeakerTag(
             label,
-            isAuthorDirective
-              ? "author"
-              : isDirector
-                  ? "director"
-                  : "player",
+            isAuthorDirective ? "author" : "player",
           );
           return (
             <Fragment key={message.id}>
