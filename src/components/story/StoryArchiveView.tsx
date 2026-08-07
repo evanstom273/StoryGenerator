@@ -17,7 +17,6 @@ import { Panel } from "../ui/Panel";
 import { IndexingProgressPanel } from "./IndexingProgressPanel";
 
 import { RelationshipOverviewList } from "./RelationshipOverviewList";
-import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
 import {
 	applyNarrativeIdentityToRelationships,
 	applyNarrativeIdentityToText,
@@ -304,12 +303,12 @@ export function StoryArchiveView({
   const recentDevelopments = trimStringList(archiveState.summaries?.recentDevelopments, 6).map(
     redactNarrative,
   );
+  const indexedRelationships =
+    archiveState.indexes?.relationships?.length
+      ? archiveState.indexes.relationships
+      : archiveRelationships;
   const narrativeRelationships = applyNarrativeIdentityToRelationships(
-    filterPlayerRelationships(
-      archiveState.indexes?.relationships ?? archiveRelationships,
-      playerName,
-      playerAliases,
-    ),
+    indexedRelationships,
     narrativeRegistry,
     { messageCount: storyMessages.length },
   );
@@ -599,7 +598,7 @@ export function StoryArchiveView({
               Relationships
             </div>
             <p className="mt-1 text-[11px] text-ink-muted">
-              Overview from the story relationship index. Open the Relationships panel in the workspace for full detail and editing.
+              All indexed character relationships from the transcript. Open the Relationships panel in the workspace for full detail and editing.
             </p>
             <div className="mt-3">
               <RelationshipOverviewList

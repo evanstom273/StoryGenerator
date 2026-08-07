@@ -169,4 +169,101 @@ describe("transcriptPresence", () => {
 		expect(cleared.lastIndexedMessageCount).toBe(0);
 		expect(cleared.rpStats).toEqual({ trust: 1 });
 	});
+
+	it("tracks the player scene identity separately from the hidden canonical identity", () => {
+		const markPresentMessages: StoryMessage[] = [
+			...chapterOneMessages.slice(0, -1),
+			makeUserMessage({
+				id: "msg-8",
+				speakerName: "Mark",
+				content: "*End of Chapter I.*",
+			}),
+			makeUserMessage({
+				id: "msg-9",
+				speakerName: "Mark",
+				content: "*Chapter II.*",
+			}),
+			makeAssistantMessage(
+				"**Rosa:** *pushes the mug closer.* \"Drink this.\"\n\n**Mark:** *takes the mug.* \"Thank you...\"\n\n**Mark:** \"My name is... Mark Owen.\"",
+			),
+		];
+
+		const indexedState: StoryStateDataV2 = {
+			...omniscientState,
+			characters: {
+				"Silas Thorne": {
+					canonicalName: "Silas Thorne",
+					narrativeName: "Mark Owen",
+					statusBullets: [
+						"Sitting in a wooden briefing room chair dripping rain from his crushed velvet suit",
+						"Orchestrating a grand game in Brooklyn",
+					],
+					strengths: ["Highly intelligent", "Analytical mind"],
+					weaknesses: ["Lacks empathy", "Driven by sinister boredom"],
+				},
+				"Jake Peralta": {
+					canonicalName: "Jake Peralta",
+					statusBullets: ["Investigating the alleyway trap"],
+				},
+			},
+			indexes: {
+				...omniscientState.indexes!,
+				messageCount: 10,
+				characters: {
+					jake: {
+						name: "Jake Peralta",
+						description: "NYPD detective investigating the alleyway trap.",
+					},
+					silas: {
+						name: "Silas Thorne",
+						narrativeName: "Mark Owen",
+						description: "Wealthy mastermind posing as witness Mark Owen.",
+					},
+				},
+				relationships: [
+					{
+						a: "Jake Peralta",
+						b: "Mark Owen",
+						tier: "colleague",
+						summary: "Jake is interviewing Mark Owen in the briefing room.",
+					},
+					{ a: "Jake Peralta", b: "Rosa Diaz", tier: "colleague", summary: "Partners at the scene." },
+				],
+			},
+		};
+
+		const gated = applyTranscriptPresenceGate(
+			indexedState,
+			markPresentMessages,
+			{ name: "Silas Thorne", aliases: ["Mark Owen"] },
+			{ messageCount: markPresentMessages.length },
+		);
+
+		expect(gated.characters?.["Silas Thorne"]).toBeUndefined();
+		expect(gated.characters?.["Mark"]).toBeDefined();
+		expect(gated.characters?.["Mark"]?.strengths).toBeUndefined();
+		expect(gated.characters?.["Mark"]?.weaknesses).toBeUndefined();
+		expect(gated.characters?.["Mark"]?.statusBullets?.some((bullet) => /orchestrat/i.test(bullet))).toBe(
+			false,
+		);
+		expect(gated.indexes?.characters?.silas).toBeUndefined();
+		expect(gated.indexes?.characters?.mark?.name).toBe("Mark");
+
+		expect(
+			listPresentIndexedCharacterNames(
+				gated,
+				markPresentMessages,
+				{ name: "Silas Thorne", aliases: ["Mark Owen"] },
+				{ messageCount: markPresentMessages.length },
+			),
+		).toEqual(expect.arrayContaining(["Jake Peralta", "Mark"]));
+		expect(
+			listPresentIndexedCharacterNames(
+				gated,
+				markPresentMessages,
+				{ name: "Silas Thorne", aliases: ["Mark Owen"] },
+				{ messageCount: markPresentMessages.length },
+			),
+		).not.toContain("Silas Thorne");
+	});
 });
