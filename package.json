@@ -17,6 +17,7 @@
     "@capacitor/core": "^8.3.4",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/share": "^8.0.1",
+    "@capgo/capacitor-media-session": "^8.0.29",
     "fflate": "^0.8.2",
     "jspdf": "^4.2.1",
     "marked": "^18.0.5",
