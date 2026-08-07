@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BrandMark } from "../../components/BrandMark";
 import { AnimatedOutlet } from "../../components/ui/AnimatedOutlet";
 import { DRAWER_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../ui/motion";
-import { MenuIcon } from "../../components/icons";
+import { MenuIcon, SearchIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
 import { MetaChatOverlay } from "../../components/story/MetaChatOverlay";
 import { cn } from "../../utils/cn";
@@ -219,10 +219,31 @@ export function V2Shell() {
     >
       <div className="min-h-screen bg-app text-ink">
         <div className="mx-auto min-h-screen max-w-[1800px]">
-          <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-divider bg-app/80 px-3 backdrop-blur-xl lg:hidden">
-            <BrandMark iconOnly className="min-w-0" />
-            <div className="flex shrink-0 items-center gap-1.5">
+          <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 overflow-hidden border-b border-divider bg-app/80 px-2 backdrop-blur-xl sm:px-3 lg:hidden">
+            <BrandMark mobileHeader />
+            <div className="ml-auto flex shrink-0 items-center gap-1">
               <BackgroundTasksButton />
+              <button
+                type="button"
+                aria-label="Open library MetaChat"
+                onClick={() => setGlobalMetaChatOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="8" width="18" height="11" rx="2" />
+                  <path d="M8 8V5" /><path d="M16 8V5" />
+                  <circle cx="9" cy="13.5" r="1" fill="currentColor" stroke="none" />
+                  <circle cx="15" cy="13.5" r="1" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                aria-label="Search library"
+                onClick={() => librarySearchContextValue.openSearch()}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+              >
+                <SearchIcon className="h-4 w-4" />
+              </button>
               <Button
                 variant="secondary"
                 size="sm"
@@ -232,6 +253,16 @@ export function V2Shell() {
               >
                 <MenuIcon />
               </Button>
+              <button
+                type="button"
+                aria-label="Global settings"
+                onClick={() => navigate("/settings")}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2.75v3" /><path d="m18.54 5.46-2.12 2.12" /><path d="M21.25 12h-3" /><path d="m18.54 18.54-2.12-2.12" /><path d="M12 18.25v3" /><path d="m7.58 16.42-2.12 2.12" /><path d="M5.75 12h-3" /><path d="m7.58 7.58-2.12-2.12" /><circle cx="12" cy="12" r="3.5" />
+                </svg>
+              </button>
             </div>
           </header>
 
