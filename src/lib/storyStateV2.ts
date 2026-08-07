@@ -15,6 +15,7 @@ import {
 } from "./relationshipIndex";
 import { ensureIndexedCharacterStatus, dedupeStatusBullets } from "./characterStatus";
 import { applyTranscriptPresenceGate } from "./transcriptPresence";
+import { findPlayerStoryStateEntry } from "./storyText/playerSceneName";
 import {
 	mergeOpenThreadsAuthoritative,
 	reconcileResolvedOpenThreads,
@@ -671,6 +672,10 @@ export function reconcileStoryIndexes(
     playerName?: string;
     playerAliases?: string[];
     universeImportedCharacters?: string[];
+    identityRevealedAtMessage?: number;
+    messageCount?: number;
+    canonicalName?: string;
+    narrativeName?: string;
   },
 ): StoryIndexesV2 | undefined {
   if (!indexes || typeof indexes !== "object") {
@@ -715,6 +720,10 @@ export function reconcileStoryIndexes(
     allowlist,
     indexedCharacters: normalizedCharacters ?? indexes.characters,
     universeImportedCharacters: opts?.universeImportedCharacters,
+    identityRevealedAtMessage: opts?.identityRevealedAtMessage,
+    messageCount: opts?.messageCount ?? messageCount,
+    canonicalName: opts?.canonicalName,
+    narrativeName: opts?.narrativeName,
   });
 
   return {
@@ -756,10 +765,17 @@ export function finalizeStoryStateForSave(params: {
   const previousV2 = normalizeStoryStateToV2(previous);
 
   const normalized = normalizeStoryStateToV2(params.parsedState);
+  const playerEntry = params.playerName
+    ? findPlayerStoryStateEntry(normalized, params.playerName)
+    : null;
   let reconciledIndexes = reconcileStoryIndexes(normalized.indexes, params.totalMessages, {
     playerName: params.playerName,
     playerAliases: params.playerAliases,
     universeImportedCharacters: params.universeImportedCharacters,
+    identityRevealedAtMessage: playerEntry?.identityRevealedAtMessage,
+    messageCount: params.totalMessages,
+    canonicalName: playerEntry?.canonicalName,
+    narrativeName: playerEntry?.narrativeName,
   });
 
   const base: StoryStateDataV2 = {

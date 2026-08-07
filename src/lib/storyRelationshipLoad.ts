@@ -1,7 +1,8 @@
 import type { RelationshipIndexEntry, StoryIndexesV2 } from "../types/models";
 import { safeParseJsonObject } from "./ai/json";
-import { reconcileStoryIndexes, safeParseStoryStateData } from "./storyStateV2";
+import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData } from "./storyStateV2";
 import { makeRelationshipPairKey, relationshipInvolvesPlayer, buildResolvedPlayerNameVariants } from "./relationshipIndex";
+import { findPlayerStoryStateEntry } from "./storyText/playerSceneName";
 
 export type StoryRelationshipLoadOpts = {
 	playerName?: string;
@@ -66,6 +67,13 @@ export function reconcileRelationshipsFromStateJson(
 		opts.messageCount ??
 		(typeof existingIndexes?.messageCount === "number" ? existingIndexes.messageCount : rawRelationships.length);
 
+	const parsedState = stateJson.trim() ? safeParseStoryStateData(stateJson) : null;
+	const normalizedState = parsedState ? normalizeStoryStateToV2(parsedState) : null;
+	const playerEntry =
+		opts.playerName && normalizedState
+			? findPlayerStoryStateEntry(normalizedState, opts.playerName)
+			: null;
+
 	const reconciledIndexes = reconcileStoryIndexes(
 		{ ...(existingIndexes ?? {}), relationships: rawRelationships },
 		messageCount,
@@ -73,6 +81,10 @@ export function reconcileRelationshipsFromStateJson(
 			playerName: opts.playerName,
 			playerAliases: opts.playerAliases,
 			universeImportedCharacters: opts.universeImportedCharacters,
+			identityRevealedAtMessage: playerEntry?.identityRevealedAtMessage,
+			messageCount,
+			canonicalName: playerEntry?.canonicalName,
+			narrativeName: playerEntry?.narrativeName,
 		},
 	);
 
@@ -90,13 +102,26 @@ export function reconcileRelationshipsFromStateJson(
 export function relationshipCounterparty(
 	entry: RelationshipIndexEntry,
 	playerName?: string,
+	playerAliases?: string[],
 ): string {
 	if (!playerName?.trim()) {
 		return entry.b;
 	}
-	const playerNorm = playerName.trim().toLowerCase();
-	if (entry.a.trim().toLowerCase() === playerNorm) return entry.b;
-	if (entry.b.trim().toLowerCase() === playerNorm) return entry.a;
+
+	const variants = buildResolvedPlayerNameVariants({
+		playerName,
+		playerAliases,
+	});
+	const aNorm = entry.a.trim().toLowerCase();
+	const bNorm = entry.b.trim().toLowerCase();
+
+	if (variants.has(aNorm)) {
+		return entry.b;
+	}
+	if (variants.has(bNorm)) {
+		return entry.a;
+	}
+
 	return `${entry.a} ↔ ${entry.b}`;
 }
 

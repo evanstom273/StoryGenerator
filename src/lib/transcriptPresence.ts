@@ -7,6 +7,7 @@ import type {
 	StoryStateDataV2,
 } from "../types/models";
 import { normalizePlayerCharacterAliases, resolvePlayerCharacterSceneName } from "./playerCharacterPrompt";
+import { makeRelationshipPairKey, mergeRelationshipEntries } from "./relationshipIndex";
 import { findPlayerStoryStateEntry } from "./storyText/playerSceneName";
 import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
 import { isContinueMessage } from "./storyText/continueMode";
@@ -288,6 +289,12 @@ function isHiddenPlayerIdentitySplitActive(
 		return false;
 	}
 
+	const canonical = playerEntry?.canonicalName?.trim() || legalName;
+	const narrative = playerEntry?.narrativeName?.trim();
+	if (!narrative || normalizeName(canonical) === normalizeName(narrative)) {
+		return false;
+	}
+
 	return true;
 }
 
@@ -366,12 +373,16 @@ function splitPlayerSceneIdentityInIndex(
 	}
 
 	const legalName = playerCharacter.name.trim();
-	const sceneName = resolvePlayerCharacterSceneName(playerCharacter, {
-		storyState: state,
-		recentMessages: messages,
-	});
-	const legalVariants = collectHiddenPlayerLegalVariants(playerCharacter, state, sceneName);
 	const playerEntry = findPlayerStoryStateEntry(state, legalName);
+	const sceneName =
+		playerEntry?.narrativeName?.trim() &&
+		normalizeName(playerEntry.narrativeName) !== normalizeName(legalName)
+			? playerEntry.narrativeName.trim()
+			: resolvePlayerCharacterSceneName(playerCharacter, {
+					storyState: state,
+					recentMessages: messages,
+				});
+	const legalVariants = collectHiddenPlayerLegalVariants(playerCharacter, state, sceneName);
 
 	let sourceCharacterEntry: StoryStateCharacterState | undefined = playerEntry ?? undefined;
 	for (const [key, entry] of Object.entries(state.characters ?? {})) {
@@ -445,11 +456,28 @@ function splitPlayerSceneIdentityInIndex(
 		return trimmed;
 	};
 
-	const relationships = (state.indexes?.relationships ?? []).map((entry) => ({
-		...entry,
-		a: remapRelationshipEndpoint(entry.a),
-		b: remapRelationshipEndpoint(entry.b),
-	}));
+	const relationshipByPair = new Map<string, RelationshipIndexEntry>();
+	for (const entry of state.indexes?.relationships ?? []) {
+		const a = remapRelationshipEndpoint(entry.a);
+		const b = remapRelationshipEndpoint(entry.b);
+		if (!a.trim() || !b.trim() || normalizeName(a) === normalizeName(b)) {
+			continue;
+		}
+
+		const pairKey = makeRelationshipPairKey(a, b);
+		const normalizedEntry: RelationshipIndexEntry = {
+			...entry,
+			a,
+			b,
+		};
+		const existing = relationshipByPair.get(pairKey);
+		relationshipByPair.set(
+			pairKey,
+			existing ? mergeRelationshipEntries(existing, normalizedEntry) : normalizedEntry,
+		);
+	}
+
+	const relationships = Array.from(relationshipByPair.values());
 
 	return {
 		...state,
@@ -495,6 +523,93 @@ function filterRelationships(
 	});
 }
 
+function applyHiddenPlayerPresenceNameAdjustments(
+	presentNames: Set<string>,
+	playerCharacter: Pick<PlayerCharacter, "name" | "aliases">,
+	state: StoryStateDataV2,
+	messages: StoryMessage[],
+	opts: { messageCount: number; playerPresent: boolean },
+): void {
+	if (!isHiddenPlayerIdentitySplitActive(playerCharacter, state, messages, opts)) {
+		return;
+	}
+
+	const sceneName = resolvePlayerCharacterSceneName(playerCharacter, {
+		storyState: state,
+		recentMessages: messages,
+	});
+	const legalVariants = collectHiddenPlayerLegalVariants(playerCharacter, state, sceneName);
+
+	for (const variant of legalVariants) {
+		presentNames.delete(normalizeName(variant));
+	}
+
+	presentNames.add(normalizeName(sceneName));
+}
+
+function dedupePresentCharacterNames(names: string[], state: StoryStateDataV2): string[] {
+	const canonicalByNorm = new Map<string, string>();
+
+	for (const entity of Object.values(state.indexes?.characters ?? {})) {
+		const canonical = entity?.name?.trim();
+		if (!canonical) {
+			continue;
+		}
+
+		const readerFacingName =
+			entity?.narrativeName?.trim() &&
+			normalizeName(entity.narrativeName) !== normalizeName(canonical)
+				? entity.narrativeName.trim()
+				: canonical;
+
+		for (const variant of collectNameVariants(readerFacingName, ...(entity.aliases ?? []))) {
+			canonicalByNorm.set(normalizeName(variant), readerFacingName);
+		}
+	}
+
+	for (const [key, entry] of Object.entries(state.characters ?? {})) {
+		const storedCanonical = entry?.canonicalName?.trim() || key.trim();
+		const readerFacingName =
+			entry?.narrativeName?.trim() &&
+			normalizeName(entry.narrativeName) !== normalizeName(storedCanonical)
+				? entry.narrativeName.trim()
+				: entry?.displayName?.trim() || key.trim() || storedCanonical;
+		if (!readerFacingName) {
+			continue;
+		}
+
+		for (const variant of collectNameVariants(
+			key,
+			readerFacingName,
+			entry.displayName,
+			entry.narrativeName,
+			...(entry.aliases ?? []),
+		)) {
+			canonicalByNorm.set(normalizeName(variant), readerFacingName);
+		}
+	}
+
+	const seen = new Set<string>();
+	const deduped: string[] = [];
+
+	for (const name of names) {
+		const resolved = canonicalByNorm.get(normalizeName(name)) ?? name.trim();
+		if (!resolved) {
+			continue;
+		}
+
+		const key = normalizeName(resolved);
+		if (seen.has(key)) {
+			continue;
+		}
+
+		seen.add(key);
+		deduped.push(resolved);
+	}
+
+	return deduped;
+}
+
 export function applyTranscriptPresenceGate(
 	state: StoryStateDataV2,
 	messages: StoryMessage[],
@@ -513,17 +628,23 @@ export function applyTranscriptPresenceGate(
 		messageCount,
 		storyState: state,
 	});
-	const playerVariants = buildPlayerPresenceVariants(playerCharacter, state);
+	const workingState = playerPresent
+		? splitPlayerSceneIdentityInIndex(state, messages, playerCharacter, {
+				messageCount,
+				playerPresent,
+			})
+		: state;
+	const playerVariants = buildPlayerPresenceVariants(playerCharacter, workingState);
 	const absentPlayerVariants = playerPresent ? [] : playerVariants;
 
 	const presentNames = new Set<string>();
 	const allCharacterNames = new Set<string>();
 
-	for (const name of Object.keys(state.characters ?? {})) {
+	for (const name of Object.keys(workingState.characters ?? {})) {
 		allCharacterNames.add(name.trim());
 	}
-	if (state.indexes?.characters) {
-		for (const entity of Object.values(state.indexes.characters)) {
+	if (workingState.indexes?.characters) {
+		for (const entity of Object.values(workingState.indexes.characters)) {
 			if (entity?.name?.trim()) {
 				allCharacterNames.add(entity.name.trim());
 			}
@@ -534,7 +655,7 @@ export function applyTranscriptPresenceGate(
 		if (
 			isCharacterPresentInTranscript(name, messages, {
 				messageCount,
-				storyState: state,
+				storyState: workingState,
 				playerCharacter,
 			})
 		) {
@@ -542,47 +663,52 @@ export function applyTranscriptPresenceGate(
 		}
 	}
 
+	applyHiddenPlayerPresenceNameAdjustments(presentNames, playerCharacter, workingState, messages, {
+		messageCount,
+		playerPresent,
+	});
+
 	const filteredCharacters: StoryStateDataV2["characters"] = {};
-	for (const [name, entry] of Object.entries(state.characters ?? {})) {
+	for (const [name, entry] of Object.entries(workingState.characters ?? {})) {
 		if (presentNames.has(normalizeName(name))) {
 			filteredCharacters[name] = entry;
 		}
 	}
 
 	const filteredIndexesCharacters =
-		state.indexes?.characters && typeof state.indexes.characters === "object"
+		workingState.indexes?.characters && typeof workingState.indexes.characters === "object"
 			? Object.fromEntries(
-					Object.entries(state.indexes.characters).filter(([, entity]) =>
+					Object.entries(workingState.indexes.characters).filter(([, entity]) =>
 						entity?.name?.trim() ? presentNames.has(normalizeName(entity.name)) : false,
 					),
 				)
 			: undefined;
 
 	const filteredRelationships = filterRelationships(
-		state.indexes?.relationships,
+		workingState.indexes?.relationships,
 		presentNames,
 		playerPresent,
 		playerVariants,
 	);
 
 	const filteredNpcs =
-		state.npcs && typeof state.npcs === "object"
+		workingState.npcs && typeof workingState.npcs === "object"
 			? Object.fromEntries(
-					Object.entries(state.npcs).filter(([name]) => presentNames.has(normalizeName(name))),
+					Object.entries(workingState.npcs).filter(([name]) => presentNames.has(normalizeName(name))),
 				)
 			: undefined;
 
 	const filteredLocations =
-		state.indexes?.locations && typeof state.indexes.locations === "object"
+		workingState.indexes?.locations && typeof workingState.indexes.locations === "object"
 			? Object.fromEntries(
-					Object.entries(state.indexes.locations).filter(([, entry]) => {
+					Object.entries(workingState.indexes.locations).filter(([, entry]) => {
 						const description = typeof entry?.description === "string" ? entry.description : "";
 						return !textMentionsAnyName(description, absentPlayerVariants);
 					}),
 				)
-			: state.indexes?.locations;
+			: workingState.indexes?.locations;
 
-	const summaries = state.summaries ? { ...state.summaries } : undefined;
+	const summaries = workingState.summaries ? { ...workingState.summaries } : undefined;
 	if (summaries) {
 		if (!playerPresent) {
 			delete summaries.protagonistSummary;
@@ -616,37 +742,34 @@ export function applyTranscriptPresenceGate(
 	}
 
 	const gatedState: StoryStateDataV2 = {
-		...state,
+		...workingState,
 		characters: filteredCharacters,
-		...(filteredNpcs ? { npcs: filteredNpcs } : state.npcs ? { npcs: {} } : {}),
+		...(filteredNpcs ? { npcs: filteredNpcs } : workingState.npcs ? { npcs: {} } : {}),
 		summaries,
-		indexes: state.indexes
+		indexes: workingState.indexes
 			? {
-					...state.indexes,
+					...workingState.indexes,
 					...(filteredIndexesCharacters ? { characters: filteredIndexesCharacters } : { characters: {} }),
 					...(filteredRelationships ? { relationships: filteredRelationships } : { relationships: [] }),
 					...(filteredLocations ? { locations: filteredLocations } : {}),
-					openThreads: filterIndexedList(state.indexes.openThreads, absentPlayerVariants) ?? [],
-					worldFacts: filterIndexedList(state.indexes.worldFacts, absentPlayerVariants) ?? [],
+					openThreads: filterIndexedList(workingState.indexes.openThreads, absentPlayerVariants) ?? [],
+					worldFacts: filterIndexedList(workingState.indexes.worldFacts, absentPlayerVariants) ?? [],
 					significantMemories:
-						filterIndexedList(state.indexes.significantMemories, absentPlayerVariants) ?? [],
+						filterIndexedList(workingState.indexes.significantMemories, absentPlayerVariants) ?? [],
 				}
-			: state.indexes,
-		worldFacts: (state.worldFacts ?? []).filter(
+			: workingState.indexes,
+		worldFacts: (workingState.worldFacts ?? []).filter(
 			(fact) => !textMentionsAnyName(fact, absentPlayerVariants),
 		),
-		unresolvedThreads: (state.unresolvedThreads ?? []).filter(
+		unresolvedThreads: (workingState.unresolvedThreads ?? []).filter(
 			(thread) => !textMentionsAnyName(thread, absentPlayerVariants),
 		),
-		significantMemories: (state.significantMemories ?? []).filter(
+		significantMemories: (workingState.significantMemories ?? []).filter(
 			(memory) => !textMentionsAnyName(memory, absentPlayerVariants),
 		),
 	};
 
-	return splitPlayerSceneIdentityInIndex(gatedState, messages, playerCharacter, {
-		messageCount,
-		playerPresent,
-	});
+	return gatedState;
 }
 
 export function listPresentIndexedCharacterNames(
@@ -658,6 +781,39 @@ export function listPresentIndexedCharacterNames(
 	if (!state) {
 		return [];
 	}
+
+	const messageCount = opts?.messageCount ?? messages.length;
+	const playerPresent = playerCharacter
+		? isPlayerPresentInTranscript(messages, playerCharacter, {
+				messageCount,
+				storyState: state,
+			})
+		: false;
+	const hiddenSplitActive =
+		playerCharacter && playerPresent
+			? isHiddenPlayerIdentitySplitActive(playerCharacter, state, messages, {
+					messageCount,
+					playerPresent,
+				})
+			: false;
+	const sceneName =
+		hiddenSplitActive && playerCharacter
+			? (() => {
+					const legalName = playerCharacter.name.trim();
+					const playerEntry = findPlayerStoryStateEntry(state, legalName);
+					return playerEntry?.narrativeName?.trim() &&
+						normalizeName(playerEntry.narrativeName) !== normalizeName(legalName)
+						? playerEntry.narrativeName.trim()
+						: resolvePlayerCharacterSceneName(playerCharacter, {
+								storyState: state,
+								recentMessages: messages,
+							});
+				})()
+			: "";
+	const hiddenLegalVariants =
+		hiddenSplitActive && playerCharacter
+			? collectHiddenPlayerLegalVariants(playerCharacter, state, sceneName)
+			: [];
 
 	const names = new Set<string>();
 	if (state.indexes?.characters && typeof state.indexes.characters === "object") {
@@ -673,20 +829,28 @@ export function listPresentIndexedCharacterNames(
 		}
 	}
 
-	return Array.from(names)
-		.filter((name) =>
-			playerCharacter
-				? isCharacterPresentInTranscript(name, messages, {
-						messageCount: opts?.messageCount,
-						storyState: state,
-						playerCharacter,
-					})
-				: isCharacterPresentInTranscript(name, messages, {
-						messageCount: opts?.messageCount,
-						storyState: state,
-					}),
-		)
-		.sort((left, right) => left.localeCompare(right));
+	const filtered = Array.from(names).filter((name) => {
+		if (hiddenSplitActive && nameMatchesAnyVariant(name, hiddenLegalVariants)) {
+			return false;
+		}
+
+		return playerCharacter
+			? isCharacterPresentInTranscript(name, messages, {
+					messageCount,
+					storyState: state,
+					playerCharacter,
+				})
+			: isCharacterPresentInTranscript(name, messages, {
+					messageCount,
+					storyState: state,
+				});
+	});
+
+	if (hiddenSplitActive && sceneName.trim()) {
+		filtered.push(sceneName.trim());
+	}
+
+	return dedupePresentCharacterNames(filtered, state).sort((left, right) => left.localeCompare(right));
 }
 
 export function createClearedStoryStateV2(

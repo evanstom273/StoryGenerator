@@ -98,7 +98,7 @@ import {
   withIndexedMetadata,
 } from "../../lib/storyStateV2";
 import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
-import { createClearedStoryStateV2 } from "../../lib/transcriptPresence";
+import { applyTranscriptPresenceGate, createClearedStoryStateV2 } from "../../lib/transcriptPresence";
 import { runGuidedChapterGeneration } from "../../lib/guidedChapterGeneration/runGuidedChapters";
 import {
 	buildChapterPlanPrompt,
@@ -211,6 +211,7 @@ import {
   resolvePlayerCharacterPreferredSceneName,
   resolvePlayerCharacterSceneName,
 } from "../../lib/playerCharacterPrompt";
+import { findPlayerStoryStateEntry } from "../../lib/storyText/playerSceneName";
 import type {
   AIModelRole,
   AIProviderType,
@@ -6845,6 +6846,12 @@ export function StoryEngineProvider({
           const parsed = stateJson
             ? (() => { try { return JSON.parse(stateJson) as Record<string, unknown>; } catch { return {}; } })()
             : {};
+          const parsedV2 = safeParseStoryStateData(stateJson);
+          const normalizedV2 = parsedV2 ? normalizeStoryStateToV2(parsedV2) : null;
+          const playerEntry =
+            playerCharacter?.name && normalizedV2
+              ? findPlayerStoryStateEntry(normalizedV2, playerCharacter.name)
+              : null;
           const reconciledIndexes = reconcileStoryIndexes(
             {
               ...((parsed.indexes as StoryIndexesV2 | undefined) ?? {}),
@@ -6855,6 +6862,10 @@ export function StoryEngineProvider({
               playerName: playerCharacter?.name,
               playerAliases: normalizePlayerCharacterAliases(playerCharacter?.aliases),
               universeImportedCharacters,
+              identityRevealedAtMessage: playerEntry?.identityRevealedAtMessage,
+              messageCount: messages.length,
+              canonicalName: playerEntry?.canonicalName,
+              narrativeName: playerEntry?.narrativeName,
             },
           );
           await repository.saveStoryState({
@@ -6866,6 +6877,27 @@ export function StoryEngineProvider({
             }),
             updatedAt: new Date().toISOString(),
           });
+        }
+
+        const parsedForDisplay = stateJson.trim() ? safeParseStoryStateData(stateJson) : null;
+        const normalizedForDisplay = parsedForDisplay ? normalizeStoryStateToV2(parsedForDisplay) : null;
+        if (normalizedForDisplay && playerCharacter && messages.length) {
+          const gated = applyTranscriptPresenceGate(
+            {
+              ...normalizedForDisplay,
+              indexes: {
+                ...(normalizedForDisplay.indexes ?? {}),
+                relationships,
+              },
+            },
+            messages,
+            {
+              name: playerCharacter.name,
+              aliases: normalizePlayerCharacterAliases(playerCharacter?.aliases),
+            },
+            { messageCount: messages.length },
+          );
+          return gated.indexes?.relationships ?? relationships;
         }
 
         return relationships;

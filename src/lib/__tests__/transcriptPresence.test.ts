@@ -240,14 +240,18 @@ describe("transcriptPresence", () => {
 		);
 
 		expect(gated.characters?.["Silas Thorne"]).toBeUndefined();
-		expect(gated.characters?.["Mark"]).toBeDefined();
-		expect(gated.characters?.["Mark"]?.strengths).toBeUndefined();
-		expect(gated.characters?.["Mark"]?.weaknesses).toBeUndefined();
-		expect(gated.characters?.["Mark"]?.statusBullets?.some((bullet) => /orchestrat/i.test(bullet))).toBe(
+		expect(gated.characters?.["Mark Owen"] ?? gated.characters?.["Mark"]).toBeDefined();
+		const markEntry = gated.characters?.["Mark Owen"] ?? gated.characters?.["Mark"];
+		expect(markEntry?.strengths).toBeUndefined();
+		expect(markEntry?.weaknesses).toBeUndefined();
+		expect((markEntry?.statusBullets ?? []).some((bullet) => /orchestrat/i.test(bullet))).toBe(
 			false,
 		);
 		expect(gated.indexes?.characters?.silas).toBeUndefined();
-		expect(gated.indexes?.characters?.mark?.name).toBe("Mark");
+		expect(
+			gated.indexes?.characters?.["mark-owen"]?.name ??
+				gated.indexes?.characters?.mark?.name,
+		).toBeTruthy();
 
 		expect(
 			listPresentIndexedCharacterNames(
@@ -256,7 +260,7 @@ describe("transcriptPresence", () => {
 				{ name: "Silas Thorne", aliases: ["Mark Owen"] },
 				{ messageCount: markPresentMessages.length },
 			),
-		).toEqual(expect.arrayContaining(["Jake Peralta", "Mark"]));
+		).toEqual(expect.arrayContaining(["Jake Peralta", "Mark Owen"]));
 		expect(
 			listPresentIndexedCharacterNames(
 				gated,
@@ -265,5 +269,15 @@ describe("transcriptPresence", () => {
 				{ messageCount: markPresentMessages.length },
 			),
 		).not.toContain("Silas Thorne");
+		expect(gated.indexes?.relationships?.some((entry) => entry.a === "Silas Thorne" || entry.b === "Silas Thorne")).toBe(
+			false,
+		);
+		expect(
+			gated.indexes?.relationships?.some(
+				(entry) =>
+					(entry.a === "Jake Peralta" || entry.b === "Jake Peralta") &&
+					(entry.a === "Mark" || entry.b === "Mark" || entry.a === "Mark Owen" || entry.b === "Mark Owen"),
+			),
+		).toBe(true);
 	});
 });

@@ -38,6 +38,7 @@ import {
 	listPresentIndexedCharacterNames,
 } from "../../lib/transcriptPresence";
 import {
+	applyNarrativeIdentityToRelationships,
 	applyNarrativeIdentityToText,
 	buildNarrativeIdentityRegistry,
 	resolveNarrativeDisplayName,
@@ -1558,9 +1559,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     const locations = archiveStoryState.indexes?.locations
                       ? Object.values(archiveStoryState.indexes.locations)
                       : [];
-                    const relationships = archiveStoryState.indexes?.relationships?.length
-                      ? archiveStoryState.indexes.relationships
-                      : indexRelationships;
+                    const relationships = applyNarrativeIdentityToRelationships(
+                      (archiveStoryState.indexes?.relationships?.length
+                        ? archiveStoryState.indexes.relationships
+                        : indexRelationships),
+                      narrativeRegistry,
+                      { messageCount: storyMessages.length },
+                    );
                     const significantMemories = (archiveStoryState.indexes as any)?.significantMemories ?? [];
                     const premise = archiveStoryState.summaries?.premise?.trim() ?? "";
                     const protagonistSummary = archiveStoryState.summaries?.protagonistSummary?.trim() ?? "";
@@ -1858,6 +1863,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                   <RelationshipOverviewList
                                     relationships={relationships}
                                     playerName={playerCharacter?.name}
+                                    playerAliases={playerCharacter?.aliases}
                                     limit={12}
                                   />
                                 ),
