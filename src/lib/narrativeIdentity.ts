@@ -222,6 +222,29 @@ export function shouldHideCanonicalIdentity(
 	);
 }
 
+function nameTokens(value: string): string[] {
+	return value.trim().split(/\s+/).filter(Boolean);
+}
+
+function collectHiddenIdentityRecords(
+	registry: NarrativeIdentityRegistry,
+	messageCount?: number,
+): NarrativeIdentityRecord[] {
+	const seen = new Set<string>();
+	const records: NarrativeIdentityRecord[] = [];
+
+	for (const record of registry.values()) {
+		const key = `${record.canonicalName}::${record.narrativeName}`;
+		if (seen.has(key) || !shouldHideCanonicalIdentity(record, messageCount)) {
+			continue;
+		}
+		seen.add(key);
+		records.push(record);
+	}
+
+	return records;
+}
+
 function buildReplacementPairs(
 	registry: NarrativeIdentityRegistry,
 	messageCount?: number,
@@ -242,10 +265,33 @@ function buildReplacementPairs(
 			continue;
 		}
 
+		const canonicalTokens = nameTokens(canonical);
+		const narrativeTokens = nameTokens(narrative);
+		const canonicalFirst = canonicalTokens[0] ?? "";
+		const narrativeFirst = narrativeTokens[0] ?? narrative;
+
 		pairs.push({
 			from: new RegExp(`\\b${escapeRegex(canonical)}\\b`, "gi"),
 			to: narrative,
 		});
+		pairs.push({
+			from: new RegExp(`\\b${escapeRegex(canonical)}'s\\b`, "gi"),
+			to: `${narrative}'s`,
+		});
+		if (
+			canonicalTokens.length > 1 &&
+			canonicalFirst.length >= 3 &&
+			normalizeName(canonicalFirst) !== normalizeName(narrativeFirst)
+		) {
+			pairs.push({
+				from: new RegExp(`\\b${escapeRegex(canonicalFirst)}\\b`, "gi"),
+				to: narrativeFirst,
+			});
+			pairs.push({
+				from: new RegExp(`\\b${escapeRegex(canonicalFirst)}'s\\b`, "gi"),
+				to: `${narrativeFirst}'s`,
+			});
+		}
 		pairs.push({
 			from: new RegExp(
 				`['"]?${escapeRegex(narrative)}['"]?\\s*\\(\\s*${escapeRegex(canonical)}\\s*\\)`,
@@ -253,6 +299,19 @@ function buildReplacementPairs(
 			),
 			to: narrative,
 		});
+		if (canonicalFirst.length >= 2) {
+			pairs.push({
+				from: new RegExp(
+					`['"]?${escapeRegex(narrative)}['"]?\\s*\\(\\s*${escapeRegex(canonicalFirst)}\\s*\\)`,
+					"gi",
+				),
+				to: narrative,
+			});
+			pairs.push({
+				from: new RegExp(`\\(\\s*${escapeRegex(canonicalFirst)}\\s*\\)`, "gi"),
+				to: "",
+			});
+		}
 		pairs.push({
 			from: new RegExp(
 				`\\(\\s*revealed to be\\s+${escapeRegex(canonical)}\\s*\\)`,
@@ -269,14 +328,158 @@ function buildReplacementPairs(
 		});
 		pairs.push({
 			from: new RegExp(
+				`,?\\s*\\bunaware that\\s+witness\\s+['"]?${escapeRegex(narrative)}['"]?\\s+was\\s+${escapeRegex(canonical)}\\s+himself\\b\\.?`,
+				"gi",
+			),
+			to: "",
+		});
+		pairs.push({
+			from: new RegExp(
+				`,?\\s*\\bunaware that\\s+witness\\s+['"]?${escapeRegex(narrative)}['"]?\\s+was\\s+${escapeRegex(canonicalFirst)}\\s+himself\\b\\.?`,
+				"gi",
+			),
+			to: "",
+		});
+		pairs.push({
+			from: new RegExp(
 				`\\bposing as\\s+${escapeRegex(narrative)}\\b`,
 				"gi",
 			),
 			to: `as ${narrative}`,
 		});
+		pairs.push({
+			from: new RegExp(
+				`\\b${escapeRegex(narrative)}\\s+posed as witness\\s+['"]?${escapeRegex(narrative)}['"]?\\b`,
+				"gi",
+			),
+			to: narrative,
+		});
 	}
 
 	return pairs.sort((left, right) => right.from.source.length - left.from.source.length);
+}
+
+const OMNISCIENT_FRAMING_PATTERNS: RegExp[] = [
+	/\bdisguised as (?:witness\s+)?['"][^'"]+['"]\b/gi,
+	/\bdisguised as (?:witness\s+)?\b[^,.;]+/gi,
+	/\bfeigning\s+(?:shock|physical trauma|severe physical distress|physical distress)\b/gi,
+	/\bintroducing himself as ['"][^'"]+['"]\b/gi,
+	/\bposing as (?:witness\s+)?['"][^'"]+['"]\b/gi,
+	/\(\s*disguised as\s+['"][^'"]+['"]\s*\)/gi,
+	/\(\s*as witness\s+[^)]+\)/gi,
+	/\bwhile presenting a staged witness account\b/gi,
+	/\bwhile remaining completely unaware[^.]*\./gi,
+	/\bunaware that witness ['"][^'"]+['"]\s+was\s+\w+\s+himself\b/gi,
+];
+
+const OMNISCIENT_VILLAIN_KEYWORDS =
+	/\b(?:mastermind|evil mastermind|cold-blooded|orchestrat(?:e|es|ed|ing)|manipulat(?:e|es|ed|ing)|grand crime spree|chosen to initiate|his game|false identity|staged witness account|vanish(?:es|ed)? undetected|taunt(?:s|ing)?|executed his sudden escape|wealthy and cold-blooded|theatrical crimes|targets the)\b/i;
+
+function identityMentionPattern(record: NarrativeIdentityRecord): RegExp {
+	const tokens = new Set<string>();
+	for (const value of [
+		record.canonicalName,
+		record.narrativeName,
+		...nameTokens(record.canonicalName),
+		...nameTokens(record.narrativeName),
+	]) {
+		const trimmed = value.trim();
+		if (trimmed.length >= 3) {
+			tokens.add(escapeRegex(trimmed));
+		}
+	}
+
+	return new RegExp(`\\b(?:${Array.from(tokens).join("|")})\\b`, "i");
+}
+
+function splitReaderFacingSentences(text: string): string[] {
+	return text
+		.split(/(?<=[.!?])\s+/)
+		.map((sentence) => sentence.trim())
+		.filter(Boolean);
+}
+
+function scrubOmniscientIdentitySentences(
+	text: string,
+	records: NarrativeIdentityRecord[],
+): string {
+	if (!records.length || !text.trim()) {
+		return text;
+	}
+
+	const sentences = splitReaderFacingSentences(text);
+	const filtered = sentences.filter((sentence) => {
+		for (const record of records) {
+			const mentionPattern = identityMentionPattern(record);
+			if (!mentionPattern.test(sentence)) {
+				continue;
+			}
+
+			if (OMNISCIENT_VILLAIN_KEYWORDS.test(sentence)) {
+				return false;
+			}
+
+			if (
+				/\b(?:views?|handed|brought|claimed|executed)\b/i.test(sentence) &&
+				new RegExp(`\\b${escapeRegex(nameTokens(record.canonicalName)[0] ?? "")}\\b`, "i").test(
+					sentence,
+				)
+			) {
+				return false;
+			}
+		}
+
+		return true;
+	});
+
+	return filtered.join(" ");
+}
+
+function scrubOmniscientIdentityFraming(
+	text: string,
+	records: NarrativeIdentityRecord[],
+): string {
+	let next = text;
+
+	for (const pattern of OMNISCIENT_FRAMING_PATTERNS) {
+		next = next.replace(pattern, "");
+	}
+
+	for (const record of records) {
+		const narrative = record.narrativeName.trim();
+		if (!narrative) {
+			continue;
+		}
+
+		next = next.replace(
+			new RegExp(
+				`\\b${escapeRegex(narrative)}\\s+targets the\\s+[^,.;]+`,
+				"gi",
+			),
+			"",
+		);
+		next = next.replace(
+			new RegExp(
+				`\\bwhere\\s+${escapeRegex(narrative)}\\s+has chosen to initiate[^.]*\\.?`,
+				"gi",
+			),
+			"",
+		);
+	}
+
+	return scrubOmniscientIdentitySentences(next, records);
+}
+
+function normalizeRedactedReaderText(text: string): string {
+	return text
+		.replace(/\s{2,}/g, " ")
+		.replace(/\s+([,.;:!?])/g, "$1")
+		.replace(/,\s*,/g, ",")
+		.replace(/,\s*\./g, ".")
+		.replace(/\(\s*\)/g, "")
+		.replace(/\s+—\s+—/g, " — ")
+		.replace(/\s+\./g, ".")
+		.trim();
 }
 
 export function applyNarrativeIdentityToText(
@@ -289,13 +492,23 @@ export function applyNarrativeIdentityToText(
 		next = next.replace(pair.from, pair.to);
 	}
 
-	return next
-		.replace(/\s{2,}/g, " ")
-		.replace(/\s+([,.;:!?])/g, "$1")
-		.replace(/,\s*\./g, ".")
-		.replace(/\(\s*\)/g, "")
-		.replace(/\s+—\s+—/g, " — ")
-		.trim();
+	const hiddenRecords = collectHiddenIdentityRecords(registry, opts?.messageCount);
+	next = scrubOmniscientIdentityFraming(next, hiddenRecords);
+
+	return normalizeRedactedReaderText(next);
+}
+
+export function resolveNarrativeTranscriptSpeaker(
+	speaker: string,
+	registry: NarrativeIdentityRegistry,
+	opts?: { messageCount?: number },
+): string {
+	const trimmed = speaker.trim();
+	if (!trimmed) {
+		return trimmed;
+	}
+
+	return resolveNarrativeDisplayName(trimmed, registry, opts);
 }
 
 export function applyNarrativeIdentityToRelationships<

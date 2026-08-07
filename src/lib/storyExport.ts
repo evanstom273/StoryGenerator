@@ -10,12 +10,11 @@ import { serializeStoryExportPdf } from "./storyExportPdf";
 import { serializeStoryArchivePdf } from "./storyArchivePdf";
 import { serializeStoryArchiveMarkdown } from "./storyArchiveMarkdown";
 import { parseActionSegments } from "./storyText/parseActionSegments";
-import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
-import { isContinueMessage } from "./storyText/continueMode";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
-import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } from "./playerCharacterPrompt";
+import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies, resolvePlayerCharacterSceneName } from "./playerCharacterPrompt";
 import { cleanTextForExport } from "./storyText/exportCleaner";
-import { isDirectorMessage } from "./storyText/directorMode";
+import { resolveUserTranscriptSpeaker } from "./storyText/directorMode";
+import { safeParseStoryStateData } from "./storyStateV2";
 
 function resolveCurrentSummary(bundle: StoryExportBundle) {
   const direct = bundle.story.currentSummary?.trim();
@@ -58,21 +57,13 @@ function normalizeBundleForExport(bundle: StoryExportBundle) {
 function resolveSpeakerLabel(
   message: StoryMessage,
   playerCharacter: PlayerCharacter,
+  playerSceneName?: string,
 ) {
   if (message.role === "user") {
-    if (isAuthorDirectiveMessage(message)) {
-      return message.speakerName?.trim() || "Author";
-    }
-
-    if (isContinueMessage(message)) {
-      return "Continue";
-    }
-
-    if (isDirectorMessage(message)) {
-      return "Director";
-    }
-
-    return message.speakerName?.trim() || playerCharacter.name;
+    return resolveUserTranscriptSpeaker(message, {
+      legalName: playerCharacter.name,
+      sceneName: playerSceneName,
+    });
   }
 
   if (message.speakerName?.trim()) {
@@ -91,8 +82,16 @@ function resolveSpeakerLabel(
 }
 
 function buildTranscriptLines(bundle: StoryExportBundle) {
+  const storyState = bundle.storyState?.stateJson?.trim()
+    ? safeParseStoryStateData(bundle.storyState.stateJson)
+    : null;
+  const playerSceneName = resolvePlayerCharacterSceneName(bundle.playerCharacter, {
+    storyState,
+    recentMessages: bundle.messages,
+  });
+
   return bundle.messages.map((message) => {
-    const speaker = resolveSpeakerLabel(message, bundle.playerCharacter);
+    const speaker = resolveSpeakerLabel(message, bundle.playerCharacter, playerSceneName);
     const prefix = speaker ? `${speaker}: ` : "";
     const content =
       message.role === "assistant"

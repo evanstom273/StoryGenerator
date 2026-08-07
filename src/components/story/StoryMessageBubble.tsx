@@ -7,7 +7,7 @@ import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { resolveLatestUserMessageBefore } from "../../lib/storyText/messageSpeechText";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import type { CharacterTtsGenderMap } from "../../lib/ai/characterTtsVoices";
-import { isDirectorMessage } from "../../lib/storyText/directorMode";
+import { isDirectorMessage, isPlayerLegalNameDirectorBeat, resolveUserTranscriptSpeaker } from "../../lib/storyText/directorMode";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
 
@@ -32,21 +32,21 @@ function resolveSpeakerLabel(
   speakerType: StoryMessageSpeakerType | undefined,
   speakerName: string | undefined,
   playerCharacterName: string,
+  opts?: { playerLegalName?: string; playerSceneName?: string; messageContent?: string },
 ) {
   if (role === "user") {
-    if (speakerType === "author" || isAuthorDirectiveMessage({ role, speakerType, speakerName })) {
-      return speakerName?.trim() || "Author";
-    }
-
-    if (speakerType === "continue" || isContinueMessage({ role, speakerType, speakerName, content: "" })) {
-      return "Continue";
-    }
-
-    if (speakerType === "director" || isDirectorMessage({ role, speakerType, speakerName })) {
-      return "Director";
-    }
-
-    return speakerName?.trim() || playerCharacterName;
+    return resolveUserTranscriptSpeaker(
+      {
+        role,
+        speakerType,
+        speakerName,
+        content: opts?.messageContent ?? "",
+      },
+      {
+        legalName: opts?.playerLegalName?.trim() || playerCharacterName,
+        sceneName: opts?.playerSceneName?.trim() || playerCharacterName,
+      },
+    );
   }
 
   if (speakerName?.trim()) {
@@ -68,6 +68,7 @@ function resolveSpeakerTagClass(
   role: StoryMessage["role"],
   speakerType: StoryMessageSpeakerType | undefined,
   speakerName: string | undefined,
+  isDirectorBeat = false,
 ) {
   if (role === "user") {
     if (speakerType === "author" || isAuthorDirectiveMessage({ role, speakerType, speakerName })) {
@@ -78,7 +79,7 @@ function resolveSpeakerTagClass(
       return "text-sky-100";
     }
 
-    if (speakerType === "director" || isDirectorMessage({ role, speakerType, speakerName })) {
+    if (isDirectorBeat || speakerType === "director" || isDirectorMessage({ role, speakerType, speakerName })) {
       return "text-violet-200";
     }
 
@@ -173,21 +174,29 @@ export function StoryMessageBubble({
   const effectiveLegalName = playerLegalName?.trim() || playerCharacterName;
   const effectiveSceneName = playerSceneName?.trim() || playerCharacterName;
   const isContinue = isContinueMessage(message);
-  const isDirector = isDirectorMessage(message);
+  const isDirector =
+    isDirectorMessage(message) ||
+    isPlayerLegalNameDirectorBeat(message, effectiveLegalName, effectiveSceneName);
 
   const speakerLabel = resolveSpeakerLabel(
     message.role,
     message.speakerType,
     message.speakerName,
     effectiveSceneName,
+    {
+      playerLegalName: effectiveLegalName,
+      playerSceneName: effectiveSceneName,
+      messageContent: message.content,
+    },
   );
   const speakerTagClass = resolveSpeakerTagClass(
     message.role,
     message.speakerType,
     message.speakerName,
+    isDirector,
   );
   const initials = getInitials(speakerLabel);
-  const avatarClass = resolveAvatarClass(speakerLabel, message.speakerType);
+  const avatarClass = resolveAvatarClass(speakerLabel, isDirector ? "director" : message.speakerType);
 
   const rowClassName =
     message.role === "system"

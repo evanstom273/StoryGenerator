@@ -19,7 +19,7 @@ function nameTokens(value: string) {
 	return value.trim().split(/\s+/).filter(Boolean);
 }
 
-function isLegalNameReference(label: string, legalName: string) {
+export function isLegalNameReference(label: string, legalName: string) {
 	const labelLower = label.trim().toLowerCase();
 	const legalLower = legalName.trim().toLowerCase();
 	if (!labelLower || !legalLower) {
