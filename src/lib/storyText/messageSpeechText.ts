@@ -11,6 +11,7 @@ import {
 	normalizeQuotedDialogueContent,
 	splitDialogueQuoteRegions,
 } from "./dialogueQuoteRegions";
+import { stripLeadingSubjectPronounForAudiobook } from "./playerSceneName";
 import { sanitizeMessageForDisplay } from "./transcriptSanitizer";
 import type { GeminiNarrationTtsSettings } from "../ai/geminiTtsVoices";
 import type { AudiobookPerformanceMode } from "../ai/audiobookPerformance";
@@ -287,10 +288,12 @@ function parseCharacterBlockSpeechParts(
 }
 
 function formatCharacterActionForNarratorSpeech(speakerLabel: string, text: string) {
-	const cleaned = stripActionMarkers(text);
+	let cleaned = stripActionMarkers(text);
 	if (!cleaned) {
 		return "";
 	}
+
+	cleaned = stripLeadingSubjectPronounForAudiobook(cleaned);
 
 	if (speakerNameAlreadyPrefixesText(speakerLabel, cleaned)) {
 		return cleaned;
@@ -598,6 +601,7 @@ export function collectCharacterTtsCandidatesFromMessages(
 		const sanitized = sanitizeMessageForDisplay({
 			message,
 			playerName,
+			applyActionBeatFormatting: false,
 		});
 		const repaired = repairNarratorLabelLines(sanitized);
 		const blocks = parseSceneBlocks(repaired);
@@ -696,6 +700,7 @@ export function buildCharacterGenderHintsFromMessages(
 		const sanitized = sanitizeMessageForDisplay({
 			message,
 			playerName,
+			applyActionBeatFormatting: false,
 		});
 		const repaired = repairNarratorLabelLines(sanitized);
 		const blocks = parseSceneBlocks(repaired);
@@ -714,6 +719,8 @@ export function buildStoryMessageSpeechScriptLines(
 	message: StoryMessage,
 	options: {
 		playerName?: string | null;
+		playerSceneName?: string | null;
+		playerPronouns?: string | null;
 		latestUserMessage?: string | null;
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry: CharacterTtsRegistry;
@@ -780,7 +787,10 @@ export function buildStoryMessageSpeechScriptLines(
 	const sanitized = sanitizeMessageForDisplay({
 		message,
 		playerName: options.playerName,
+		playerSceneName: options.playerSceneName,
+		playerPronouns: options.playerPronouns,
 		latestUserMessage: options.latestUserMessage,
+		applyActionBeatFormatting: false,
 	});
 	const repaired = repairNarratorLabelLines(sanitized);
 	const blocks = parseSceneBlocks(repaired);
@@ -797,6 +807,8 @@ export function buildStoryMessageSpeechPlan(
 	message: StoryMessage,
 	options: {
 		playerName?: string | null;
+		playerSceneName?: string | null;
+		playerPronouns?: string | null;
 		latestUserMessage?: string | null;
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry?: CharacterTtsRegistry;
@@ -843,6 +855,8 @@ function buildSpeechPlanFromMessages(
 	messages: StoryMessage[],
 	options: {
 		playerName?: string | null;
+		playerSceneName?: string | null;
+		playerPronouns?: string | null;
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry: CharacterTtsRegistry;
 		audiobookPerformanceMode?: AudiobookPerformanceMode;
@@ -859,6 +873,8 @@ function buildSpeechPlanFromMessages(
 
 		const lines = buildStoryMessageSpeechScriptLines(message, {
 			playerName: options.playerName,
+			playerSceneName: options.playerSceneName,
+			playerPronouns: options.playerPronouns,
 			latestUserMessage: resolveLatestUserMessageBefore(messages, index),
 			narrationTts: options.narrationTts,
 			characterRegistry: options.characterRegistry,
@@ -887,6 +903,8 @@ export function buildChapterSpeechPlan(
 	messages: StoryMessage[],
 	options: {
 		playerName?: string | null;
+		playerSceneName?: string | null;
+		playerPronouns?: string | null;
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry?: CharacterTtsRegistry;
 		allStoryMessages?: StoryMessage[];
@@ -902,6 +920,8 @@ export function buildChapterSpeechPlan(
 
 	const basePlan = buildSpeechPlanFromMessages(messages, {
 		playerName: options.playerName,
+		playerSceneName: options.playerSceneName,
+		playerPronouns: options.playerPronouns,
 		narrationTts: options.narrationTts,
 		characterRegistry,
 		audiobookPerformanceMode: performanceMode,

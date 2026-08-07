@@ -23,7 +23,7 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterPreferredSceneName } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
 import {
   formatAuthorDirectiveStateForPrompt,
   isAuthorDirectiveMessage,
@@ -148,6 +148,13 @@ export function buildStoryChatContext({
   rpConfig,
   playerStateHintOverride,
 }: BuildStoryChatContextInput): AIChatMessage[] {
+  const parsedStoryState = storyState?.stateJson?.trim()
+    ? safeParseStoryStateData(storyState.stateJson)
+    : null;
+  const playerSceneName = resolvePlayerCharacterSceneName(playerCharacter, {
+    storyState: parsedStoryState,
+    recentMessages,
+  });
   const latestMessageIsDirectorNote =
     latestUserMessageSpeakerType === "director" || Boolean(directorStagingNote?.trim());
   const latestMessageIsContinueNote = latestUserMessageSpeakerType === "continue";
@@ -195,7 +202,7 @@ export function buildStoryChatContext({
         : "",
       universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,
-      formatPlayerCharacterIdentityForPrompt(playerCharacter),
+      formatPlayerCharacterIdentityForPrompt(playerCharacter, playerSceneName),
       formatPlayerCharacterKnownTiesForPrompt(playerCharacter),
       playerCharacter.characterConcept?.trim()
         ? `Player Concept/Role: ${playerCharacter.characterConcept.trim()}`
@@ -383,7 +390,10 @@ export function buildStoryChatContext({
       "Scene ownership can belong to the player character, a supporting character, several supporting characters, or the wider cast.",
       "Name resolution rule: treat nicknames, shortened names, last-name references, and informal variants as referring to the same character unless the story explicitly introduces a separate person.",
       "Use Long-Term Memory name preferences: if a character has a displayName or aliases recorded, prefer the displayName for speaker headers and how other characters address them.",
-      `Player character naming: use "${resolvePlayerCharacterPreferredSceneName(playerCharacter)}" for speaker headers and third-person narration unless the scene is explicitly formal.`,
+      `Player character naming: use "${playerSceneName}" for speaker headers and third-person narration unless the scene is explicitly formal or the legal identity has been revealed in-story.`,
+      playerSceneName.toLowerCase() !== playerCharacter.name.trim().toLowerCase()
+        ? `Do NOT use the player character's legal/full name "${playerCharacter.name.trim()}" in speaker headers or casual narration while they are using the in-story alias "${playerSceneName}".`
+        : "",
       playerCharacter.pronouns.trim()
         ? `Player character pronouns: ${playerCharacter.pronouns.trim()}. Never infer different pronouns from name or gender.`
         : "",
@@ -473,6 +483,7 @@ export function buildStoryChatContext({
       "- Use 'Narrator:' for scene-setting, ambient sounds, atmosphere, time passing, and any prose that is not a character speaking or acting.",
       "- In Narrator blocks, refer to known characters by name (e.g. Captain Reyes, Alex, Morgan), not only by titles or ranks (Captain, Sergeant, Detective) unless the scene is explicitly formal.",
       "- Asterisks (*...*) are ONLY for brief physical actions — a gesture, a movement, an expression. Examples: *leans back*, *sets down her mug*, *glances toward the door*. They must be short, physical, and contain no colons or complex punctuation.",
+      "- Character action beats inside *...* should use a subject pronoun (He/She/They) matching the character's pronouns, end with a full stop, and omit the character's name inside the beat. Example: Morgan: *She leans back in her chair.* \"Dialogue.\"",
       "- Action beats inside a named character block must describe ONLY that character's own physical movement or gesture. The moment prose describes what another character is doing — even in the same sentence — it becomes narrator prose and must go in a Narrator: block, not an asterisk beat inside a character block.",
       "- NEVER use 'As [Name]:' as a speaker prefix. 'As Riley:' is not a valid format. If you want to describe what Riley is doing from a narrator perspective, write 'Narrator:' then describe the action in third person: *Riley flicks the dial…*",
       "- NEVER use *...* for internal thoughts, emotional asides, or extended narration. Do not write *and the probably is not worry, not exactly: it's just the honest version of yes* — that is a narrative aside, not a physical action. Put that kind of content in the Narrator block instead.",
@@ -553,7 +564,7 @@ export function buildStoryChatContext({
   const chatHistory = sortByTimestampAsc(recentMessages)
     .slice(-recentWindow)
     .map((message) =>
-      formatTimelineMessage(message, resolvePlayerCharacterPreferredSceneName(playerCharacter)),
+      formatTimelineMessage(message, playerSceneName),
     );
 
   return [
@@ -602,7 +613,7 @@ export function buildStoryChatContext({
               ].join("\n"),
             )
           : normalizeWhitespace(
-              `Player (${resolvePlayerCharacterPreferredSceneName(playerCharacter)}) turn:\n${latestUserMessage}`,
+              `Player (${playerSceneName}) turn:\n${latestUserMessage}`,
             ),
     },
   ];

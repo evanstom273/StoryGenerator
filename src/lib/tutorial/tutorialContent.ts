@@ -202,7 +202,7 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 					type: "bullets",
 					items: [
 						"Transcript view (default) — prose layout with speaker tags, chapter banners, and RP time/gold when enabled.",
-						"Bubble view — compact chat bubbles; best for editing individual messages.",
+						"Bubble view — behind-the-scenes message list with Edit, Regenerate, and Delete on each entry. Shows Director, Continue, and other transcript commands hidden from the default prose view.",
 						"Reader mode — clean reading without composer controls.",
 						"Archive view — automatically summarises your story, characters, locations, relationships, and open plot threads. Use Jump to #N links to return to a transcript message.",
 					],

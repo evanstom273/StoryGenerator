@@ -61,6 +61,8 @@ export function listStoryAudiobookChapterSegments(
 	messages: StoryMessage[],
 	options: {
 		playerName?: string | null;
+		playerSceneName?: string | null;
+		playerPronouns?: string | null;
 		narrationTts: GeminiNarrationTtsSettings;
 		characterRegistry: CharacterTtsRegistry;
 		chapters?: StoryChapter[];
@@ -114,6 +116,8 @@ export function listStoryAudiobookChapterSegments(
 			const chapterMessages = getMessagesForChapterStartingAt(messages, start.messageId);
 			const plan = buildChapterSpeechPlan(chapterMessages, {
 				playerName: options.playerName,
+				playerSceneName: options.playerSceneName,
+				playerPronouns: options.playerPronouns,
 				narrationTts: options.narrationTts,
 				characterRegistry: options.characterRegistry,
 				allStoryMessages: messages,

@@ -533,6 +533,31 @@ describe("messageSpeechText", () => {
 		]);
 	});
 
+	it("masks the legal player name to a scene alias and strips pronouns from audiobook action narration", () => {
+		const plan = buildStoryMessageSpeechPlan(
+			assistantMessage(
+				'Silas Thorne: *He stares down into the steam rising from his mug.* "I saw his back."',
+			),
+			{
+				playerName: "Silas Thorne",
+				playerSceneName: "Mark Owen",
+				playerPronouns: "he/him",
+				narrationTts,
+			},
+		);
+
+		expect(plan?.scriptLines).toEqual([
+			{
+				speaker: "Narrator",
+				text: "Mark stares down into the steam rising from his mug.",
+			},
+			{
+				speaker: "Mark",
+				text: "I saw his back.",
+			},
+		]);
+	});
+
 	it("applies player perspective rules to labeled Jamie blocks in assistant messages", () => {
 		const plan = buildStoryMessageSpeechPlan(
 			assistantMessage(
