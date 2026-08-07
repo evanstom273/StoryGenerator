@@ -7,9 +7,18 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "3.3.3";
+export const APP_VERSION = "3.3.4";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "3.3.4": {
+    title: "Navigation Scroll Reset",
+    releasedAt: "2026-08-07T01:58:00+00:00",
+    added: [],
+    fixed: [
+      "Navigating to a new page (such as Media Library from the home screen) now opens at the top instead of keeping the previous page's scroll position",
+    ],
+    knownIssues: [],
+  },
   "3.3.3": {
     title: "Media Library (Phase 1)",
     releasedAt: "2026-08-07T01:50:00+00:00",
