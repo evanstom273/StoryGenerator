@@ -1,6 +1,8 @@
 import type {
   MemoryArchitectureVersion,
+  PlayerCharacter,
   StoryIndexesV2,
+  StoryMessage,
   StoryStateData,
   StoryStateDataV2,
 } from "../types/models";
@@ -12,6 +14,7 @@ import {
 	reconcileRelationshipEntries,
 } from "./relationshipIndex";
 import { ensureIndexedCharacterStatus, dedupeStatusBullets } from "./characterStatus";
+import { applyTranscriptPresenceGate } from "./transcriptPresence";
 import {
 	mergeOpenThreadsAuthoritative,
 	reconcileResolvedOpenThreads,
@@ -732,6 +735,8 @@ export function finalizeStoryStateForSave(params: {
   deepIndexTrigger?: "auto" | "manual";
   playerName?: string;
   playerAliases?: string[];
+  playerCharacter?: Pick<PlayerCharacter, "name" | "aliases">;
+  messages?: StoryMessage[];
   universeImportedCharacters?: string[];
 }): string {
   const previous = (() => {
@@ -794,7 +799,19 @@ export function finalizeStoryStateForSave(params: {
     { playerName: params.playerName },
   );
 
-  return JSON.stringify(withStatus);
+  const playerCharacter =
+    params.playerCharacter ??
+    (params.playerName
+      ? { name: params.playerName, aliases: params.playerAliases ?? [] }
+      : null);
+  const gated =
+    playerCharacter && params.messages?.length
+      ? applyTranscriptPresenceGate(withStatus, params.messages, playerCharacter, {
+          messageCount: params.totalMessages,
+        })
+      : withStatus;
+
+  return JSON.stringify(gated);
 }
 
 export function applyOpenThreadReconciliation(

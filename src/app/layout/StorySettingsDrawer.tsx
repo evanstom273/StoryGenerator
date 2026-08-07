@@ -30,10 +30,13 @@ import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import {
 	getCharacterStatusLines,
-	listIndexedCharacterNames,
 	synthesizeCharacterStatusBullets,
 } from "../../lib/characterStatus";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
+import {
+	applyTranscriptPresenceGate,
+	listPresentIndexedCharacterNames,
+} from "../../lib/transcriptPresence";
 import { RelationshipOverviewList } from "../../components/story/RelationshipOverviewList";
 import { IndexingProgressPanel } from "../../components/story/IndexingProgressPanel";
 import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
@@ -181,6 +184,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     queueAudiobookJob,
     cancelBackgroundJob,
     cancelStoryIndexing,
+    clearStoryIndex,
     backgroundJobs,
     dismissJobNotice,
     jobNotice,
@@ -227,6 +231,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [isPromotingCharacter, setIsPromotingCharacter] = useState(false);
   const [isCleanupConfirmOpen, setIsCleanupConfirmOpen] = useState(false);
   const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
+  const [isClearingIndex, setIsClearingIndex] = useState(false);
   const [cleanupSummary, setCleanupSummary] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [pageNotice, setPageNotice] = useState<string | null>(null);
@@ -235,6 +240,24 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   );
   const [indexRelationships, setIndexRelationships] = useState<RelationshipIndexEntry[]>([]);
   const [expandedEvidenceKeys, setExpandedEvidenceKeys] = useState<Record<string, boolean>>({});
+
+  const storyMessages = useMemo(
+    () => (story ? getMessagesForStory(story.id) : []),
+    [getMessagesForStory, story],
+  );
+
+  const gatedStoryStateData = useMemo(() => {
+    if (!storyStateData || !playerCharacter || !storyMessages.length) {
+      return storyStateData;
+    }
+
+    return applyTranscriptPresenceGate(
+      storyStateData,
+      storyMessages,
+      { name: playerCharacter.name, aliases: playerCharacter.aliases ?? [] },
+      { messageCount: storyMessages.length },
+    );
+  }, [playerCharacter, storyMessages, storyStateData]);
 
   async function handlePromoteCharacter() {
     if (!story || !playerCharacter) {
@@ -726,6 +749,35 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const storyJobs = story
     ? backgroundJobs.filter((job) => job.storyId === story.id && job.status !== "cancelled")
     : [];
+
+  async function handleClearIndex() {
+    if (!story) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Clear the entire story index? This removes all indexed characters, relationships, summaries, threads, and memories. You can run Full reindex afterward to rebuild from the transcript.",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setPageError(null);
+    setPageNotice(null);
+    setIsClearingIndex(true);
+    try {
+      await clearStoryIndex(story.id);
+      const record = await fetchStoryState(story.id);
+      const parsed = record?.stateJson ? safeParseStoryStateData(record.stateJson) : null;
+      setStoryStateData(normalizeStoryStateToV2(parsed));
+      setIndexRelationships([]);
+      setPageNotice("Index cleared. Run Full reindex to rebuild from the transcript.");
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to clear story index.");
+    } finally {
+      setIsClearingIndex(false);
+    }
+  }
 
   async function handleReindex(incremental: boolean) {
     if (!story) {
@@ -1328,6 +1380,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                   <Button
                     variant="secondary"
                     className="w-full justify-start rounded-[8px]"
+                    disabled={isRebuilding || isClearingIndex}
+                    onClick={() => void handleClearIndex()}
+                  >
+                    {isClearingIndex ? "Clearing..." : "Clear index"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start rounded-[8px]"
                     disabled={isCleaningDuplicates}
                     onClick={() => setIsCleanupConfirmOpen(true)}
                   >
@@ -1453,32 +1513,40 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     }
 
                     const totalMessages = getMessagesForStory(story.id).length;
+                    const archiveStoryState = gatedStoryStateData ?? storyStateData;
                     const indexedMessageCount =
-                      storyStateData.indexes?.messageCount ??
-                      storyStateData.lastIndexedMessageCount ??
+                      archiveStoryState.indexes?.messageCount ??
+                      archiveStoryState.lastIndexedMessageCount ??
                       0;
                     const staleBy = Math.max(0, totalMessages - indexedMessageCount);
-                    const worldFacts = storyStateData.indexes?.worldFacts ?? [];
-                    const openThreads = storyStateData.indexes?.openThreads ?? [];
-                    const characters = storyStateData.indexes?.characters
-                      ? Object.values(storyStateData.indexes.characters)
+                    const worldFacts = archiveStoryState.indexes?.worldFacts ?? [];
+                    const openThreads = archiveStoryState.indexes?.openThreads ?? [];
+                    const characters = archiveStoryState.indexes?.characters
+                      ? Object.values(archiveStoryState.indexes.characters)
                       : [];
-                    const trackedCharacterNames = listIndexedCharacterNames(storyStateData);
-                    const locations = storyStateData.indexes?.locations
-                      ? Object.values(storyStateData.indexes.locations)
+                    const trackedCharacterNames = listPresentIndexedCharacterNames(
+                      archiveStoryState,
+                      storyMessages,
+                      playerCharacter
+                        ? { name: playerCharacter.name, aliases: playerCharacter.aliases ?? [] }
+                        : null,
+                      { messageCount: storyMessages.length },
+                    );
+                    const locations = archiveStoryState.indexes?.locations
+                      ? Object.values(archiveStoryState.indexes.locations)
                       : [];
                     const relationships = indexRelationships;
-                    const significantMemories = (storyStateData.indexes as any)?.significantMemories ?? [];
-                    const premise = storyStateData.summaries?.premise?.trim() ?? "";
-                    const protagonistSummary = storyStateData.summaries?.protagonistSummary?.trim() ?? "";
-                    const currentSituation = storyStateData.summaries?.currentSituation?.trim() ?? "";
-                    const recentDevelopments = trimStringList(storyStateData.summaries?.recentDevelopments, 6);
+                    const significantMemories = (archiveStoryState.indexes as any)?.significantMemories ?? [];
+                    const premise = archiveStoryState.summaries?.premise?.trim() ?? "";
+                    const protagonistSummary = archiveStoryState.summaries?.protagonistSummary?.trim() ?? "";
+                    const currentSituation = archiveStoryState.summaries?.currentSituation?.trim() ?? "";
+                    const recentDevelopments = trimStringList(archiveStoryState.summaries?.recentDevelopments, 6);
                     const autoIndexMode = (story.autoIndexMode ??
                       (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode;
                     const autoIndexInterval = story.autoIndexInterval ?? 20;
                     const intervalValue = autoIndexInterval === "disabled" ? 20 : autoIndexInterval;
                     const lastAutoDeepIndexMessageCount =
-                      storyStateData.lastAutoDeepIndexedMessageCount ?? 0;
+                      archiveStoryState.lastAutoDeepIndexedMessageCount ?? 0;
                     const messagesSinceAutoDeep = Math.max(
                       0,
                       totalMessages - lastAutoDeepIndexMessageCount,
@@ -1665,8 +1733,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                 children: (
                                   <div className="space-y-3">
                                     {trackedCharacterNames.map((name) => {
-                                      const entry = storyStateData.characters?.[name];
-                                      const synthesized = synthesizeCharacterStatusBullets(name, storyStateData, {
+                                      const entry = archiveStoryState.characters?.[name];
+                                      const synthesized = synthesizeCharacterStatusBullets(name, archiveStoryState, {
                                         playerName: playerCharacter?.name,
                                       });
                                       const statusLines = getCharacterStatusLines(entry, synthesized);

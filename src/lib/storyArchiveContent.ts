@@ -14,6 +14,7 @@ import {
 	resolveNarrativeProtagonistName,
 	resolveNarrativeTranscriptSpeaker,
 } from "./narrativeIdentity";
+import { applyTranscriptPresenceGate } from "./transcriptPresence";
 
 export function trimStringList(value: unknown, maxItems: number): string[] {
 	if (!Array.isArray(value)) {
@@ -165,10 +166,17 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 		return parsed ? normalizeStoryStateToV2(parsed) : null;
 	})();
 
-	const indexes = storyStateData?.indexes;
 	const sortedMessages = sortByTimestampAsc(bundle.messages);
+	const storyStateDataGated =
+		storyStateData && sortedMessages.length
+			? applyTranscriptPresenceGate(storyStateData, sortedMessages, bundle.playerCharacter, {
+					messageCount: sortedMessages.length,
+				})
+			: storyStateData;
+
+	const indexes = storyStateDataGated?.indexes;
 	const narrativeRegistry = buildNarrativeIdentityRegistry({
-		storyState: storyStateData,
+		storyState: storyStateDataGated,
 		playerCharacter: bundle.playerCharacter,
 		messages: sortedMessages,
 		messageCount: sortedMessages.length,
@@ -265,10 +273,10 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 					)
 				: [];
 			const characterName = name;
-			const stateEntry = storyStateData?.characters?.[characterName];
+			const stateEntry = storyStateDataGated?.characters?.[characterName];
 			const synthesized =
-				storyStateData && characterName
-					? synthesizeCharacterStatusBullets(characterName, storyStateData, {
+				storyStateDataGated && characterName
+					? synthesizeCharacterStatusBullets(characterName, storyStateDataGated, {
 							playerName: bundle.playerCharacter.name,
 						})
 					: [];
@@ -320,8 +328,8 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 
 	const worldFactsRaw = Array.isArray(indexes?.worldFacts)
 		? indexes.worldFacts
-		: Array.isArray(storyStateData?.worldFacts)
-			? storyStateData.worldFacts
+		: Array.isArray(storyStateDataGated?.worldFacts)
+			? storyStateDataGated.worldFacts
 			: [];
 	const worldFacts = mapEvidenceRows(worldFactsRaw as unknown[], "fact").map((entry) => ({
 		...entry,
@@ -330,8 +338,8 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 
 	const openThreadsRaw = Array.isArray(indexes?.openThreads)
 		? indexes.openThreads
-		: Array.isArray(storyStateData?.unresolvedThreads)
-			? storyStateData.unresolvedThreads
+		: Array.isArray(storyStateDataGated?.unresolvedThreads)
+			? storyStateDataGated.unresolvedThreads
 			: [];
 	const openThreads = mapEvidenceRows(openThreadsRaw as unknown[], "thread").map((entry) => ({
 		...entry,
@@ -340,8 +348,8 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 
 	const significantMemoriesRaw = Array.isArray(indexes?.significantMemories)
 		? indexes.significantMemories
-		: Array.isArray(storyStateData?.significantMemories)
-			? storyStateData.significantMemories
+		: Array.isArray(storyStateDataGated?.significantMemories)
+			? storyStateDataGated.significantMemories
 			: [];
 	const significantMemories = mapEvidenceRows(significantMemoriesRaw as unknown[], "moment").map(
 		(entry) => ({
@@ -379,14 +387,14 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 					: null,
 		}));
 
-	const premise = redact(storyStateData?.summaries?.premise?.trim() ?? "");
-	const protagonistFocus = redact(storyStateData?.summaries?.protagonistSummary?.trim() ?? "");
-	const currentSituation = redact(storyStateData?.summaries?.currentSituation?.trim() ?? "");
-	const recentDevelopments = trimStringList(storyStateData?.summaries?.recentDevelopments, 12).map(
+	const premise = redact(storyStateDataGated?.summaries?.premise?.trim() ?? "");
+	const protagonistFocus = redact(storyStateDataGated?.summaries?.protagonistSummary?.trim() ?? "");
+	const currentSituation = redact(storyStateDataGated?.summaries?.currentSituation?.trim() ?? "");
+	const recentDevelopments = trimStringList(storyStateDataGated?.summaries?.recentDevelopments, 12).map(
 		redact,
 	);
 	const fallbackSummary = redact(
-		bundle.story.currentSummary?.trim() || storyStateData?.summaries?.worldSummary?.trim() || "",
+		bundle.story.currentSummary?.trim() || storyStateDataGated?.summaries?.worldSummary?.trim() || "",
 	);
 
 	return {
@@ -395,11 +403,11 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 			universe: bundle.universe.name,
 			protagonist: resolveNarrativeProtagonistName(
 				bundle.playerCharacter,
-				storyStateData,
+				storyStateDataGated,
 				sortedMessages,
 			),
 			exportedAt: formatDateTime(bundle.exportedAt),
-			...(storyStateData?.indexedAt ? { indexedAt: formatDateTime(storyStateData.indexedAt) } : {}),
+			...(storyStateDataGated?.indexedAt ? { indexedAt: formatDateTime(storyStateDataGated.indexedAt) } : {}),
 			...(typeof indexes?.messageCount === "number" && Number.isFinite(indexes.messageCount)
 				? { indexedMessages: Math.trunc(indexes.messageCount) }
 				: {}),
@@ -421,6 +429,6 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 		significantMemories,
 		locations,
 		chapters,
-		storyStateData,
+		storyStateData: storyStateDataGated,
 	};
 }

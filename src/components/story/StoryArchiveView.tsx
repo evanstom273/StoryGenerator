@@ -3,10 +3,13 @@ import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import {
 	getCharacterStatusLines,
-	listIndexedCharacterNames,
 	synthesizeCharacterStatusBullets,
 } from "../../lib/characterStatus";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
+import {
+	applyTranscriptPresenceGate,
+	listPresentIndexedCharacterNames,
+} from "../../lib/transcriptPresence";
 import type { RelationshipIndexEntry } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
@@ -44,13 +47,14 @@ export function StoryArchiveView({
   playerAliases?: string[];
   relationshipsRefreshKey?: number;
 }) {
-  const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, queueStoryIndexJob, loadStoryRelationships, cancelStoryIndexing } =
+  const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, queueStoryIndexJob, loadStoryRelationships, cancelStoryIndexing, clearStoryIndex } =
     useStoryEngine();
   const [storyStateJson, setStoryStateJson] = useState<string>("");
   const [archiveRelationships, setArchiveRelationships] = useState<RelationshipIndexEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isClearingIndex, setIsClearingIndex] = useState(false);
   const [expandedEvidenceKeys, setExpandedEvidenceKeys] = useState<Record<string, boolean>>({});
 
   const storyMessages = useMemo(() => getMessagesForStory(storyId), [getMessagesForStory, storyId]);
@@ -66,20 +70,35 @@ export function StoryArchiveView({
     return normalizeStoryStateToV2(parsed);
   }, [storyStateJson]);
 
-  const narrativeRegistry = useMemo(() => {
+  const gatedStoryStateData = useMemo(() => {
     if (!storyStateData) {
+      return null;
+    }
+    if (!playerName?.trim() || !storyMessages.length) {
+      return storyStateData;
+    }
+    return applyTranscriptPresenceGate(
+      storyStateData,
+      storyMessages,
+      { name: playerName, aliases: playerAliases ?? [] },
+      { messageCount: storyMessages.length },
+    );
+  }, [playerAliases, playerName, storyMessages, storyStateData]);
+
+  const narrativeRegistry = useMemo(() => {
+    if (!gatedStoryStateData) {
       return buildNarrativeIdentityRegistry({ storyState: null });
     }
 
     return buildNarrativeIdentityRegistry({
-      storyState: storyStateData,
+      storyState: gatedStoryStateData,
       playerCharacter: playerName
         ? { name: playerName, aliases: playerAliases ?? [] }
         : null,
       messages: storyMessages,
       messageCount: storyMessages.length,
     });
-  }, [playerAliases, playerName, storyMessages, storyStateData]);
+  }, [gatedStoryStateData, playerAliases, playerName, storyMessages]);
 
   const redactNarrative = (text: string) =>
     applyNarrativeIdentityToText(text, narrativeRegistry, {
@@ -127,6 +146,30 @@ export function StoryArchiveView({
       cancelled = true;
     };
   }, [loadStoryRelationships, storyId, relationshipsRefreshKey]);
+
+  async function handleClearIndex() {
+    const confirmed = window.confirm(
+      "Clear the entire story index? This removes all indexed characters, relationships, summaries, threads, and memories. You can run Full reindex afterward to rebuild from the transcript.",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsClearingIndex(true);
+    try {
+      await clearStoryIndex(storyId);
+      const record = await fetchStoryState(storyId);
+      setStoryStateJson(record?.stateJson ?? "");
+      setArchiveRelationships([]);
+      setSuccessMessage("Index cleared. Run Full reindex to rebuild from the transcript.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to clear story index.");
+    } finally {
+      setIsClearingIndex(false);
+    }
+  }
 
   async function handleReindex(incremental: boolean) {
     setErrorMessage(null);
@@ -222,7 +265,7 @@ export function StoryArchiveView({
     );
   }
 
-  if (!storyStateData) {
+  if (!storyStateData || !gatedStoryStateData) {
     return (
       <Panel variant="flat" padding="lg" className="space-y-4">
         <div className="text-sm text-ink-muted">No indexed state available yet.</div>
@@ -233,34 +276,45 @@ export function StoryArchiveView({
     );
   }
 
+  const archiveState = gatedStoryStateData;
+
   const story = getStoryById(storyId);
   const totalMessages = getMessagesForStory(storyId).length;
   const indexedMessageCount =
-    storyStateData.indexes?.messageCount ?? storyStateData.lastIndexedMessageCount ?? 0;
+    archiveState.indexes?.messageCount ?? archiveState.lastIndexedMessageCount ?? 0;
   const staleBy = Math.max(0, totalMessages - indexedMessageCount);
-  const worldFacts = storyStateData.indexes?.worldFacts ?? [];
-  const openThreads = storyStateData.indexes?.openThreads ?? [];
-  const characters = storyStateData.indexes?.characters ? Object.values(storyStateData.indexes.characters) : [];
-  const trackedCharacterNames = listIndexedCharacterNames(storyStateData);
-  const locations = storyStateData.indexes?.locations ? Object.values(storyStateData.indexes.locations) : [];
-  const significantMemories = (storyStateData.indexes as any)?.significantMemories ?? [];
-  const premise = redactNarrative(storyStateData.summaries?.premise?.trim() ?? "");
+  const worldFacts = archiveState.indexes?.worldFacts ?? [];
+  const openThreads = archiveState.indexes?.openThreads ?? [];
+  const characters = archiveState.indexes?.characters ? Object.values(archiveState.indexes.characters) : [];
+  const trackedCharacterNames = listPresentIndexedCharacterNames(
+    archiveState,
+    storyMessages,
+    playerName ? { name: playerName, aliases: playerAliases ?? [] } : null,
+    { messageCount: storyMessages.length },
+  );
+  const locations = archiveState.indexes?.locations ? Object.values(archiveState.indexes.locations) : [];
+  const significantMemories = (archiveState.indexes as any)?.significantMemories ?? [];
+  const premise = redactNarrative(archiveState.summaries?.premise?.trim() ?? "");
   const protagonistSummary = redactNarrative(
-    storyStateData.summaries?.protagonistSummary?.trim() ?? "",
+    archiveState.summaries?.protagonistSummary?.trim() ?? "",
   );
   const currentSituation = redactNarrative(
-    storyStateData.summaries?.currentSituation?.trim() ?? "",
+    archiveState.summaries?.currentSituation?.trim() ?? "",
   );
-  const recentDevelopments = trimStringList(storyStateData.summaries?.recentDevelopments, 6).map(
+  const recentDevelopments = trimStringList(archiveState.summaries?.recentDevelopments, 6).map(
     redactNarrative,
   );
   const narrativeRelationships = applyNarrativeIdentityToRelationships(
-    filterPlayerRelationships(archiveRelationships, playerName, playerAliases),
+    filterPlayerRelationships(
+      archiveState.indexes?.relationships ?? archiveRelationships,
+      playerName,
+      playerAliases,
+    ),
     narrativeRegistry,
     { messageCount: storyMessages.length },
   );
   const autoIndexInterval = story?.autoIndexInterval ?? 20;
-  const lastAutoDeepIndexMessageCount = storyStateData.lastAutoDeepIndexedMessageCount ?? 0;
+  const lastAutoDeepIndexMessageCount = archiveState.lastAutoDeepIndexedMessageCount ?? 0;
   const messagesSinceAutoDeep = Math.max(0, totalMessages - lastAutoDeepIndexMessageCount);
   const messagesUntilAutoDeep =
     autoIndexInterval === "disabled"
@@ -287,9 +341,17 @@ export function StoryArchiveView({
               variant="secondary"
               size="sm"
               onClick={() => void handleReindex(false)}
-              disabled={isRebuilding}
+              disabled={isRebuilding || isClearingIndex}
             >
               Full reindex
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleClearIndex()}
+              disabled={isRebuilding || isClearingIndex}
+            >
+              {isClearingIndex ? "Clearing..." : "Clear index"}
             </Button>
           </div>
         </div>
@@ -430,11 +492,11 @@ export function StoryArchiveView({
             </div>
             <div className="mt-3 space-y-3">
               {trackedCharacterNames.map((name) => {
-                const entry = storyStateData.characters?.[name];
+                const entry = archiveState.characters?.[name];
                 const displayName = resolveNarrativeDisplayName(name, narrativeRegistry, {
                   messageCount: storyMessages.length,
                 });
-                const synthesized = synthesizeCharacterStatusBullets(name, storyStateData, {
+                const synthesized = synthesizeCharacterStatusBullets(name, archiveState, {
                   playerName,
                 });
                 const statusLines = getCharacterStatusLines(entry, synthesized);
