@@ -8,7 +8,7 @@ import type {
 } from "../../types/models";
 import type { AIChatMessage } from "./types";
 import { sortByTimestampAsc } from "../dates";
-import { buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "./playerAssist";
+import { buildDirectorAssistContinuationRequest, buildDirectorAssistRequest, buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "./playerAssist";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { formatUniverseWikiSources } from "../universeSources";
 import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterPreferredSceneName } from "../playerCharacterPrompt";
@@ -77,31 +77,25 @@ function formatTimelineMessage(message: StoryMessage, playerCharacterName: strin
   return { role: "assistant", content: normalizeWhitespace(message.content) };
 }
 
-export function buildPlayerAssistContext({
+export function storyHasGeneratedScenes(messages: StoryMessage[]): boolean {
+  return messages.some((message) => message.role === "assistant");
+}
+
+function buildAssistUniverseInfo({
   universe,
   story,
   playerCharacter,
-  imports,
-  summaries,
-  recentMessages,
-  existingText,
 }: {
   universe: Universe;
   story: Story;
   playerCharacter: PlayerCharacter;
-  imports: UniverseImport[];
-  summaries: StorySummary[];
-  recentMessages: StoryMessage[];
-  existingText?: string;
-}): AIChatMessage[] {
-  const mostRecentImport = imports[0];
-  const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
+}) {
   const universeMode = universe.mode ?? "referenced";
   const universeDescription = universe.description.trim() || universe.concept?.trim() || "";
   const universeConcept = universe.concept?.trim() || "";
   const universeBlueprint = universe.universeBlueprint?.trim() || "";
 
-  const universeInfo = normalizeWhitespace(
+  return normalizeWhitespace(
     [
       `Universe Name: ${universe.name}`,
       `Universe Mode: ${universeMode}`,
@@ -130,8 +124,12 @@ export function buildPlayerAssistContext({
       .filter(Boolean)
       .join("\n\n"),
   );
+}
 
-  const importedLore = mostRecentImport
+function buildAssistImportedLore(imports: UniverseImport[]) {
+  const mostRecentImport = imports[0];
+
+  return mostRecentImport
     ? normalizeWhitespace(
         [
           `Source URL: ${mostRecentImport.sourceUrl}`,
@@ -141,10 +139,36 @@ export function buildPlayerAssistContext({
         ].join("\n"),
       )
     : "No imported lore is available for this universe yet.";
+}
 
-  const summaryBlock = latestSummary
+function buildAssistSummaryBlock(story: Story, summaries: StorySummary[]) {
+  const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
+
+  return latestSummary
     ? normalizeWhitespace(latestSummary)
     : "No story summary is available yet.";
+}
+
+export function buildPlayerAssistContext({
+  universe,
+  story,
+  playerCharacter,
+  imports,
+  summaries,
+  recentMessages,
+  existingText,
+}: {
+  universe: Universe;
+  story: Story;
+  playerCharacter: PlayerCharacter;
+  imports: UniverseImport[];
+  summaries: StorySummary[];
+  recentMessages: StoryMessage[];
+  existingText?: string;
+}): AIChatMessage[] {
+  const universeInfo = buildAssistUniverseInfo({ universe, story, playerCharacter });
+  const importedLore = buildAssistImportedLore(imports);
+  const summaryBlock = buildAssistSummaryBlock(story, summaries);
 
   const assistGuidance = normalizeWhitespace(
     [
@@ -179,6 +203,67 @@ export function buildPlayerAssistContext({
         effectiveExistingText
           ? buildPlayerAssistContinuationRequest(preferredName, effectiveExistingText)
           : buildPlayerAssistRequest(preferredName),
+      ),
+    },
+  ];
+}
+
+export function buildDirectorAssistContext({
+  universe,
+  story,
+  playerCharacter,
+  imports,
+  summaries,
+  recentMessages,
+  existingText,
+}: {
+  universe: Universe;
+  story: Story;
+  playerCharacter: PlayerCharacter;
+  imports: UniverseImport[];
+  summaries: StorySummary[];
+  recentMessages: StoryMessage[];
+  existingText?: string;
+}): AIChatMessage[] {
+  const universeInfo = buildAssistUniverseInfo({ universe, story, playerCharacter });
+  const importedLore = buildAssistImportedLore(imports);
+  const summaryBlock = buildAssistSummaryBlock(story, summaries);
+
+  const assistGuidance = normalizeWhitespace(
+    [
+      "You are generating a Director Assist draft.",
+      "This is a suggested Director staging note and is not canon until the user sends it.",
+      "The AI will use this note to stage the next scene, temporarily controlling all characters including the player character for one reply.",
+      "Read the full transcript below to understand where the story currently stands.",
+      "Output only the Director note in the required format. No other speakers. No narration. No commentary.",
+      "Use first names for characters. Stage the immediate next beat — do not summarize prior scenes.",
+      'Optional parenthetical gists: Character ("approximate dialogue") — the model should paraphrase, never copy verbatim.',
+      `Use "${resolvePlayerCharacterPreferredSceneName(playerCharacter)}" as the player character's preferred name.`,
+      buildMatureFictionPolicyBlock({
+        includeParity: true,
+      }),
+    ].join("\n"),
+  );
+
+  const preferredName = resolvePlayerCharacterPreferredSceneName(playerCharacter);
+  const chatHistory = sortByTimestampAsc(recentMessages).map((message) =>
+    formatTimelineMessage(message, preferredName),
+  );
+
+  const effectiveExistingText = typeof existingText === "string" ? existingText.trimEnd() : "";
+
+  return [
+    { role: "system", content: `Universe Information\n\n${universeInfo}` },
+    { role: "system", content: `Imported Lore\n\n${importedLore}` },
+    { role: "system", content: `Story Summary\n\n${summaryBlock}` },
+    { role: "system", content: `Director Assist Mode\n\n${assistGuidance}` },
+    ...chatHistory,
+    {
+      role: "user",
+      content: normalizeWhitespace(
+        effectiveExistingText
+          ? buildDirectorAssistContinuationRequest(effectiveExistingText)
+          : buildDirectorAssistRequest(preferredName),
       ),
     },
   ];

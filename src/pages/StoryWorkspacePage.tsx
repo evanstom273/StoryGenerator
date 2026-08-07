@@ -26,6 +26,7 @@ import { cn } from "../utils/cn";
 import { useTheme } from "../app/theming/ThemeContext";
 import { type AccentThemeKey, isAccentThemeKey } from "../app/theming/themes";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
+import { storyHasGeneratedScenes } from "../lib/ai/playerAssistContext";
 import { createAIProvider } from "../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../lib/ai/models";
 import { selectDiceStat } from "../lib/ai/diceStatSelector";
@@ -195,6 +196,7 @@ export function StoryWorkspacePage() {
     () => (story ? getMessagesForStory(story.id) : []),
     [getMessagesForStory, story],
   );
+  const assistDefaultsToDirector = useMemo(() => storyHasGeneratedScenes(messages), [messages]);
   const storyChapters = useMemo(
     () =>
       story
@@ -1125,7 +1127,11 @@ export function StoryWorkspacePage() {
       });
     } catch (error) {
       setAssistError(
-        error instanceof Error ? error.message : "Unable to generate a player suggestion.",
+        error instanceof Error
+          ? error.message
+          : assistDefaultsToDirector
+            ? "Unable to generate a Director note."
+            : "Unable to generate a player suggestion.",
       );
     } finally {
       setIsGeneratingAssist(false);
@@ -1789,7 +1795,11 @@ export function StoryWorkspacePage() {
 
             <Field
               label="Your Message"
-              help="Your next turn — actions, dialogue, or intent. The AI replies with the following scene."
+              help={
+                assistDefaultsToDirector
+                  ? "Your next turn — a Director staging note, player action, or intent. The AI replies with the following scene."
+                  : "Your next turn — actions, dialogue, or intent. The AI replies with the following scene."
+              }
             >
               <TextAreaInput
                 defaultHeightPx={220}
@@ -1800,7 +1810,11 @@ export function StoryWorkspacePage() {
                 onFocus={handleChatInputFocus}
                 onBlur={handleChatInputBlur}
                 disabled={isReadOnly || guidedGenerationActive}
-                placeholder="Write what your character does or says next."
+                placeholder={
+                  assistDefaultsToDirector
+                    ? "Write a Director note (Director: *beat*) or your character's next action."
+                    : "Write what your character does or says next."
+                }
               />
             </Field>
 
@@ -1830,7 +1844,13 @@ export function StoryWorkspacePage() {
                 onClick={handleGeneratePlayerAssist}
                 disabled={isGenerating || isGeneratingAssist || isReadOnly}
               >
-                {isGeneratingAssist ? "Generating Response..." : "Generate Response"}
+                {isGeneratingAssist
+                  ? assistDefaultsToDirector
+                    ? "Generating Direction..."
+                    : "Generating Response..."
+                  : assistDefaultsToDirector
+                    ? "Generate Direction"
+                    : "Generate Response"}
               </Button>
               <Button
                 variant="ghost"

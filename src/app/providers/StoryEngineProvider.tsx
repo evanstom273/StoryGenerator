@@ -32,7 +32,8 @@ import {
 } from "../../lib/ai/contextBuilder";
 import { getValidModel, getAIModelForRole, getCharacterConceptRequestConfig, getIndexingRequestConfig, getModelStreamConfig, getStoryStreamIdleTimeoutMs } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
-import { buildPlayerAssistContext } from "../../lib/ai/playerAssistContext";
+import { buildDirectorAssistContext, buildPlayerAssistContext, storyHasGeneratedScenes } from "../../lib/ai/playerAssistContext";
+import { formatDirectorAssistContinuation, formatDirectorAssistOutput } from "../../lib/ai/playerAssist";
 import {
   buildCharacterGeneratorSystemPrompt,
   buildCharacterConceptGeneratorSystemPrompt,
@@ -6991,18 +6992,35 @@ export function StoryEngineProvider({
           repository.listStoryMessages(storyId),
         ]);
 
-        const recentMessages = sortByTimestampAsc(refreshedMessages).slice(-30);
+        const sortedMessages = sortByTimestampAsc(refreshedMessages);
+        const existingText = opts?.existingText;
+        const existingTrimmed = existingText?.trim() ?? "";
+        const useDirectorAssist =
+          storyHasGeneratedScenes(sortedMessages) || /^\s*Director:/i.test(existingTrimmed);
+        const recentMessages = useDirectorAssist
+          ? sortedMessages
+          : sortedMessages.slice(-30);
         const effectiveUniverse = universeContext.universe;
         const effectiveImports = universeContext.imports;
-        const context = buildPlayerAssistContext({
-          universe: effectiveUniverse,
-          story,
-          playerCharacter,
-          imports: effectiveImports,
-          summaries,
-          recentMessages,
-          existingText: opts?.existingText,
-        });
+        const context = useDirectorAssist
+          ? buildDirectorAssistContext({
+              universe: effectiveUniverse,
+              story,
+              playerCharacter,
+              imports: effectiveImports,
+              summaries,
+              recentMessages,
+              existingText,
+            })
+          : buildPlayerAssistContext({
+              universe: effectiveUniverse,
+              story,
+              playerCharacter,
+              imports: effectiveImports,
+              summaries,
+              recentMessages,
+              existingText,
+            });
 
         const suggestion = await generateResponseWithRetry({
           providerType,
@@ -7014,6 +7032,14 @@ export function StoryEngineProvider({
 
         const raw = suggestion.content.trim();
         const existing = opts?.existingText;
+        if (useDirectorAssist) {
+          if (!existing?.trim()) {
+            return formatDirectorAssistOutput(raw);
+          }
+
+          return formatDirectorAssistContinuation(raw, existing.trimEnd());
+        }
+
         if (!existing?.trim()) {
           return raw;
         }
