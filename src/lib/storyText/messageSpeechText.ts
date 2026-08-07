@@ -601,6 +601,7 @@ export function collectCharacterTtsCandidatesFromMessages(
 		const sanitized = sanitizeMessageForDisplay({
 			message,
 			playerName,
+			applyActionBeatFormatting: false,
 		});
 		const repaired = repairNarratorLabelLines(sanitized);
 		const blocks = parseSceneBlocks(repaired);
@@ -699,6 +700,7 @@ export function buildCharacterGenderHintsFromMessages(
 		const sanitized = sanitizeMessageForDisplay({
 			message,
 			playerName,
+			applyActionBeatFormatting: false,
 		});
 		const repaired = repairNarratorLabelLines(sanitized);
 		const blocks = parseSceneBlocks(repaired);
@@ -788,6 +790,7 @@ export function buildStoryMessageSpeechScriptLines(
 		playerSceneName: options.playerSceneName,
 		playerPronouns: options.playerPronouns,
 		latestUserMessage: options.latestUserMessage,
+		applyActionBeatFormatting: false,
 	});
 	const repaired = repairNarratorLabelLines(sanitized);
 	const blocks = parseSceneBlocks(repaired);

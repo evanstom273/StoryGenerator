@@ -1,7 +1,10 @@
 import type { StoryMessage, StoryStateCharacterState, StoryStateData } from "../../types/models";
+import { inferGenderFromPronounsInText } from "../ai/characterTtsVoices";
 import { extractSpeakerPrefix } from "./extractSpeakerPrefix";
 import { splitDialogueQuoteRegions } from "./dialogueQuoteRegions";
 import { normalizeSceneSpeakerLabel } from "./speakerLabels";
+
+const RESERVED_SPEAKER_LABELS = new Set(["narrator", "director", "time", "system", "assistant"]);
 
 function escapeRegex(value: string) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -116,6 +119,31 @@ export function resolveSubjectPronoun(pronouns: string | null | undefined): "He"
 	return "They";
 }
 
+export function resolveSubjectPronounFromActionBeat(beatText: string): "He" | "She" | "They" | null {
+	const inner = beatText.replace(/^\*+|\*+$/g, "").trim();
+	const leadingMatch = inner.match(/^(He|She|They)\b/i);
+	if (leadingMatch?.[1]) {
+		const token = leadingMatch[1];
+		if (token.toLowerCase() === "she") {
+			return "She";
+		}
+		if (token.toLowerCase() === "he") {
+			return "He";
+		}
+		return "They";
+	}
+
+	const inferred = inferGenderFromPronounsInText(inner);
+	if (inferred === "male") {
+		return "He";
+	}
+	if (inferred === "female") {
+		return "She";
+	}
+
+	return null;
+}
+
 function replacePlayerNameInUnquotedProse(
 	text: string,
 	legalName: string,
@@ -184,15 +212,19 @@ export function applyPlayerSceneNameToTranscript(
 		.join("\n");
 }
 
-function normalizeActionBeatInner(beat: string, pronoun: string) {
+function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" | null) {
 	let inner = beat.replace(/^\*+|\*+$/g, "").trim();
 	if (!inner) {
-		return `*${pronoun}.*`;
+		return pronoun ? `*${pronoun}.*` : "*.*";
 	}
 
 	inner = inner.replace(/^(He|She|They)\s+/i, "").trim();
 	if (!/[.!?…]$/.test(inner)) {
 		inner = `${inner}.`;
+	}
+
+	if (!pronoun) {
+		return `*${inner}*`;
 	}
 
 	const firstChar = inner.charAt(0);
@@ -201,40 +233,95 @@ function normalizeActionBeatInner(beat: string, pronoun: string) {
 	return `*${pronoun} ${normalizedRest}*`;
 }
 
-function normalizePlayerSpeakerActionBeats(
+function normalizeActionBeatsInSpeakerRemainder(
+	remainder: string,
+	resolvePronoun: (beatText: string) => "He" | "She" | "They" | null,
+) {
+	let rebuilt = "";
+
+	for (const region of splitDialogueQuoteRegions(remainder)) {
+		if (region.kind === "quoted") {
+			rebuilt += `"${region.text}"`;
+			continue;
+		}
+
+		rebuilt += region.text.replace(/\*[^*]+\*/g, (beat) => {
+			const pronoun = resolvePronoun(beat);
+			return normalizeActionBeatInner(beat, pronoun);
+		});
+	}
+
+	return rebuilt;
+}
+
+function normalizeSpeakerActionBeats(
 	line: string,
-	sceneLabel: string,
-	pronoun: string,
+	resolvePronoun: (beatText: string, speakerLabel: string) => "He" | "She" | "They" | null,
 ) {
 	const match = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/);
-	if (!match?.[1] || match[1].trim() !== sceneLabel) {
+	if (!match?.[1]) {
+		return line;
+	}
+
+	const speakerLabel = match[1].trim();
+	if (RESERVED_SPEAKER_LABELS.has(speakerLabel.toLowerCase())) {
 		return line;
 	}
 
 	const remainder = match[3] ?? "";
-	const normalizedRemainder = remainder.replace(/\*[^*]+\*/g, (beat) =>
-		normalizeActionBeatInner(beat, pronoun),
+	const normalizedRemainder = normalizeActionBeatsInSpeakerRemainder(remainder, (beatText) =>
+		resolvePronoun(beatText, speakerLabel),
 	);
 
-	return `${sceneLabel}${match[2]} ${normalizedRemainder}`;
+	return `${speakerLabel}${match[2]} ${normalizedRemainder}`;
 }
 
+export function normalizeCharacterActionBeatsInTranscript(
+	text: string,
+	opts?: {
+		playerSceneName?: string | null;
+		playerLegalName?: string | null;
+		playerPronouns?: string | null;
+	},
+) {
+	const playerSceneLabel = opts?.playerSceneName?.trim()
+		? normalizeSceneSpeakerLabel(opts.playerSceneName)
+		: "";
+	const playerLegalLabel = opts?.playerLegalName?.trim()
+		? normalizeSceneSpeakerLabel(opts.playerLegalName)
+		: "";
+
+	return text
+		.replace(/\r\n/g, "\n")
+		.split("\n")
+		.map((line) =>
+			normalizeSpeakerActionBeats(line, (_beatText, speakerLabel) => {
+				const normalizedSpeaker = normalizeSceneSpeakerLabel(speakerLabel);
+				const isPlayerSpeaker =
+					(playerSceneLabel && normalizedSpeaker === playerSceneLabel) ||
+					(playerLegalLabel && normalizedSpeaker === playerLegalLabel);
+
+				if (isPlayerSpeaker && opts?.playerPronouns?.trim()) {
+					return resolveSubjectPronoun(opts.playerPronouns);
+				}
+
+				const inferred = resolveSubjectPronounFromActionBeat(_beatText);
+				return inferred ?? "They";
+			}),
+		)
+		.join("\n");
+}
+
+/** @deprecated Use normalizeCharacterActionBeatsInTranscript */
 export function normalizePlayerActionBeatsInTranscript(
 	text: string,
 	sceneName: string,
 	pronouns: string | null | undefined,
 ) {
-	const sceneLabel = normalizeSceneSpeakerLabel(sceneName.trim());
-	if (!sceneLabel) {
-		return text;
-	}
-
-	const pronoun = resolveSubjectPronoun(pronouns);
-	return text
-		.replace(/\r\n/g, "\n")
-		.split("\n")
-		.map((line) => normalizePlayerSpeakerActionBeats(line, sceneLabel, pronoun))
-		.join("\n");
+	return normalizeCharacterActionBeatsInTranscript(text, {
+		playerSceneName: sceneName,
+		playerPronouns: pronouns,
+	});
 }
 
 export function stripLeadingSubjectPronounForAudiobook(text: string) {

@@ -8,7 +8,7 @@ import {
 import { normalizeSpeakerNamesInTranscript } from "./speakerLabels";
 import {
 	applyPlayerSceneNameToTranscript,
-	normalizePlayerActionBeatsInTranscript,
+	normalizeCharacterActionBeatsInTranscript,
 } from "./playerSceneName";
 import { getPlayerCharacterAuthorshipViolation } from "./playerProtection";
 import type { StoryFormatIssue } from "./storyStandardizer";
@@ -874,6 +874,7 @@ export function sanitizeMessageForDisplay(args: {
   playerName?: string | null;
   playerSceneName?: string | null;
   playerPronouns?: string | null;
+  applyActionBeatFormatting?: boolean;
 }) {
   if (args.message.role !== "assistant") {
     return args.message.content;
@@ -887,8 +888,12 @@ export function sanitizeMessageForDisplay(args: {
     text = applyPlayerSceneNameToTranscript(text, legalName, sceneName);
   }
 
-  if (sceneName && args.playerPronouns?.trim()) {
-    text = normalizePlayerActionBeatsInTranscript(text, sceneName, args.playerPronouns);
+  if (args.applyActionBeatFormatting !== false) {
+    text = normalizeCharacterActionBeatsInTranscript(text, {
+      playerSceneName: sceneName,
+      playerLegalName: legalName,
+      playerPronouns: args.playerPronouns,
+    });
   }
 
   return text;

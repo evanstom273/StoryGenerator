@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
 	applyPlayerSceneNameToTranscript,
 	inferPlayerSceneNameFromMessages,
-	normalizePlayerActionBeatsInTranscript,
+	normalizeCharacterActionBeatsInTranscript,
 	resolveSubjectPronoun,
+	resolveSubjectPronounFromActionBeat,
 	stripLeadingSubjectPronounForAudiobook,
 } from "../storyText/playerSceneName";
 import { resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
@@ -66,15 +67,38 @@ describe("applyPlayerSceneNameToTranscript", () => {
 	});
 });
 
-describe("normalizePlayerActionBeatsInTranscript", () => {
+describe("normalizeCharacterActionBeatsInTranscript", () => {
 	it("adds subject pronouns and a trailing full stop to player action beats", () => {
-		const normalized = normalizePlayerActionBeatsInTranscript(
+		const normalized = normalizeCharacterActionBeatsInTranscript(
 			'Mark: *stares down into the steam rising from his mug* "I saw his back."',
-			"Mark Owen",
-			"he/him",
+			{
+				playerSceneName: "Mark Owen",
+				playerPronouns: "he/him",
+			},
 		);
 
 		expect(normalized).toContain("*He stares down into the steam rising from his mug.*");
+	});
+
+	it("normalizes action beats for every character speaker block", () => {
+		const normalized = normalizeCharacterActionBeatsInTranscript(
+			[
+				'Jake: *pulls up a chair across from him, leaning in with genuine concern* "Take your time."',
+				'Rosa: *folds her arms* "What do you mean?"',
+			].join("\n"),
+		);
+
+		expect(normalized).toContain(
+			"*He pulls up a chair across from him, leaning in with genuine concern.*",
+		);
+		expect(normalized).toContain("*She folds her arms.*");
+	});
+
+	it("infers pronouns from possessives inside action beats", () => {
+		expect(resolveSubjectPronounFromActionBeat("*stares down into the steam rising from his mug*")).toBe(
+			"He",
+		);
+		expect(resolveSubjectPronounFromActionBeat("*folds her arms*")).toBe("She");
 	});
 });
 
