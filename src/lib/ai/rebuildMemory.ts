@@ -42,7 +42,10 @@ async function generateWithRetry(
           ? error.code === "provider_unavailable" || error.code === "rate_limited" || error.code === "timeout"
           : false;
       if (!retryable || attempt >= params.maxAttempts) throw error;
-      const delayMs = 500 * Math.pow(2, attempt - 1);
+      const delayMs =
+        error instanceof AIError && error.code === "rate_limited"
+          ? 2000 * Math.pow(2, attempt - 1)
+          : 500 * Math.pow(2, attempt - 1);
       await new Promise<void>((resolve, reject) => {
         const id = setTimeout(resolve, delayMs);
         params.signal?.addEventListener("abort", () => { clearTimeout(id); reject(new Error("Rebuild aborted.")); }, { once: true });
