@@ -13,6 +13,7 @@ import {
 import { formatRelativeTime } from "../../lib/dates";
 import { cn } from "../../utils/cn";
 import { MediaLibraryPlayButton } from "./MediaLibraryPlayButton";
+import { MediaLibraryDeleteButton } from "./MediaLibraryDeleteButton";
 
 function MediaAssetRow({ asset }: { asset: MediaAssetView }) {
 	const createdLabel = formatRelativeTime(new Date(asset.createdAtMs).toISOString());
@@ -40,7 +41,10 @@ function MediaAssetRow({ asset }: { asset: MediaAssetView }) {
 					<span className="text-white/15">·</span>
 					<span>{progressLabel}</span>
 				</div>
-				<MediaLibraryPlayButton asset={asset} className="shrink-0" />
+				<div className="flex shrink-0 items-center gap-1">
+					<MediaLibraryPlayButton asset={asset} className="shrink-0" />
+					<MediaLibraryDeleteButton assetId={asset.id} title={asset.title} className="shrink-0" />
+				</div>
 			</div>
 		</div>
 	);

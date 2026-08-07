@@ -14,6 +14,7 @@ import {
 import { formatRelativeTime } from "../lib/dates";
 import { cn } from "../utils/cn";
 import { MediaLibraryPlayButton } from "../components/mediaLibrary/MediaLibraryPlayButton";
+import { MediaLibraryDeleteButton } from "../components/mediaLibrary/MediaLibraryDeleteButton";
 
 const CATEGORY_FILTERS: Array<MediaAssetCategory | "all"> = [
 	"all",
@@ -54,7 +55,10 @@ function MediaLibraryAssetCard({ asset }: { asset: MediaAssetView }) {
 					<span>·</span>
 					<span className="uppercase tracking-[0.12em]">{asset.format}</span>
 				</div>
-				<MediaLibraryPlayButton asset={asset} />
+				<div className="flex items-center gap-1">
+					<MediaLibraryPlayButton asset={asset} />
+					<MediaLibraryDeleteButton assetId={asset.id} title={asset.title} />
+				</div>
 			</div>
 		</Panel>
 	);

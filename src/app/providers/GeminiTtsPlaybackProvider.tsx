@@ -81,6 +81,8 @@ export interface BackgroundAudiobookJob {
 interface PreparedSpeechAudio {
 	audio: HTMLAudioElement;
 	objectUrl: string;
+	sourceBytes: Uint8Array;
+	sourceMimeType: string;
 }
 
 interface ActiveSynthesis {
@@ -503,7 +505,12 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			const audio = new Audio(url);
 			attachAudioHandlers(audio, playId);
 
-			preparedRef.current.set(playId, { audio, objectUrl: url });
+			preparedRef.current.set(playId, {
+				audio,
+				objectUrl: url,
+				sourceBytes: bytes,
+				sourceMimeType: mimeType,
+			});
 			preparedDigestRef.current.set(playId, digest);
 		},
 		[attachAudioHandlers, releasePreparedAudio],
@@ -1396,7 +1403,10 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				throw new Error("Audio is not ready yet.");
 			}
 
-			const bytes = await readAudioElementBytes(prepared.audio);
+			const bytes =
+				prepared.sourceMimeType === "audio/wav"
+					? prepared.sourceBytes
+					: await readAudioElementBytes(prepared.audio);
 			if (!bytes) {
 				throw new Error("Unable to read prepared audio.");
 			}
