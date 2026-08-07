@@ -266,6 +266,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 
 		prepared.audio.pause();
 		prepared.audio.src = "";
+		prepared.audio.remove();
 		URL.revokeObjectURL(prepared.objectUrl);
 		preparedRef.current.delete(playId);
 		preparedDigestRef.current.delete(playId);
@@ -539,7 +540,12 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 
 			const bytes = audioBytes instanceof Uint8Array ? audioBytes : new Uint8Array(audioBytes);
 			const { url } = createAudioBlobUrl(bytes, mimeType);
-			const audio = new Audio(url);
+			const audio = document.createElement("audio");
+			audio.src = url;
+			audio.preload = "auto";
+			audio.setAttribute("playsinline", "");
+			audio.style.display = "none";
+			document.body.appendChild(audio);
 			attachAudioHandlers(audio, playId);
 
 			preparedRef.current.set(playId, {
@@ -916,6 +922,14 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			objectUrlRef.current = prepared.objectUrl;
 			attachAudioHandlers(prepared.audio, playId);
 
+			const saveContext = playbackSaveContextRef.current.get(playId);
+			if (state.playerTitle) {
+				updateMediaSessionMetadata({
+					title: state.playerTitle,
+					artist: mediaSessionArtistRef.current ?? saveContext?.storyTitle,
+				});
+			}
+
 			try {
 				await prepared.audio.play();
 				const durationSec = Number.isFinite(prepared.audio.duration)
@@ -934,13 +948,6 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 						? prepared.audio.duration
 						: current.durationSec,
 				}));
-				if (state.playerTitle) {
-					const saveContext = playbackSaveContextRef.current.get(playId);
-					updateMediaSessionMetadata({
-						title: state.playerTitle,
-						artist: mediaSessionArtistRef.current ?? saveContext?.storyTitle,
-					});
-				}
 				updateMediaSessionPlaybackState("playing");
 				updateMediaSessionPositionState({
 					durationSec,
