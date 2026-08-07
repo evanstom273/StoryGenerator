@@ -47,11 +47,10 @@ export function AnimatedOutlet() {
 	}, [location.key, outlet, displayedKey, reducedMotion]);
 
 	return (
-		<div className="relative min-h-full overflow-x-hidden bg-app">
+		<div className="relative min-h-full bg-app">
 			<div
 				className={cn(
 					"min-h-full backface-hidden",
-					animClass !== null && "transform-gpu",
 					animClass === "exit" && "animate-page-exit",
 					animClass === "enter" && "animate-page-enter",
 				)}

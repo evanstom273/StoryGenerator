@@ -9,6 +9,7 @@ import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
 import { StoryAudioPlayerBar } from "../components/story/StoryAudioPlayerBar";
 import { StoryIndexingProgressBar } from "../components/story/StoryIndexingProgressBar";
 import { GuidedChapterProgressBar } from "../components/story/GuidedChapterProgressBar";
+import { StoryWorkspaceViewportPortal } from "../components/story/StoryWorkspaceViewportPortal";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
 import { useGeminiTtsPlayback } from "../app/providers/GeminiTtsPlaybackProvider";
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
@@ -1277,7 +1278,7 @@ export function StoryWorkspacePage() {
   }
 
   return (
-    <div className="flex min-h-[72vh] flex-col pb-14">
+    <div className="flex min-h-[72vh] flex-col pb-28 lg:pb-14">
       <GenerationFailureModal
         open={generationFailureOpen}
         failure={generationFailure}
@@ -1522,88 +1523,90 @@ export function StoryWorkspacePage() {
         ) : null}
       </div>
 
-      <div className="fixed bottom-10 left-0 right-0 z-50 flex flex-col lg:left-[266px]">
-        <GuidedChapterProgressBar storyId={storyId} />
-        <StoryIndexingProgressBar storyId={storyId} />
-        <StoryAudioPlayerBar className="relative border-t-0 shadow-none" />
-      </div>
-      <div
-        className={[
-          "fixed bottom-0 right-0 z-30 flex items-center justify-between border-t border-divider/[0.3] bg-app will-change-transform px-4 py-2",
-          readerMode ? "left-0" : "left-0 lg:left-[266px]",
-        ].join(" ")}
-      >
-        <div className="flex min-w-0 overflow-hidden items-center gap-3">
-          <span className="shrink-0 text-[11px] text-white/30">
-            {messages.length} {messages.length === 1 ? "entry" : "entries"}
-          </span>
-          {activeStory?.rpMode && activeStory.rpConfig && taskbarGold !== null && (
-            <span className="shrink-0 text-[11px] text-white/40">
-              💰 {activeStory.rpConfig.currencyDecimals ? taskbarGold.toFixed(2) : Math.floor(taskbarGold)}
-            </span>
-          )}
-          {activeStory?.rpMode && activeStory.rpConfig && taskbarTime && (
+      <StoryWorkspaceViewportPortal>
+        <div className="fixed bottom-10 left-0 right-0 z-50 flex flex-col lg:left-[266px]">
+          <GuidedChapterProgressBar storyId={storyId} />
+          <StoryIndexingProgressBar storyId={storyId} />
+          <StoryAudioPlayerBar className="relative border-t-0 shadow-none" />
+        </div>
+        <div
+          className={[
+            "fixed bottom-0 right-0 z-30 flex items-center justify-between border-t border-divider/[0.3] bg-app px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]",
+            readerMode ? "left-0" : "left-0 lg:left-[266px]",
+          ].join(" ")}
+        >
+          <div className="flex min-w-0 items-center gap-3 overflow-hidden">
             <span className="shrink-0 text-[11px] text-white/30">
-              {formatTimeCompact(taskbarTime)}
+              {messages.length} {messages.length === 1 ? "entry" : "entries"}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-0.5">
-          <WorkspaceIconBtn
-            label="Settings"
-            onClick={() => setStorySettingsOpen(true)}
-            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>}
-          />
-          <WorkspaceIconBtn
-            label="Bubble view"
-            active={showChrome}
-            onClick={() => setShowChrome(!showChrome)}
-            disabled={isGenerating}
-            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
-          />
-          <WorkspaceIconBtn
-            label="Archive"
-            active={archiveMode}
-            onClick={() => setArchiveMode((c) => !c)}
-            disabled={isGenerating}
-            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>}
-          />
-          <WorkspaceIconBtn
-            label="Reader mode"
-            active={readerMode}
-            onClick={() => setReaderMode(!readerMode)}
-            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>}
-          />
-          <WorkspaceIconBtn
-            label="MetaChat"
-            active={metaChatOpen}
-            onClick={() => setMetaChatOpen((c) => !c)}
-              disabled={isReadOnly}
-            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18.5h6"/><path d="M12 2v6"/><path d="M8.5 8V5"/><path d="M15.5 8V5"/></svg>}
-          />
-          <WorkspaceIconBtn
-            label="Character Sheet"
-            active={rpSheetOpen}
-            onClick={() => setRpSheetOpen((c) => !c)}
-            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M12 11v2"/><path d="M10 13h4"/></svg>}
-          />
-          <WorkspaceIconBtn
-            label="Relationships"
-            active={relationshipsOpen}
-            onClick={() => setRelationshipsOpen((c) => !c)}
-            icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="8" r="2.5"/><path d="M3 21v-2a5 5 0 0 1 5-5h2"/><path d="M13 21v-1.5a3.5 3.5 0 0 1 7 0V21"/></svg>}
-          />
-          {readerMode || archiveMode ? null : (
+            {activeStory?.rpMode && activeStory.rpConfig && taskbarGold !== null && (
+              <span className="shrink-0 text-[11px] text-white/40">
+                💰 {activeStory.rpConfig.currencyDecimals ? taskbarGold.toFixed(2) : Math.floor(taskbarGold)}
+              </span>
+            )}
+            {activeStory?.rpMode && activeStory.rpConfig && taskbarTime && (
+              <span className="shrink-0 text-[11px] text-white/30">
+                {formatTimeCompact(taskbarTime)}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-0.5">
             <WorkspaceIconBtn
-              label="Manual entry"
-              active={manualMode}
-              onClick={() => setManualMode((c) => !c)}
-              disabled={isGenerating || isReadOnly}
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
+              label="Settings"
+              onClick={() => setStorySettingsOpen(true)}
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>}
             />
-          )}
+            <WorkspaceIconBtn
+              label="Bubble view"
+              active={showChrome}
+              onClick={() => setShowChrome(!showChrome)}
+              disabled={isGenerating}
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
+            />
+            <WorkspaceIconBtn
+              label="Archive"
+              active={archiveMode}
+              onClick={() => setArchiveMode((c) => !c)}
+              disabled={isGenerating}
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>}
+            />
+            <WorkspaceIconBtn
+              label="Reader mode"
+              active={readerMode}
+              onClick={() => setReaderMode(!readerMode)}
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>}
+            />
+            <WorkspaceIconBtn
+              label="MetaChat"
+              active={metaChatOpen}
+              onClick={() => setMetaChatOpen((c) => !c)}
+              disabled={isReadOnly}
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18.5h6"/><path d="M12 2v6"/><path d="M8.5 8V5"/><path d="M15.5 8V5"/></svg>}
+            />
+            <WorkspaceIconBtn
+              label="Character Sheet"
+              active={rpSheetOpen}
+              onClick={() => setRpSheetOpen((c) => !c)}
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M12 11v2"/><path d="M10 13h4"/></svg>}
+            />
+            <WorkspaceIconBtn
+              label="Relationships"
+              active={relationshipsOpen}
+              onClick={() => setRelationshipsOpen((c) => !c)}
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="8" r="2.5"/><path d="M3 21v-2a5 5 0 0 1 5-5h2"/><path d="M13 21v-1.5a3.5 3.5 0 0 1 7 0V21"/></svg>}
+            />
+            {readerMode || archiveMode ? null : (
+              <WorkspaceIconBtn
+                label="Manual entry"
+                active={manualMode}
+                onClick={() => setManualMode((c) => !c)}
+                disabled={isGenerating || isReadOnly}
+                icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      </StoryWorkspaceViewportPortal>
 
       <div ref={transcriptScrollRef} className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
         {archiveMode ? (
@@ -2061,37 +2064,41 @@ export function StoryWorkspacePage() {
       ) : null}
 
       {showLatestChapterJumpButton ? (
-        <button
-          type="button"
-          onClick={handleJumpToLatestChapter}
-          className={cn(
-            "fixed left-4 z-40 rounded-full border border-accent/30 bg-app-elevated/95 px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-soft shadow-hero backdrop-blur-sm transition hover:border-accent hover:bg-accent/15 hover:text-ink lg:left-[282px]",
-            audioPlayerVisible ? "bottom-40" : "bottom-12",
-          )}
-        >
-          Jump to Latest Chapter
-        </button>
+        <StoryWorkspaceViewportPortal>
+          <button
+            type="button"
+            onClick={handleJumpToLatestChapter}
+            className={cn(
+              "fixed left-4 z-40 rounded-full border border-accent/30 bg-app-elevated/95 px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-soft shadow-hero backdrop-blur-sm transition hover:border-accent hover:bg-accent/15 hover:text-ink lg:left-[282px]",
+              audioPlayerVisible ? "bottom-40" : "bottom-12",
+            )}
+          >
+            Jump to Latest Chapter
+          </button>
+        </StoryWorkspaceViewportPortal>
       ) : null}
 
       {/* RP event toasts */}
       {rpToasts.length > 0 && (
-        <div className="fixed bottom-20 right-4 z-50 flex flex-col-reverse gap-2 pointer-events-none">
-          {rpToasts.map((toast) => (
-            <div
-              key={toast.id}
-              className="pointer-events-auto flex items-start gap-2 rounded-[10px] border border-divider bg-panel px-3 py-2.5 shadow-lg max-w-xs"
-            >
-              <span className="mt-0.5 shrink-0 text-sm">🎲</span>
-              <span className="text-xs text-ink-soft leading-relaxed flex-1">{toast.summary}</span>
-              <button
-                className="shrink-0 ml-1 text-ink-muted hover:text-ink transition"
-                onClick={() => setRpToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+        <StoryWorkspaceViewportPortal>
+          <div className="fixed bottom-20 right-4 z-50 flex flex-col-reverse gap-2 pointer-events-none">
+            {rpToasts.map((toast) => (
+              <div
+                key={toast.id}
+                className="pointer-events-auto flex max-w-xs items-start gap-2 rounded-[10px] border border-divider bg-panel px-3 py-2.5 shadow-lg"
               >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
+                <span className="mt-0.5 shrink-0 text-sm">🎲</span>
+                <span className="flex-1 text-xs leading-relaxed text-ink-soft">{toast.summary}</span>
+                <button
+                  className="ml-1 shrink-0 text-ink-muted transition hover:text-ink"
+                  onClick={() => setRpToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </StoryWorkspaceViewportPortal>
       )}
     </div>
   );
