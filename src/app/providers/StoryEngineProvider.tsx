@@ -207,6 +207,7 @@ import {
   formatPlayerCharacterOwnershipRulesForRewrite,
   formatPlayerCharacterPronounAndNamingRules,
   resolvePlayerCharacterPreferredSceneName,
+  resolvePlayerCharacterSceneName,
 } from "../../lib/playerCharacterPrompt";
 import type {
   AIModelRole,
@@ -3667,6 +3668,10 @@ export function StoryEngineProvider({
         playerGender: playerCharacter.gender,
         playerPronouns: playerCharacter.pronouns,
       });
+      const playerSceneName = resolvePlayerCharacterSceneName(playerCharacter, {
+        storyState: storyStateData,
+        recentMessages: messages,
+      });
       const characterRegistry = buildCharacterTtsRegistryForStory(messages, {
         playerName: playerCharacter.name,
         narrationTts,
@@ -3678,6 +3683,8 @@ export function StoryEngineProvider({
       );
       const segments = listStoryAudiobookChapterSegments(messages, {
         playerName: playerCharacter.name,
+        playerSceneName,
+        playerPronouns: playerCharacter.pronouns,
         narrationTts,
         characterRegistry,
         chapters,

@@ -1,5 +1,9 @@
-import type { PlayerCharacter, PlayerCharacterDraft } from "../types/models";
+import type { PlayerCharacter, PlayerCharacterDraft, StoryMessage, StoryStateData } from "../types/models";
 import { safeParseStoryStateData } from "./storyStateV2";
+import {
+	findPlayerStoryStateEntry,
+	inferPlayerSceneNameFromMessages,
+} from "./storyText/playerSceneName";
 
 export function normalizePlayerCharacterAliases(value: unknown): string[] {
 	if (!Array.isArray(value)) {
@@ -117,6 +121,51 @@ export function resolvePlayerCharacterPreferredSceneName(
 	return aliases[0] ?? name;
 }
 
+export function resolvePlayerCharacterSceneName(
+	character: Pick<PlayerCharacter, "name" | "aliases">,
+	opts?: {
+		storyState?: StoryStateData | null;
+		recentMessages?: StoryMessage[];
+	},
+): string {
+	const legalName = character.name.trim();
+	const sheetPreferred = resolvePlayerCharacterPreferredSceneName(character);
+
+	const storyEntry = findPlayerStoryStateEntry(opts?.storyState, legalName);
+	const storyDisplayName = storyEntry?.displayName?.trim();
+	if (storyDisplayName && storyDisplayName.toLowerCase() !== legalName.toLowerCase()) {
+		return storyDisplayName;
+	}
+
+	const storyAliases = normalizePlayerCharacterAliases(storyEntry?.aliases).filter(
+		(alias) => alias.toLowerCase() !== legalName.toLowerCase(),
+	);
+	if (storyAliases.length) {
+		return storyAliases[0];
+	}
+
+	const inferredFromMessages = opts?.recentMessages?.length
+		? inferPlayerSceneNameFromMessages(opts.recentMessages, legalName)
+		: null;
+	if (inferredFromMessages) {
+		return inferredFromMessages;
+	}
+
+	return sheetPreferred;
+}
+
+export function resolvePlayerCharacterSceneNameFromStateJson(
+	character: Pick<PlayerCharacter, "name" | "aliases">,
+	storyStateJson?: string | null,
+	recentMessages?: StoryMessage[],
+): string {
+	const parsed = storyStateJson?.trim() ? safeParseStoryStateData(storyStateJson) : null;
+	return resolvePlayerCharacterSceneName(character, {
+		storyState: parsed,
+		recentMessages,
+	});
+}
+
 export function getPlayerCharacterNameVariants(
 	character: Pick<PlayerCharacter, "name" | "aliases">,
 ): string[] {
@@ -195,8 +244,9 @@ export function buildPlayerNameForValidation(
 
 export function formatPlayerCharacterPronounAndNamingRules(
 	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns">,
+	sceneNameOverride?: string,
 ): string {
-	const preferredName = resolvePlayerCharacterPreferredSceneName(character);
+	const preferredName = sceneNameOverride?.trim() || resolvePlayerCharacterPreferredSceneName(character);
 	const legalName = character.name.trim();
 	const pronouns = character.pronouns.trim();
 	const usesDifferentPreferredName = preferredName.toLowerCase() !== legalName.toLowerCase();
@@ -222,8 +272,9 @@ export function formatPlayerCharacterIdentityForPrompt(
 		PlayerCharacter,
 		"name" | "aliases" | "pronouns" | "gender" | "species" | "age"
 	>,
+	sceneNameOverride?: string,
 ): string {
-	const preferredName = resolvePlayerCharacterPreferredSceneName(character);
+	const preferredName = sceneNameOverride?.trim() || resolvePlayerCharacterPreferredSceneName(character);
 	const legalName = character.name.trim();
 	const aliases = normalizePlayerCharacterAliases(character.aliases).filter(
 		(alias) => alias.toLowerCase() !== legalName.toLowerCase(),
@@ -242,7 +293,7 @@ export function formatPlayerCharacterIdentityForPrompt(
 		character.gender.trim() ? `Player Gender: ${character.gender.trim()}` : "",
 		character.species?.trim() ? `Player Species: ${character.species.trim()}` : "",
 		character.pronouns.trim() ? `Player Pronouns: ${character.pronouns.trim()}` : "",
-		formatPlayerCharacterPronounAndNamingRules(character),
+		formatPlayerCharacterPronounAndNamingRules(character, preferredName),
 	]
 		.filter(Boolean)
 		.join("\n");

@@ -6,7 +6,10 @@ import {
   splitDialogueQuoteRegions,
 } from "./dialogueQuoteRegions";
 import { normalizeSpeakerNamesInTranscript } from "./speakerLabels";
-import { repairMalformedTranscriptFormat, needsSpeakerAttributionRewrite, repairPlayerOrphanActionLines, repairStrayAsteriskArtifacts } from "./transcriptFormatRepair";
+import {
+	applyPlayerSceneNameToTranscript,
+	normalizePlayerActionBeatsInTranscript,
+} from "./playerSceneName";
 import { getPlayerCharacterAuthorshipViolation } from "./playerProtection";
 import type { StoryFormatIssue } from "./storyStandardizer";
 
@@ -869,14 +872,26 @@ export function sanitizeMessageForDisplay(args: {
   message: StoryMessage;
   latestUserMessage?: string | null;
   playerName?: string | null;
+  playerSceneName?: string | null;
+  playerPronouns?: string | null;
 }) {
   if (args.message.role !== "assistant") {
     return args.message.content;
   }
 
-  // Assistant messages are saved from the streamed text when validation passes.
-  // Only normalize whitespace/capitalization for display.
-  return normalizeTranscriptForDisplay(args.message.content);
+  let text = normalizeTranscriptForDisplay(args.message.content);
+  const legalName = args.playerName?.trim();
+  const sceneName = args.playerSceneName?.trim() || legalName;
+
+  if (legalName && sceneName && legalName.toLowerCase() !== sceneName.toLowerCase()) {
+    text = applyPlayerSceneNameToTranscript(text, legalName, sceneName);
+  }
+
+  if (sceneName && args.playerPronouns?.trim()) {
+    text = normalizePlayerActionBeatsInTranscript(text, sceneName, args.playerPronouns);
+  }
+
+  return text;
 }
 
 function capitalizeFirstLetter(text: string): string {

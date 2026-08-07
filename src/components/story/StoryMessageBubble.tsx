@@ -14,6 +14,9 @@ interface StoryMessageBubbleProps {
   message: StoryMessage;
   messages: StoryMessage[];
   playerCharacterName: string;
+  playerLegalName?: string;
+  playerSceneName?: string;
+  playerPronouns?: string;
   onEdit: (message: StoryMessage) => void;
   onQuickEdit?: (message: StoryMessage) => void;
   onRegenerate?: (message: StoryMessage) => void;
@@ -154,6 +157,9 @@ export function StoryMessageBubble({
   message,
   messages,
   playerCharacterName,
+  playerLegalName,
+  playerSceneName,
+  playerPronouns,
   onEdit,
   onQuickEdit,
   onRegenerate,
@@ -161,6 +167,8 @@ export function StoryMessageBubble({
   onDelete,
   highlighted,
 }: StoryMessageBubbleProps) {
+  const effectiveLegalName = playerLegalName?.trim() || playerCharacterName;
+  const effectiveSceneName = playerSceneName?.trim() || playerCharacterName;
   const isContinue = isContinueMessage(message);
   const isDirector = isDirectorMessage(message);
 
@@ -168,7 +176,7 @@ export function StoryMessageBubble({
     message.role,
     message.speakerType,
     message.speakerName,
-    playerCharacterName,
+    effectiveSceneName,
   );
   const speakerTagClass = resolveSpeakerTagClass(
     message.role,
@@ -200,7 +208,9 @@ export function StoryMessageBubble({
       ? sanitizeMessageForDisplay({
           message,
           latestUserMessage,
-          playerName: playerCharacterName,
+          playerName: effectiveLegalName,
+          playerSceneName: effectiveSceneName,
+          playerPronouns,
         })
       : message.content;
 

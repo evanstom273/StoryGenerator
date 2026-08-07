@@ -35,7 +35,7 @@ import { DiceRollModal, type DiceRollResult } from "../components/story/DiceRoll
 import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
 import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
-import { normalizePlayerCharacterAliases } from "../lib/playerCharacterPrompt";
+import { normalizePlayerCharacterAliases, resolvePlayerCharacterSceneName } from "../lib/playerCharacterPrompt";
 import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
@@ -198,6 +198,17 @@ export function StoryWorkspacePage() {
     [getMessagesForStory, story],
   );
   const assistDefaultsToDirector = useMemo(() => storyHasGeneratedScenes(messages), [messages]);
+  const [storyStateJson, setStoryStateJson] = useState<string | null>(null);
+  const playerSceneName = useMemo(() => {
+    if (!playerCharacter) {
+      return "";
+    }
+
+    return resolvePlayerCharacterSceneName(playerCharacter, {
+      storyState: storyStateJson ? safeParseStoryStateData(storyStateJson) : null,
+      recentMessages: messages,
+    });
+  }, [messages, playerCharacter, storyStateJson]);
   const storyChapters = useMemo(
     () =>
       story
@@ -333,16 +344,34 @@ export function StoryWorkspacePage() {
     streamingDraft: null as string | null,
   });
 
-  // Initial gold load only — live updates come from appliedRpChanges in sendChatMessage
   useEffect(() => {
-    if (!storyId || !story?.rpMode) { setTaskbarGold(null); return; }
+    if (!storyId) {
+      setStoryStateJson(null);
+      return;
+    }
+
     fetchStoryState(storyId).then((state) => {
-      if (!state) return;
+      setStoryStateJson(state?.stateJson ?? null);
+    });
+  }, [fetchStoryState, messages.length, rpStatsRefreshKey, storyId]);
+
+  useEffect(() => {
+    if (!storyId || !story?.rpMode) {
+      setTaskbarGold(null);
+      return;
+    }
+
+    fetchStoryState(storyId).then((state) => {
+      if (!state) {
+        return;
+      }
       const parsed = safeParseStoryStateData(state.stateJson);
       const g = parsed?.rpStats?.gold;
-      if (typeof g === "number") setTaskbarGold(g);
+      if (typeof g === "number") {
+        setTaskbarGold(g);
+      }
     });
-  }, [storyId, story?.rpMode]);
+  }, [fetchStoryState, story?.rpMode, storyId]);
 
   // Load/refresh in-story time from state — updates whenever rpStatsRefreshKey changes
   useEffect(() => {
@@ -1640,6 +1669,9 @@ export function StoryWorkspacePage() {
                       message={message}
                       messages={messages}
                       playerCharacterName={activePlayerCharacter.name}
+                      playerLegalName={activePlayerCharacter.name}
+                      playerSceneName={playerSceneName}
+                      playerPronouns={activePlayerCharacter.pronouns}
                       onEdit={populateComposerFromMessage}
                       onQuickEdit={isReadOnly ? undefined : handleOpenAssistantEdit}
                       onRegenerate={isReadOnly ? undefined : handleRegenerateLastAssistant}
@@ -1657,6 +1689,9 @@ export function StoryWorkspacePage() {
             <StoryTranscriptView
               messages={messages}
               playerCharacterName={activePlayerCharacter.name}
+              playerLegalName={activePlayerCharacter.name}
+              playerSceneName={playerSceneName}
+              playerPronouns={activePlayerCharacter.pronouns}
               storyTitle={activeStory.title}
               chapters={storyChapters}
               highlightedMessageId={highlightedMessageId}

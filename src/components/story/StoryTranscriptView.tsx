@@ -15,6 +15,9 @@ import { ChapterListenBanner, FullStoryAudiobookControls } from "./StorySpeechCo
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
   playerCharacterName: string;
+  playerLegalName?: string;
+  playerSceneName?: string;
+  playerPronouns?: string;
   storyTitle?: string;
   chapters?: StoryChapter[];
   className?: string;
@@ -276,12 +279,17 @@ function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
 export function StoryTranscriptView({
   messages,
   playerCharacterName,
+  playerLegalName,
+  playerSceneName,
+  playerPronouns,
   storyTitle = "Story",
   chapters,
   className,
   highlightedMessageId,
   rpConfig,
 }: StoryTranscriptViewProps) {
+  const effectiveLegalName = playerLegalName?.trim() || playerCharacterName;
+  const effectiveSceneName = playerSceneName?.trim() || playerCharacterName;
   let latestUserMessage: string | null = null;
   let prevStoryTime: RpTimeState | undefined = undefined;
   const chapterEndByMessageId = new Map<string, string>();
@@ -414,7 +422,7 @@ export function StoryTranscriptView({
           }
           const label = isAuthorDirective
             ? message.speakerName?.trim() || "Author"
-            : message.speakerName?.trim() || playerCharacterName || "Player";
+            : message.speakerName?.trim() || effectiveSceneName || "Player";
           const tag = getSpeakerTag(
             label,
             isAuthorDirective ? "author" : "player",
@@ -453,7 +461,9 @@ export function StoryTranscriptView({
         const sanitized = sanitizeMessageForDisplay({
           message,
           latestUserMessage,
-          playerName: playerCharacterName,
+          playerName: effectiveLegalName,
+          playerSceneName: effectiveSceneName,
+          playerPronouns,
         });
         const blocks = parseSceneBlocks(sanitized);
         const showTimeChip = rpConfig && message.storyTime &&
