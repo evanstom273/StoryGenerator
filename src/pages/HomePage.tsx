@@ -1,12 +1,8 @@
 import { Link } from "react-router-dom";
 import { useMemo } from "react";
-import { SearchIcon } from "../components/icons";
 import { MediaLibraryPanel } from "../components/mediaLibrary/MediaLibraryPanel";
-import { GLOBAL_META_CHAT_SCOPE_ID } from "../lib/metaChatScope";
-import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
-import { useLibrarySearch } from "../app/library/LibrarySearchContext";
 import { formatRelativeTime } from "../lib/dates";
 import { cn } from "../utils/cn";
 
@@ -28,15 +24,7 @@ export function HomePage() {
     getUniverseById,
     getStoriesForUniverse,
   } = useStoryEngine();
-  const { showArchivedStories, setShowArchivedStories } = useUiPrefs();
-  const { openSearch } = useLibrarySearch();
-
-  function openLibraryMetaChat() {
-    try {
-      localStorage.setItem(META_CHAT_OPEN_STORAGE_KEY, GLOBAL_META_CHAT_SCOPE_ID);
-    } catch {}
-    window.dispatchEvent(new Event("story-engine:open-global-metachat"));
-  }
+  const { showArchivedStories } = useUiPrefs();
 
   const visibleStories = useMemo(
     () => stories.filter((s) => (showArchivedStories ? true : !s.isArchived)),
@@ -136,42 +124,6 @@ export function HomePage() {
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* ── Library tools ── */}
-      <div className="flex-shrink-0 pt-4">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => openSearch()}
-            className="relative flex min-w-0 flex-1 items-center gap-2 rounded-[8px] border border-divider/[0.5] bg-panel-muted px-3 py-2 text-left text-[13px] text-ink-muted transition hover:border-accent/[0.35] hover:text-ink-soft"
-          >
-            <SearchIcon className="h-4 w-4 shrink-0" />
-            <span>Search stories, universes, characters…</span>
-          </button>
-          <button
-            type="button"
-            onClick={openLibraryMetaChat}
-            className={cn(
-              "flex-shrink-0 rounded-[8px] border px-3 py-2 text-[11px] font-medium transition",
-              "border-accent/[0.3] bg-accent/[0.08] text-accent-soft hover:bg-accent/[0.14]",
-            )}
-          >
-            Library MetaChat
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowArchivedStories(!showArchivedStories)}
-            className={cn(
-              "flex-shrink-0 rounded-[8px] border px-3 py-2 text-[11px] font-medium transition",
-              showArchivedStories
-                ? "border-accent/[0.3] bg-accent/[0.08] text-accent-soft"
-                : "border-divider/[0.45] bg-panel-muted text-white/35 hover:border-divider/[0.65] hover:text-white/50",
-            )}
-          >
-            {showArchivedStories ? "Archived on" : "Archived off"}
-          </button>
         </div>
       </div>
 
