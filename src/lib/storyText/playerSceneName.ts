@@ -212,6 +212,68 @@ export function applyPlayerSceneNameToTranscript(
 		.join("\n");
 }
 
+function wrapAsActionBeat(value: string) {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return "";
+	}
+	if (trimmed.startsWith("*") && trimmed.endsWith("*") && trimmed.length > 2) {
+		return trimmed;
+	}
+	return `*${trimmed}*`;
+}
+
+function looksLikeBareActionProse(text: string) {
+	const trimmed = text.trim();
+	if (!trimmed || trimmed.startsWith('"') || trimmed.startsWith("*")) {
+		return false;
+	}
+	if (/^["'*(\[]/.test(trimmed)) {
+		return false;
+	}
+	if (/[!?]$/.test(trimmed)) {
+		return false;
+	}
+	if (/\b(I|you|we|me|my|your|our|I'm|you're|we're|don't|can't|won't|didn't|isn't)\b/i.test(trimmed)) {
+		return false;
+	}
+	return true;
+}
+
+function wrapBareActionProseInUnquotedText(text: string) {
+	let rebuilt = "";
+
+	for (const region of splitDialogueQuoteRegions(text)) {
+		if (region.kind === "quoted") {
+			rebuilt += `"${region.text}"`;
+			continue;
+		}
+
+		const prose = region.text;
+		if (!prose.trim()) {
+			rebuilt += prose;
+			continue;
+		}
+
+		if (/\*[^*]+\*/.test(prose)) {
+			rebuilt += prose;
+			continue;
+		}
+
+		if (looksLikeBareActionProse(prose)) {
+			const trimmed = prose.trim();
+			const lead = prose.slice(0, prose.indexOf(trimmed));
+			const trail = prose.slice(prose.indexOf(trimmed) + trimmed.length);
+			rebuilt += `${lead}${wrapAsActionBeat(trimmed)}${trail}`;
+			continue;
+		}
+
+		rebuilt += prose;
+	}
+
+	return rebuilt;
+}
+
 function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" | null) {
 	let inner = beat.replace(/^\*+|\*+$/g, "").trim();
 	if (!inner) {
@@ -237,9 +299,10 @@ function normalizeActionBeatsInSpeakerRemainder(
 	remainder: string,
 	resolvePronoun: (beatText: string) => "He" | "She" | "They" | null,
 ) {
+	const wrappedRemainder = wrapBareActionProseInUnquotedText(remainder);
 	let rebuilt = "";
 
-	for (const region of splitDialogueQuoteRegions(remainder)) {
+	for (const region of splitDialogueQuoteRegions(wrappedRemainder)) {
 		if (region.kind === "quoted") {
 			rebuilt += `"${region.text}"`;
 			continue;
@@ -254,26 +317,50 @@ function normalizeActionBeatsInSpeakerRemainder(
 	return rebuilt;
 }
 
-function normalizeSpeakerActionBeats(
-	line: string,
-	resolvePronoun: (beatText: string, speakerLabel: string) => "He" | "She" | "They" | null,
+function isReservedSpeakerLabel(label: string) {
+	return RESERVED_SPEAKER_LABELS.has(label.trim().toLowerCase());
+}
+
+function resolveSpeakerActionPronoun(
+	beatText: string,
+	speakerLabel: string,
+	opts?: {
+		playerSceneName?: string | null;
+		playerLegalName?: string | null;
+		playerPronouns?: string | null;
+	},
+): "He" | "She" | "They" {
+	const playerSceneLabel = opts?.playerSceneName?.trim()
+		? normalizeSceneSpeakerLabel(opts.playerSceneName)
+		: "";
+	const playerLegalLabel = opts?.playerLegalName?.trim()
+		? normalizeSceneSpeakerLabel(opts.playerLegalName)
+		: "";
+	const normalizedSpeaker = normalizeSceneSpeakerLabel(speakerLabel);
+	const isPlayerSpeaker =
+		(playerSceneLabel && normalizedSpeaker === playerSceneLabel) ||
+		(playerLegalLabel && normalizedSpeaker === playerLegalLabel);
+
+	if (isPlayerSpeaker && opts?.playerPronouns?.trim()) {
+		return resolveSubjectPronoun(opts.playerPronouns);
+	}
+
+	const inferred = resolveSubjectPronounFromActionBeat(beatText);
+	return inferred ?? "They";
+}
+
+function normalizeSpeakerRemainderActionBeats(
+	remainder: string,
+	speakerLabel: string,
+	opts?: {
+		playerSceneName?: string | null;
+		playerLegalName?: string | null;
+		playerPronouns?: string | null;
+	},
 ) {
-	const match = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/);
-	if (!match?.[1]) {
-		return line;
-	}
-
-	const speakerLabel = match[1].trim();
-	if (RESERVED_SPEAKER_LABELS.has(speakerLabel.toLowerCase())) {
-		return line;
-	}
-
-	const remainder = match[3] ?? "";
-	const normalizedRemainder = normalizeActionBeatsInSpeakerRemainder(remainder, (beatText) =>
-		resolvePronoun(beatText, speakerLabel),
+	return normalizeActionBeatsInSpeakerRemainder(remainder, (beatText) =>
+		resolveSpeakerActionPronoun(beatText, speakerLabel, opts),
 	);
-
-	return `${speakerLabel}${match[2]} ${normalizedRemainder}`;
 }
 
 export function normalizeCharacterActionBeatsInTranscript(
@@ -284,32 +371,62 @@ export function normalizeCharacterActionBeatsInTranscript(
 		playerPronouns?: string | null;
 	},
 ) {
-	const playerSceneLabel = opts?.playerSceneName?.trim()
-		? normalizeSceneSpeakerLabel(opts.playerSceneName)
-		: "";
-	const playerLegalLabel = opts?.playerLegalName?.trim()
-		? normalizeSceneSpeakerLabel(opts.playerLegalName)
-		: "";
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+	const output: string[] = [];
+	let pendingSpeaker: string | null = null;
+	let pendingSeparator: string | null = null;
+	let pendingRemainder: string[] = [];
 
-	return text
-		.replace(/\r\n/g, "\n")
-		.split("\n")
-		.map((line) =>
-			normalizeSpeakerActionBeats(line, (_beatText, speakerLabel) => {
-				const normalizedSpeaker = normalizeSceneSpeakerLabel(speakerLabel);
-				const isPlayerSpeaker =
-					(playerSceneLabel && normalizedSpeaker === playerSceneLabel) ||
-					(playerLegalLabel && normalizedSpeaker === playerLegalLabel);
+	function flushPending() {
+		if (!pendingSpeaker || !pendingSeparator) {
+			return;
+		}
 
-				if (isPlayerSpeaker && opts?.playerPronouns?.trim()) {
-					return resolveSubjectPronoun(opts.playerPronouns);
-				}
+		const remainder = pendingRemainder.join("\n");
+		if (remainder.trim()) {
+			const normalized = normalizeSpeakerRemainderActionBeats(remainder, pendingSpeaker, opts);
+			output.push(`${pendingSpeaker}${pendingSeparator}`);
+			for (const normalizedLine of normalized.split("\n")) {
+				output.push(normalizedLine);
+			}
+		} else {
+			output.push(`${pendingSpeaker}${pendingSeparator}`);
+		}
 
-				const inferred = resolveSubjectPronounFromActionBeat(_beatText);
-				return inferred ?? "They";
-			}),
-		)
-		.join("\n");
+		pendingSpeaker = null;
+		pendingSeparator = null;
+		pendingRemainder = [];
+	}
+
+	for (const line of lines) {
+		const headerOnly = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*$/);
+		if (headerOnly?.[1] && !isReservedSpeakerLabel(headerOnly[1])) {
+			flushPending();
+			pendingSpeaker = headerOnly[1].trim();
+			pendingSeparator = headerOnly[2] ?? ":";
+			pendingRemainder = [];
+			continue;
+		}
+
+		const inline = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/);
+		if (inline?.[1] && !isReservedSpeakerLabel(inline[1])) {
+			flushPending();
+			const speakerLabel = inline[1].trim();
+			const normalized = normalizeSpeakerRemainderActionBeats(inline[3] ?? "", speakerLabel, opts);
+			output.push(`${speakerLabel}${inline[2]} ${normalized}`);
+			continue;
+		}
+
+		if (pendingSpeaker) {
+			pendingRemainder.push(line);
+			continue;
+		}
+
+		output.push(line);
+	}
+
+	flushPending();
+	return output.join("\n");
 }
 
 /** @deprecated Use normalizeCharacterActionBeatsInTranscript */
