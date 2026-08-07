@@ -125,7 +125,33 @@ export function formatNarratorBlockForDisplay(text: string): string {
 	return repairNarratorLabelLines(text)
 		.split("\n")
 		.map((line) => stripNarratorBlockDisplayPrefix(line))
+		.map((line) => stripNarratorDisplayArtifacts(line))
+		.filter((line) => line.trim().length > 0)
 		.join("\n");
+}
+
+const PRONOUN_NARRATOR_PSEUDO_LABEL =
+	/^(?:\*)?(?:He|She|They)\s+narrator:?(?:\*)?\.?$/i;
+
+/** Display-only: strip narrator pseudo-labels, asterisk markers, and stray pronoun prefixes. */
+export function stripNarratorDisplayArtifacts(line: string): string {
+	const trimmed = line.trim();
+	if (!trimmed) {
+		return "";
+	}
+	if (PRONOUN_NARRATOR_PSEUDO_LABEL.test(trimmed)) {
+		return "";
+	}
+
+	let result = trimmed;
+	const fullyWrapped = trimmed.match(/^\*([\s\S]+)\*$/);
+	if (fullyWrapped?.[1]) {
+		result = fullyWrapped[1].trim();
+	}
+
+	result = result.replace(/^(?:He|She|They)\s+narrator:\s*/i, "");
+	result = result.replace(/\*+/g, "");
+	return result.trim();
 }
 
 function isSpeakerHeader(line: string) {

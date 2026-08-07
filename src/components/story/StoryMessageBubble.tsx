@@ -6,6 +6,7 @@ import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { resolveLatestUserMessageBefore } from "../../lib/storyText/messageSpeechText";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
+import type { CharacterTtsGenderMap } from "../../lib/ai/characterTtsVoices";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
@@ -17,6 +18,7 @@ interface StoryMessageBubbleProps {
   playerLegalName?: string;
   playerSceneName?: string;
   playerPronouns?: string;
+  characterGenders?: CharacterTtsGenderMap;
   onEdit: (message: StoryMessage) => void;
   onQuickEdit?: (message: StoryMessage) => void;
   onRegenerate?: (message: StoryMessage) => void;
@@ -160,6 +162,7 @@ export function StoryMessageBubble({
   playerLegalName,
   playerSceneName,
   playerPronouns,
+  characterGenders,
   onEdit,
   onQuickEdit,
   onRegenerate,
@@ -211,6 +214,7 @@ export function StoryMessageBubble({
           playerName: effectiveLegalName,
           playerSceneName: effectiveSceneName,
           playerPronouns,
+          characterGenders,
         })
       : message.content;
 
@@ -348,7 +352,7 @@ export function StoryMessageBubble({
             ? parseSceneBlocks(sanitizedContent).map((block, index) => (
                 <div key={index}>
                   {!block.speakerLabel || block.speakerLabel === "Narrator"
-                    ? renderTextLines(block.text, { forceItalic: true })
+                    ? renderTextLines(formatNarratorBlockForDisplay(block.text), { forceItalic: true })
                     : renderInlineSpeakerLine(block.speakerLabel, block.text)}
                 </div>
               ))

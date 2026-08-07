@@ -134,6 +134,36 @@ describe("normalizeCharacterActionBeatsInTranscript", () => {
 
 		expect(normalized).toContain("*He shakes his head slowly, his voice a raspy whisper.*");
 	});
+
+	it("uses story-state gender for NPCs without possessive cues in the beat", () => {
+		const normalized = normalizeCharacterActionBeatsInTranscript(
+			'Captain Holt: watches with solemn concern, resting a heavy hand near the edge of the table. "Take a slow breath."',
+			{
+				characterGenders: {
+					"captain holt": "male",
+					captain: "male",
+				},
+			},
+		);
+
+		expect(normalized).toContain(
+			"*He watches with solemn concern, resting a heavy hand near the edge of the table.*",
+		);
+	});
+
+	it("does not treat pronoun-led narrator pseudo-labels as character speakers", () => {
+		const normalized = normalizeCharacterActionBeatsInTranscript(
+			[
+				"He narrator:",
+				"The squad watches intently as the man stands motionless in the center of the room.",
+			].join("\n"),
+		);
+
+		expect(normalized).not.toContain("*He narrator:*");
+		expect(normalized).toContain(
+			"The squad watches intently as the man stands motionless in the center of the room.",
+		);
+	});
 });
 
 describe("stripLeadingSubjectPronounForAudiobook", () => {

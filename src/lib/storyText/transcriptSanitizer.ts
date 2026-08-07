@@ -1,4 +1,5 @@
 import type { StoryMessage } from "../../types/models";
+import type { CharacterTtsGenderMap } from "../ai/characterTtsVoices";
 import { isDeniedSpeakerLabel } from "../relationshipIndex";
 import { standardizeAssistantStoryText } from "./storyStandardizer";
 import {
@@ -880,6 +881,7 @@ export function sanitizeMessageForDisplay(args: {
   playerName?: string | null;
   playerSceneName?: string | null;
   playerPronouns?: string | null;
+  characterGenders?: CharacterTtsGenderMap | null;
   applyActionBeatFormatting?: boolean;
 }) {
   if (args.message.role !== "assistant") {
@@ -899,6 +901,7 @@ export function sanitizeMessageForDisplay(args: {
       playerSceneName: sceneName,
       playerLegalName: legalName,
       playerPronouns: args.playerPronouns,
+      characterGenders: args.characterGenders,
     });
   }
 
