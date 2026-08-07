@@ -821,7 +821,18 @@ function reportGenerationAudit(args: {
 }
 
 function shouldRetryKind(kind: ReturnType<typeof classifyAIGenerationError>["kind"]) {
-  return kind === "timeout" || kind === "provider";
+  return kind === "timeout" || kind === "provider" || kind === "quota";
+}
+
+function computeRetryDelayMs(
+  kind: ReturnType<typeof classifyAIGenerationError>["kind"],
+  attempt: number,
+) {
+  const jitter = Math.floor(Math.random() * 120);
+  if (kind === "quota") {
+    return 2000 * Math.pow(2, attempt - 1) + jitter;
+  }
+  return 300 * Math.pow(3, attempt - 1) + jitter;
 }
 
 async function generateResponseWithRetry(params: {
@@ -949,10 +960,7 @@ async function generateResponseWithRetry(params: {
         );
       }
 
-      const base = 300;
-      const backoff = base * Math.pow(3, attempt - 1);
-      const jitter = Math.floor(Math.random() * 120);
-      await waitWithSignal(backoff + jitter, params.signal);
+      await waitWithSignal(computeRetryDelayMs(classified.kind, attempt), params.signal);
     }
   }
 
@@ -1218,10 +1226,7 @@ async function generateSummaryWithRetry(params: {
         );
       }
 
-      const base = 300;
-      const backoff = base * Math.pow(3, attempt - 1);
-      const jitter = Math.floor(Math.random() * 120);
-      await waitWithSignal(backoff + jitter, params.signal);
+      await waitWithSignal(computeRetryDelayMs(classified.kind, attempt), params.signal);
     }
   }
 

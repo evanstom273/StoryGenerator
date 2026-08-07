@@ -102,7 +102,20 @@ function throwGeminiHttpError(response: Response, message: string) {
     throw new AIError("invalid_api_key", "Gemini API key is invalid.", response.status);
   }
   if (response.status === 429) {
-    throw new AIError("rate_limited", "Gemini rate limit exceeded.", response.status);
+    const retryAfter = response.headers.get("Retry-After");
+    const diagnostic = [
+      "status=429",
+      "provider=Gemini",
+      `raw=${message}`,
+      retryAfter ? `retryAfter=${retryAfter}` : null,
+    ]
+      .filter(Boolean)
+      .join("; ");
+    const displayMessage =
+      message && !/^Gemini request failed \(429\)\.$/.test(message)
+        ? message
+        : "Gemini rate limit exceeded.";
+    throw new AIError("rate_limited", displayMessage, response.status, { diagnostic });
   }
   if (response.status >= 500) {
     throw new AIError("provider_unavailable", "Gemini provider unavailable.", response.status);
