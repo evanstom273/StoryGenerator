@@ -46,6 +46,31 @@ function sanitizeFileName(name: string) {
   return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_");
 }
 
+async function tryWebShareDownload(blob: Blob, filename: string) {
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+    return false;
+  }
+
+  try {
+    const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+    if (typeof navigator.canShare === "function" && !navigator.canShare({ files: [file] })) {
+      return false;
+    }
+
+    await navigator.share({
+      files: [file],
+      title: filename,
+    });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/abort|cancel/i.test(message)) {
+      return true;
+    }
+    return false;
+  }
+}
+
 export async function downloadFile(
   filename: string,
   content: BlobPart | BlobPart[],
@@ -87,14 +112,25 @@ export async function downloadFile(
   // #endregion
 
   if (!isNative) {
+    const shared = await tryWebShareDownload(blob, safeFilename);
+    if (shared) {
+      return;
+    }
+
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
 
     anchor.href = url;
     anchor.download = safeFilename;
+    anchor.rel = "noopener";
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
     anchor.click();
+    document.body.removeChild(anchor);
 
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 1000);
     // #region debug-point archive-pdf-no-op:web-download
     reportArchivePdfDebug({
       hypothesisId: "D",

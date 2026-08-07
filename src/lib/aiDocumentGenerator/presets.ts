@@ -51,6 +51,7 @@ export const AI_DOCUMENT_PRESETS: AiDocumentPreset[] = [
 		id: "podcast-discussion",
 		displayName: "Podcast Discussion",
 		filenameStem: "podcast-discussion",
+		defaultStructure: "chapter-by-chapter",
 		supportsGeminiTts: true,
 		systemPrompt: buildPodcastDiscussionSystemPrompt(),
 	},

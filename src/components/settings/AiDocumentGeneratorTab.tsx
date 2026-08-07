@@ -21,6 +21,10 @@ import {
 } from "../../lib/aiDocumentGenerator/presets";
 import type { AiDocumentOutputFormat, AiDocumentStructure } from "../../lib/aiDocumentGenerator/types";
 import { readMarkdownUploadFile, readUploadedSourceFile } from "../../lib/aiDocumentGenerator/sourceMaterial";
+import {
+	canDownloadAiDocumentJob,
+	downloadAiDocumentJobResult,
+} from "../../lib/aiDocumentGenerator/download";
 
 type SourceMode = "library" | "upload";
 
@@ -48,6 +52,7 @@ export function AiDocumentGeneratorTab() {
 	const [audioErrorMessage, setAudioErrorMessage] = useState<string | null>(null);
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [activeDocumentJobId, setActiveDocumentJobId] = useState<string | null>(null);
+	const [completedDocumentJobId, setCompletedDocumentJobId] = useState<string | null>(null);
 	const [activeAudioJobId, setActiveAudioJobId] = useState<string | null>(null);
 
 	const selectedPreset = getAiDocumentPreset(presetId);
@@ -149,7 +154,12 @@ export function AiDocumentGeneratorTab() {
 
 		if (job.status === "complete") {
 			setIsGenerating(false);
-			setStatusMessage(job.result?.notificationBody ?? "Document generation complete.");
+			setStatusMessage(
+				canDownloadAiDocumentJob(job)
+					? `${job.result?.aiDocumentFilename ?? "Document"} is ready — tap Download below.`
+					: job.result?.notificationBody ?? "Document generation complete.",
+			);
+			setCompletedDocumentJobId(job.id);
 			setActiveDocumentJobId(null);
 			return;
 		}
@@ -212,6 +222,7 @@ export function AiDocumentGeneratorTab() {
 	async function handleGenerate() {
 		setErrorMessage(null);
 		setStatusMessage(null);
+		setCompletedDocumentJobId(null);
 
 		if (sourceMode === "library" && !storyId) {
 			setErrorMessage("Select a story from your library.");
@@ -318,6 +329,25 @@ export function AiDocumentGeneratorTab() {
 		} catch (error) {
 			setIsGenerating(false);
 			setAudioErrorMessage(error instanceof Error ? error.message : "Unable to queue podcast audio.");
+		}
+	}
+
+	const completedDocumentJob = completedDocumentJobId
+		? backgroundJobs.find((entry) => entry.id === completedDocumentJobId)
+		: undefined;
+	const canDownloadCompletedDocument = completedDocumentJob
+		? canDownloadAiDocumentJob(completedDocumentJob)
+		: false;
+
+	async function handleDownloadDocument() {
+		if (!completedDocumentJob || !canDownloadCompletedDocument) {
+			return;
+		}
+
+		try {
+			await downloadAiDocumentJobResult(completedDocumentJob);
+		} catch (error) {
+			setErrorMessage(error instanceof Error ? error.message : "Unable to download document.");
 		}
 	}
 
@@ -621,7 +651,7 @@ export function AiDocumentGeneratorTab() {
 									onChange={(event) =>
 										setOutputFormat(event.target.value as AiDocumentOutputFormat)
 									}
-									disabled={isGenerating || (!hasGeminiKey && outputFormat === "markdown")}
+									disabled={isGenerating}
 								>
 									<option value="markdown">Markdown document</option>
 									<option value="gemini-audio-wav" disabled={!hasGeminiKey}>
@@ -674,6 +704,11 @@ export function AiDocumentGeneratorTab() {
 						<Button type="button" onClick={() => void handleGenerate()} disabled={isGenerating}>
 							{isGenerating ? "Generating…" : errorMessage ? "Retry" : "Generate"}
 						</Button>
+						{canDownloadCompletedDocument ? (
+							<Button type="button" variant="secondary" onClick={() => void handleDownloadDocument()}>
+								Download Markdown
+							</Button>
+						) : null}
 						{isGenerating ? (
 							<Button type="button" variant="secondary" onClick={handleCancel}>
 								Cancel
