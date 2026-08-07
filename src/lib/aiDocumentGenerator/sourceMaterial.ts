@@ -6,6 +6,9 @@ import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
 import { serializeStoryExport } from "../storyExport";
 import type { ChapterSourceSegment } from "./types";
+import { resolveNarrativeProtagonistName } from "../narrativeIdentity";
+import { resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
+import { safeParseStoryStateData } from "../storyStateV2";
 
 const MAX_SOURCE_CHARS = 140000;
 const MAX_CHAPTER_SOURCE_CHARS = 32000;
@@ -19,7 +22,13 @@ function truncateSourceMaterial(text: string, maxChars = MAX_SOURCE_CHARS) {
 	return `${trimmed.slice(0, maxChars).trim()}\n\n[Source truncated for model context limits.]`;
 }
 
-function resolveSpeakerLabel(message: StoryMessage, playerCharacter: PlayerCharacter) {
+function resolveSpeakerLabel(
+	message: StoryMessage,
+	playerCharacter: PlayerCharacter,
+	storyStateJson?: string | null,
+) {
+	const storyState = storyStateJson?.trim() ? safeParseStoryStateData(storyStateJson) : null;
+	const sceneName = resolvePlayerCharacterSceneName(playerCharacter, { storyState });
 	if (message.role === "user") {
 		if (isAuthorDirectiveMessage(message)) {
 			return message.speakerName?.trim() || "Author";
@@ -30,7 +39,7 @@ function resolveSpeakerLabel(message: StoryMessage, playerCharacter: PlayerChara
 		if (isDirectorMessage(message)) {
 			return "Director";
 		}
-		return message.speakerName?.trim() || playerCharacter.name;
+		return message.speakerName?.trim() || sceneName;
 	}
 
 	if (message.role === "system" || message.speakerType === "system") {
@@ -48,8 +57,12 @@ function resolveSpeakerLabel(message: StoryMessage, playerCharacter: PlayerChara
 	return message.role === "assistant" ? "Narrator" : "System";
 }
 
-function formatMessageLine(message: StoryMessage, playerCharacter: PlayerCharacter) {
-	const speaker = resolveSpeakerLabel(message, playerCharacter);
+function formatMessageLine(
+	message: StoryMessage,
+	playerCharacter: PlayerCharacter,
+	storyStateJson?: string | null,
+) {
+	const speaker = resolveSpeakerLabel(message, playerCharacter, storyStateJson);
 	const prefix = speaker ? `${speaker}: ` : "";
 	return `[${formatDateTime(message.timestamp)}] ${prefix}${message.content.trim()}`;
 }
@@ -84,7 +97,7 @@ export function segmentStoryBundleByChapter(bundle: StoryExportBundle): ChapterS
 			currentLines = [];
 			currentLabel = boundary.label.trim() || "Chapter";
 		}
-		currentLines.push(formatMessageLine(message, bundle.playerCharacter));
+		currentLines.push(formatMessageLine(message, bundle.playerCharacter, bundle.storyState?.stateJson));
 	}
 
 	pushSegment();
@@ -105,10 +118,13 @@ export function buildChapterSegmentedSourceMaterial(bundle: StoryExportBundle) {
 		return buildSourceMaterialFromStoryBundle(bundle);
 	}
 
+	const storyState = bundle.storyState?.stateJson?.trim()
+		? safeParseStoryStateData(bundle.storyState.stateJson)
+		: null;
 	const header = [
 		`Story: ${bundle.story.title}`,
 		`Universe: ${bundle.universe.name}`,
-		`Protagonist: ${bundle.playerCharacter.name}`,
+		`Protagonist: ${resolveNarrativeProtagonistName(bundle.playerCharacter, storyState, bundle.messages)}`,
 		`Summary: ${bundle.story.currentSummary?.trim() || "No summary provided."}`,
 		"",
 		"The transcript below is split by chapter. Cover every chapter in order.",

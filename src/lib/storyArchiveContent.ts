@@ -8,6 +8,12 @@ import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
 import { isDirectorMessage } from "./storyText/directorMode";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
+import {
+	applyNarrativeIdentityToText,
+	buildNarrativeIdentityRegistry,
+	resolveNarrativeDisplayName,
+	resolveNarrativeProtagonistName,
+} from "./narrativeIdentity";
 
 export function trimStringList(value: unknown, maxItems: number): string[] {
 	if (!Array.isArray(value)) {
@@ -163,6 +169,16 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 
 	const indexes = storyStateData?.indexes;
 	const sortedMessages = sortByTimestampAsc(bundle.messages);
+	const narrativeRegistry = buildNarrativeIdentityRegistry({
+		storyState: storyStateData,
+		playerCharacter: bundle.playerCharacter,
+		messages: sortedMessages,
+		messageCount: sortedMessages.length,
+	});
+	const redact = (text: string) =>
+		applyNarrativeIdentityToText(text, narrativeRegistry, {
+			messageCount: sortedMessages.length,
+		});
 	const chapterMarkers = new Map<number, string>();
 	for (const chapter of bundle.chapters ?? []) {
 		const idx =
@@ -240,15 +256,23 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 						})
 					: [];
 			return {
-				name,
-				aliases,
-				description: typeof entry.description === "string" ? entry.description.trim() : "",
+				name: resolveNarrativeDisplayName(name, narrativeRegistry, {
+					messageCount: sortedMessages.length,
+				}),
+				aliases: aliases
+					.map((alias) =>
+						resolveNarrativeDisplayName(alias, narrativeRegistry, {
+							messageCount: sortedMessages.length,
+						}),
+					)
+					.filter((alias, index, list) => alias && list.indexOf(alias) === index),
+				description: redact(typeof entry.description === "string" ? entry.description.trim() : ""),
 				firstSeenMessage:
 					typeof entry.firstSeenMessage === "number" ? Math.trunc(entry.firstSeenMessage) : null,
 				lastSeenMessage:
 					typeof entry.lastSeenMessage === "number" ? Math.trunc(entry.lastSeenMessage) : null,
 				evidence: formatEvidence(coerceEvidenceNumbers(entry)),
-				statusLines: getCharacterStatusLines(stateEntry, synthesized),
+				statusLines: getCharacterStatusLines(stateEntry, synthesized).map(redact),
 			};
 		})
 		.filter((entry) => entry.name)
@@ -256,13 +280,21 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 
 	const relationships = (Array.isArray(indexes?.relationships) ? indexes.relationships : [])
 		.map((entry) => ({
-			a: typeof entry.a === "string" ? entry.a.trim() : "",
-			b: typeof entry.b === "string" ? entry.b.trim() : "",
+			a: resolveNarrativeDisplayName(
+				typeof entry.a === "string" ? entry.a.trim() : "",
+				narrativeRegistry,
+				{ messageCount: sortedMessages.length },
+			),
+			b: resolveNarrativeDisplayName(
+				typeof entry.b === "string" ? entry.b.trim() : "",
+				narrativeRegistry,
+				{ messageCount: sortedMessages.length },
+			),
 			tier: typeof entry.tier === "string" ? entry.tier.trim() : "stranger",
-			summary: typeof entry.summary === "string" ? entry.summary.trim() : "",
+			summary: redact(typeof entry.summary === "string" ? entry.summary.trim() : ""),
 			history: Array.isArray(entry.history)
 				? entry.history
-						.map((beat) => (typeof beat.summary === "string" ? beat.summary.trim() : ""))
+						.map((beat) => redact(typeof beat.summary === "string" ? beat.summary.trim() : ""))
 						.filter(Boolean)
 				: [],
 			evidence: formatEvidence(coerceEvidenceNumbers(entry)),
@@ -274,21 +306,32 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 		: Array.isArray(storyStateData?.worldFacts)
 			? storyStateData.worldFacts
 			: [];
-	const worldFacts = mapEvidenceRows(worldFactsRaw as unknown[], "fact");
+	const worldFacts = mapEvidenceRows(worldFactsRaw as unknown[], "fact").map((entry) => ({
+		...entry,
+		text: redact(entry.text),
+	}));
 
 	const openThreadsRaw = Array.isArray(indexes?.openThreads)
 		? indexes.openThreads
 		: Array.isArray(storyStateData?.unresolvedThreads)
 			? storyStateData.unresolvedThreads
 			: [];
-	const openThreads = mapEvidenceRows(openThreadsRaw as unknown[], "thread");
+	const openThreads = mapEvidenceRows(openThreadsRaw as unknown[], "thread").map((entry) => ({
+		...entry,
+		text: redact(entry.text),
+	}));
 
 	const significantMemoriesRaw = Array.isArray(indexes?.significantMemories)
 		? indexes.significantMemories
 		: Array.isArray(storyStateData?.significantMemories)
 			? storyStateData.significantMemories
 			: [];
-	const significantMemories = mapEvidenceRows(significantMemoriesRaw as unknown[], "moment");
+	const significantMemories = mapEvidenceRows(significantMemoriesRaw as unknown[], "moment").map(
+		(entry) => ({
+			...entry,
+			text: redact(entry.text),
+		}),
+	);
 
 	const locationsRaw =
 		indexes?.locations && typeof indexes.locations === "object" && !Array.isArray(indexes.locations)
@@ -317,18 +360,25 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 					: null,
 		}));
 
-	const premise = storyStateData?.summaries?.premise?.trim() ?? "";
-	const protagonistFocus = storyStateData?.summaries?.protagonistSummary?.trim() ?? "";
-	const currentSituation = storyStateData?.summaries?.currentSituation?.trim() ?? "";
-	const recentDevelopments = trimStringList(storyStateData?.summaries?.recentDevelopments, 12);
-	const fallbackSummary =
-		bundle.story.currentSummary?.trim() || storyStateData?.summaries?.worldSummary?.trim() || "";
+	const premise = redact(storyStateData?.summaries?.premise?.trim() ?? "");
+	const protagonistFocus = redact(storyStateData?.summaries?.protagonistSummary?.trim() ?? "");
+	const currentSituation = redact(storyStateData?.summaries?.currentSituation?.trim() ?? "");
+	const recentDevelopments = trimStringList(storyStateData?.summaries?.recentDevelopments, 12).map(
+		redact,
+	);
+	const fallbackSummary = redact(
+		bundle.story.currentSummary?.trim() || storyStateData?.summaries?.worldSummary?.trim() || "",
+	);
 
 	return {
 		title: bundle.story.title,
 		metadata: {
 			universe: bundle.universe.name,
-			protagonist: bundle.playerCharacter.name,
+			protagonist: resolveNarrativeProtagonistName(
+				bundle.playerCharacter,
+				storyStateData,
+				sortedMessages,
+			),
 			exportedAt: formatDateTime(bundle.exportedAt),
 			...(storyStateData?.indexedAt ? { indexedAt: formatDateTime(storyStateData.indexedAt) } : {}),
 			...(typeof indexes?.messageCount === "number" && Number.isFinite(indexes.messageCount)

@@ -24,6 +24,7 @@ import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
 import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
+import { createNarrativeIdentityPromptContext, redactNarrativePromptText, resolveNarrativePromptName } from "../narrativeIdentity";
 import {
   formatAuthorDirectiveStateForPrompt,
   isAuthorDirectiveMessage,
@@ -155,6 +156,12 @@ export function buildStoryChatContext({
     storyState: parsedStoryState,
     recentMessages,
   });
+  const narrativeIdentity = createNarrativeIdentityPromptContext({
+    storyState: parsedStoryState,
+    playerCharacter,
+    messages: recentMessages,
+    messageCount: recentMessages.length,
+  });
   const latestMessageIsDirectorNote =
     latestUserMessageSpeakerType === "director" || Boolean(directorStagingNote?.trim());
   const latestMessageIsContinueNote = latestUserMessageSpeakerType === "continue";
@@ -226,7 +233,7 @@ export function buildStoryChatContext({
     : "No imported lore is available for this universe yet.";
 
   const summaryBlock = latestSummary
-    ? normalizeWhitespace(latestSummary)
+    ? normalizeWhitespace(redactNarrativePromptText(latestSummary, narrativeIdentity))
     : "No story summary is available yet.";
 
   const storyStateBlock = (() => {
@@ -242,9 +249,12 @@ export function buildStoryChatContext({
 
     return {
       longTerm:
-        formatStoryLongTermMemoryForPrompt(parsed, { playerName: playerCharacter.name }) ||
+        formatStoryLongTermMemoryForPrompt(parsed, {
+          playerName: playerCharacter.name,
+          narrativeIdentity,
+        }) ||
         "No long-term memory is recorded yet.",
-      scene: formatStorySceneStateForPrompt(parsed),
+      scene: formatStorySceneStateForPrompt(parsed, { narrativeIdentity }),
     };
   })();
   const authorDirectiveBlock = formatAuthorDirectiveStateForPrompt(
@@ -345,8 +355,11 @@ export function buildStoryChatContext({
           const intentions = rels
             .filter((r) => r.playerIntention?.trim())
             .map((r) => {
-              const npc = r.a.toLowerCase().trim() === playerNorm ? r.b : r.a;
-              return `${npc}: ${r.playerIntention}`;
+              const npc = resolveNarrativePromptName(
+                r.a.toLowerCase().trim() === playerNorm ? r.b : r.a,
+                narrativeIdentity,
+              );
+              return `${npc}: ${redactNarrativePromptText(r.playerIntention ?? "", narrativeIdentity)}`;
             });
           if (!intentions.length) return [];
           return ["", "Player's relationship intentions:", ...intentions.map((i) => `- ${i}`)];
@@ -389,7 +402,8 @@ export function buildStoryChatContext({
       "Do not force every conversation back onto the player character. Let side conversations, overlapping reactions, and shifting local focus happen when the scene calls for it.",
       "Scene ownership can belong to the player character, a supporting character, several supporting characters, or the wider cast.",
       "Name resolution rule: treat nicknames, shortened names, last-name references, and informal variants as referring to the same character unless the story explicitly introduces a separate person.",
-      "Use Long-Term Memory name preferences: if a character has a displayName or aliases recorded, prefer the displayName for speaker headers and how other characters address them.",
+      "Narrative identity rule: Long-Term Memory and summaries reflect what the story audience currently knows. Do not reveal hidden identities, undercover aliases, or true names that have not been established in the transcript.",
+      "Use Long-Term Memory name preferences: if a character has a narrative or display name recorded, prefer that for speaker headers and how other characters address them.",
       `Player character naming: use "${playerSceneName}" for speaker headers and third-person narration unless the scene is explicitly formal or the legal identity has been revealed in-story.`,
       playerSceneName.toLowerCase() !== playerCharacter.name.trim().toLowerCase()
         ? `Do NOT use the player character's legal/full name "${playerCharacter.name.trim()}" in speaker headers or casual narration while they are using the in-story alias "${playerSceneName}".`
@@ -622,15 +636,34 @@ export function buildStoryChatContext({
 export function buildStorySummaryContext({
   storyTitle,
   playerCharacterName,
+  playerCharacter,
+  storyState,
   messages,
 }: {
   storyTitle: string;
   playerCharacterName: string;
+  playerCharacter?: Pick<PlayerCharacter, "name" | "aliases">;
+  storyState?: StoryState | null;
   messages: StoryMessage[];
 }): AIChatMessage[] {
+  const parsedStoryState = storyState?.stateJson?.trim()
+    ? safeParseStoryStateData(storyState.stateJson)
+    : null;
+  const playerSceneName = playerCharacter
+    ? resolvePlayerCharacterSceneName(playerCharacter, {
+        storyState: parsedStoryState,
+        recentMessages: messages,
+      })
+    : playerCharacterName;
+  const narrativeIdentity = createNarrativeIdentityPromptContext({
+    storyState: parsedStoryState,
+    playerCharacter: playerCharacter ?? { name: playerCharacterName, aliases: [] },
+    messages,
+    messageCount: messages.length,
+  });
   const chatHistory = sortByTimestampAsc(messages)
     .slice(-MAX_RECENT_MESSAGES)
-    .map((message) => formatTimelineMessage(message, playerCharacterName));
+    .map((message) => formatTimelineMessage(message, playerSceneName));
 
   return [
     {
@@ -638,6 +671,8 @@ export function buildStorySummaryContext({
       content: normalizeWhitespace(
         [
           `Conversation transcript for "${storyTitle}".`,
+          "Write the summary from the audience's current knowledge only. Do not reveal hidden identities, undercover aliases, or true names that the transcript has not yet established.",
+          "Use the in-story names characters are known by (for example, a witness name rather than an unrevealed true identity).",
           "Continue lines are out-of-character continuation notes kept in the transcript for reference.",
           "They tell the model to keep the current scene moving, but they are not themselves in-universe events to summarize.",
           "Director lines are out-of-character staging notes kept in the transcript for reference.",
@@ -646,6 +681,19 @@ export function buildStorySummaryContext({
         ].join("\n"),
       ),
     },
+    ...(parsedStoryState
+      ? [
+          {
+            role: "system" as const,
+            content: normalizeWhitespace(
+              `Reader knowledge snapshot\n\n${formatStoryLongTermMemoryForPrompt(parsedStoryState, {
+                playerName: playerCharacterName,
+                narrativeIdentity,
+              })}`,
+            ),
+          },
+        ]
+      : []),
     ...chatHistory,
   ];
 }

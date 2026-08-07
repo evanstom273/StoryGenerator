@@ -8235,6 +8235,8 @@ export function StoryEngineProvider({
           const summaryContext = buildStorySummaryContext({
             storyTitle: story.title,
             playerCharacterName: playerCharacter.name,
+            playerCharacter,
+            storyState: await repository.getStoryState(storyId),
             messages: updatedMessages,
           });
 

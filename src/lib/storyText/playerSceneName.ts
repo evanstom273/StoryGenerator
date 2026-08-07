@@ -1,4 +1,4 @@
-import type { StoryMessage, StoryStateCharacterState, StoryStateData } from "../../types/models";
+import type { StoryMessage, StoryStateCharacterState, StoryStateData, StoryStateDataV2 } from "../../types/models";
 import {
 	type CharacterTtsGenderMap,
 	inferGenderFromPronounsInText,
@@ -41,7 +41,7 @@ function isLegalNameReference(label: string, legalName: string) {
 }
 
 export function findPlayerStoryStateEntry(
-	storyState: StoryStateData | null | undefined,
+	storyState: StoryStateData | StoryStateDataV2 | null | undefined,
 	legalName: string,
 ): StoryStateCharacterState | null {
 	if (!storyState?.characters) {
