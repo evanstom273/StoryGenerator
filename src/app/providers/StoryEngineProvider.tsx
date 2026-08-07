@@ -180,6 +180,8 @@ import {
 	sortQueuedBackgroundTasks,
 	audiobookProgressToBackgroundJobProgress,
 	backgroundJobProgressFromSteps,
+	buildSingleDocumentSteps,
+	setBackgroundJobStepStatus,
 } from "../../lib/backgroundTasks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
@@ -3447,13 +3449,27 @@ export function StoryEngineProvider({
       progress: NonNullable<BackgroundJob["progress"]>,
     ) => {
       const liveJob = await repository.getBackgroundJob(jobId);
-      if (!liveJob || liveJob.status !== "running") {
+      if (!liveJob) {
         return;
       }
 
-      await repository.saveBackgroundJob({ ...liveJob, progress });
+      const processorActive = inFlightBackgroundJobsRef.current.has(jobId);
+      if (
+        liveJob.status !== "running" &&
+        !(liveJob.status === "queued" && processorActive)
+      ) {
+        return;
+      }
+
+      const nextJob: BackgroundJob = {
+        ...liveJob,
+        status: "running",
+        startedAt: liveJob.startedAt ?? new Date().toISOString(),
+        progress,
+      };
+      await repository.saveBackgroundJob(nextJob);
       setBackgroundJobs((current) =>
-        current.map((entry) => (entry.id === jobId ? { ...entry, progress } : entry)),
+        current.map((entry) => (entry.id === jobId ? nextJob : entry)),
       );
     },
     [repository],
@@ -3834,11 +3850,17 @@ export function StoryEngineProvider({
         });
       };
 
-      updateDocumentProgress();
-
       let streamedDraft = "";
+      let lastStreamingProgressAt = 0;
       const onChunk = (chunk: string) => {
         streamedDraft += chunk;
+        const now = Date.now();
+        if (!activeDocumentSteps?.length || now - lastStreamingProgressAt < 2000) {
+          return;
+        }
+
+        lastStreamingProgressAt = now;
+        void updateDocumentProgress(activeDocumentSteps);
       };
       const onChunkReset = () => {
         streamedDraft = "";
@@ -3881,7 +3903,8 @@ export function StoryEngineProvider({
 
       let markdown = "";
       if (job.type === "ai_document") {
-        if (structure === "chapter-by-chapter" && chapterSegments.length > 1) {
+        if (structure === "chapter-by-chapter") {
+          updateDocumentProgress();
           markdown = await generateChapterStructuredDocument({
             preset,
             customPrompt: job.payload?.aiDocumentCustomPrompt,
@@ -3893,6 +3916,9 @@ export function StoryEngineProvider({
             signal,
           });
         } else {
+          let singleDocumentSteps = buildSingleDocumentSteps(`Writing ${preset.displayName}`);
+          singleDocumentSteps = setBackgroundJobStepStatus(singleDocumentSteps, "generation", "start");
+          updateDocumentProgress(singleDocumentSteps);
           const messages = buildAiDocumentMessages({
             preset,
             customPrompt: job.payload?.aiDocumentCustomPrompt,
@@ -3901,6 +3927,8 @@ export function StoryEngineProvider({
             structure,
           });
           markdown = await generateChunk(messages);
+          singleDocumentSteps = setBackgroundJobStepStatus(singleDocumentSteps, "generation", "complete");
+          updateDocumentProgress(singleDocumentSteps);
         }
       } else {
         markdown = sourceMaterial;
@@ -4569,6 +4597,12 @@ export function StoryEngineProvider({
     }
 
     for (const jobId of [...activeBackgroundJobIdsRef.current]) {
+      if (!backgroundJobControllersRef.current[jobId]) {
+        activeBackgroundJobIdsRef.current.delete(jobId);
+      }
+    }
+
+    for (const jobId of [...activeBackgroundJobIdsRef.current]) {
       const isStillActive = backgroundJobs.some(
         (job) =>
           job.id === jobId && (job.status === "queued" || job.status === "running"),
@@ -4578,13 +4612,35 @@ export function StoryEngineProvider({
       }
     }
 
+    const orphanedRunningJobs = backgroundJobs.filter(
+      (job) =>
+        isBackgroundTaskJob(job) &&
+        !isAudiobookListenBackgroundJob(job) &&
+        job.status === "running" &&
+        !inFlightBackgroundJobsRef.current.has(job.id) &&
+        !backgroundJobControllersRef.current[job.id],
+    );
+    if (orphanedRunningJobs.length) {
+      void Promise.all(
+        orphanedRunningJobs.map((job) =>
+          repository.saveBackgroundJob({
+            ...job,
+            status: "queued",
+            error: undefined,
+          }),
+        ),
+      ).then(() => hydrate(false));
+      return;
+    }
+
     const maxConcurrent = resolveMaxConcurrentBackgroundTasks(
       aiSettings?.maxConcurrentBackgroundTasks,
     );
     const activeBtCount = backgroundJobs.filter(
       (job) =>
         isBackgroundTaskJob(job) &&
-        (job.status === "running" || activeBackgroundJobIdsRef.current.has(job.id)),
+        (inFlightBackgroundJobsRef.current.has(job.id) ||
+          backgroundJobControllersRef.current[job.id]),
     ).length;
     const slots = maxConcurrent - activeBtCount;
     if (slots <= 0) {
@@ -4609,7 +4665,9 @@ export function StoryEngineProvider({
     aiSettings?.maxConcurrentBackgroundTasks,
     backgroundJobs,
     errorMessage,
+    hydrate,
     loading,
+    repository,
     startBackgroundTaskJob,
   ]);
 

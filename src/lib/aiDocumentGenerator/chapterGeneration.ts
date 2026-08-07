@@ -42,16 +42,10 @@ export async function generateChapterStructuredDocument(params: {
 	}
 
 	const segments = params.chapterSegments.filter((segment) => segment.transcript.trim());
-	if (segments.length <= 1) {
-		const messages = buildAiDocumentMessages({
-			preset: params.preset,
-			customPrompt: params.customPrompt,
-			sourceLabel: params.sourceLabel,
-			sourceMaterial: params.fullSourceMaterial,
-			structure: "chapter-by-chapter",
-		});
-		return await params.generateChunk(messages);
-	}
+	const normalizedSegments =
+		segments.length > 0
+			? segments
+			: [{ label: "Chapter I", transcript: params.fullSourceMaterial.trim() }];
 
 	const isPodcastBreakdown = params.preset.id === "podcast-chapter-breakdown";
 	const isNovelisation = isNovelisationPreset(params.preset.id);
@@ -64,11 +58,11 @@ export async function generateChapterStructuredDocument(params: {
 
 	let steps = buildChapterDocumentSteps({
 		introLabel,
-		chapterLabels: segments.map((segment) => {
+		chapterLabels: normalizedSegments.map((segment) => {
 			if (!isPodcastBreakdown) {
 				return segment.label;
 			}
-			const coverage = estimateChapterDiscussionCoverage(segment, segments);
+			const coverage = estimateChapterDiscussionCoverage(segment, normalizedSegments);
 			return `${segment.label} (${coverage.tier} coverage)`;
 		}),
 		epilogueLabel,
@@ -83,7 +77,7 @@ export async function generateChapterStructuredDocument(params: {
 	const introSourceMaterial = isNovelisation
 		? extractNovelisationTitleSourceMaterial(
 				params.fullSourceMaterial,
-				segments.map((segment) => segment.label),
+				normalizedSegments.map((segment) => segment.label),
 			)
 		: params.fullSourceMaterial;
 	const introMessages = buildAiDocumentMessages({
@@ -98,18 +92,18 @@ export async function generateChapterStructuredDocument(params: {
 	reportStep("intro", "complete");
 
 	const chapterSections: string[] = [];
-	for (let index = 0; index < segments.length; index += 1) {
-		const segment = segments[index]!;
+	for (let index = 0; index < normalizedSegments.length; index += 1) {
+		const segment = normalizedSegments[index]!;
 		if (params.signal?.aborted) {
 			throw new Error("Request aborted.");
 		}
 
-		const coverage = estimateChapterDiscussionCoverage(segment, segments);
+		const coverage = estimateChapterDiscussionCoverage(segment, normalizedSegments);
 		const stepId = `chapter-${index}`;
 		reportStep(stepId, "start");
 
 		const priorDiscussions = isPodcastBreakdown
-			? formatPriorDiscussionsForPrompt(segments, chapterSections, index)
+			? formatPriorDiscussionsForPrompt(normalizedSegments, chapterSections, index)
 			: "";
 
 		const chapterMessages = buildAiDocumentMessages({
@@ -123,7 +117,7 @@ export async function generateChapterStructuredDocument(params: {
 			podcastChapterContext: isPodcastBreakdown
 				? {
 						chapterIndex: index,
-						totalChapters: segments.length,
+						totalChapters: normalizedSegments.length,
 						coverage,
 						priorDiscussions,
 					}
@@ -139,7 +133,7 @@ export async function generateChapterStructuredDocument(params: {
 	}
 
 	reportStep("epilogue", "start");
-	const chapterLabels = segments.map((segment) => segment.label);
+	const chapterLabels = normalizedSegments.map((segment) => segment.label);
 	const epilogueMessages = buildAiDocumentMessages({
 		preset: params.preset,
 		customPrompt: params.customPrompt,

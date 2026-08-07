@@ -104,6 +104,14 @@ export function countCompletedBackgroundJobSteps(steps: BackgroundJobStep[]): nu
 	return steps.filter((step) => step.status === "done").length;
 }
 
+export function buildSingleDocumentSteps(label: string): BackgroundJobStep[] {
+	return [{ id: "generation", label, status: "pending" }];
+}
+
+export function hasRunningBackgroundJobStep(steps: BackgroundJobStep[]): boolean {
+	return steps.some((step) => step.status === "running");
+}
+
 export function buildChapterDocumentSteps(params: {
 	introLabel: string;
 	chapterLabels: string[];
@@ -352,7 +360,10 @@ function getFallbackTotalSeconds(job: BackgroundJob): number {
 			if (job.payload?.aiDocumentPresetId === "novelisation") {
 				return 480;
 			}
-			return 180;
+			if (job.payload?.aiDocumentStructure === "chapter-by-chapter") {
+				return 600;
+			}
+			return 300;
 		case "podcast_audio":
 			return 180;
 		default:
@@ -383,6 +394,12 @@ export function getBackgroundTaskRemainingSeconds(
 		const doneSteps = countCompletedBackgroundJobSteps(progress.steps);
 
 		if (doneSteps === 0) {
+			if (hasRunningBackgroundJobStep(progress.steps)) {
+				if (elapsedSec >= fallbackTotalSec) {
+					return null;
+				}
+				return Math.max(0, fallbackTotalSec - elapsedSec);
+			}
 			return Math.max(0, fallbackTotalSec - elapsedSec);
 		}
 
@@ -415,7 +432,11 @@ export function getBackgroundTaskRemainingLabel(job: BackgroundJob, nowMs = Date
 
 	const remainingSec = getBackgroundTaskRemainingSeconds(job, nowMs);
 	if (remainingSec === null) {
-		return "~…";
+		return "Working…";
+	}
+
+	if (remainingSec <= 0) {
+		return "Working…";
 	}
 
 	return formatEstimatedRemainingSeconds(remainingSec);

@@ -356,4 +356,41 @@ describe("backgroundTasks", () => {
 			makeJob({ id: "early", type: "story_index", status: "queued", queueOrder: 1, createdAt: "2026-01-01T00:00:00.000Z" }),
 		]).map((job) => job.id)).toEqual(["early", "late"]);
 	});
+
+	it("shows working state after the fallback ETA expires while a step is running", () => {
+		const startedAt = new Date(Date.now() - 700_000).toISOString();
+		const steps = buildChapterDocumentSteps({
+			introLabel: "Writing introduction",
+			chapterLabels: ["Chapter I"],
+			epilogueLabel: "Writing closing sections",
+		}).map((step) =>
+			step.id === "intro" ? { ...step, status: "running" as const } : step,
+		);
+
+		expect(
+			getBackgroundTaskRemainingSeconds(
+				makeJob({
+					id: "doc",
+					type: "ai_document",
+					status: "running",
+					startedAt,
+					payload: { aiDocumentStructure: "chapter-by-chapter" },
+					progress: backgroundJobProgressFromSteps("Generating Podcast Discussion", steps),
+				}),
+			),
+		).toBeNull();
+
+		expect(
+			getBackgroundTaskRemainingLabel(
+				makeJob({
+					id: "doc",
+					type: "ai_document",
+					status: "running",
+					startedAt,
+					payload: { aiDocumentStructure: "chapter-by-chapter" },
+					progress: backgroundJobProgressFromSteps("Generating Podcast Discussion", steps),
+				}),
+			),
+		).toBe("Working…");
+	});
 });
