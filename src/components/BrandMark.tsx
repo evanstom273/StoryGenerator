@@ -6,10 +6,16 @@ import { APP_VERSION } from "../app/versioning/version";
 interface BrandMarkProps {
   compact?: boolean;
   iconOnly?: boolean;
+  mobileHeader?: boolean;
   className?: string;
 }
 
-export function BrandMark({ compact = false, iconOnly = false, className }: BrandMarkProps) {
+export function BrandMark({
+  compact = false,
+  iconOnly = false,
+  mobileHeader = false,
+  className,
+}: BrandMarkProps) {
   if (iconOnly) {
     return (
       <Link
@@ -18,6 +24,26 @@ export function BrandMark({ compact = false, iconOnly = false, className }: Bran
         className={cn("flex shrink-0 items-center", className)}
       >
         <BrandLogo className="h-9 w-9" />
+      </Link>
+    );
+  }
+
+  if (mobileHeader) {
+    return (
+      <Link
+        to="/"
+        aria-label="Go to Home"
+        className={cn("flex min-w-0 items-center gap-2", className)}
+      >
+        <BrandLogo className="h-8 w-8 shrink-0" />
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-sm font-semibold tracking-tight text-ink">
+            Story Engine
+          </span>
+          <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-ink-muted">
+            v{APP_VERSION}
+          </span>
+        </div>
       </Link>
     );
   }
