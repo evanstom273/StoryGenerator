@@ -161,13 +161,8 @@ export function StoryMessageBubble({
   onDelete,
   highlighted,
 }: StoryMessageBubbleProps) {
-  if (isContinueMessage(message)) {
-    return null;
-  }
-
-  if (isDirectorMessage(message)) {
-    return null;
-  }
+  const isContinue = isContinueMessage(message);
+  const isDirector = isDirectorMessage(message);
 
   const speakerLabel = resolveSpeakerLabel(
     message.role,
@@ -188,9 +183,9 @@ export function StoryMessageBubble({
       ? "border-amber-300/12 bg-amber-300/5"
       : message.speakerType === "author"
         ? "border-amber-300/18 bg-amber-400/[0.06]"
-      : message.speakerType === "continue"
+      : isContinue || message.speakerType === "continue"
         ? "border-sky-300/18 bg-sky-400/[0.06]"
-      : message.speakerType === "director"
+      : isDirector || message.speakerType === "director"
         ? "border-violet-300/18 bg-violet-400/[0.06]"
       : message.speakerType === "narrator"
         ? "border-white/8 bg-white/[0.02]"
@@ -296,9 +291,13 @@ export function StoryMessageBubble({
                 <div className={cn("truncate text-sm font-semibold", speakerTagClass)}>
                   {speakerLabel}
                 </div>
-                {message.speakerType === "director" ? (
+                {isDirector ? (
                   <div className="text-[10px] text-violet-200/75">
                     Out-of-character scene staging
+                  </div>
+                ) : isContinue ? (
+                  <div className="text-[10px] text-sky-200/75">
+                    Extend the current scene
                   </div>
                 ) : null}
               </div>
