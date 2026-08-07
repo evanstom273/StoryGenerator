@@ -41,6 +41,7 @@ import {
 } from "../../lib/mediaLibrary/libraryKeys";
 import {
 	bindMediaSessionHandlers,
+	clearMediaSession,
 	updateMediaSessionMetadata,
 	updateMediaSessionPlaybackState,
 	updateMediaSessionPositionState,
@@ -209,6 +210,15 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	const playbackSaveContextRef = useRef<Map<string, PlaybackSaveContext>>(new Map());
 	const positionPersistTimerRef = useRef<number | null>(null);
 	const positionPersistAssetRef = useRef<string | null>(null);
+	const mediaSessionArtistRef = useRef<string | undefined>(undefined);
+	const mediaSessionPositionSyncRef = useRef(0);
+	const mediaSessionHandlersRef = useRef({
+		onPlay: () => {},
+		onPause: () => {},
+		onSeekBackward: () => {},
+		onSeekForward: () => {},
+		onSeekTo: (_seekTimeSec: number) => {},
+	});
 
 	const scheduleMediaAssetPositionPersist = useCallback((assetId: string, positionMs: number) => {
 		positionPersistAssetRef.current = assetId;
@@ -305,12 +315,39 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				});
 			};
 
-			audio.onloadedmetadata = syncTimeline;
+			audio.onloadedmetadata = () => {
+				syncTimeline();
+				if (Number.isFinite(audio.duration) && audio.duration > 0) {
+					updateMediaSessionPositionState({
+						durationSec: audio.duration,
+						positionSec: audio.currentTime,
+					});
+				}
+			};
+			audio.onplay = () => {
+				updateMediaSessionPlaybackState("playing");
+			};
+			audio.onpause = () => {
+				updateMediaSessionPlaybackState("paused");
+			};
 			audio.ontimeupdate = () => {
 				syncTimeline();
 				const mediaAssetId = parseMediaAssetPlayId(playId);
 				if (mediaAssetId) {
 					scheduleMediaAssetPositionPersist(mediaAssetId, audio.currentTime * 1000);
+				}
+
+				const now = Date.now();
+				if (
+					now - mediaSessionPositionSyncRef.current >= 1000 &&
+					Number.isFinite(audio.duration) &&
+					audio.duration > 0
+				) {
+					mediaSessionPositionSyncRef.current = now;
+					updateMediaSessionPositionState({
+						durationSec: audio.duration,
+						positionSec: audio.currentTime,
+					});
 				}
 			};
 			audio.onended = () => {
@@ -881,6 +918,9 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 
 			try {
 				await prepared.audio.play();
+				const durationSec = Number.isFinite(prepared.audio.duration)
+					? prepared.audio.duration
+					: state.durationSec;
 				setState((current) => ({
 					...current,
 					activeId: playId,
@@ -894,6 +934,18 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 						? prepared.audio.duration
 						: current.durationSec,
 				}));
+				if (state.playerTitle) {
+					const saveContext = playbackSaveContextRef.current.get(playId);
+					updateMediaSessionMetadata({
+						title: state.playerTitle,
+						artist: mediaSessionArtistRef.current ?? saveContext?.storyTitle,
+					});
+				}
+				updateMediaSessionPlaybackState("playing");
+				updateMediaSessionPositionState({
+					durationSec,
+					positionSec: prepared.audio.currentTime,
+				});
 			} catch {
 				cleanupActiveAudio();
 				setState({
@@ -909,7 +961,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				});
 			}
 		},
-		[attachAudioHandlers, cleanupActiveAudio, state.playerTitle],
+		[attachAudioHandlers, cleanupActiveAudio, state.durationSec, state.playerTitle],
 	);
 
 	const togglePlaybackPause = useCallback(async () => {
@@ -1326,6 +1378,8 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				prepared.audio.currentTime = asset.lastPositionMs / 1000;
 			}
 
+			mediaSessionArtistRef.current = asset.subtitle;
+
 			setState({
 				activeId: playId,
 				status: "ready",
@@ -1336,11 +1390,6 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				playerTitle: asset.title,
 				currentTimeSec: asset.lastPositionMs / 1000,
 				durationSec: asset.durationMs / 1000,
-			});
-
-			updateMediaSessionMetadata({
-				title: asset.title,
-				artist: asset.subtitle,
 			});
 
 			await playPreparedSpeech(playId);
@@ -1428,18 +1477,89 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	);
 
 	useEffect(() => {
+		mediaSessionHandlersRef.current = {
+			onPlay: async () => {
+				const audio = audioRef.current;
+				const playId = state.activeId;
+				if (!audio || !playId) {
+					if (playId && state.status === "ready") {
+						await playPreparedSpeech(playId);
+					}
+					return;
+				}
+
+				if (!audio.paused) {
+					return;
+				}
+
+				try {
+					await audio.play();
+					setState((current) => ({ ...current, status: "playing" }));
+					updateMediaSessionPlaybackState("playing");
+				} catch {
+					/* ignore */
+				}
+			},
+			onPause: () => {
+				const audio = audioRef.current;
+				if (!audio || audio.paused) {
+					return;
+				}
+
+				audio.pause();
+				updateMediaSessionPlaybackState("paused");
+			},
+			onSeekBackward: () => skipBackward(10),
+			onSeekForward: () => skipForward(10),
+			onSeekTo: (seekTimeSec) => seekTo(seekTimeSec),
+		};
+	}, [
+		playPreparedSpeech,
+		seekTo,
+		skipBackward,
+		skipForward,
+		state.activeId,
+		state.status,
+	]);
+
+	useEffect(() => {
+		return bindMediaSessionHandlers({
+			onPlay: () => {
+				void mediaSessionHandlersRef.current.onPlay();
+			},
+			onPause: () => {
+				mediaSessionHandlersRef.current.onPause();
+			},
+			onSeekBackward: () => {
+				mediaSessionHandlersRef.current.onSeekBackward();
+			},
+			onSeekForward: () => {
+				mediaSessionHandlersRef.current.onSeekForward();
+			},
+			onSeekTo: (seekTimeSec) => {
+				mediaSessionHandlersRef.current.onSeekTo(seekTimeSec);
+			},
+		});
+	}, []);
+
+	useEffect(() => {
 		const isActive =
 			state.status === "playing" || state.status === "ready" || state.status === "loading";
 
 		if (!isActive || !state.playerTitle) {
-			updateMediaSessionPlaybackState("none");
-			return bindMediaSessionHandlers({
-				onPlay: () => {},
-				onPause: () => {},
-			});
+			clearMediaSession();
+			mediaSessionArtistRef.current = undefined;
+			return;
 		}
 
-		updateMediaSessionMetadata({ title: state.playerTitle });
+		const saveContext = state.activeId
+			? playbackSaveContextRef.current.get(state.activeId)
+			: undefined;
+
+		updateMediaSessionMetadata({
+			title: state.playerTitle,
+			artist: mediaSessionArtistRef.current ?? saveContext?.storyTitle,
+		});
 		updateMediaSessionPlaybackState(
 			state.status === "playing" && !audioRef.current?.paused ? "playing" : "paused",
 		);
@@ -1447,26 +1567,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 			durationSec: state.durationSec,
 			positionSec: state.currentTimeSec,
 		});
-
-		return bindMediaSessionHandlers({
-			onPlay: () => {
-				void togglePlaybackPause();
-			},
-			onPause: () => {
-				void togglePlaybackPause();
-			},
-			onSeekBackward: () => skipBackward(10),
-			onSeekForward: () => skipForward(10),
-		});
-	}, [
-		skipBackward,
-		skipForward,
-		state.currentTimeSec,
-		state.durationSec,
-		state.playerTitle,
-		state.status,
-		togglePlaybackPause,
-	]);
+	}, [state.durationSec, state.playerTitle, state.status]);
 
 	const isPaused =
 		state.status === "playing" && Boolean(audioRef.current?.paused || !audioRef.current);
