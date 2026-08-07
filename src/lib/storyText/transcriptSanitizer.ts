@@ -7,6 +7,12 @@ import {
 } from "./dialogueQuoteRegions";
 import { normalizeSpeakerNamesInTranscript } from "./speakerLabels";
 import {
+	needsSpeakerAttributionRewrite,
+	repairMalformedTranscriptFormat,
+	repairPlayerOrphanActionLines,
+	repairStrayAsteriskArtifacts,
+} from "./transcriptFormatRepair";
+import {
 	applyPlayerSceneNameToTranscript,
 	normalizeCharacterActionBeatsInTranscript,
 } from "./playerSceneName";
