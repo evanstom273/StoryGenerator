@@ -3,9 +3,11 @@ import type { StoryStateData } from "../../types/models";
 import {
 	applyNarrativeIdentityToText,
 	buildNarrativeIdentityRegistry,
+	createNarrativeIdentityPromptContext,
 	resolveNarrativeDisplayName,
 	resolveNarrativeProtagonistName,
 } from "../narrativeIdentity";
+import { formatStoryLongTermMemoryForPrompt } from "../ai/storyStateExtractor";
 
 const silasStoryState: StoryStateData = {
 	updatedAt: "2026-08-07T18:00:00.000Z",
@@ -122,5 +124,24 @@ describe("narrativeIdentity", () => {
 		expect(resolveNarrativeDisplayName("Silas Thorne", registry, { messageCount: 22 })).toBe(
 			"Mark Owen (revealed to be Silas Thorne)",
 		);
+	});
+
+	it("redacts long-term memory prompts for narration context", () => {
+		const narrativeIdentity = createNarrativeIdentityPromptContext({
+			storyState: silasStoryState,
+			playerCharacter: {
+				name: "Silas Thorne",
+				aliases: ["Mark Owen"],
+			},
+			messageCount: 22,
+		});
+		const prompt = formatStoryLongTermMemoryForPrompt(silasStoryState, {
+			playerName: "Silas Thorne",
+			narrativeIdentity,
+		});
+
+		expect(prompt).toContain("Mark Owen");
+		expect(prompt).not.toContain("Silas Thorne posing as");
+		expect(prompt).toContain("Jake Peralta ↔ Mark Owen");
 	});
 });

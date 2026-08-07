@@ -16,6 +16,11 @@ import {
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
 import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt } from "../playerCharacterPrompt";
+import {
+	type NarrativeIdentityPromptContext,
+	redactNarrativePromptText,
+	resolveNarrativePromptName,
+} from "../narrativeIdentity";
 
 const MAX_RECENT_MESSAGES = 40;
 
@@ -520,8 +525,13 @@ function trimStringList(value: unknown, maxItems: number) {
 
 export function formatStoryLongTermMemoryForPrompt(
   storyStateData: StoryStateData | StoryStateDataV2,
-  opts?: { playerName?: string | null },
+  opts?: {
+    playerName?: string | null;
+    narrativeIdentity?: NarrativeIdentityPromptContext;
+  },
 ) {
+  const redact = (text: string) => redactNarrativePromptText(text, opts?.narrativeIdentity);
+  const resolveName = (name: string) => resolveNarrativePromptName(name, opts?.narrativeIdentity);
   const lines: string[] = [];
   const authorDirectiveBlock = formatAuthorDirectiveStateForPrompt(
     (storyStateData as StoryStateData & { authorDirectives?: StoryAuthorDirectiveState })
@@ -544,34 +554,34 @@ export function formatStoryLongTermMemoryForPrompt(
 
     if (typeof premise === "string" && premise.trim()) {
       lines.push("Story Premise:");
-      lines.push(`- ${premise.trim()}`);
+      lines.push(`- ${redact(premise.trim())}`);
     }
     if (typeof protagonistSummary === "string" && protagonistSummary.trim()) {
       lines.push("");
       lines.push("Player Character Focus:");
-      lines.push(`- ${protagonistSummary.trim()}`);
+      lines.push(`- ${redact(protagonistSummary.trim())}`);
     }
     if (typeof currentSituation === "string" && currentSituation.trim()) {
       lines.push("");
       lines.push("Current Situation:");
-      lines.push(`- ${currentSituation.trim()}`);
+      lines.push(`- ${redact(currentSituation.trim())}`);
     }
     if (recentDevelopments.length) {
       lines.push("");
       lines.push("Recent Developments:");
       for (const development of recentDevelopments) {
-        lines.push(`- ${development}`);
+        lines.push(`- ${redact(development)}`);
       }
     }
     if (typeof worldSummary === "string" && worldSummary.trim()) {
       lines.push("");
       lines.push("World Summary:");
-      lines.push(`- ${worldSummary.trim()}`);
+      lines.push(`- ${redact(worldSummary.trim())}`);
     }
     if (typeof relationshipSummary === "string" && relationshipSummary.trim()) {
       lines.push("");
       lines.push("Relationship Summary:");
-      lines.push(`- ${relationshipSummary.trim()}`);
+      lines.push(`- ${redact(relationshipSummary.trim())}`);
     }
   }
 
@@ -597,42 +607,52 @@ export function formatStoryLongTermMemoryForPrompt(
     for (const name of characterNames) {
       const entry = characters[name];
       if (!entry) continue;
+      const displayName = resolveName(name);
 
       const parts: string[] = [];
-      if (entry.displayName && entry.displayName !== name) parts.push(`goes by ${entry.displayName}`);
+      if (entry.displayName && entry.displayName !== name && resolveName(entry.displayName) !== displayName) {
+        parts.push(`goes by ${resolveName(entry.displayName)}`);
+      }
       if (entry.pronouns) parts.push(`pronouns: ${entry.pronouns}`);
-      if (entry.titleOrRank) parts.push(entry.titleOrRank);
-      if (entry.status) parts.push(entry.status);
-      if (entry.aliases?.length) parts.push(`aliases: ${entry.aliases.slice(0, 4).join(", ")}`);
+      if (entry.titleOrRank) parts.push(redact(entry.titleOrRank));
+      if (entry.status) parts.push(redact(entry.status));
+      if (entry.aliases?.length) {
+        const visibleAliases = entry.aliases
+          .map((alias) => resolveName(alias))
+          .filter((alias, index, list) => alias && list.indexOf(alias) === index && alias !== displayName);
+        if (visibleAliases.length) {
+          parts.push(`aliases: ${visibleAliases.slice(0, 4).join(", ")}`);
+        }
+      }
       const relationships = entry.relationships ? Object.entries(entry.relationships).slice(0, 3) : [];
       if (relationships.length) {
         parts.push(
           `relationships: ${relationships
-            .map(([other, rel]) => `${other}=${rel}`)
+            .map(([other, rel]) => `${resolveName(other)}=${redact(rel)}`)
             .join(", ")}`,
         );
       }
 
-      lines.push(`- ${name}${parts.length ? ` — ${parts.join("; ")}` : ""}`);
+      lines.push(`- ${displayName}${parts.length ? ` — ${parts.join("; ")}` : ""}`);
 
       const statusBullets = trimStringList((entry as any).statusBullets, 4);
       if (statusBullets.length) {
-        lines.push(`  status: ${statusBullets.join(" | ")}`);
+        lines.push(`  status: ${statusBullets.map(redact).join(" | ")}`);
       }
 
       const strengths = trimStringList((entry as any).strengths, 4);
       if (strengths.length) {
-        lines.push(`  strengths: ${strengths.join(", ")}`);
+        lines.push(`  strengths: ${strengths.map(redact).join(", ")}`);
       }
 
       const weaknesses = trimStringList((entry as any).weaknesses, 4);
       if (weaknesses.length) {
-        lines.push(`  weaknesses: ${weaknesses.join(", ")}`);
+        lines.push(`  weaknesses: ${weaknesses.map(redact).join(", ")}`);
       }
 
       const traitsPersistent = trimStringList((entry as any).characterTraitsPersistent, 4);
       if (traitsPersistent.length) {
-        lines.push(`  traits: ${traitsPersistent.join(", ")}`);
+        lines.push(`  traits: ${traitsPersistent.map(redact).join(", ")}`);
       }
     }
   }
@@ -641,7 +661,7 @@ export function formatStoryLongTermMemoryForPrompt(
     lines.push("");
     lines.push("Significant Memories:");
     for (const memory of storyStateData.significantMemories.slice(0, 12)) {
-      lines.push(`- ${memory}`);
+      lines.push(`- ${redact(memory)}`);
     }
   }
 
@@ -649,7 +669,7 @@ export function formatStoryLongTermMemoryForPrompt(
     lines.push("");
     lines.push("Relationship State:");
     for (const fact of storyStateData.relationshipState.slice(0, 12)) {
-      lines.push(`- ${fact}`);
+      lines.push(`- ${redact(fact)}`);
     }
   }
 
@@ -690,7 +710,7 @@ export function formatStoryLongTermMemoryForPrompt(
           continue;
         }
 
-        relationshipLines.push(`- ${subject} → ${targetName}: ${parts.join(", ")}`);
+        relationshipLines.push(`- ${resolveName(subject)} → ${resolveName(targetName)}: ${parts.join(", ")}`);
       }
     }
 
@@ -707,8 +727,8 @@ export function formatStoryLongTermMemoryForPrompt(
     for (const rel of indexedRelationships.slice(0, 20)) {
       if (!rel.a || !rel.b) continue;
       const tierLabel = rel.tier ? ` [${rel.tier}]` : "";
-      const summaryPart = rel.summary ? ` — ${rel.summary}` : "";
-      relLines.push(`- ${rel.a} ↔ ${rel.b}${tierLabel}${summaryPart}`);
+      const summaryPart = rel.summary ? ` — ${redact(rel.summary)}` : "";
+      relLines.push(`- ${resolveName(rel.a)} ↔ ${resolveName(rel.b)}${tierLabel}${summaryPart}`);
     }
     if (relLines.length) {
       lines.push("");
@@ -733,9 +753,9 @@ export function formatStoryLongTermMemoryForPrompt(
         parts.push((npc as any).significance);
       }
       if (typeof (npc as any).description === "string" && (npc as any).description.trim()) {
-        parts.push((npc as any).description.trim());
+        parts.push(redact((npc as any).description.trim()));
       }
-      lines.push(`- ${name}${parts.length ? ` — ${parts.join("; ")}` : ""}`);
+      lines.push(`- ${resolveName(name)}${parts.length ? ` — ${parts.join("; ")}` : ""}`);
     }
   }
 
@@ -752,7 +772,7 @@ export function formatStoryLongTermMemoryForPrompt(
         typeof (location as any).description === "string" &&
         (location as any).description.trim()
       ) {
-        parts.push((location as any).description.trim());
+        parts.push(redact((location as any).description.trim()));
       }
       const tags = (location as any).tags;
       if (Array.isArray(tags) && tags.length) {
@@ -766,7 +786,7 @@ export function formatStoryLongTermMemoryForPrompt(
     lines.push("");
     lines.push("World Facts:");
     for (const fact of storyStateData.worldFacts.slice(0, 12)) {
-      lines.push(`- ${fact}`);
+      lines.push(`- ${redact(fact)}`);
     }
   }
 
@@ -774,7 +794,7 @@ export function formatStoryLongTermMemoryForPrompt(
     lines.push("");
     lines.push("Unresolved Threads:");
     for (const thread of storyStateData.unresolvedThreads.slice(0, 10)) {
-      lines.push(`- ${thread}`);
+      lines.push(`- ${redact(thread)}`);
     }
   }
 
@@ -784,11 +804,14 @@ export function formatStoryLongTermMemoryForPrompt(
 
 export function formatStorySceneStateForPrompt(
   storyStateData: StoryStateData | StoryStateDataV2,
+  opts?: { narrativeIdentity?: NarrativeIdentityPromptContext },
 ) {
+  const redact = (text: string) => redactNarrativePromptText(text, opts?.narrativeIdentity);
+  const resolveName = (name: string) => resolveNarrativePromptName(name, opts?.narrativeIdentity);
   const lines: string[] = [];
   if (storyStateData.sceneState?.length) {
     for (const item of storyStateData.sceneState.slice(0, 16)) {
-      lines.push(`- ${item}`);
+      lines.push(`- ${redact(item)}`);
     }
   }
 
@@ -807,7 +830,7 @@ export function formatStorySceneStateForPrompt(
       .slice(0, 8);
 
     for (const entry of sorted) {
-      lines.push(`- ${entry.name}: ${entry.state.join(" | ")}`);
+      lines.push(`- ${resolveName(entry.name)}: ${entry.state.map(redact).join(" | ")}`);
     }
   }
 

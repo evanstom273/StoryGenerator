@@ -298,17 +298,6 @@ export function applyNarrativeIdentityToText(
 		.trim();
 }
 
-export function resolveNarrativeProtagonistName(
-	playerCharacter: Pick<PlayerCharacter, "name" | "aliases">,
-	storyState?: StoryStateData | StoryStateDataV2 | null,
-	messages?: StoryMessage[],
-): string {
-	return resolvePlayerCharacterSceneName(playerCharacter, {
-		storyState,
-		recentMessages: messages,
-	});
-}
-
 export function applyNarrativeIdentityToRelationships<
 	T extends {
 		a: string;
@@ -333,4 +322,51 @@ export function applyNarrativeIdentityToRelationships<
 			summary: applyNarrativeIdentityToText(beat.summary, registry, opts),
 		})),
 	}));
+}
+
+export type NarrativeIdentityPromptContext = {
+	registry: NarrativeIdentityRegistry;
+	messageCount?: number;
+};
+
+export function createNarrativeIdentityPromptContext(
+	input: BuildNarrativeIdentityRegistryInput,
+): NarrativeIdentityPromptContext {
+	return {
+		registry: buildNarrativeIdentityRegistry(input),
+		messageCount: input.messageCount ?? input.messages?.length,
+	};
+}
+
+export function redactNarrativePromptText(
+	text: string,
+	ctx?: NarrativeIdentityPromptContext,
+): string {
+	if (!ctx || !text.trim()) {
+		return text;
+	}
+
+	return applyNarrativeIdentityToText(text, ctx.registry, { messageCount: ctx.messageCount });
+}
+
+export function resolveNarrativePromptName(
+	name: string,
+	ctx?: NarrativeIdentityPromptContext,
+): string {
+	if (!ctx || !name.trim()) {
+		return name;
+	}
+
+	return resolveNarrativeDisplayName(name, ctx.registry, { messageCount: ctx.messageCount });
+}
+
+export function resolveNarrativeProtagonistName(
+	playerCharacter: Pick<PlayerCharacter, "name" | "aliases">,
+	storyState?: StoryStateData | StoryStateDataV2 | null,
+	messages?: StoryMessage[],
+): string {
+	return resolvePlayerCharacterSceneName(playerCharacter, {
+		storyState,
+		recentMessages: messages,
+	});
 }
