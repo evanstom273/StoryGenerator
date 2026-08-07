@@ -100,6 +100,40 @@ describe("normalizeCharacterActionBeatsInTranscript", () => {
 		);
 		expect(resolveSubjectPronounFromActionBeat("*folds her arms*")).toBe("She");
 	});
+
+	it("wraps bare action prose before dialogue and adds pronouns with a trailing period", () => {
+		const normalized = normalizeCharacterActionBeatsInTranscript(
+			'Mark: stares down into the dark liquid in his mug "I saw him.."',
+			{
+				playerSceneName: "Mark",
+				playerPronouns: "he/him",
+			},
+		);
+
+		expect(normalized).toContain("*He stares down into the dark liquid in his mug.*");
+	});
+
+	it("wraps bare action prose for NPC speaker lines", () => {
+		const normalized = normalizeCharacterActionBeatsInTranscript(
+			'Jake: leans in slightly, his voice dropping to a gentle and low "Did you get a look at his face?"',
+		);
+
+		expect(normalized).toContain(
+			"*He leans in slightly, his voice dropping to a gentle and low.*",
+		);
+	});
+
+	it("normalizes bare action lines under a speaker header", () => {
+		const normalized = normalizeCharacterActionBeatsInTranscript(
+			['Mark:', 'shakes his head slowly, his voice a raspy whisper', '"No..."'].join("\n"),
+			{
+				playerSceneName: "Mark",
+				playerPronouns: "he/him",
+			},
+		);
+
+		expect(normalized).toContain("*He shakes his head slowly, his voice a raspy whisper.*");
+	});
 });
 
 describe("stripLeadingSubjectPronounForAudiobook", () => {
