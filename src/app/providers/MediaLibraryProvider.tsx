@@ -8,7 +8,7 @@ import {
 	type ReactNode,
 } from "react";
 import type { MediaAsset, MediaAssetCategory } from "../../types/models";
-import { listMediaAssets, MEDIA_LIBRARY_CHANGED_EVENT } from "../../lib/mediaLibrary/store";
+import { listMediaAssets, deleteMediaAsset, MEDIA_LIBRARY_CHANGED_EVENT } from "../../lib/mediaLibrary/store";
 import { useStoryEngine } from "./StoryEngineProvider";
 
 export type MediaAssetView = MediaAsset & {
@@ -19,6 +19,7 @@ type MediaLibraryContextValue = {
 	assets: MediaAssetView[];
 	loading: boolean;
 	refresh: () => Promise<void>;
+	deleteAsset: (assetId: string) => Promise<void>;
 	getByCategory: (category: MediaAssetCategory) => MediaAssetView[];
 };
 
@@ -39,6 +40,11 @@ export function MediaLibraryProvider({ children }: { children: ReactNode }) {
 		} finally {
 			setLoading(false);
 		}
+	}, []);
+
+	const deleteAsset = useCallback(async (assetId: string) => {
+		await deleteMediaAsset(assetId);
+		setAssets((current) => current.filter((asset) => asset.id !== assetId));
 	}, []);
 
 	useEffect(() => {
@@ -68,9 +74,10 @@ export function MediaLibraryProvider({ children }: { children: ReactNode }) {
 			assets: assetViews,
 			loading,
 			refresh,
+			deleteAsset,
 			getByCategory: (category) => assetViews.filter((asset) => asset.category === category),
 		}),
-		[assetViews, loading, refresh],
+		[assetViews, deleteAsset, loading, refresh],
 	);
 
 	return (
