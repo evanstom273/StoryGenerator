@@ -34,6 +34,7 @@ const TIER_COLOR: Partial<Record<RelationshipTier, string>> = {
 type Props = {
 	relationships: RelationshipIndexEntry[];
 	playerName?: string;
+	playerAliases?: string[];
 	limit?: number;
 	className?: string;
 	emptyLabel?: string;
@@ -42,6 +43,7 @@ type Props = {
 export function RelationshipOverviewList({
 	relationships,
 	playerName,
+	playerAliases,
 	limit,
 	className,
 	emptyLabel = "No relationships indexed yet.",
@@ -55,7 +57,7 @@ export function RelationshipOverviewList({
 	return (
 		<div className={cn("space-y-3", className)}>
 			{visible.map((entry, index) => {
-				const counterparty = relationshipCounterparty(entry, playerName);
+				const counterparty = relationshipCounterparty(entry, playerName, playerAliases);
 				const tier = entry.tier ?? "stranger";
 				return (
 					<div

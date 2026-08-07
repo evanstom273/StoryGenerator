@@ -604,6 +604,7 @@ export function StoryArchiveView({
               <RelationshipOverviewList
                 relationships={narrativeRelationships}
                 playerName={playerName}
+                playerAliases={playerAliases}
               />
             </div>
           </Panel>

@@ -5,6 +5,7 @@ import type {
 	RelationshipTier,
 	StoryIndexesV2,
 } from "../types/models";
+import { resolvePlayerCharacterPreferredSceneName } from "./playerCharacterPrompt";
 
 /** Full tier vocabulary shared by overlay, RP extractor, and index sanitizer. */
 export const RELATIONSHIP_TIERS: readonly RelationshipTier[] = [
@@ -235,22 +236,75 @@ export function isPlayerNameVariant(
 	return set.has(norm);
 }
 
+export function resolvePlayerRelationshipEndpointName(
+	playerName: string,
+	playerAliases?: string[],
+	opts?: {
+		identityRevealedAtMessage?: number;
+		messageCount?: number;
+		canonicalName?: string;
+		narrativeName?: string;
+	},
+): string {
+	const legal = playerName.trim();
+	const scene = resolvePlayerCharacterPreferredSceneName({
+		name: legal,
+		aliases: playerAliases ?? [],
+	});
+	const revealed =
+		typeof opts?.identityRevealedAtMessage === "number" &&
+		opts.identityRevealedAtMessage > 0 &&
+		typeof opts?.messageCount === "number" &&
+		opts.messageCount >= opts.identityRevealedAtMessage;
+
+	if (revealed || normalizeRelationshipKey(scene) === normalizeRelationshipKey(legal)) {
+		return legal;
+	}
+
+	const canonical = opts?.canonicalName?.trim() || legal;
+	const narrative = opts?.narrativeName?.trim() || "";
+	const hasHiddenIdentity =
+		!!narrative &&
+		normalizeRelationshipKey(narrative) !== normalizeRelationshipKey(canonical) &&
+		normalizeRelationshipKey(narrative) === normalizeRelationshipKey(scene);
+
+	if (hasHiddenIdentity) {
+		return scene;
+	}
+
+	return legal;
+}
+
 export function canonicalizeRelationshipEndpoint(
 	name: string,
 	playerName: string,
 	aliasToCanonical: Map<string, string>,
 	playerVariants?: Set<string>,
+	opts?: {
+		playerAliases?: string[];
+		identityRevealedAtMessage?: number;
+		messageCount?: number;
+		canonicalName?: string;
+		narrativeName?: string;
+	},
 ): string | null {
 	if (isPossessiveSpeakerLabel(name.trim())) return null;
 	const stripped = stripRelationshipEndpointAnnotations(name);
 	if (!stripped || !isPlausibleCharacterName(stripped)) return null;
 	const variants = playerVariants ?? buildPlayerNameVariants(playerName);
+	const endpointOpts = {
+		playerAliases: opts?.playerAliases,
+		identityRevealedAtMessage: opts?.identityRevealedAtMessage,
+		messageCount: opts?.messageCount,
+		canonicalName: opts?.canonicalName,
+		narrativeName: opts?.narrativeName,
+	};
 	if (isPlayerNameVariant(stripped, playerName, variants)) {
-		return playerName.trim();
+		return resolvePlayerRelationshipEndpointName(playerName, opts?.playerAliases, endpointOpts);
 	}
 	const resolved = resolveCanonicalCharacterName(stripped, aliasToCanonical);
 	if (isPlayerNameVariant(resolved, playerName, variants)) {
-		return playerName.trim();
+		return resolvePlayerRelationshipEndpointName(playerName, opts?.playerAliases, endpointOpts);
 	}
 	return resolved;
 }
@@ -569,6 +623,10 @@ export function reconcileRelationshipEntries(
 		allowlist?: Set<string>;
 		indexedCharacters?: StoryIndexesV2["characters"];
 		universeImportedCharacters?: string[];
+		identityRevealedAtMessage?: number;
+		messageCount?: number;
+		canonicalName?: string;
+		narrativeName?: string;
 	},
 ): RelationshipIndexEntry[] | undefined {
 	if (!relationships?.length) return undefined;
@@ -607,10 +665,22 @@ export function reconcileRelationshipEntries(
 		if (!rawA || !rawB) continue;
 
 		const canonicalA = opts?.playerName
-			? canonicalizeRelationshipEndpoint(rawA, opts.playerName, aliasToCanonical, playerVariants)
+			? canonicalizeRelationshipEndpoint(rawA, opts.playerName, aliasToCanonical, playerVariants, {
+					playerAliases: opts.playerAliases,
+					identityRevealedAtMessage: opts.identityRevealedAtMessage,
+					messageCount: opts.messageCount,
+					canonicalName: opts.canonicalName,
+					narrativeName: opts.narrativeName,
+				})
 			: resolveCanonicalCharacterName(rawA, aliasToCanonical);
 		const canonicalB = opts?.playerName
-			? canonicalizeRelationshipEndpoint(rawB, opts.playerName, aliasToCanonical, playerVariants)
+			? canonicalizeRelationshipEndpoint(rawB, opts.playerName, aliasToCanonical, playerVariants, {
+					playerAliases: opts.playerAliases,
+					identityRevealedAtMessage: opts.identityRevealedAtMessage,
+					messageCount: opts.messageCount,
+					canonicalName: opts.canonicalName,
+					narrativeName: opts.narrativeName,
+				})
 			: resolveCanonicalCharacterName(rawB, aliasToCanonical);
 		if (!canonicalA || !canonicalB) continue;
 		if (normalizeRelationshipKey(canonicalA) === normalizeRelationshipKey(canonicalB)) continue;

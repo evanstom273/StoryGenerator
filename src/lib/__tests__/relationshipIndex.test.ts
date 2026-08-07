@@ -239,4 +239,48 @@ describe("relationshipIndex", () => {
 		expect(cleaned?.filter((entry) => entry.a === "James Peralta" || entry.b === "James Peralta").length).toBe(2);
 		expect(cleaned?.find((entry) => entry.b === "Jake Peralta" || entry.a === "Jake Peralta")?.tier).toBe("devoted");
 	});
+
+	it("stores hidden player relationship endpoints under scene name", () => {
+		const allowlist = buildCharacterAllowlist({
+			playerName: "Silas Thorne",
+			playerAliases: ["Mark Owen"],
+			indexedCharacters: {
+				jake: { name: "Jake Peralta" },
+				mark: { name: "Mark Owen", aliases: ["Mark"] },
+			},
+			existingRelationships: [
+				{ a: "Jake Peralta", b: "Mark Owen", tier: "colleague" },
+			],
+		});
+
+		const cleaned = reconcileRelationshipEntries(
+			[
+				{
+					a: "Jake Peralta",
+					b: "Silas Thorne",
+					tier: "colleague",
+					summary: "Jake questions Mark Owen in the briefing room.",
+				},
+				{
+					a: "Jake Peralta",
+					b: "Mark Owen",
+					tier: "acquaintance",
+					summary: "Jake pulled up a chair across from Mark Owen.",
+				},
+			],
+			new Map(),
+			{
+				playerName: "Silas Thorne",
+				playerAliases: ["Mark Owen"],
+				allowlist,
+				canonicalName: "Silas Thorne",
+				narrativeName: "Mark Owen",
+			},
+		);
+
+		expect(cleaned?.length).toBe(1);
+		expect(cleaned?.[0]?.a).toBe("Jake Peralta");
+		expect(cleaned?.[0]?.b).toBe("Mark Owen");
+		expect(cleaned?.some((entry) => entry.a === "Silas Thorne" || entry.b === "Silas Thorne")).toBe(false);
+	});
 });
