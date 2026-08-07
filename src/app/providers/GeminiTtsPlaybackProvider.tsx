@@ -40,6 +40,7 @@ import {
 	parseChapterPlayId,
 } from "../../lib/mediaLibrary/libraryKeys";
 import {
+	activateMediaSessionHandlers,
 	bindMediaSessionHandlers,
 	clearMediaSession,
 	updateMediaSessionMetadata,
@@ -930,6 +931,24 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 				});
 			}
 
+			activateMediaSessionHandlers({
+				onPlay: () => {
+					void mediaSessionHandlersRef.current.onPlay();
+				},
+				onPause: () => {
+					mediaSessionHandlersRef.current.onPause();
+				},
+				onSeekBackward: () => {
+					mediaSessionHandlersRef.current.onSeekBackward();
+				},
+				onSeekForward: () => {
+					mediaSessionHandlersRef.current.onSeekForward();
+				},
+				onSeekTo: (seekTimeSec) => {
+					mediaSessionHandlersRef.current.onSeekTo(seekTimeSec);
+				},
+			});
+
 			try {
 				await prepared.audio.play();
 				const durationSec = Number.isFinite(prepared.audio.duration)
@@ -983,8 +1002,26 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 
 		if (audio.paused) {
 			try {
+				activateMediaSessionHandlers({
+					onPlay: () => {
+						void mediaSessionHandlersRef.current.onPlay();
+					},
+					onPause: () => {
+						mediaSessionHandlersRef.current.onPause();
+					},
+					onSeekBackward: () => {
+						mediaSessionHandlersRef.current.onSeekBackward();
+					},
+					onSeekForward: () => {
+						mediaSessionHandlersRef.current.onSeekForward();
+					},
+					onSeekTo: (seekTimeSec) => {
+						mediaSessionHandlersRef.current.onSeekTo(seekTimeSec);
+					},
+				});
 				await audio.play();
 				setState((current) => ({ ...current, status: "playing" }));
+				updateMediaSessionPlaybackState("playing");
 			} catch {
 				/* ignore */
 			}
@@ -992,6 +1029,7 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 		}
 
 		audio.pause();
+		updateMediaSessionPlaybackState("paused");
 		setState((current) => ({ ...current, status: "playing" }));
 	}, [playPreparedSpeech, state.activeId, state.status]);
 
@@ -1010,25 +1048,33 @@ export function GeminiTtsPlaybackProvider({ children }: { children: ReactNode })
 	);
 
 	const skipForward = useCallback(
-		(seconds = 5) => {
+		(seconds = 10) => {
 			const audio = audioRef.current ?? preparedRef.current.get(state.activeId ?? "")?.audio;
 			if (!audio) {
 				return;
 			}
 			seekTo(audio.currentTime + seconds);
+			updateMediaSessionPositionState({
+				durationSec: audio.duration || state.durationSec,
+				positionSec: audio.currentTime,
+			});
 		},
-		[seekTo, state.activeId],
+		[seekTo, state.activeId, state.durationSec],
 	);
 
 	const skipBackward = useCallback(
-		(seconds = 5) => {
+		(seconds = 10) => {
 			const audio = audioRef.current ?? preparedRef.current.get(state.activeId ?? "")?.audio;
 			if (!audio) {
 				return;
 			}
 			seekTo(audio.currentTime - seconds);
+			updateMediaSessionPositionState({
+				durationSec: audio.duration || state.durationSec,
+				positionSec: audio.currentTime,
+			});
 		},
-		[seekTo, state.activeId],
+		[seekTo, state.activeId, state.durationSec],
 	);
 
 	const invalidatePreparedSpeechIfStale = useCallback(
