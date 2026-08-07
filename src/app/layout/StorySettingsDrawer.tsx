@@ -39,8 +39,6 @@ import {
 } from "../../lib/transcriptPresence";
 import { RelationshipOverviewList } from "../../components/story/RelationshipOverviewList";
 import { IndexingProgressPanel } from "../../components/story/IndexingProgressPanel";
-import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
-import { normalizePlayerCharacterAliases } from "../../lib/playerCharacterPrompt";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
 import type {
 	AIProviderType,
@@ -1535,7 +1533,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     const locations = archiveStoryState.indexes?.locations
                       ? Object.values(archiveStoryState.indexes.locations)
                       : [];
-                    const relationships = indexRelationships;
+                    const relationships = archiveStoryState.indexes?.relationships?.length
+                      ? archiveStoryState.indexes.relationships
+                      : indexRelationships;
                     const significantMemories = (archiveStoryState.indexes as any)?.significantMemories ?? [];
                     const premise = archiveStoryState.summaries?.premise?.trim() ?? "";
                     const protagonistSummary = archiveStoryState.summaries?.protagonistSummary?.trim() ?? "";
@@ -1818,10 +1818,10 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                           {relationships.length
                             ? renderArchiveDropdown({
                                 title: "Relationships",
-                                countLabel: `${Math.min(filterPlayerRelationships(relationships, playerCharacter?.name, normalizePlayerCharacterAliases(playerCharacter?.aliases)).length, 12)} shown`,
+                                countLabel: `${Math.min(relationships.length, 12)} shown`,
                                 children: (
                                   <RelationshipOverviewList
-                                    relationships={filterPlayerRelationships(relationships, playerCharacter?.name, normalizePlayerCharacterAliases(playerCharacter?.aliases))}
+                                    relationships={relationships}
                                     playerName={playerCharacter?.name}
                                     limit={12}
                                   />
