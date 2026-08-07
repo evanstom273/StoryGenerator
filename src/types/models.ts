@@ -444,6 +444,8 @@ export interface BackgroundJob {
     notificationTitle?: string;
     notificationBody?: string;
     openMetaChat?: boolean;
+    aiDocumentFilename?: string;
+    aiDocumentMarkdown?: string;
   };
 }
 

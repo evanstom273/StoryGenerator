@@ -166,7 +166,6 @@ import {
 import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
 import { buildCharacterGenderHintsFromStoryState } from "../../lib/ai/characterTtsVoices";
 import { buildCharacterTtsRegistryForStory } from "../../lib/storyText/messageSpeechText";
-import { downloadFile } from "../../lib/download";
 import { ingestAiDocumentAudioFromJob } from "../../lib/mediaLibrary/ingestAiDocumentAudio";
 import { ingestStoryAudio } from "../../lib/mediaLibrary/ingestStoryAudio";
 import { markMediaAssetsOrphanedForStory } from "../../lib/mediaLibrary/store";
@@ -3980,8 +3979,11 @@ export function StoryEngineProvider({
       }
 
       const filename = buildAiDocumentFilename(preset.filenameStem, storyTitle, "md");
-      await downloadFile(filename, markdown, "text/markdown");
-      return { filename, summary: `Downloaded ${filename}` };
+      return {
+        filename,
+        markdown,
+        summary: `${filename} is ready to download`,
+      };
     },
     [getNormalizedAISettings, repository, resolveAIProfile, updateBackgroundJobProgress],
   );
@@ -4426,6 +4428,8 @@ export function StoryEngineProvider({
             notificationBody = ingestResult.created
               ? "Saved to Media Library"
               : "Already in Media Library";
+          } else if (result.markdown) {
+            notificationBody = `${result.filename} is ready — tap Download in Documents or Background Tasks.`;
           }
           const completedJob: BackgroundJob = {
             ...runningJob,
@@ -4438,6 +4442,8 @@ export function StoryEngineProvider({
                   ? "Podcast audio ready"
                   : "AI document ready",
               notificationBody,
+              aiDocumentFilename: result.markdown ? result.filename : undefined,
+              aiDocumentMarkdown: result.markdown,
             },
           };
           await repository.saveBackgroundJob(completedJob);
