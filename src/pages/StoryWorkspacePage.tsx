@@ -27,6 +27,7 @@ import { useTheme } from "../app/theming/ThemeContext";
 import { type AccentThemeKey, isAccentThemeKey } from "../app/theming/themes";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
 import { storyHasGeneratedScenes } from "../lib/ai/playerAssistContext";
+import { formatDirectorNoteComposerHint } from "../lib/storyText/directorSyntax";
 import { createAIProvider } from "../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../lib/ai/models";
 import { selectDiceStat } from "../lib/ai/diceStatSelector";
@@ -1812,7 +1813,7 @@ export function StoryWorkspacePage() {
                 disabled={isReadOnly || guidedGenerationActive}
                 placeholder={
                   assistDefaultsToDirector
-                    ? "Write a Director note (Director: *beat*) or your character's next action."
+                    ? `Write a Director note (${formatDirectorNoteComposerHint()}) or your character's next action.`
                     : "Write what your character does or says next."
                 }
               />

@@ -15,6 +15,7 @@ import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesF
 import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
+import { formatDirectorNoteAuthoringGuidance } from "../storyText/directorSyntax";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
@@ -237,7 +238,7 @@ export function buildDirectorAssistContext({
       "Read the full transcript below to understand where the story currently stands.",
       "Output only the Director note in the required format. No other speakers. No narration. No commentary.",
       "Use first names for characters. Stage the immediate next beat — do not summarize prior scenes.",
-      'Optional parenthetical gists: Character ("approximate dialogue") — the model should paraphrase, never copy verbatim.',
+      formatDirectorNoteAuthoringGuidance(),
       `Use "${resolvePlayerCharacterPreferredSceneName(playerCharacter)}" as the player character's preferred name.`,
       buildMatureFictionPolicyBlock({
         includeParity: true,

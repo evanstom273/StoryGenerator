@@ -148,6 +148,7 @@ import {
   resolveUserSpeakerName,
   resolveUserSpeakerType,
 } from "../../lib/storyText/directorMode";
+import { formatDirectorNoteInterpretationGuidance } from "../../lib/storyText/directorSyntax";
 import {
   isContinueInstructionText,
   isContinueMessage,
@@ -6233,6 +6234,7 @@ export function StoryEngineProvider({
           allowDirectedPlayerControl
             ? "Do not repeat the latest Director note verbatim. Realize it as scene content and continue from the next beat."
             : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+          allowDirectedPlayerControl ? formatDirectorNoteInterpretationGuidance() : "",
           "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
           "Only resolve success or failure when the player's message leaves the outcome open as an attempt.",
           "Formatting rules (strict):",
@@ -7798,6 +7800,7 @@ export function StoryEngineProvider({
             allowDirectedPlayerControl
               ? "Do not repeat the latest Director note verbatim. Realize it as scene content and continue from the next beat."
               : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
+            allowDirectedPlayerControl ? formatDirectorNoteInterpretationGuidance() : "",
             "Preserve explicit player-declared outcomes as canon. Add consequences, reactions, or new tension instead of contradicting them.",
             "Only resolve success or failure when the player's message leaves the outcome open as an attempt.",
             "Formatting rules (strict):",

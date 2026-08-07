@@ -124,7 +124,7 @@ describe("buildDirectorAssistRequest", () => {
 		expect(request).toContain("Director Assist request:");
 		expect(request).toContain("Director:");
 		expect(request).toContain("Alex");
-		expect(request).toContain("gist of dialogue");
+		expect(request).toContain("approximate dialogue");
 	});
 });
 

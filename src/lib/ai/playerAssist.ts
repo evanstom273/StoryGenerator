@@ -1,4 +1,5 @@
 import { DIRECTOR_SPEAKER_LABEL } from "../storyText/directorMode";
+import { formatDirectorNoteAuthoringGuidance } from "../storyText/directorSyntax";
 import { polishDirectorBeatStaging } from "../guidedChapterGeneration/directorBeatPolish";
 
 export function buildPlayerAssistRequest(playerCharacterName: string) {
@@ -45,15 +46,10 @@ export function buildDirectorAssistRequest(playerCharacterName: string) {
     "Write the next Director staging note for the story.",
     "A Director note tells the AI how to stage the next scene — who is present, what happens, and any key beats.",
     "Output ONLY the Director note. No commentary, options, or extra text.",
-    "Formatting requirements:",
-    `- First token on the line: ${DIRECTOR_SPEAKER_LABEL}:`,
-    "- Staging beats go inside asterisks: Director: *Beat description.*",
-    "- Write prose staging beats, not a full script. Use first names for characters.",
-    '- Optional: after a character beat, add ("gist of dialogue") in parentheses for approximate dialogue the model should paraphrase — never copy verbatim.',
-    '- Example: Director: *Morgan confronts Alex about the file. Alex ("I didn\'t take it") tries to deflect.*',
+    formatDirectorNoteAuthoringGuidance(),
     "- Advance the story from where the transcript left off. Do not repeat or summarize the last scene.",
     `Keep the player character (${playerCharacterName}) consistent with canon and the current scene state.`,
-  ].join("\n");
+  ].join("\n\n");
 }
 
 export function buildDirectorAssistContinuationRequest(existingText: string) {
