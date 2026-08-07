@@ -333,7 +333,7 @@ export function StoryArchiveView({
               variant="secondary"
               size="sm"
               onClick={() => void handleReindex(true)}
-              disabled={isRebuilding}
+              disabled={isRebuilding || isClearingIndex}
             >
               {isRebuilding ? "Re-indexing..." : "Update index"}
             </Button>
