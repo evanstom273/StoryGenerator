@@ -1,4 +1,5 @@
 import type { StoryMessage, StoryMessageSpeakerType } from "../../types/models";
+import { useState } from "react";
 import { formatDateTime } from "../../lib/dates";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks, formatNarratorBlockForDisplay } from "../../lib/storyText/parseSceneBlocks";
@@ -227,6 +228,49 @@ export function StoryMessageBubble({
         })
       : message.content;
 
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied">("idle");
+
+  async function handleCopyMessage() {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopyStatus("copied");
+      window.setTimeout(() => setCopyStatus("idle"), 1500);
+    } catch {
+      window.prompt("Copy message:", message.content);
+    }
+  }
+
+  function renderMessageActions(className?: string) {
+    return (
+      <div className={cn("flex items-center gap-1", className)}>
+        <Button size="sm" variant="ghost" onClick={() => void handleCopyMessage()}>
+          {copyStatus === "copied" ? "Copied" : "Copy"}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            if (message.role === "assistant" && isLatestAssistant && onQuickEdit) {
+              onQuickEdit(message);
+              return;
+            }
+            onEdit(message);
+          }}
+        >
+          Edit
+        </Button>
+        {message.role === "assistant" && isLatestAssistant && onRegenerate ? (
+          <Button size="sm" variant="ghost" onClick={() => onRegenerate(message)}>
+            Regenerate
+          </Button>
+        ) : null}
+        <Button size="sm" variant="ghost" onClick={() => onDelete(message)}>
+          Delete
+        </Button>
+      </div>
+    );
+  }
+
   function renderInlineSegments(
     segments: ReturnType<typeof parseActionSegments>,
     { forceItalic }: { forceItalic?: boolean } = {},
@@ -332,27 +376,7 @@ export function StoryMessageBubble({
           <div className="flex items-center gap-2">
             <div className="text-xs text-ink-muted">{formatDateTime(message.timestamp)}</div>
             <div className="hidden items-center gap-1 opacity-0 transition group-hover:flex group-hover:opacity-100">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  if (message.role === "assistant" && isLatestAssistant && onQuickEdit) {
-                    onQuickEdit(message);
-                    return;
-                  }
-                  onEdit(message);
-                }}
-              >
-                Edit
-              </Button>
-              {message.role === "assistant" && isLatestAssistant && onRegenerate ? (
-                <Button size="sm" variant="ghost" onClick={() => onRegenerate(message)}>
-                  Regenerate
-                </Button>
-              ) : null}
-              <Button size="sm" variant="ghost" onClick={() => onDelete(message)}>
-                Delete
-              </Button>
+              {renderMessageActions()}
             </div>
           </div>
         </div>
@@ -369,29 +393,7 @@ export function StoryMessageBubble({
                 renderTextLines(sanitizedContent)
               )}
         </div>
-        <div className="mt-2 flex gap-2 group-hover:hidden">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              if (message.role === "assistant" && isLatestAssistant && onQuickEdit) {
-                onQuickEdit(message);
-                return;
-              }
-              onEdit(message);
-            }}
-          >
-            Edit
-          </Button>
-          {message.role === "assistant" && isLatestAssistant && onRegenerate ? (
-            <Button size="sm" variant="ghost" onClick={() => onRegenerate(message)}>
-              Regenerate
-            </Button>
-          ) : null}
-          <Button size="sm" variant="ghost" onClick={() => onDelete(message)}>
-            Delete
-          </Button>
-        </div>
+        <div className="mt-2 group-hover:hidden">{renderMessageActions()}</div>
       </div>
     </div>
   );
