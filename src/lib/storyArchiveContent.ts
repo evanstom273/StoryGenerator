@@ -13,6 +13,7 @@ import {
 	buildNarrativeIdentityRegistry,
 	resolveNarrativeDisplayName,
 	resolveNarrativeProtagonistName,
+	resolveNarrativeTranscriptSpeaker,
 } from "./narrativeIdentity";
 
 export function trimStringList(value: unknown, maxItems: number): string[] {
@@ -213,24 +214,37 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 			const blocks = parseSceneBlocks(resolvedContent ?? "");
 			if (blocks.length) {
 				for (const block of blocks) {
+					const speaker =
+						block.speakerLabel?.trim() ||
+						resolveTranscriptSpeaker(message, bundle.playerCharacter.name);
 					transcript.push({
 						messageNumber,
-						speaker: block.speakerLabel?.trim() || "Narrator",
-						text: block.text ?? "",
+						speaker: resolveNarrativeTranscriptSpeaker(speaker, narrativeRegistry, {
+							messageCount: sortedMessages.length,
+						}),
+						text: redact(block.text ?? ""),
 					});
 				}
 			} else {
 				transcript.push({
 					messageNumber,
-					speaker: resolveTranscriptSpeaker(message, bundle.playerCharacter.name),
-					text: resolvedContent ?? "",
+					speaker: resolveNarrativeTranscriptSpeaker(
+						resolveTranscriptSpeaker(message, bundle.playerCharacter.name),
+						narrativeRegistry,
+						{ messageCount: sortedMessages.length },
+					),
+					text: redact(resolvedContent ?? ""),
 				});
 			}
 		} else {
 			transcript.push({
 				messageNumber,
-				speaker: resolveTranscriptSpeaker(message, bundle.playerCharacter.name),
-				text: resolvedContent ?? "",
+				speaker: resolveNarrativeTranscriptSpeaker(
+					resolveTranscriptSpeaker(message, bundle.playerCharacter.name),
+					narrativeRegistry,
+					{ messageCount: sortedMessages.length },
+				),
+				text: redact(resolvedContent ?? ""),
 			});
 		}
 	}
@@ -342,7 +356,9 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 			const name = typeof entry.name === "string" ? entry.name.trim() : "";
 			return {
 				name,
-				description: typeof entry.description === "string" ? entry.description.trim() : "",
+				description: redact(
+					typeof entry.description === "string" ? entry.description.trim() : "",
+				),
 				evidence: formatEvidence(coerceEvidenceNumbers(entry)),
 			};
 		})
@@ -353,7 +369,7 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 		.filter((chapter: StoryChapter) => chapter.label?.trim())
 		.map((chapter) => ({
 			label: chapter.label.trim(),
-			summary: chapter.summary?.trim() ?? "",
+			summary: redact(chapter.summary?.trim() ?? ""),
 			endsAtIndex:
 				typeof chapter.endsAtIndex === "number" && Number.isFinite(chapter.endsAtIndex)
 					? Math.trunc(chapter.endsAtIndex)

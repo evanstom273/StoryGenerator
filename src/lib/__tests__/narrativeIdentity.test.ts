@@ -6,6 +6,7 @@ import {
 	createNarrativeIdentityPromptContext,
 	resolveNarrativeDisplayName,
 	resolveNarrativeProtagonistName,
+	resolveNarrativeTranscriptSpeaker,
 } from "../narrativeIdentity";
 import { formatStoryLongTermMemoryForPrompt } from "../ai/storyStateExtractor";
 
@@ -100,6 +101,78 @@ describe("narrativeIdentity", () => {
 				{ messageCount: 22 },
 			),
 		).toBe("How did witness Mark Owen vanish from the briefing room?");
+	});
+
+	it("redacts partial canonical names and omniscient villain framing", () => {
+		const registry = buildNarrativeIdentityRegistry({
+			storyState: silasStoryState,
+			playerCharacter: {
+				name: "Silas Thorne",
+				aliases: ["Mark Owen"],
+			},
+			messageCount: 22,
+		});
+
+		expect(
+			applyNarrativeIdentityToText(
+				"Silas views Detective Peralta as an intriguing participant in his game, while Jake remains completely unaware that witness 'Mark Owen' was Silas himself.",
+				registry,
+				{ messageCount: 22 },
+			),
+		).toBe("");
+
+		expect(
+			applyNarrativeIdentityToText(
+				"Mark Owen, a wealthy and cold-blooded mastermind, orchestrates elaborate, deadly games to test human morality.",
+				registry,
+				{ messageCount: 22 },
+			),
+		).toBe("");
+
+		expect(
+			applyNarrativeIdentityToText(
+				"A major borough of New York City where Silas Thorne has chosen to initiate his grand crime spree.",
+				registry,
+				{ messageCount: 22 },
+			),
+		).toBe("A major borough of New York City");
+
+		expect(
+			applyNarrativeIdentityToText(
+				"While presenting a staged witness account to the detectives, Silas Thorne (disguised as \"Mark Owen\") feigns physical trauma before vanishing undetected.",
+				registry,
+				{ messageCount: 22 },
+			),
+		).not.toContain("Silas");
+		expect(
+			applyNarrativeIdentityToText(
+				"While presenting a staged witness account to the detectives, Silas Thorne (disguised as \"Mark Owen\") feigns physical trauma before vanishing undetected.",
+				registry,
+				{ messageCount: 22 },
+			),
+		).not.toContain("disguised");
+	});
+
+	it("masks hidden canonical speakers for reader-facing transcript labels", () => {
+		const registry = buildNarrativeIdentityRegistry({
+			storyState: silasStoryState,
+			playerCharacter: {
+				name: "Silas Thorne",
+				aliases: ["Mark Owen"],
+			},
+			messageCount: 22,
+		});
+
+		expect(
+			resolveNarrativeTranscriptSpeaker("Silas Thorne", registry, { messageCount: 22 }),
+		).toBe("Mark Owen");
+		expect(
+			applyNarrativeIdentityToText(
+				"the detectives listen as Mark Owen (Silas) tremblingly describes seeing a shadowy figure",
+				registry,
+				{ messageCount: 22 },
+			),
+		).toBe("the detectives listen as Mark Owen tremblingly describes seeing a shadowy figure");
 	});
 
 	it("shows the reveal format after identityRevealedAtMessage", () => {
