@@ -1,5 +1,10 @@
 import type { StoryMessage, StoryStateCharacterState, StoryStateData } from "../../types/models";
-import { inferGenderFromPronounsInText } from "../ai/characterTtsVoices";
+import {
+	type CharacterTtsGenderMap,
+	inferGenderFromPronounsInText,
+	normalizeCharacterTtsKey,
+} from "../ai/characterTtsVoices";
+import { isDeniedSpeakerLabel } from "../relationshipIndex";
 import { extractSpeakerPrefix } from "./extractSpeakerPrefix";
 import { splitDialogueQuoteRegions } from "./dialogueQuoteRegions";
 import { normalizeSceneSpeakerLabel } from "./speakerLabels";
@@ -321,6 +326,48 @@ function isReservedSpeakerLabel(label: string) {
 	return RESERVED_SPEAKER_LABELS.has(label.trim().toLowerCase());
 }
 
+function shouldSkipActionBeatSpeaker(label: string) {
+	const trimmed = label.trim();
+	if (!trimmed) {
+		return true;
+	}
+	if (isReservedSpeakerLabel(trimmed)) {
+		return true;
+	}
+	if (isDeniedSpeakerLabel(trimmed)) {
+		return true;
+	}
+	if (/^(?:He|She|They)\s+narrator$/i.test(trimmed)) {
+		return true;
+	}
+	return false;
+}
+
+function lookupCharacterSubjectPronoun(
+	speakerLabel: string,
+	characterGenders?: CharacterTtsGenderMap | null,
+): "He" | "She" | "They" | null {
+	if (!characterGenders) {
+		return null;
+	}
+
+	const keys = [
+		normalizeCharacterTtsKey(speakerLabel),
+		normalizeCharacterTtsKey(speakerLabel.split(/\s+/)[0] ?? ""),
+	].filter(Boolean);
+
+	for (const key of keys) {
+		const gender = characterGenders[key];
+		if (gender === "male") {
+			return "He";
+		}
+		if (gender === "female") {
+			return "She";
+		}
+	}
+	return null;
+}
+
 function resolveSpeakerActionPronoun(
 	beatText: string,
 	speakerLabel: string,
@@ -328,6 +375,7 @@ function resolveSpeakerActionPronoun(
 		playerSceneName?: string | null;
 		playerLegalName?: string | null;
 		playerPronouns?: string | null;
+		characterGenders?: CharacterTtsGenderMap | null;
 	},
 ): "He" | "She" | "They" {
 	const playerSceneLabel = opts?.playerSceneName?.trim()
@@ -345,6 +393,11 @@ function resolveSpeakerActionPronoun(
 		return resolveSubjectPronoun(opts.playerPronouns);
 	}
 
+	const fromStoryState = lookupCharacterSubjectPronoun(speakerLabel, opts?.characterGenders);
+	if (fromStoryState) {
+		return fromStoryState;
+	}
+
 	const inferred = resolveSubjectPronounFromActionBeat(beatText);
 	return inferred ?? "They";
 }
@@ -356,6 +409,7 @@ function normalizeSpeakerRemainderActionBeats(
 		playerSceneName?: string | null;
 		playerLegalName?: string | null;
 		playerPronouns?: string | null;
+		characterGenders?: CharacterTtsGenderMap | null;
 	},
 ) {
 	return normalizeActionBeatsInSpeakerRemainder(remainder, (beatText) =>
@@ -369,6 +423,7 @@ export function normalizeCharacterActionBeatsInTranscript(
 		playerSceneName?: string | null;
 		playerLegalName?: string | null;
 		playerPronouns?: string | null;
+		characterGenders?: CharacterTtsGenderMap | null;
 	},
 ) {
 	const lines = text.replace(/\r\n/g, "\n").split("\n");
@@ -400,7 +455,7 @@ export function normalizeCharacterActionBeatsInTranscript(
 
 	for (const line of lines) {
 		const headerOnly = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*$/);
-		if (headerOnly?.[1] && !isReservedSpeakerLabel(headerOnly[1])) {
+		if (headerOnly?.[1] && !shouldSkipActionBeatSpeaker(headerOnly[1])) {
 			flushPending();
 			pendingSpeaker = headerOnly[1].trim();
 			pendingSeparator = headerOnly[2] ?? ":";
@@ -409,7 +464,7 @@ export function normalizeCharacterActionBeatsInTranscript(
 		}
 
 		const inline = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/);
-		if (inline?.[1] && !isReservedSpeakerLabel(inline[1])) {
+		if (inline?.[1] && !shouldSkipActionBeatSpeaker(inline[1])) {
 			flushPending();
 			const speakerLabel = inline[1].trim();
 			const normalized = normalizeSpeakerRemainderActionBeats(inline[3] ?? "", speakerLabel, opts);

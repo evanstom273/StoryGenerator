@@ -7,6 +7,7 @@ import { parseSceneBlocks, formatNarratorBlockForDisplay } from "../../lib/story
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
+import type { CharacterTtsGenderMap } from "../../lib/ai/characterTtsVoices";
 import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
 import { isStoryHistoryDividerMessage } from "../../lib/guidedChapterGeneration/storyHistoryDivider";
@@ -18,6 +19,7 @@ type StoryTranscriptViewProps = {
   playerLegalName?: string;
   playerSceneName?: string;
   playerPronouns?: string;
+  characterGenders?: CharacterTtsGenderMap;
   storyTitle?: string;
   chapters?: StoryChapter[];
   className?: string;
@@ -282,6 +284,7 @@ export function StoryTranscriptView({
   playerLegalName,
   playerSceneName,
   playerPronouns,
+  characterGenders,
   storyTitle = "Story",
   chapters,
   className,
@@ -464,6 +467,7 @@ export function StoryTranscriptView({
           playerName: effectiveLegalName,
           playerSceneName: effectiveSceneName,
           playerPronouns,
+          characterGenders,
         });
         const blocks = parseSceneBlocks(sanitized);
         const showTimeChip = rpConfig && message.storyTime &&

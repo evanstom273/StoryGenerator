@@ -36,6 +36,7 @@ import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
 import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
 import { normalizePlayerCharacterAliases, resolvePlayerCharacterSceneName } from "../lib/playerCharacterPrompt";
+import { buildCharacterGenderHintsFromStoryState } from "../lib/ai/characterTtsVoices";
 import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
@@ -209,6 +210,20 @@ export function StoryWorkspacePage() {
       recentMessages: messages,
     });
   }, [messages, playerCharacter, storyStateJson]);
+  const characterGenders = useMemo(() => {
+    if (!playerCharacter) {
+      return {};
+    }
+
+    return buildCharacterGenderHintsFromStoryState(
+      storyStateJson ? safeParseStoryStateData(storyStateJson) : null,
+      {
+        playerName: playerCharacter.name,
+        playerGender: playerCharacter.gender,
+        playerPronouns: playerCharacter.pronouns,
+      },
+    );
+  }, [playerCharacter, storyStateJson]);
   const storyChapters = useMemo(
     () =>
       story
@@ -1672,6 +1687,7 @@ export function StoryWorkspacePage() {
                       playerLegalName={activePlayerCharacter.name}
                       playerSceneName={playerSceneName}
                       playerPronouns={activePlayerCharacter.pronouns}
+                      characterGenders={characterGenders}
                       onEdit={populateComposerFromMessage}
                       onQuickEdit={isReadOnly ? undefined : handleOpenAssistantEdit}
                       onRegenerate={isReadOnly ? undefined : handleRegenerateLastAssistant}
@@ -1692,6 +1708,7 @@ export function StoryWorkspacePage() {
               playerLegalName={activePlayerCharacter.name}
               playerSceneName={playerSceneName}
               playerPronouns={activePlayerCharacter.pronouns}
+              characterGenders={characterGenders}
               storyTitle={activeStory.title}
               chapters={storyChapters}
               highlightedMessageId={highlightedMessageId}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSceneBlocks } from "../parseSceneBlocks";
+import { formatNarratorBlockForDisplay, parseSceneBlocks, stripNarratorDisplayArtifacts } from "../parseSceneBlocks";
 
 describe("parseSceneBlocks", () => {
 	it("does not treat time-skip number words as speaker labels", () => {
@@ -48,5 +48,24 @@ describe("parseSceneBlocks", () => {
 		const blocks = parseSceneBlocks(text);
 		expect(blocks).toHaveLength(1);
 		expect(blocks[0]?.speakerLabel).toBeUndefined();
+	});
+});
+
+describe("formatNarratorBlockForDisplay", () => {
+	it("removes pronoun-led narrator pseudo-labels and asterisk markers", () => {
+		const formatted = formatNarratorBlockForDisplay(
+			[
+				"*He narrator:*",
+				"*The squad watches intently as the man stands motionless in the center of the room.*",
+			].join("\n"),
+		);
+
+		expect(formatted).not.toContain("narrator");
+		expect(formatted).not.toContain("*");
+		expect(formatted).toContain("The squad watches intently");
+	});
+
+	it("strips narrator display artifacts from a single line", () => {
+		expect(stripNarratorDisplayArtifacts("*He narrator:*")).toBe("");
 	});
 });
