@@ -165,6 +165,8 @@ import { buildCharacterGenderHintsFromStoryState } from "../../lib/ai/characterT
 import { buildCharacterTtsRegistryForStory } from "../../lib/storyText/messageSpeechText";
 import { buildStoryAudiobookFilename } from "../../lib/exportFilename";
 import { downloadFile } from "../../lib/download";
+import { ingestAiDocumentAudioFromJob } from "../../lib/mediaLibrary/ingestAiDocumentAudio";
+import { markMediaAssetsOrphanedForStory } from "../../lib/mediaLibrary/store";
 import {
 	isBackgroundTaskJob,
 	isAudiobookExportBackgroundJob,
@@ -3939,8 +3941,11 @@ export function StoryEngineProvider({
           job.type === "podcast_audio"
             ? buildAudioFilenameFromMarkdownUpload(sourceLabel)
             : buildAiDocumentFilename(preset.filenameStem, storyTitle, "wav");
-        await downloadFile(filename, wavBuffer, "audio/wav");
-        return { filename, summary: `Downloaded ${filename}` };
+        return {
+          filename,
+          summary: `Added ${filename.replace(/\.wav$/i, "")} to Media Library`,
+          wavBytes: new Uint8Array(wavBuffer),
+        };
       }
 
       const filename = buildAiDocumentFilename(preset.filenameStem, storyTitle, "md");
@@ -4380,6 +4385,17 @@ export function StoryEngineProvider({
           const storyId =
             job.payload?.aiDocumentSourceStoryId ?? job.storyId ?? undefined;
           const story = storyId ? await repository.getStory(storyId) : null;
+          let notificationBody = result.summary;
+          if (result.wavBytes) {
+            const ingestResult = await ingestAiDocumentAudioFromJob({
+              job,
+              wavBytes: result.wavBytes,
+              storyTitle: story?.title,
+            });
+            notificationBody = ingestResult.created
+              ? "Saved to Media Library"
+              : "Already in Media Library";
+          }
           const completedJob: BackgroundJob = {
             ...runningJob,
             status: "complete",
@@ -4390,7 +4406,7 @@ export function StoryEngineProvider({
                 : job.type === "podcast_audio"
                   ? "Podcast audio ready"
                   : "AI document ready",
-              notificationBody: result.summary,
+              notificationBody,
             },
           };
           await repository.saveBackgroundJob(completedJob);
@@ -5845,6 +5861,7 @@ export function StoryEngineProvider({
       },
       async deleteStory(id) {
         await repository.deleteStory(id);
+        await markMediaAssetsOrphanedForStory(id);
         await hydrate(false);
       },
       async deleteAllStories() {

@@ -1,15 +1,13 @@
 import { Link } from "react-router-dom";
 import { useMemo } from "react";
-import { buttonClasses } from "../components/ui/Button";
 import { SearchIcon } from "../components/icons";
+import { MediaLibraryPanel } from "../components/mediaLibrary/MediaLibraryPanel";
 import { GLOBAL_META_CHAT_SCOPE_ID } from "../lib/metaChatScope";
 import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { useLibrarySearch } from "../app/library/LibrarySearchContext";
-import { useChangelog } from "../app/versioning/ChangelogContext";
 import { formatRelativeTime } from "../lib/dates";
-import { APP_VERSION, CHANGELOG } from "../app/versioning/version";
 import { cn } from "../utils/cn";
 
 function getInitials(name: string): string {
@@ -32,7 +30,6 @@ export function HomePage() {
   } = useStoryEngine();
   const { showArchivedStories, setShowArchivedStories } = useUiPrefs();
   const { openSearch } = useLibrarySearch();
-  const { openChangelog } = useChangelog();
 
   function openLibraryMetaChat() {
     try {
@@ -57,11 +54,6 @@ export function HomePage() {
     () => playerCharacters.filter((c) => (c.scope ?? "library") === "library").slice(0, 5),
     [playerCharacters],
   );
-
-  const changelogEntries = useMemo(() => {
-    const versions = Object.keys(CHANGELOG).reverse().slice(0, 3);
-    return versions.map((v, i) => ({ version: v, entry: CHANGELOG[v]!, isLatest: i === 0 }));
-  }, []);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -410,50 +402,9 @@ export function HomePage() {
             </div>
           </div>
 
-          {/* What's New (Changelog) */}
+          {/* Media Library */}
           <div className="flex flex-1 flex-col overflow-hidden rounded-[10px] border border-divider/[0.45] bg-app px-[18px] py-[15px]">
-            <div className="mb-2.5 flex flex-shrink-0 items-center justify-between">
-              <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
-                What's New
-              </span>
-              <button
-                type="button"
-                onClick={openChangelog}
-                className="text-[11px] font-medium text-accent transition hover:text-accent-hover"
-              >
-                All →
-              </button>
-            </div>
-            <div className="flex flex-col gap-2.5 overflow-hidden">
-              {changelogEntries.map(({ version, entry, isLatest }, i) => (
-                <div key={version}>
-                  <span
-                    className={cn(
-                      "mb-1 inline-block rounded-[3px] px-[7px] py-0.5 font-mono text-[9px] font-bold",
-                      isLatest
-                        ? "bg-accent/[0.10] text-accent-soft"
-                        : "border border-divider/[0.4] bg-panel-muted text-white/18",
-                    )}
-                  >
-                    v{version}
-                  </span>
-                  <p className={cn("text-xs leading-[1.55]", isLatest ? "text-white/28" : "text-white/18")}>
-                    {entry.title}
-                    {entry.added?.[0] ? ` — ${entry.added[0]}` : ""}
-                  </p>
-                  {i < changelogEntries.length - 1 && (
-                    <div className="mt-2.5 h-px bg-divider/[0.4]" />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* "v{version}" bottom link */}
-          <div className="hidden">
-            <Link to="/settings" className={buttonClasses({ variant: "ghost", size: "sm" })}>
-              v{APP_VERSION}
-            </Link>
+            <MediaLibraryPanel compact className="flex-1" />
           </div>
         </div>
       </div>

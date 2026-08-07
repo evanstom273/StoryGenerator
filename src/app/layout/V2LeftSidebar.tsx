@@ -295,7 +295,29 @@ export function V2LeftSidebar({
       </div>
 
       {/* Footer */}
-      <div className="flex flex-shrink-0 items-center justify-between border-t border-[#161616] px-[18px] py-2.5">
+      <div className="flex flex-shrink-0 flex-col gap-2 border-t border-[#161616] px-[18px] py-2.5">
+        <Link
+          to="/media-library"
+          onClick={onNavigate}
+          className="flex items-center gap-2 rounded-[7px] px-1 py-1.5 text-white/45 transition hover:bg-white/[0.04] hover:text-white/70"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+          </svg>
+          <span className="text-[11px] font-medium">Media Library</span>
+        </Link>
+        <div className="flex items-center justify-between">
         <span className="font-mono text-[10px] text-white/28">v{APP_VERSION}</span>
         <Link
           to="/settings"
@@ -324,6 +346,7 @@ export function V2LeftSidebar({
           </svg>
           <span className="text-[11px]">Settings</span>
         </Link>
+        </div>
       </div>
 
       {/* Hidden accessibility links */}

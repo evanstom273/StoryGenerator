@@ -32,6 +32,30 @@ export type BackgroundJobType =
   | "metachat_generate"
   | "story_export"
   | "story_archive_export";
+export type MediaAssetCategory = "audiobook" | "chapter" | "ai_document" | "podcast";
+export type MediaAssetFormat = "wav";
+
+export interface MediaAsset {
+  id: EntityId;
+  category: MediaAssetCategory;
+  libraryKey: string;
+  title: string;
+  subtitle: string;
+  storyId?: EntityId;
+  storyTitleSnapshot?: string;
+  sourceJobId?: EntityId;
+  createdAtMs: number;
+  updatedAtMs: number;
+  durationMs: number;
+  format: MediaAssetFormat;
+  mimeType: "audio/wav";
+  byteLength: number;
+  audioBytes: Uint8Array;
+  orphaned: boolean;
+  lastPositionMs: number;
+  lastPlayedAtMs?: number;
+  contentDigest?: string;
+}
 export type MaxConcurrentBackgroundTasks = 1 | 2 | 3 | 4 | 5;
 export type MetaChatScopeKind = "story" | "global";
 export type MetaChatReferenceKind = "story" | "character" | "universe";

@@ -7,9 +7,22 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "3.3.1";
+export const APP_VERSION = "3.3.2";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "3.3.2": {
+    title: "Media Library (Phase 1)",
+    releasedAt: "2026-08-07T01:35:00+00:00",
+    added: [
+      "Media Library on the home screen and in the navigation drawer for browsing saved generated audio",
+      "AI document and podcast audio from Settings → AI Documents is saved to the library automatically instead of downloading a WAV file",
+      "IndexedDB mediaLibrary store with categories, duration, playback progress fields, and orphaned-story indicators",
+    ],
+    fixed: [],
+    knownIssues: [
+      "Unified media player, save-to-library for story audiobooks/chapters, and Media Session API arrive in Phase 2",
+    ],
+  },
   "3.3.1": {
     title: "Library Search Expansion & PWA Updates",
     releasedAt: "2026-08-06T21:30:00+00:00",

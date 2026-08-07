@@ -1,6 +1,7 @@
 import { createBrowserRouter } from "react-router-dom";
 import { V2Shell } from "./layout/V2Shell";
 import { HomePage } from "../pages/HomePage";
+import { MediaLibraryPage } from "../pages/MediaLibraryPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { PlayerCharacterDetailPage } from "../pages/PlayerCharacterDetailPage";
 import { PlayerCharacterFormPage } from "../pages/PlayerCharacterFormPage";
@@ -29,6 +30,10 @@ export const router = createBrowserRouter([
       {
         index: true,
         element: <HomePage />,
+      },
+      {
+        path: "media-library",
+        element: <MediaLibraryPage />,
       },
       {
         path: "stories",
