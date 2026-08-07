@@ -8,6 +8,8 @@ interface MessagePlayButtonProps {
 	playId: string;
 	plan: SpeechSynthesisPlan | null;
 	storyId?: string;
+	storyTitle?: string;
+	chapterMessageId?: string;
 	className?: string;
 	label?: string;
 	playerTitle?: string;
@@ -78,6 +80,8 @@ export function MessagePlayButton({
 	playId,
 	plan,
 	storyId,
+	storyTitle,
+	chapterMessageId,
 	className,
 	label = "Play",
 	playerTitle,
@@ -171,6 +175,9 @@ export function MessagePlayButton({
 					void prepareSpeechPlan(playId, plan, {
 						title: playerTitle ?? label,
 						storyId,
+						storyTitle,
+						chapterMessageId,
+						saveCategory: "chapter",
 					});
 				}}
 			>

@@ -13,6 +13,7 @@ import {
 } from "../lib/mediaLibrary/format";
 import { formatRelativeTime } from "../lib/dates";
 import { cn } from "../utils/cn";
+import { MediaLibraryPlayButton } from "../components/mediaLibrary/MediaLibraryPlayButton";
 
 const CATEGORY_FILTERS: Array<MediaAssetCategory | "all"> = [
 	"all",
@@ -45,14 +46,16 @@ function MediaLibraryAssetCard({ asset }: { asset: MediaAssetView }) {
 					</span>
 				) : null}
 			</div>
-			<div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-ink-muted">
-				<span>{createdLabel}</span>
-				<span>·</span>
-				<span>{progressLabel}</span>
+			<div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+				<div className="flex flex-wrap items-center gap-2 text-[11px] text-ink-muted">
+					<span>{createdLabel}</span>
+					<span>·</span>
+					<span>{progressLabel}</span>
+					<span>·</span>
+					<span className="uppercase tracking-[0.12em]">{asset.format}</span>
+				</div>
+				<MediaLibraryPlayButton asset={asset} />
 			</div>
-			<p className="mt-3 text-xs text-ink-muted/80">
-				Full playback arrives in the next phase. Your audio is saved locally in this library.
-			</p>
 		</Panel>
 	);
 }
@@ -107,7 +110,7 @@ export function MediaLibraryPage() {
 					<p className="text-sm leading-relaxed text-ink-muted">
 						No media here yet. Generate podcast audio from Settings → AI Documents and it
 						will appear automatically. Story audiobooks and chapter audio can be saved from
-						the story playback bar in a later update.
+						the story playback bar or story settings.
 					</p>
 				</Panel>
 			)}

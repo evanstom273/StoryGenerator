@@ -8,6 +8,7 @@ import {
 	putInStore,
 } from "../idb";
 import { computeWavDurationMs } from "./wavDuration";
+import { transcodeWavToOpus } from "./transcodeToOpus";
 
 export const MEDIA_LIBRARY_CHANGED_EVENT = "story-engine:media-library-changed";
 
@@ -58,6 +59,8 @@ export type IngestMediaAssetInput = {
 
 export async function ingestMediaAsset(input: IngestMediaAssetInput): Promise<MediaAsset> {
 	const wavBytes = copyWavBytes(input.wavBytes);
+	const durationMs = computeWavDurationMs(wavBytes);
+	const transcoded = await transcodeWavToOpus(wavBytes);
 	const now = Date.now();
 	const asset: MediaAsset = {
 		id: createEntityId("media"),
@@ -70,11 +73,11 @@ export async function ingestMediaAsset(input: IngestMediaAssetInput): Promise<Me
 		sourceJobId: input.sourceJobId,
 		createdAtMs: now,
 		updatedAtMs: now,
-		durationMs: computeWavDurationMs(wavBytes),
-		format: "wav",
-		mimeType: "audio/wav",
-		byteLength: wavBytes.byteLength,
-		audioBytes: wavBytes,
+		durationMs,
+		format: transcoded ? "opus" : "wav",
+		mimeType: transcoded?.mimeType ?? "audio/wav",
+		byteLength: transcoded ? transcoded.bytes.byteLength : wavBytes.byteLength,
+		audioBytes: transcoded ? transcoded.bytes : wavBytes,
 		orphaned: false,
 		lastPositionMs: 0,
 		contentDigest: input.contentDigest,
@@ -97,6 +100,8 @@ export async function replaceMediaAssetAudio(
 	}
 
 	const wavBytes = copyWavBytes(input.wavBytes);
+	const durationMs = computeWavDurationMs(wavBytes);
+	const transcoded = await transcodeWavToOpus(wavBytes);
 	const now = Date.now();
 	const updated: MediaAsset = {
 		...existing,
@@ -107,9 +112,11 @@ export async function replaceMediaAssetAudio(
 		storyTitleSnapshot: input.storyTitleSnapshot ?? existing.storyTitleSnapshot,
 		sourceJobId: input.sourceJobId ?? existing.sourceJobId,
 		updatedAtMs: now,
-		durationMs: computeWavDurationMs(wavBytes),
-		byteLength: wavBytes.byteLength,
-		audioBytes: wavBytes,
+		durationMs,
+		format: transcoded ? "opus" : "wav",
+		mimeType: transcoded?.mimeType ?? "audio/wav",
+		byteLength: transcoded ? transcoded.bytes.byteLength : wavBytes.byteLength,
+		audioBytes: transcoded ? transcoded.bytes : wavBytes,
 		lastPositionMs: 0,
 		lastPlayedAtMs: undefined,
 		contentDigest: input.contentDigest ?? existing.contentDigest,
@@ -123,6 +130,28 @@ export async function replaceMediaAssetAudio(
 export async function deleteMediaAsset(id: string): Promise<void> {
 	await deleteFromStore("mediaLibrary", id);
 	notifyMediaLibraryChanged();
+}
+
+export async function updateMediaAssetPlaybackPosition(
+	assetId: string,
+	positionMs: number,
+): Promise<void> {
+	const existing = await getMediaAssetById(assetId);
+	if (!existing) {
+		return;
+	}
+
+	const clamped = Math.max(0, Math.min(existing.durationMs, Math.floor(positionMs)));
+	if (clamped === existing.lastPositionMs) {
+		return;
+	}
+
+	await putInStore("mediaLibrary", {
+		...existing,
+		lastPositionMs: clamped,
+		lastPlayedAtMs: Date.now(),
+		updatedAtMs: Date.now(),
+	});
 }
 
 export async function markMediaAssetsOrphanedForStory(storyId: string): Promise<void> {
