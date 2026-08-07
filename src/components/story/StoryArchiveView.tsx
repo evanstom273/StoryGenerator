@@ -15,6 +15,12 @@ import { IndexingProgressPanel } from "./IndexingProgressPanel";
 
 import { RelationshipOverviewList } from "./RelationshipOverviewList";
 import { filterPlayerRelationships } from "../../lib/storyRelationshipLoad";
+import {
+	applyNarrativeIdentityToRelationships,
+	applyNarrativeIdentityToText,
+	buildNarrativeIdentityRegistry,
+	resolveNarrativeDisplayName,
+} from "../../lib/narrativeIdentity";
 
 function trimStringList(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) {
@@ -47,6 +53,8 @@ export function StoryArchiveView({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [expandedEvidenceKeys, setExpandedEvidenceKeys] = useState<Record<string, boolean>>({});
 
+  const storyMessages = useMemo(() => getMessagesForStory(storyId), [getMessagesForStory, storyId]);
+
   const storyStateData = useMemo(() => {
     if (!storyStateJson.trim()) {
       return null;
@@ -57,6 +65,26 @@ export function StoryArchiveView({
     }
     return normalizeStoryStateToV2(parsed);
   }, [storyStateJson]);
+
+  const narrativeRegistry = useMemo(() => {
+    if (!storyStateData) {
+      return buildNarrativeIdentityRegistry({ storyState: null });
+    }
+
+    return buildNarrativeIdentityRegistry({
+      storyState: storyStateData,
+      playerCharacter: playerName
+        ? { name: playerName, aliases: playerAliases ?? [] }
+        : null,
+      messages: storyMessages,
+      messageCount: storyMessages.length,
+    });
+  }, [playerAliases, playerName, storyMessages, storyStateData]);
+
+  const redactNarrative = (text: string) =>
+    applyNarrativeIdentityToText(text, narrativeRegistry, {
+      messageCount: storyMessages.length,
+    });
 
   const rebuildInfo =
     rebuildStatus?.storyId === storyId && rebuildStatus.phase !== "idle" ? rebuildStatus : null;
@@ -216,10 +244,21 @@ export function StoryArchiveView({
   const trackedCharacterNames = listIndexedCharacterNames(storyStateData);
   const locations = storyStateData.indexes?.locations ? Object.values(storyStateData.indexes.locations) : [];
   const significantMemories = (storyStateData.indexes as any)?.significantMemories ?? [];
-  const premise = storyStateData.summaries?.premise?.trim() ?? "";
-  const protagonistSummary = storyStateData.summaries?.protagonistSummary?.trim() ?? "";
-  const currentSituation = storyStateData.summaries?.currentSituation?.trim() ?? "";
-  const recentDevelopments = trimStringList(storyStateData.summaries?.recentDevelopments, 6);
+  const premise = redactNarrative(storyStateData.summaries?.premise?.trim() ?? "");
+  const protagonistSummary = redactNarrative(
+    storyStateData.summaries?.protagonistSummary?.trim() ?? "",
+  );
+  const currentSituation = redactNarrative(
+    storyStateData.summaries?.currentSituation?.trim() ?? "",
+  );
+  const recentDevelopments = trimStringList(storyStateData.summaries?.recentDevelopments, 6).map(
+    redactNarrative,
+  );
+  const narrativeRelationships = applyNarrativeIdentityToRelationships(
+    filterPlayerRelationships(archiveRelationships, playerName, playerAliases),
+    narrativeRegistry,
+    { messageCount: storyMessages.length },
+  );
   const autoIndexInterval = story?.autoIndexInterval ?? 20;
   const lastAutoDeepIndexMessageCount = storyStateData.lastAutoDeepIndexedMessageCount ?? 0;
   const messagesSinceAutoDeep = Math.max(0, totalMessages - lastAutoDeepIndexMessageCount);
@@ -357,7 +396,7 @@ export function StoryArchiveView({
                   key={index}
                   className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
                 >
-                  <div className="text-ink-soft">{entry.thread}</div>
+                  <div className="text-ink-soft">{redactNarrative(entry.thread)}</div>
                   {renderEvidencePills(entry.evidence?.messageNumbers, `thread-${index}`)}
                 </div>
               ))}
@@ -376,7 +415,7 @@ export function StoryArchiveView({
                   key={index}
                   className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
                 >
-                  <div className="text-ink-soft">{entry.fact}</div>
+                  <div className="text-ink-soft">{redactNarrative(entry.fact)}</div>
                   {renderEvidencePills(entry.evidence?.messageNumbers, `fact-${index}`)}
                 </div>
               ))}
@@ -392,6 +431,9 @@ export function StoryArchiveView({
             <div className="mt-3 space-y-3">
               {trackedCharacterNames.map((name) => {
                 const entry = storyStateData.characters?.[name];
+                const displayName = resolveNarrativeDisplayName(name, narrativeRegistry, {
+                  messageCount: storyMessages.length,
+                });
                 const synthesized = synthesizeCharacterStatusBullets(name, storyStateData, {
                   playerName,
                 });
@@ -407,11 +449,11 @@ export function StoryArchiveView({
                     key={name}
                     className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
                   >
-                    <div className="font-semibold text-ink-soft">{name}</div>
+                    <div className="font-semibold text-ink-soft">{displayName}</div>
                     <div className="mt-2 space-y-2">
                       {statusLines.map((line) => (
                         <div key={line} className="text-sm text-ink-soft">
-                          {line}
+                          {redactNarrative(line)}
                         </div>
                       ))}
                       {strengths.length ? (
@@ -441,18 +483,25 @@ export function StoryArchiveView({
               {characters
                 .slice()
                 .sort((a, b) => a.name.localeCompare(b.name))
-                .map((entry) => (
+                .map((entry) => {
+                  const displayName = resolveNarrativeDisplayName(entry.name, narrativeRegistry, {
+                    messageCount: storyMessages.length,
+                  });
+                  return (
                   <div
                     key={entry.name}
                     className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
                   >
-                    <div className="font-semibold text-ink-soft">{entry.name}</div>
+                    <div className="font-semibold text-ink-soft">{displayName}</div>
                     {entry.description ? (
-                      <div className="mt-1 text-sm text-ink-muted">{entry.description}</div>
+                      <div className="mt-1 text-sm text-ink-muted">
+                        {redactNarrative(entry.description)}
+                      </div>
                     ) : null}
                     {renderEvidencePills(entry.evidence?.messageNumbers, `char-${entry.name}`)}
                   </div>
-                ))}
+                );
+                })}
             </div>
           </Panel>
         ) : null}
@@ -482,7 +531,7 @@ export function StoryArchiveView({
           </Panel>
         ) : null}
 
-        {archiveRelationships.length ? (
+        {narrativeRelationships.length ? (
           <Panel variant="flat" padding="sm">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
               Relationships
@@ -492,7 +541,7 @@ export function StoryArchiveView({
             </p>
             <div className="mt-3">
               <RelationshipOverviewList
-                relationships={filterPlayerRelationships(archiveRelationships, playerName, playerAliases)}
+                relationships={narrativeRelationships}
                 playerName={playerName}
               />
             </div>
@@ -510,7 +559,9 @@ export function StoryArchiveView({
                   key={index}
                   className="rounded-2xl border border-divider bg-white/[0.02] px-3 py-3"
                 >
-                  <div className="text-ink-soft">{entry?.moment ?? entry?.memory ?? entry?.fact ?? "—"}</div>
+                  <div className="text-ink-soft">
+                    {redactNarrative(entry?.moment ?? entry?.memory ?? entry?.fact ?? "—")}
+                  </div>
                   {renderEvidencePills(entry?.evidence?.messageNumbers, `mem-${index}`)}
                 </div>
               ))}

@@ -466,6 +466,8 @@ export type IndexedEntity = {
   id?: string;
   name: string;
   aliases?: string[];
+  narrativeName?: string;
+  identityRevealedAtMessage?: number;
   description?: string;
   firstSeenMessage?: number;
   lastSeenMessage?: number;
@@ -593,6 +595,8 @@ export type StoryThreadsV2 = {
 export type StoryStateCharacterState = {
   canonicalName?: string;
   displayName?: string;
+  narrativeName?: string;
+  identityRevealedAtMessage?: number;
   aliases?: string[];
   pronouns?: string;
   gender?: string;

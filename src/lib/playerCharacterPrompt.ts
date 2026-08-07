@@ -1,4 +1,4 @@
-import type { PlayerCharacter, PlayerCharacterDraft, StoryMessage, StoryStateData } from "../types/models";
+import type { PlayerCharacter, PlayerCharacterDraft, StoryMessage, StoryStateData, StoryStateDataV2 } from "../types/models";
 import { safeParseStoryStateData } from "./storyStateV2";
 import {
 	findPlayerStoryStateEntry,
@@ -124,7 +124,7 @@ export function resolvePlayerCharacterPreferredSceneName(
 export function resolvePlayerCharacterSceneName(
 	character: Pick<PlayerCharacter, "name" | "aliases">,
 	opts?: {
-		storyState?: StoryStateData | null;
+		storyState?: StoryStateData | StoryStateDataV2 | null;
 		recentMessages?: StoryMessage[];
 	},
 ): string {
