@@ -2,11 +2,10 @@ import type { PlayerCharacter, StoryExportBundle, StoryMessage } from "../types/
 import { formatDateTime } from "./dates";
 import { safeParseStoryStateData, normalizeStoryStateToV2 } from "./storyStateV2";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
-import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
-import { isContinueMessage } from "./storyText/continueMode";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
-import { isDirectorMessage } from "./storyText/directorMode";
+import { resolveUserTranscriptSpeaker } from "./storyText/directorMode";
+import { resolvePlayerCharacterSceneName } from "./playerCharacterPrompt";
 import {
   createPdfDoc,
   pdfDimensions,
@@ -19,12 +18,16 @@ import {
   PDF_MARGIN,
 } from "./pdfLayout";
 
-function resolveSpeakerLabel(message: StoryMessage, playerCharacter: PlayerCharacter): string {
+function resolveSpeakerLabel(
+  message: StoryMessage,
+  playerCharacter: PlayerCharacter,
+  playerSceneName?: string,
+): string {
   if (message.role === "user") {
-    if (isAuthorDirectiveMessage(message)) return message.speakerName?.trim() || "Author";
-    if (isContinueMessage(message)) return "Continue";
-    if (isDirectorMessage(message)) return "Director";
-    return message.speakerName?.trim() || playerCharacter.name;
+    return resolveUserTranscriptSpeaker(message, {
+      legalName: playerCharacter.name,
+      sceneName: playerSceneName,
+    });
   }
   if (message.speakerName?.trim()) return message.speakerName.trim();
   if (message.speakerType === "narrator") return "Narrator";
@@ -71,13 +74,17 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
   y += 8;
 
   let latestUserMessage: string | null = null;
+  const playerSceneName = resolvePlayerCharacterSceneName(bundle.playerCharacter, {
+    storyState: storyStateData,
+    recentMessages: bundle.messages,
+  });
 
   for (const message of bundle.messages) {
     if (message.role === "system") continue;
 
     if (message.role === "user") {
       latestUserMessage = message.content;
-      const speaker = resolveSpeakerLabel(message, bundle.playerCharacter);
+      const speaker = resolveSpeakerLabel(message, bundle.playerCharacter, playerSceneName);
       y = speakerLine(doc, y, speaker, message.content, pageH);
     } else {
       const sanitized = sanitizeAssistantTranscript({

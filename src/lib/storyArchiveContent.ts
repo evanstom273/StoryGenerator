@@ -2,11 +2,10 @@ import type { StoryChapter, StoryExportBundle, StoryMessage, StoryStateDataV2 } 
 import { formatDateTime, sortByTimestampAsc } from "./dates";
 import { getCharacterStatusLines, synthesizeCharacterStatusBullets } from "./characterStatus";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "./storyStateV2";
-import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
-import { isContinueMessage } from "./storyText/continueMode";
 import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
 import { cleanTextForExport } from "./storyText/exportCleaner";
-import { isDirectorMessage } from "./storyText/directorMode";
+import { resolveUserTranscriptSpeaker } from "./storyText/directorMode";
+import { resolvePlayerCharacterSceneName } from "./playerCharacterPrompt";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import {
 	applyNarrativeIdentityToText,
@@ -47,18 +46,16 @@ export function formatEvidence(numbers: number[]): string {
 	return remaining > 0 ? `${base} (+${remaining} more)` : base;
 }
 
-export function resolveTranscriptSpeaker(message: StoryMessage, playerName: string): string {
+export function resolveTranscriptSpeaker(
+	message: StoryMessage,
+	playerName: string,
+	playerSceneName?: string,
+): string {
 	if (message.role === "user") {
-		if (isAuthorDirectiveMessage(message)) {
-			return message.speakerName?.trim() || "Author";
-		}
-		if (isContinueMessage(message)) {
-			return "Continue";
-		}
-		if (isDirectorMessage(message)) {
-			return "Director";
-		}
-		return message.speakerName?.trim() || playerName;
+		return resolveUserTranscriptSpeaker(message, {
+			legalName: playerName,
+			sceneName: playerSceneName,
+		});
 	}
 	if (message.role === "system" || message.speakerType === "system") {
 		return "System";
@@ -176,6 +173,20 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 		messages: sortedMessages,
 		messageCount: sortedMessages.length,
 	});
+	const playerSceneName = resolvePlayerCharacterSceneName(bundle.playerCharacter, {
+		storyState: storyStateData,
+		recentMessages: sortedMessages,
+	});
+	const resolveArchiveTranscriptSpeaker = (message: StoryMessage) => {
+		const speaker = resolveTranscriptSpeaker(
+			message,
+			bundle.playerCharacter.name,
+			playerSceneName,
+		);
+		return resolveNarrativeTranscriptSpeaker(speaker, narrativeRegistry, {
+			messageCount: sortedMessages.length,
+		});
+	};
 	const redact = (text: string) =>
 		applyNarrativeIdentityToText(text, narrativeRegistry, {
 			messageCount: sortedMessages.length,
@@ -216,7 +227,7 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 				for (const block of blocks) {
 					const speaker =
 						block.speakerLabel?.trim() ||
-						resolveTranscriptSpeaker(message, bundle.playerCharacter.name);
+						resolveTranscriptSpeaker(message, bundle.playerCharacter.name, playerSceneName);
 					transcript.push({
 						messageNumber,
 						speaker: resolveNarrativeTranscriptSpeaker(speaker, narrativeRegistry, {
@@ -228,22 +239,14 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 			} else {
 				transcript.push({
 					messageNumber,
-					speaker: resolveNarrativeTranscriptSpeaker(
-						resolveTranscriptSpeaker(message, bundle.playerCharacter.name),
-						narrativeRegistry,
-						{ messageCount: sortedMessages.length },
-					),
+					speaker: resolveArchiveTranscriptSpeaker(message),
 					text: redact(resolvedContent ?? ""),
 				});
 			}
 		} else {
 			transcript.push({
 				messageNumber,
-				speaker: resolveNarrativeTranscriptSpeaker(
-					resolveTranscriptSpeaker(message, bundle.playerCharacter.name),
-					narrativeRegistry,
-					{ messageCount: sortedMessages.length },
-				),
+				speaker: resolveArchiveTranscriptSpeaker(message),
 				text: redact(resolvedContent ?? ""),
 			});
 		}

@@ -162,6 +162,63 @@ describe("buildStoryArchiveContent", () => {
 		expect(content.locations.length).toBe(1);
 		expect(content.chapters.length).toBe(1);
 	});
+
+	it("labels legal-name scene direction as Director in archive transcript", () => {
+		const content = buildStoryArchiveContent(
+			makeBundle({
+				playerCharacter: {
+					id: "pc-1",
+					name: "Silas Thorne",
+					age: "40",
+					gender: "male",
+					species: "human",
+					pronouns: "he/him",
+					appearance: "",
+					personality: "",
+					background: "",
+					goals: "",
+					notes: "",
+					aliases: ["Mark Owen"],
+					createdAt: "2026-08-01T10:00:00.000Z",
+					updatedAt: "2026-08-01T10:00:00.000Z",
+				},
+				messages: [
+					{
+						id: "msg-1",
+						storyId: "story-1",
+						role: "user",
+						content:
+							"*The Patrol Officer, a young kid called Mercer, points down the alleyway with a trembling flashlight.*",
+						timestamp: "2026-08-01T12:00:00.000Z",
+						speakerName: "Silas Thorne",
+						speakerType: "player",
+					},
+				],
+				storyState: {
+					id: "story-state:story-1",
+					storyId: "story-1",
+					updatedAt: "2026-08-03T12:00:00.000Z",
+					stateJson: JSON.stringify({
+						updatedAt: "2026-08-03T12:00:00.000Z",
+						characters: {
+							"Silas Thorne": {
+								canonicalName: "Silas Thorne",
+								narrativeName: "Mark Owen",
+								displayName: "Mark Owen",
+								aliases: ["Mark Owen"],
+							},
+						},
+						worldFacts: [],
+						unresolvedThreads: [],
+						summaries: {},
+					}),
+				},
+			}),
+		);
+
+		expect(content.transcript[0]?.speaker).toBe("Director");
+		expect(content.metadata.protagonist).toBe("Mark Owen");
+	});
 });
 
 describe("serializeStoryArchiveMarkdown", () => {

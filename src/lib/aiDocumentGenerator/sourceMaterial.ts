@@ -1,9 +1,7 @@
 import type { PlayerCharacter, StoryExportBundle, StoryMessage } from "../../types/models";
 import { formatDateTime } from "../dates";
 import { resolveMessageChapterBoundary } from "../storyText/chapterNavigation";
-import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
-import { isContinueMessage } from "../storyText/continueMode";
-import { isDirectorMessage } from "../storyText/directorMode";
+import { resolveUserTranscriptSpeaker } from "../storyText/directorMode";
 import { serializeStoryExport } from "../storyExport";
 import type { ChapterSourceSegment } from "./types";
 import { resolveNarrativeProtagonistName } from "../narrativeIdentity";
@@ -30,16 +28,10 @@ function resolveSpeakerLabel(
 	const storyState = storyStateJson?.trim() ? safeParseStoryStateData(storyStateJson) : null;
 	const sceneName = resolvePlayerCharacterSceneName(playerCharacter, { storyState });
 	if (message.role === "user") {
-		if (isAuthorDirectiveMessage(message)) {
-			return message.speakerName?.trim() || "Author";
-		}
-		if (isContinueMessage(message)) {
-			return "Continue";
-		}
-		if (isDirectorMessage(message)) {
-			return "Director";
-		}
-		return message.speakerName?.trim() || sceneName;
+		return resolveUserTranscriptSpeaker(message, {
+			legalName: playerCharacter.name,
+			sceneName,
+		});
 	}
 
 	if (message.role === "system" || message.speakerType === "system") {
