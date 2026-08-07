@@ -6,6 +6,7 @@ import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storySta
 import { repairMalformedTranscriptFormat } from "../storyText/transcriptFormatRepair";
 import { normalizeSpeakerNamesInTranscript } from "../storyText/speakerLabels";
 import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing, applyOpenThreadReconciliation } from "../storyStateV2";
+import { applyTranscriptPresenceGate } from "../transcriptPresence";
 import { normalizePlayerCharacterAliases } from "../playerCharacterPrompt";
 import { ensureIndexedCharacterStatus } from "../characterStatus";
 import { AIError } from "./errors";
@@ -305,10 +306,13 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     ),
     { playerName: playerCharacter.name },
   );
-  const finalJson = JSON.stringify(finalState);
+  const gatedState = applyTranscriptPresenceGate(finalState, messages, playerCharacter, {
+    messageCount: total,
+  });
+  const finalJson = JSON.stringify(gatedState);
 
   return {
     stateJson: finalJson,
-    summaryText: finalState.summaries?.worldSummary?.trim() || undefined,
+    summaryText: gatedState.summaries?.worldSummary?.trim() || undefined,
   };
 }

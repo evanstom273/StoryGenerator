@@ -25,6 +25,7 @@ import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
 import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
 import { createNarrativeIdentityPromptContext, redactNarrativePromptText, resolveNarrativePromptName } from "../narrativeIdentity";
+import { applyTranscriptPresenceGate } from "../transcriptPresence";
 import {
   formatAuthorDirectiveStateForPrompt,
   isAuthorDirectiveMessage,
@@ -152,12 +153,18 @@ export function buildStoryChatContext({
   const parsedStoryState = storyState?.stateJson?.trim()
     ? safeParseStoryStateData(storyState.stateJson)
     : null;
+  const gatedStoryState =
+    parsedStoryState && recentMessages.length
+      ? applyTranscriptPresenceGate(parsedStoryState, recentMessages, playerCharacter, {
+          messageCount: recentMessages.length,
+        })
+      : parsedStoryState;
   const playerSceneName = resolvePlayerCharacterSceneName(playerCharacter, {
-    storyState: parsedStoryState,
+    storyState: gatedStoryState,
     recentMessages,
   });
   const narrativeIdentity = createNarrativeIdentityPromptContext({
-    storyState: parsedStoryState,
+    storyState: gatedStoryState,
     playerCharacter,
     messages: recentMessages,
     messageCount: recentMessages.length,
@@ -249,12 +256,12 @@ export function buildStoryChatContext({
 
     return {
       longTerm:
-        formatStoryLongTermMemoryForPrompt(parsed, {
+        formatStoryLongTermMemoryForPrompt(gatedStoryState ?? parsed, {
           playerName: playerCharacter.name,
           narrativeIdentity,
         }) ||
         "No long-term memory is recorded yet.",
-      scene: formatStorySceneStateForPrompt(parsed, { narrativeIdentity }),
+      scene: formatStorySceneStateForPrompt(gatedStoryState ?? parsed, { narrativeIdentity }),
     };
   })();
   const authorDirectiveBlock = formatAuthorDirectiveStateForPrompt(

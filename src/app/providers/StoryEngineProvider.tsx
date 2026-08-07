@@ -98,6 +98,7 @@ import {
   withIndexedMetadata,
 } from "../../lib/storyStateV2";
 import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
+import { createClearedStoryStateV2 } from "../../lib/transcriptPresence";
 import { runGuidedChapterGeneration } from "../../lib/guidedChapterGeneration/runGuidedChapters";
 import {
 	buildChapterPlanPrompt,
@@ -475,6 +476,7 @@ interface StoryEngineContextValue {
     direction: "up" | "down",
   ) => Promise<BackgroundJob[] | null>;
   cancelStoryIndexing: (storyId: string) => Promise<void>;
+  clearStoryIndex: (storyId: string) => Promise<void>;
   queueAudiobookJob: (
     storyId: string,
     opts?: { force?: boolean },
@@ -2944,6 +2946,31 @@ export function StoryEngineProvider({
     [cancelBackgroundJob, repository],
   );
 
+  const clearStoryIndex = useCallback(
+    async (storyId: string) => {
+      await cancelStoryIndexing(storyId);
+
+      const existing = await repository.getStoryState(storyId);
+      const parsed = existing?.stateJson?.trim() ? safeParseStoryStateData(existing.stateJson) : null;
+      const cleared = createClearedStoryStateV2({
+        rpStats: parsed?.rpStats,
+        authorDirectives: parsed?.authorDirectives,
+      });
+      const now = new Date().toISOString();
+
+      await repository.saveStoryState({
+        id: existing?.id ?? `story-state:${storyId}`,
+        storyId,
+        stateJson: JSON.stringify(cleared),
+        updatedAt: now,
+      });
+
+      setRebuildStatus((current) => (current?.storyId === storyId ? undefined : current));
+      await hydrate(false);
+    },
+    [cancelStoryIndexing, hydrate, repository],
+  );
+
   const cancelGuidedChapterGeneration = useCallback(
     async (storyId: string) => {
       const jobs = await repository.listBackgroundJobs();
@@ -3157,6 +3184,11 @@ export function StoryEngineProvider({
               deepIndexTrigger: opts?.trigger ?? "manual",
               playerName: playerCharacter.name,
               playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
+              playerCharacter: {
+                name: playerCharacter.name,
+                aliases: playerCharacter.aliases,
+              },
+              messages: allMessages,
               universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
             });
           } catch {
@@ -4868,6 +4900,11 @@ export function StoryEngineProvider({
             mode: "deep",
             playerName: playerCharacter.name,
             playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
+            playerCharacter: {
+              name: playerCharacter.name,
+              aliases: playerCharacter.aliases,
+            },
+            messages: refreshedMessages,
             universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
           });
         } catch {
@@ -6867,6 +6904,7 @@ export function StoryEngineProvider({
       cancelBackgroundJob,
       reorderBackgroundTaskJob,
       cancelStoryIndexing,
+      clearStoryIndex,
       queueGuidedChapterJob,
       cancelGuidedChapterGeneration,
       generateGuidedChapterPlan,
