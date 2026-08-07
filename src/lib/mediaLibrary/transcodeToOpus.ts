@@ -1,7 +1,13 @@
 import { decodeWavToPcm16 } from "../aiDocumentGenerator/wavEncode";
+import { computeWavDurationMs } from "./wavDuration";
 
 const OPUS_WEBM_MIME = "audio/webm;codecs=opus";
 const OPUS_OGG_MIME = "audio/ogg;codecs=opus";
+
+/** MediaRecorder encodes in real time — only attempt Opus for short clips. */
+const MAX_OPUS_TRANSCODE_DURATION_MS = 90_000;
+const TRANSCODE_TIMEOUT_PADDING_MS = 3_000;
+const TRANSCODE_TIMEOUT_MAX_MS = 30_000;
 
 export type OpusTranscodeResult = {
 	bytes: Uint8Array;
@@ -24,6 +30,21 @@ function resolveOpusMimeType(): string | null {
 	return null;
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+	return new Promise((resolve) => {
+		const timer = window.setTimeout(() => resolve(null), timeoutMs);
+		void promise
+			.then((value) => {
+				window.clearTimeout(timer);
+				resolve(value);
+			})
+			.catch(() => {
+				window.clearTimeout(timer);
+				resolve(null);
+			});
+	});
+}
+
 async function encodeAudioBufferToOpus(
 	audioBuffer: AudioBuffer,
 	mimeType: string,
@@ -38,6 +59,16 @@ async function encodeAudioBufferToOpus(
 
 	return await new Promise((resolve) => {
 		let recorder: MediaRecorder;
+		let settled = false;
+
+		const finish = (value: Uint8Array | null) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			void audioContext.close();
+			resolve(value);
+		};
 
 		try {
 			recorder = new MediaRecorder(destination.stream, {
@@ -45,8 +76,7 @@ async function encodeAudioBufferToOpus(
 				audioBitsPerSecond: 64_000,
 			});
 		} catch {
-			void audioContext.close();
-			resolve(null);
+			finish(null);
 			return;
 		}
 
@@ -57,19 +87,16 @@ async function encodeAudioBufferToOpus(
 		};
 
 		recorder.onerror = () => {
-			void audioContext.close();
-			resolve(null);
+			finish(null);
 		};
 
 		recorder.onstop = async () => {
 			try {
 				const blob = new Blob(chunks, { type: mimeType.split(";")[0] ?? "audio/webm" });
 				const bytes = new Uint8Array(await blob.arrayBuffer());
-				resolve(bytes.length > 0 ? bytes : null);
+				finish(bytes.length > 0 ? bytes : null);
 			} catch {
-				resolve(null);
-			} finally {
-				void audioContext.close();
+				finish(null);
 			}
 		};
 
@@ -93,6 +120,16 @@ export async function transcodeWavToOpus(wavBytes: Uint8Array): Promise<OpusTran
 		return null;
 	}
 
+	const durationMs = computeWavDurationMs(wavBytes);
+	if (durationMs > MAX_OPUS_TRANSCODE_DURATION_MS) {
+		return null;
+	}
+
+	const timeoutMs = Math.min(
+		TRANSCODE_TIMEOUT_MAX_MS,
+		durationMs + TRANSCODE_TIMEOUT_PADDING_MS,
+	);
+
 	try {
 		const wavCopy = wavBytes.slice().buffer;
 		const audioContext = new AudioContext();
@@ -114,7 +151,7 @@ export async function transcodeWavToOpus(wavBytes: Uint8Array): Promise<OpusTran
 			void audioContext.close();
 		}
 
-		const bytes = await encodeAudioBufferToOpus(audioBuffer, mimeType);
+		const bytes = await withTimeout(encodeAudioBufferToOpus(audioBuffer, mimeType), timeoutMs);
 		if (!bytes) {
 			return null;
 		}
