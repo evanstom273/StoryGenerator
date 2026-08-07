@@ -750,7 +750,9 @@ export function SettingsPage() {
           <Panel variant="flat">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Version</div>
-              <Badge variant="accent">v{APP_VERSION}</Badge>
+              <button type="button" onClick={openChangelog} className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
+                <Badge variant="accent">v{APP_VERSION}</Badge>
+              </button>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button variant="secondary" size="sm" onClick={openChangelog}>Changelog</Button>
