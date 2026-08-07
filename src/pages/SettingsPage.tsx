@@ -11,6 +11,10 @@ import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { UI_PREFS_KEYS, readStoredTextSize, writeStoredTextSize } from "../app/ui/UiPrefsContext";
 import { useChangelog } from "../app/versioning/ChangelogContext";
 import { APP_NAME, APP_VERSION } from "../app/versioning/version";
+import {
+	exportDesignDocument,
+	type DesignDocumentExportFormat,
+} from "../app/versioning/designDocumentExport";
 import { useTheme } from "../app/theming/ThemeContext";
 import { resolveMaxConcurrentBackgroundTasks } from "../lib/backgroundTasks";
 import type { AIModelRole, AIProviderType, AISettings, MaxConcurrentBackgroundTasks } from "../types/models";
@@ -220,6 +224,7 @@ export function SettingsPage() {
     readStoredTextSize(UI_PREFS_KEYS.textSize, "md"),
   );
   const [versionCopyStatus, setVersionCopyStatus] = useState<string | null>(null);
+  const [designDocExportStatus, setDesignDocExportStatus] = useState<string | null>(null);
   const [deleteStoriesConfirm, setDeleteStoriesConfirm] = useState("");
   const [deleteCharactersConfirm, setDeleteCharactersConfirm] = useState("");
   const [deleteUniversesConfirm, setDeleteUniversesConfirm] = useState("");
@@ -266,6 +271,18 @@ export function SettingsPage() {
       window.prompt("Copy version info:", text);
       setVersionCopyStatus("Copy prompt opened.");
     }
+  }
+
+  async function handleExportDesignDocument(format: DesignDocumentExportFormat) {
+    try {
+      await exportDesignDocument({ format });
+      setDesignDocExportStatus(`Downloaded ${format.toUpperCase()} design document.`);
+    } catch (error) {
+      setDesignDocExportStatus(
+        error instanceof Error ? error.message : "Could not export the design document.",
+      );
+    }
+    setTimeout(() => setDesignDocExportStatus(null), 4000);
   }
 
   useEffect(() => {
@@ -762,6 +779,32 @@ export function SettingsPage() {
             {versionCopyStatus ? (
               <div className="mt-3 rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-[13px] text-ink-muted">
                 {versionCopyStatus}
+              </div>
+            ) : null}
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+              Design Document
+            </div>
+            <p className="mt-2 text-[13px] leading-6 text-ink-muted">
+              The complete technical architecture and design reference for Story Engine — architecture,
+              data models, AI pipeline, story text rules, audiobook, indexing, and more.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" onClick={() => void handleExportDesignDocument("markdown")}>
+                Download Markdown
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => void handleExportDesignDocument("txt")}>
+                Download TXT
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => void handleExportDesignDocument("pdf")}>
+                Download PDF
+              </Button>
+            </div>
+            {designDocExportStatus ? (
+              <div className="mt-3 rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-[13px] text-ink-muted">
+                {designDocExportStatus}
               </div>
             ) : null}
           </Panel>
