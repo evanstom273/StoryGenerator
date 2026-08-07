@@ -7,9 +7,18 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "3.3.1";
+export const APP_VERSION = "3.3.2";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "3.3.2": {
+    title: "Story Workspace Bottom Bar Fix",
+    releasedAt: "2026-08-07T01:45:00+00:00",
+    added: [],
+    fixed: [
+      "Story workspace settings bar and audio player now stay pinned to the bottom of the screen on mobile instead of scrolling with the transcript",
+    ],
+    knownIssues: [],
+  },
   "3.3.1": {
     title: "Library Search Expansion & PWA Updates",
     releasedAt: "2026-08-06T21:30:00+00:00",
