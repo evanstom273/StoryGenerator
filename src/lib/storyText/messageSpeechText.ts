@@ -17,8 +17,6 @@ import type { AudiobookPerformanceMode } from "../ai/audiobookPerformance";
 import { DEFAULT_AUDIOBOOK_PERFORMANCE_MODE } from "../ai/audiobookPerformance";
 import type { CharacterTtsGenderMap, CharacterTtsRegistry } from "../ai/characterTtsVoices";
 import {
-	DIRECTOR_TTS_KEY,
-	DIRECTOR_TTS_LABEL,
 	applyCharacterGenderHintForName,
 	ensureCharacterTtsRegistry,
 	inferGenderFromPronounsInText,
@@ -55,6 +53,7 @@ export function isSpeechExcludedMessage(message: StoryMessage) {
 
 	return (
 		isContinueMessage(message) ||
+		isDirectorMessage(message) ||
 		isAuthorDirectiveMessage(message) ||
 		message.speakerType === "canon"
 	);
@@ -579,7 +578,6 @@ export function collectCharacterTtsCandidatesFromMessages(
 
 		if (message.role === "user") {
 			if (isDirectorMessage(message)) {
-				addCandidate(DIRECTOR_TTS_LABEL);
 				continue;
 			}
 
@@ -731,17 +729,6 @@ export function buildStoryMessageSpeechScriptLines(
 		const defaultCharacterLabel =
 			message.speakerName?.trim() || options.playerName?.trim() || "Player";
 
-		if (isDirectorMessage(message)) {
-			const direction = stripActionMarkers(rawContent);
-			if (!direction) {
-				return [];
-			}
-
-			const directorSpeaker =
-				options.characterRegistry.labels[DIRECTOR_TTS_KEY] ?? DIRECTOR_TTS_LABEL;
-			return [{ speaker: directorSpeaker, text: direction }];
-		}
-
 		if (message.speakerType === "narrator") {
 			const text = formatNarratorBlockForDisplay(rawContent);
 			if (!text.trim()) {
@@ -841,13 +828,6 @@ function buildCharacterRegistryForMessages(
 	const mergedGenderHints = { ...messageGenderHints, ...(characterGenders ?? {}) };
 
 	const candidates = collectCharacterTtsCandidatesFromMessages(messages, playerName);
-	const directorCandidate = candidates.find((entry) => entry.key === DIRECTOR_TTS_KEY);
-	if (!directorCandidate) {
-		const hasDirector = messages.some((message) => isDirectorMessage(message));
-		if (hasDirector) {
-			candidates.push({ key: DIRECTOR_TTS_KEY, label: DIRECTOR_TTS_LABEL });
-		}
-	}
 
 	return ensureCharacterTtsRegistry({
 		existingVoices: existingRegistry?.voices,

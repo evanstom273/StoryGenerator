@@ -30,6 +30,7 @@ import {
 } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
+import { formatDirectorNoteInterpretationGuidance } from "../storyText/directorSyntax";
 import type { SceneDepth } from "./sceneSizing";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
@@ -455,6 +456,9 @@ export function buildStoryChatContext({
       latestMessageIsDirectorNote || guidedDirectedContinue
         ? "Once this directed reply is complete, normal player control resumes on the next user turn."
         : "When the player character is present, other characters may address them, but always wait for the player's response.",
+      latestMessageIsDirectorNote || guidedDirectedContinue
+        ? formatDirectorNoteInterpretationGuidance()
+        : "",
       "Asterisks are reserved exclusively for actions. Never use asterisks for emphasis, sarcasm, or formatting.",
       "Actions should read like prose, not stage directions. Avoid repetitive filler actions (nods/looks/shrugs) unless truly warranted.",
       "Interpret any *...* text in the conversation as an action and react to it naturally.",

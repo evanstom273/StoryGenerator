@@ -181,7 +181,7 @@ export const TUTORIAL_DOCUMENT: TutorialDocument = {
 				{
 					type: "bullets",
 					items: [
-						"Generate Response — AI suggests what your character might say or do next (you can edit before sending).",
+						"Generate Response / Generate Direction — AI suggests your next turn. Before any scenes exist it proposes player dialogue or action; once scenes exist it defaults to a Director staging note (`Director: *beat*` with optional `(\"gist\")` for approximate dialogue) using full transcript context (you can edit before sending).",
 						"Regenerate — replace the last AI message with a new version.",
 						"Edit — change the last AI message manually.",
 						"Response variants — when multiple candidates exist, use Previous / Next to pick the best one.",

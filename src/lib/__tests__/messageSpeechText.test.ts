@@ -173,7 +173,7 @@ describe("messageSpeechText", () => {
 		);
 	});
 
-	it("skips continue user messages but allows director directions", () => {
+	it("skips continue and director user messages in audiobook speech", () => {
 		expect(
 			isSpeakableUserMessage({
 				id: "c1",
@@ -189,28 +189,26 @@ describe("messageSpeechText", () => {
 				id: "d1",
 				storyId: "story-1",
 				role: "user",
-				content: "Stage a chase scene.",
+				content: "*Stage a chase scene.*",
 				speakerType: "director",
+				speakerName: "Director",
 				timestamp: "2026-01-01T00:00:00.000Z",
 			}),
-		).toBe(true);
+		).toBe(false);
 
 		const directorPlan = buildStoryMessageSpeechPlan(
 			{
 				id: "d1",
 				storyId: "story-1",
 				role: "user",
-				content: "Stage a chase scene.",
+				content: "*Stage a chase scene.*",
 				speakerType: "director",
+				speakerName: "Director",
 				timestamp: "2026-01-01T00:00:00.000Z",
 			},
 			{ narrationTts },
 		);
-		expect(directorPlan?.scriptLines[0]?.speaker).toBe("Director");
-		expect(directorPlan?.text.toLowerCase()).toContain("chase");
-		expect(directorPlan?.speakers.find((speaker) => speaker.name === "Director")?.voice).toBe(
-			narrationTts.voice,
-		);
+		expect(directorPlan).toBeNull();
 	});
 
 	it("uses per-character speaker labels when registry is provided", () => {
@@ -257,22 +255,21 @@ describe("messageSpeechText", () => {
 		expect(plan?.multiSpeaker).toBe(false);
 	});
 
-	it("reads director notes as plain narration in single-narrator mode", () => {
+	it("skips director notes in single-narrator audiobook mode", () => {
 		const plan = buildStoryMessageSpeechPlan(
 			{
 				id: "d1",
 				storyId: "story-1",
 				role: "user",
-				content: "Stage a chase scene.",
+				content: "*Stage a chase scene.*",
 				speakerType: "director",
+				speakerName: "Director",
 				timestamp: "2026-01-01T00:00:00.000Z",
 			},
 			{ narrationTts, audiobookPerformanceMode: "single_narrator" },
 		);
 
-		expect(plan?.scriptLines).toEqual([
-			{ speaker: "Narrator", text: "Stage a chase scene." },
-		]);
+		expect(plan).toBeNull();
 	});
 
 	it("preserves character block speech formatting in single-narrator mode", () => {
@@ -289,7 +286,7 @@ describe("messageSpeechText", () => {
 		]);
 	});
 
-	it("builds chapter speech with player, director, and multi-voice narration", () => {
+	it("builds chapter speech with player and multi-voice narration, skipping director notes", () => {
 		const messages: StoryMessage[] = [
 			{
 				id: "p1",
@@ -303,8 +300,9 @@ describe("messageSpeechText", () => {
 				id: "d1",
 				storyId: "story-1",
 				role: "user",
-				content: "Make it tense.",
+				content: "*Make it tense.*",
 				speakerType: "director",
+				speakerName: "Director",
 				timestamp: "2026-01-01T00:00:30.000Z",
 			},
 			assistantMessage(
@@ -327,12 +325,13 @@ describe("messageSpeechText", () => {
 		const plan = buildChapterSpeechPlan(chapterSlice, { narrationTts });
 		expect(plan?.multiSpeaker).toBe(true);
 		expect(plan?.text).toContain("Let's go");
-		expect(plan?.text).toContain("Director:");
+		expect(plan?.text).not.toContain("Director:");
+		expect(plan?.text).not.toContain("Make it tense");
 		expect(plan?.text).toContain("sprinted");
 		expect(plan?.text).toContain("Marcus");
 		expect(plan?.text).not.toContain("Keep running");
 		expect(plan?.text).not.toContain("sirens");
-		expect(plan?.scriptLines.filter((line) => line.messageBreakAfter)).toHaveLength(3);
+		expect(plan?.scriptLines.filter((line) => line.messageBreakAfter)).toHaveLength(2);
 	});
 
 	it("builds chapter speech from speakable story messages", () => {

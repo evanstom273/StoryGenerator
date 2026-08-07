@@ -165,6 +165,10 @@ export function StoryMessageBubble({
     return null;
   }
 
+  if (isDirectorMessage(message)) {
+    return null;
+  }
+
   const speakerLabel = resolveSpeakerLabel(
     message.role,
     message.speakerType,
