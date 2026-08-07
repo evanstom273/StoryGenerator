@@ -37,6 +37,11 @@ import {
 	applyTranscriptPresenceGate,
 	listPresentIndexedCharacterNames,
 } from "../../lib/transcriptPresence";
+import {
+	applyNarrativeIdentityToText,
+	buildNarrativeIdentityRegistry,
+	resolveNarrativeDisplayName,
+} from "../../lib/narrativeIdentity";
 import { RelationshipOverviewList } from "../../components/story/RelationshipOverviewList";
 import { IndexingProgressPanel } from "../../components/story/IndexingProgressPanel";
 import { useDebouncedEffect } from "../../lib/useDebouncedEffect";
@@ -256,6 +261,26 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       { messageCount: storyMessages.length },
     );
   }, [playerCharacter, storyMessages, storyStateData]);
+
+  const narrativeRegistry = useMemo(() => {
+    if (!gatedStoryStateData) {
+      return buildNarrativeIdentityRegistry({ storyState: null });
+    }
+
+    return buildNarrativeIdentityRegistry({
+      storyState: gatedStoryStateData,
+      playerCharacter: playerCharacter
+        ? { name: playerCharacter.name, aliases: playerCharacter.aliases ?? [] }
+        : null,
+      messages: storyMessages,
+      messageCount: storyMessages.length,
+    });
+  }, [gatedStoryStateData, playerCharacter, storyMessages]);
+
+  const redactNarrative = (text: string) =>
+    applyNarrativeIdentityToText(text, narrativeRegistry, {
+      messageCount: storyMessages.length,
+    });
 
   async function handlePromoteCharacter() {
     if (!story || !playerCharacter) {
@@ -1734,18 +1759,21 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                   <div className="space-y-3">
                                     {trackedCharacterNames.map((name) => {
                                       const entry = archiveStoryState.characters?.[name];
+                                      const displayName = resolveNarrativeDisplayName(name, narrativeRegistry, {
+                                        messageCount: storyMessages.length,
+                                      });
                                       const synthesized = synthesizeCharacterStatusBullets(name, archiveStoryState, {
                                         playerName: playerCharacter?.name,
                                       });
-                                      const statusLines = getCharacterStatusLines(entry, synthesized);
-                                      const strengths = trimStringList((entry as any)?.strengths, 3);
-                                      const weaknesses = trimStringList((entry as any)?.weaknesses, 3);
+                                      const statusLines = getCharacterStatusLines(entry, synthesized).map(redactNarrative);
+                                      const strengths = trimStringList((entry as any)?.strengths, 3).map(redactNarrative);
+                                      const weaknesses = trimStringList((entry as any)?.weaknesses, 3).map(redactNarrative);
                                       if (!statusLines.length && !strengths.length && !weaknesses.length) {
                                         return null;
                                       }
                                       return (
                                         <div key={name} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
-                                          <div className="font-semibold text-ink-soft">{name}</div>
+                                          <div className="font-semibold text-ink-soft">{displayName}</div>
                                           <div className="mt-2 space-y-2">
                                             {statusLines.map((line) => (
                                               <MarkdownText key={line} text={line} className="text-sm text-ink-soft" />
@@ -1780,9 +1808,16 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                                       .sort((a, b) => a.name.localeCompare(b.name))
                                       .map((entry) => (
                                         <div key={entry.name} className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3">
-                                          <div className="font-semibold text-ink-soft">{entry.name}</div>
+                                          <div className="font-semibold text-ink-soft">
+                                            {resolveNarrativeDisplayName(entry.name, narrativeRegistry, {
+                                              messageCount: storyMessages.length,
+                                            })}
+                                          </div>
                                           {entry.description ? (
-                                            <MarkdownText text={entry.description} className="mt-1 text-sm text-ink-muted" />
+                                            <MarkdownText
+                                              text={redactNarrative(entry.description)}
+                                              className="mt-1 text-sm text-ink-muted"
+                                            />
                                           ) : null}
                                           {renderEvidencePills(entry.evidence?.messageNumbers, `char-${entry.name}`)}
                                         </div>

@@ -3,9 +3,11 @@ import type {
 	RelationshipIndexEntry,
 	StoryAuthorDirectiveState,
 	StoryMessage,
+	StoryStateCharacterState,
 	StoryStateDataV2,
 } from "../types/models";
 import { normalizePlayerCharacterAliases, resolvePlayerCharacterSceneName } from "./playerCharacterPrompt";
+import { findPlayerStoryStateEntry } from "./storyText/playerSceneName";
 import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
 import { isContinueMessage } from "./storyText/continueMode";
 import { isDirectorMessage, isPlayerLegalNameDirectorBeat } from "./storyText/directorMode";
@@ -254,6 +256,214 @@ function filterIndexedList<T extends { thread?: string; fact?: string; moment?: 
 	return filtered.length ? filtered : [];
 }
 
+const OMNISCIENT_CHARACTER_STATUS_PATTERN =
+	/\b(?:mastermind|orchestrat(?:e|es|ed|ing)|sinister|evil|lack(?:s)? empathy|cold-blooded|grand game|manipulat(?:e|es|ed|ing)|nemesis|villain|antagonist)\b/i;
+
+function slugCharacterIndexKey(name: string): string {
+	return normalizeName(name).replace(/\s+/g, "-");
+}
+
+function isHiddenPlayerIdentitySplitActive(
+	playerCharacter: Pick<PlayerCharacter, "name" | "aliases">,
+	state: StoryStateDataV2,
+	messages: StoryMessage[],
+	opts: { messageCount: number; playerPresent: boolean },
+): boolean {
+	if (!opts.playerPresent) {
+		return false;
+	}
+
+	const legalName = playerCharacter.name.trim();
+	const sceneName = resolvePlayerCharacterSceneName(playerCharacter, {
+		storyState: state,
+		recentMessages: messages,
+	});
+	if (!legalName || normalizeName(legalName) === normalizeName(sceneName)) {
+		return false;
+	}
+
+	const playerEntry = findPlayerStoryStateEntry(state, legalName);
+	const revealedAt = playerEntry?.identityRevealedAtMessage;
+	if (revealedAt && revealedAt <= opts.messageCount) {
+		return false;
+	}
+
+	return true;
+}
+
+function collectHiddenPlayerLegalVariants(
+	playerCharacter: Pick<PlayerCharacter, "name" | "aliases">,
+	state: StoryStateDataV2,
+	sceneName: string,
+): string[] {
+	const legalName = playerCharacter.name.trim();
+	const playerEntry = findPlayerStoryStateEntry(state, legalName);
+	return collectNameVariants(legalName, playerEntry?.canonicalName).filter(
+		(variant) => normalizeName(variant) !== normalizeName(sceneName),
+	);
+}
+
+function nameMatchesAnyVariant(name: string, variants: string[]): boolean {
+	const normalized = normalizeName(name);
+	return variants.some((variant) => normalizeName(variant) === normalized);
+}
+
+function entityMatchesHiddenPlayerLegalIdentity(
+	name: string,
+	entry:
+		| StoryStateCharacterState
+		| { name?: string; narrativeName?: string; aliases?: string[] }
+		| undefined,
+	legalVariants: string[],
+	sceneName: string,
+): boolean {
+	if (nameMatchesAnyVariant(name, legalVariants) && normalizeName(name) !== normalizeName(sceneName)) {
+		return true;
+	}
+
+	const candidateNames = collectNameVariants(
+		entry && "name" in entry ? entry.name : undefined,
+		entry && "canonicalName" in entry ? entry.canonicalName : undefined,
+		entry && "displayName" in entry ? entry.displayName : undefined,
+		entry && "narrativeName" in entry ? entry.narrativeName : undefined,
+		...(entry && "aliases" in entry ? (entry.aliases ?? []) : []),
+	);
+
+	return candidateNames.some(
+		(candidate) =>
+			nameMatchesAnyVariant(candidate, legalVariants) &&
+			normalizeName(candidate) !== normalizeName(sceneName),
+	);
+}
+
+function filterReaderFacingStatusBullets(
+	bullets: string[] | undefined,
+	legalVariants: string[],
+): string[] | undefined {
+	if (!bullets?.length) {
+		return bullets;
+	}
+
+	const filtered = bullets.filter(
+		(bullet) =>
+			!textMentionsAnyName(bullet, legalVariants) &&
+			!OMNISCIENT_CHARACTER_STATUS_PATTERN.test(bullet),
+	);
+
+	return filtered.length ? filtered : undefined;
+}
+
+function splitPlayerSceneIdentityInIndex(
+	state: StoryStateDataV2,
+	messages: StoryMessage[],
+	playerCharacter: Pick<PlayerCharacter, "name" | "aliases">,
+	opts: { messageCount: number; playerPresent: boolean },
+): StoryStateDataV2 {
+	if (
+		!isHiddenPlayerIdentitySplitActive(playerCharacter, state, messages, opts)
+	) {
+		return state;
+	}
+
+	const legalName = playerCharacter.name.trim();
+	const sceneName = resolvePlayerCharacterSceneName(playerCharacter, {
+		storyState: state,
+		recentMessages: messages,
+	});
+	const legalVariants = collectHiddenPlayerLegalVariants(playerCharacter, state, sceneName);
+	const playerEntry = findPlayerStoryStateEntry(state, legalName);
+
+	let sourceCharacterEntry: StoryStateCharacterState | undefined = playerEntry ?? undefined;
+	for (const [key, entry] of Object.entries(state.characters ?? {})) {
+		if (entityMatchesHiddenPlayerLegalIdentity(key, entry, legalVariants, sceneName)) {
+			sourceCharacterEntry = entry;
+			break;
+		}
+	}
+
+	const sourceIndexedEntry = Object.values(state.indexes?.characters ?? {}).find((entry) =>
+		entityMatchesHiddenPlayerLegalIdentity(entry?.name ?? "", entry, legalVariants, sceneName),
+	);
+
+	const characters: StoryStateDataV2["characters"] = {};
+	for (const [key, entry] of Object.entries(state.characters ?? {})) {
+		if (entityMatchesHiddenPlayerLegalIdentity(key, entry, legalVariants, sceneName)) {
+			continue;
+		}
+		characters[key] = entry;
+	}
+
+	const migratedStatusBullets = filterReaderFacingStatusBullets(
+		sourceCharacterEntry?.statusBullets,
+		legalVariants,
+	);
+
+	characters[sceneName] = {
+		...(sourceCharacterEntry ?? {}),
+		displayName: sceneName,
+		narrativeName: sceneName,
+		canonicalName: legalName,
+		identityRevealedAtMessage: sourceCharacterEntry?.identityRevealedAtMessage,
+		...(migratedStatusBullets ? { statusBullets: migratedStatusBullets } : {}),
+		strengths: undefined,
+		weaknesses: undefined,
+	};
+
+	const indexesCharacters =
+		state.indexes?.characters && typeof state.indexes.characters === "object"
+			? Object.fromEntries(
+					Object.entries(state.indexes.characters).filter(
+						([, entry]) =>
+							!entityMatchesHiddenPlayerLegalIdentity(entry?.name ?? "", entry, legalVariants, sceneName),
+					),
+				)
+			: {};
+
+	const migratedIndexedDescription =
+		typeof sourceIndexedEntry?.description === "string"
+			? sourceIndexedEntry.description
+			: undefined;
+
+	indexesCharacters[slugCharacterIndexKey(sceneName)] = {
+		...(sourceIndexedEntry ?? {}),
+		name: sceneName,
+		narrativeName: sceneName,
+		aliases: collectNameVariants(sceneName).filter(
+			(variant) => !nameMatchesAnyVariant(variant, legalVariants),
+		),
+		...(migratedIndexedDescription ? { description: migratedIndexedDescription } : {}),
+	};
+
+	const remapRelationshipEndpoint = (value: string): string => {
+		const trimmed = value.trim();
+		if (!trimmed) {
+			return trimmed;
+		}
+		if (entityMatchesHiddenPlayerLegalIdentity(trimmed, undefined, legalVariants, sceneName)) {
+			return sceneName;
+		}
+		return trimmed;
+	};
+
+	const relationships = (state.indexes?.relationships ?? []).map((entry) => ({
+		...entry,
+		a: remapRelationshipEndpoint(entry.a),
+		b: remapRelationshipEndpoint(entry.b),
+	}));
+
+	return {
+		...state,
+		characters,
+		indexes: state.indexes
+			? {
+					...state.indexes,
+					characters: indexesCharacters,
+					relationships,
+				}
+			: state.indexes,
+	};
+}
+
 function filterRelationships(
 	relationships: RelationshipIndexEntry[] | undefined,
 	presentNames: Set<string>,
@@ -405,7 +615,7 @@ export function applyTranscriptPresenceGate(
 		}
 	}
 
-	return {
+	const gatedState: StoryStateDataV2 = {
 		...state,
 		characters: filteredCharacters,
 		...(filteredNpcs ? { npcs: filteredNpcs } : state.npcs ? { npcs: {} } : {}),
@@ -432,6 +642,11 @@ export function applyTranscriptPresenceGate(
 			(memory) => !textMentionsAnyName(memory, absentPlayerVariants),
 		),
 	};
+
+	return splitPlayerSceneIdentityInIndex(gatedState, messages, playerCharacter, {
+		messageCount,
+		playerPresent,
+	});
 }
 
 export function listPresentIndexedCharacterNames(
