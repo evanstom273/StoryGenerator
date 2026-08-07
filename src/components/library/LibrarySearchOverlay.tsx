@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { SearchIcon } from "../icons";
 import { Button } from "../ui/Button";
@@ -149,7 +149,6 @@ export function LibrarySearchOverlay({
 	initialQuery?: string;
 	onClose: () => void;
 }) {
-	const inputRef = useRef<HTMLInputElement>(null);
 	const {
 		stories,
 		universes,
@@ -202,17 +201,6 @@ export function LibrarySearchOverlay({
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [onClose, open]);
-
-	useEffect(() => {
-		if (!open) {
-			return;
-		}
-		const frame = window.requestAnimationFrame(() => {
-			inputRef.current?.focus();
-			inputRef.current?.select();
-		});
-		return () => window.cancelAnimationFrame(frame);
-	}, [open]);
 
 	const libraryCharacters = useMemo(
 		() => playerCharacters.filter((character) => (character.scope ?? "library") === "library"),
@@ -306,7 +294,6 @@ export function LibrarySearchOverlay({
 					<div className="flex items-center gap-3">
 						<SearchIcon className="h-4 w-4 shrink-0 text-ink-muted" />
 						<input
-							ref={inputRef}
 							value={filters.query}
 							onChange={(event) => updateFilter("query", event.target.value)}
 							placeholder="Search stories, universes, characters…"
