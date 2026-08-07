@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { useGeminiTtsPlayback } from "../../app/providers/GeminiTtsPlaybackProvider";
+import { Link, useNavigate } from "react-router-dom";
+import {
+	useGeminiTtsPlayback,
+	type LibrarySaveState,
+} from "../../app/providers/GeminiTtsPlaybackProvider";
 import { AudiobookChapterProgressList } from "./AudiobookChapterProgressList";
 import { Button } from "../ui/Button";
 import { cn } from "../../utils/cn";
@@ -30,7 +34,14 @@ export function StoryAudioPlayerBar({ className }: { className?: string }) {
 		stop,
 		getLoadingDetail,
 		backgroundAudiobookJob,
+		getLibrarySaveState,
+		saveActiveAudioToLibrary,
 	} = useGeminiTtsPlayback();
+	const navigate = useNavigate();
+	const [librarySaveState, setLibrarySaveState] = useState<LibrarySaveState>({
+		status: "unavailable",
+	});
+	const [isSaving, setIsSaving] = useState(false);
 	const loadingDetail = activeId ? getLoadingDetail(activeId) : null;
 	const backgroundLoadingDetail = backgroundAudiobookJob
 		? getLoadingDetail(backgroundAudiobookJob.playId)
@@ -50,6 +61,11 @@ export function StoryAudioPlayerBar({ className }: { className?: string }) {
 		status === "playing" ||
 		status === "error" ||
 		isAudiobookPreparing;
+	const isLoading = status === "loading";
+	const isPrimaryAudiobookLoading =
+		isLoading && activeId && activeId === backgroundAudiobookJob?.playId;
+	const showPlaybackRow = Boolean(activeId && !isPrimaryAudiobookLoading);
+	const showPlaybackControls = showPlaybackRow && !isLoading && status !== "error";
 
 	useEffect(() => {
 		const detail = backgroundLoadingDetail ?? loadingDetail;
@@ -73,19 +89,56 @@ export function StoryAudioPlayerBar({ className }: { className?: string }) {
 		}
 	}, [isAudiobookPreparing]);
 
+	useEffect(() => {
+		if (!activeId || !showPlaybackControls) {
+			setLibrarySaveState({ status: "unavailable" });
+			return;
+		}
+
+		let cancelled = false;
+		void getLibrarySaveState(activeId).then((next) => {
+			if (!cancelled) {
+				setLibrarySaveState(next);
+			}
+		});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [activeId, getLibrarySaveState, showPlaybackControls, status]);
+
 	if (!visible || (!activeId && !isAudiobookPreparing)) {
 		return null;
 	}
 
 	const progress =
 		durationSec > 0 ? Math.min(100, (currentTimeSec / durationSec) * 100) : 0;
-	const isLoading = status === "loading";
 	const isPlaying = status === "playing" && !isPaused;
-	const isPrimaryAudiobookLoading =
-		isLoading && activeId && activeId === backgroundAudiobookJob?.playId;
-	const showPlaybackRow = Boolean(activeId && !isPrimaryAudiobookLoading);
-	const showPlaybackControls = showPlaybackRow && !isLoading && status !== "error";
 	const showChapterProgress = isAudiobookPreparing && audiobookProgress;
+
+	async function handleLibrarySave() {
+		if (librarySaveState.status === "saved") {
+			navigate("/media-library");
+			return;
+		}
+
+		if (librarySaveState.status === "replace") {
+			const confirmed = window.confirm("Replace the existing library copy with this audio?");
+			if (!confirmed) {
+				return;
+			}
+		}
+
+		setIsSaving(true);
+		try {
+			const asset = await saveActiveAudioToLibrary(librarySaveState.status === "replace");
+			setLibrarySaveState({ status: "saved", assetId: asset.id });
+		} catch (error) {
+			window.alert(error instanceof Error ? error.message : "Unable to save to the Media Library.");
+		} finally {
+			setIsSaving(false);
+		}
+	}
 
 	return (
 		<div
@@ -177,6 +230,30 @@ export function StoryAudioPlayerBar({ className }: { className?: string }) {
 							>
 								+5s
 							</Button>
+							{librarySaveState.status !== "unavailable" ? (
+								librarySaveState.status === "saved" ? (
+									<Link
+										to="/media-library"
+										className="inline-flex h-8 items-center rounded-md px-2 text-xs font-medium text-accent transition hover:text-accent-hover"
+									>
+										In library
+									</Link>
+								) : (
+									<Button
+										type="button"
+										size="sm"
+										variant="ghost"
+										disabled={!showPlaybackControls || isSaving}
+										onClick={() => void handleLibrarySave()}
+									>
+										{isSaving
+											? "Saving…"
+											: librarySaveState.status === "replace"
+												? "Replace"
+												: "Save"}
+									</Button>
+								)
+							) : null}
 							<Button
 								type="button"
 								size="sm"

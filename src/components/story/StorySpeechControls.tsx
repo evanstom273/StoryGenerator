@@ -35,6 +35,8 @@ export function ChapterListenBanner({
 
 	const chapterMessages = getMessagesForChapterStartingAt(messages, messageId);
 	const storyId = chapterMessages[0]?.storyId ?? messages[0]?.storyId;
+	const { getStoryById } = useStoryEngine();
+	const storyTitle = storyId ? getStoryById(storyId)?.title ?? "Story" : "Story";
 	const plan = buildChapterSpeechPlan(chapterMessages, {
 		playerName: playerCharacterName,
 		narrationTts,
@@ -63,6 +65,8 @@ export function ChapterListenBanner({
 						playId={`chapter-${messageId}`}
 						plan={plan}
 						storyId={storyId}
+						storyTitle={storyTitle}
+						chapterMessageId={messageId}
 						label="Listen"
 						playerTitle={label}
 						className="normal-case tracking-normal"
@@ -163,6 +167,7 @@ export function FullStoryAudiobookControls({
 						void prepareStoryAudiobook(playId, segments, storyTitle, {
 							parallelChapters: parallel,
 							storyId: storyId ?? undefined,
+							storyTitle,
 						});
 					})();
 				}}

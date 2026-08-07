@@ -157,15 +157,16 @@ import {
 import { clampAudiobookParallelChapters } from "../../lib/ai/storyAudiobookParallel";
 import { normalizeAudiobookPerformanceMode } from "../../lib/ai/audiobookPerformance";
 import {
+	computeStoryAudiobookPreparedDigest,
 	listStoryAudiobookChapterSegments,
 	synthesizeStoryAudiobookWav,
 } from "../../lib/ai/storyAudiobook";
 import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
 import { buildCharacterGenderHintsFromStoryState } from "../../lib/ai/characterTtsVoices";
 import { buildCharacterTtsRegistryForStory } from "../../lib/storyText/messageSpeechText";
-import { buildStoryAudiobookFilename } from "../../lib/exportFilename";
 import { downloadFile } from "../../lib/download";
 import { ingestAiDocumentAudioFromJob } from "../../lib/mediaLibrary/ingestAiDocumentAudio";
+import { ingestStoryAudio } from "../../lib/mediaLibrary/ingestStoryAudio";
 import { markMediaAssetsOrphanedForStory } from "../../lib/mediaLibrary/store";
 import {
 	isBackgroundTaskJob,
@@ -3725,18 +3726,39 @@ export function StoryEngineProvider({
         },
       });
 
-      const filename = buildStoryAudiobookFilename(story.title);
-      await downloadFile(filename, wavBuffer, "audio/wav");
+      const playId = `story-audiobook-${storyId}`;
+      const contentDigest = await computeStoryAudiobookPreparedDigest(
+        playId,
+        segments,
+        narrationTts.model,
+      );
+
+      const ingestResult = await ingestStoryAudio({
+        category: "audiobook",
+        storyId,
+        storyTitle: story.title,
+        wavBytes: new Uint8Array(wavBuffer),
+        contentDigest,
+        replaceExisting: true,
+      });
 
       setAudiobookExportStatus({
         storyId,
         jobId: opts.jobId,
         phase: "done",
-        message: "Story audiobook exported.",
+        message: ingestResult.unchanged
+          ? "Story audiobook is already in the Media Library."
+          : ingestResult.replaced
+            ? "Updated story audiobook in the Media Library."
+            : "Saved story audiobook to the Media Library.",
         startedAtMs,
       });
 
-      return `Exported ${filename}`;
+      return ingestResult.unchanged
+        ? "Story audiobook is already in the Media Library."
+        : ingestResult.replaced
+          ? "Updated story audiobook in the Media Library."
+          : "Saved story audiobook to the Media Library.";
     },
     [getNormalizedAISettings, repository, storyUiStates, updateBackgroundJobProgress],
   );

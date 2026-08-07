@@ -25,6 +25,7 @@ import { V2RightSidebar } from "./V2RightSidebar";
 import { BackgroundTasksButton } from "../../components/BackgroundTasksPanel";
 import { LibrarySearchContext } from "../library/LibrarySearchContext";
 import { LibrarySearchOverlay } from "../../components/library/LibrarySearchOverlay";
+import { StoryAudioPlayerBar } from "../../components/story/StoryAudioPlayerBar";
 
 export function V2Shell() {
   const { storyId } = useParams();
@@ -101,6 +102,7 @@ export function V2Shell() {
   const readerActive = Boolean(activeStoryId) && readerMode;
   const effectiveShowChrome = readerActive ? false : showChrome;
   const showFloatingGlobalMetaChatButton = !activeStoryId;
+  const isStoryWorkspace = /^\/stories\/[^/]+$/.test(location.pathname);
   const leftOpenRef = useRef(leftOpen);
   const storySettingsOpenRef = useRef(storySettingsOpen);
   const pathnameRef = useRef(location.pathname);
@@ -366,6 +368,13 @@ export function V2Shell() {
           initialQuery={librarySearchQuery}
           onClose={librarySearchContextValue.closeSearch}
         />
+        {!isStoryWorkspace ? (
+          <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="pointer-events-auto w-full max-w-3xl">
+              <StoryAudioPlayerBar />
+            </div>
+          </div>
+        ) : null}
       </div>
     </UiPrefsContext.Provider>
     </LibrarySearchContext.Provider>

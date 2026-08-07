@@ -574,7 +574,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
     const apiKey = aiSettings?.apiKeys?.gemini?.trim() ?? "";
     if (!apiKey) {
-      showError("Add a Gemini API key in Settings → AI to export audiobook audio.");
+      showError("Add a Gemini API key in Settings → AI to save audiobook audio.");
       return;
     }
 
@@ -584,12 +584,12 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     try {
       const result = await queueAudiobookJob(story.id);
       if (result.duplicate) {
-        showNotice("Audiobook export already queued for this story.");
+        showNotice("Audiobook save already queued for this story.");
       } else {
-        showNotice("Audiobook export queued. You can leave this page while it runs.");
+        showNotice("Audiobook save queued. You can leave this page while it runs.");
       }
     } catch (error) {
-      showError(error instanceof Error ? error.message : "Unable to queue audiobook export.");
+      showError(error instanceof Error ? error.message : "Unable to queue audiobook save.");
     }
   }
 
@@ -1293,7 +1293,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     disabled={!!exportStage || isExportingSupportBundle || isExportingAudiobook}
                   >
                     <DownloadIcon className="h-4 w-4" />
-                    {isExportingAudiobook ? "Exporting audiobook…" : "Export Story Audiobook (WAV)"}
+                    {isExportingAudiobook ? "Saving audiobook…" : "Save Story Audiobook to Library"}
                   </Button>
                   <Button
                     variant="secondary"

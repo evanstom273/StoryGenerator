@@ -12,6 +12,7 @@ import {
 } from "../../lib/mediaLibrary/format";
 import { formatRelativeTime } from "../../lib/dates";
 import { cn } from "../../utils/cn";
+import { MediaLibraryPlayButton } from "./MediaLibraryPlayButton";
 
 function MediaAssetRow({ asset }: { asset: MediaAssetView }) {
 	const createdLabel = formatRelativeTime(new Date(asset.createdAtMs).toISOString());
@@ -33,10 +34,13 @@ function MediaAssetRow({ asset }: { asset: MediaAssetView }) {
 					</span>
 				) : null}
 			</div>
-			<div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-white/30">
-				<span>{createdLabel}</span>
-				<span className="text-white/15">·</span>
-				<span>{progressLabel}</span>
+			<div className="mt-2 flex items-center justify-between gap-2">
+				<div className="flex flex-wrap items-center gap-2 text-[10px] text-white/30">
+					<span>{createdLabel}</span>
+					<span className="text-white/15">·</span>
+					<span>{progressLabel}</span>
+				</div>
+				<MediaLibraryPlayButton asset={asset} className="shrink-0" />
 			</div>
 		</div>
 	);

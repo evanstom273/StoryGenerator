@@ -33,7 +33,7 @@ export type BackgroundJobType =
   | "story_export"
   | "story_archive_export";
 export type MediaAssetCategory = "audiobook" | "chapter" | "ai_document" | "podcast";
-export type MediaAssetFormat = "wav";
+export type MediaAssetFormat = "wav" | "opus";
 
 export interface MediaAsset {
   id: EntityId;
@@ -48,7 +48,7 @@ export interface MediaAsset {
   updatedAtMs: number;
   durationMs: number;
   format: MediaAssetFormat;
-  mimeType: "audio/wav";
+  mimeType: "audio/wav" | "audio/webm" | "audio/ogg";
   byteLength: number;
   audioBytes: Uint8Array;
   orphaned: boolean;
