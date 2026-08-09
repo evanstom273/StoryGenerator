@@ -1,5 +1,6 @@
 import type { StoryMessage, StoryMessageSpeakerType } from "../../types/models";
 import { isAuthorDirectiveMessage } from "./authorDirectives";
+import { detectChapterBoundary } from "./chapterDetection";
 import { isContinueMessage } from "./continueMode";
 import { extractSpeakerPrefix } from "./extractSpeakerPrefix";
 import { isLegalNameReference } from "./playerSceneName";
@@ -26,7 +27,7 @@ export function isDirectorMessage(
 }
 
 export function isPlayerLegalNameDirectorBeat(
-  message: Pick<StoryMessage, "role" | "speakerType" | "speakerName" | "content">,
+  message: Pick<StoryMessage, "role" | "speakerType" | "speakerName" | "content" | "chapterBoundary">,
   legalName: string,
   sceneName: string,
 ): boolean {
@@ -39,6 +40,14 @@ export function isPlayerLegalNameDirectorBeat(
     isAuthorDirectiveMessage(message) ||
     isContinueMessage(message)
   ) {
+    return false;
+  }
+
+  if (message.chapterBoundary?.kind) {
+    return false;
+  }
+
+  if (detectChapterBoundary(message.content ?? "").detected) {
     return false;
   }
 
@@ -83,7 +92,19 @@ export function resolveUserTranscriptSpeaker(
     return DIRECTOR_SPEAKER_LABEL;
   }
 
-  return message.speakerName?.trim() || sceneName;
+  const speaker =
+    message.speakerName?.trim() ||
+    extractSpeakerPrefix(message.content)?.speakerLabel?.trim() ||
+    "";
+
+  if (speaker && sceneName.toLowerCase() !== legalName.toLowerCase()) {
+    if (isLegalNameReference(speaker, legalName)) {
+      return sceneName;
+    }
+    return speaker;
+  }
+
+  return sceneName;
 }
 
 export function resolveUserSpeakerType(

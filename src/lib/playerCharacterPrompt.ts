@@ -118,7 +118,16 @@ export function resolvePlayerCharacterPreferredSceneName(
 		(alias) => alias.toLowerCase() !== name.toLowerCase(),
 	);
 
-	return aliases[0] ?? name;
+	if (aliases[0]) {
+		return aliases[0];
+	}
+
+	const tokens = name.split(/\s+/).filter(Boolean);
+	if (tokens.length > 1) {
+		return tokens[0] ?? name;
+	}
+
+	return name;
 }
 
 export function resolvePlayerCharacterSceneName(
