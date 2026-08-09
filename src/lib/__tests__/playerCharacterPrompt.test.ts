@@ -23,13 +23,22 @@ describe("resolvePlayerCharacterPreferredSceneName", () => {
 		).toBe("Jamie");
 	});
 
-	it("falls back to the legal name when no aliases exist", () => {
+	it("uses the first name token when the legal name has multiple parts and no aliases exist", () => {
 		expect(
 			resolvePlayerCharacterPreferredSceneName({
 				name: "James Peralta",
 				aliases: [],
 			}),
-		).toBe("James Peralta");
+		).toBe("James");
+	});
+
+	it("uses Jamie as the default scene name for Jamie Peralta", () => {
+		expect(
+			resolvePlayerCharacterPreferredSceneName({
+				name: "Jamie Peralta",
+				aliases: [],
+			}),
+		).toBe("Jamie");
 	});
 });
 

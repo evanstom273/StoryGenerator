@@ -105,8 +105,16 @@ export function inferPlayerSceneNameFromMessages(
 		}
 
 		const prefix = extractSpeakerPrefix(message.content);
-		if (prefix?.speakerLabel && !isLegalNameReference(prefix.speakerLabel, legalName)) {
-			return prefix.speakerLabel;
+		if (prefix?.speakerLabel) {
+			const label = prefix.speakerLabel.trim();
+			if (!isLegalNameReference(label, legalName)) {
+				return label;
+			}
+
+			const legalTokens = legalName.trim().split(/\s+/).filter(Boolean);
+			if (legalTokens.length > 1 && label.toLowerCase() === legalTokens[0]?.toLowerCase()) {
+				return label;
+			}
 		}
 	}
 

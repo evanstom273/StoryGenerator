@@ -11,6 +11,15 @@ import { resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
 import type { StoryMessage } from "../../types/models";
 
 describe("resolvePlayerCharacterSceneName", () => {
+	it("defaults Jamie Peralta to Jamie when no alias or displayName is set", () => {
+		expect(
+			resolvePlayerCharacterSceneName(
+				{ name: "Jamie Peralta", aliases: [] },
+				{ recentMessages: [] },
+			),
+		).toBe("Jamie");
+	});
+
 	it("prefers in-story displayName over the legal character sheet name", () => {
 		expect(
 			resolvePlayerCharacterSceneName(

@@ -64,4 +64,18 @@ describe("directorMode legal-name beats", () => {
 			}),
 		).toBe("Jamie Potter");
 	});
+
+	it("shows the scene name instead of the stored legal name on chapter markers", () => {
+		const message = makeUserMessage({
+			speakerName: "Jamie Peralta",
+			content: "*End of Chapter I.*",
+		});
+
+		expect(
+			resolveUserTranscriptSpeaker(message, {
+				legalName: "Jamie Peralta",
+				sceneName: "Jamie",
+			}),
+		).toBe("Jamie");
+	});
 });
