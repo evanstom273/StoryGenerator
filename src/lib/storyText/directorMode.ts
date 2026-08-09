@@ -27,7 +27,7 @@ export function isDirectorMessage(
 }
 
 export function isPlayerLegalNameDirectorBeat(
-  message: Pick<StoryMessage, "role" | "speakerType" | "speakerName" | "content">,
+  message: Pick<StoryMessage, "role" | "speakerType" | "speakerName" | "content" | "chapterBoundary">,
   legalName: string,
   sceneName: string,
 ): boolean {
