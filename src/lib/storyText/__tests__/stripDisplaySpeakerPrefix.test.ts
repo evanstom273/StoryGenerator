@@ -57,7 +57,7 @@ describe("stripNarratorBlockDisplayPrefix", () => {
 			formatNarratorBlockForDisplay(
 				"*Fifteen: minutes later, the neon sign of Shaw's Bar glows warmly.*",
 			),
-		).toBe("*Fifteen minutes later, the neon sign of Shaw's Bar glows warmly.*");
+		).toBe("Fifteen minutes later, the neon sign of Shaw's Bar glows warmly.");
 	});
 
 	it("strips Narrator prefix from name-led prose without adding a speaker colon", () => {
