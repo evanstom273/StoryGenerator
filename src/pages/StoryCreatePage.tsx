@@ -11,7 +11,9 @@ import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import type { AIProviderType, PlayerCharacterDraft } from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
+import { ImportedCharactersPicker } from "../components/story/ImportedCharactersPicker";
 import { resolveUpcomingChapterLabels } from "../lib/guidedChapterGeneration/chapterLabels";
+import { normalizeStoryImportedCharacterIds } from "../lib/storyImportedCharacters";
 import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } from "../lib/playerCharacterPrompt";
 import type { GuidedChapterPlan } from "../lib/guidedChapterGeneration/types";
 import { ProviderSelect } from "../components/settings/ProviderSelect";
@@ -26,6 +28,7 @@ const initialFormState = {
   universeIds: [] as string[],
   playerCharacterId: "",
   currentSummary: "",
+  importedCharacterIds: [] as string[],
   matureFictionMode: true,
   rpMode: true,
 };
@@ -326,6 +329,7 @@ export function StoryCreatePage() {
                 : [formState.universeId],
             playerCharacterId: resolvedPlayerCharacterId,
             currentSummary: formState.currentSummary.trim(),
+            importedCharacterIds: normalizeStoryImportedCharacterIds(formState.importedCharacterIds),
             matureFictionMode: formState.matureFictionMode,
             rpMode: formState.rpMode,
             guidedStoryHistory:
@@ -990,6 +994,36 @@ export function StoryCreatePage() {
                 />
               </Field>
             )}
+
+            {!isDerivedMode ? (
+              <Field
+                label="Imported Characters"
+                hint="Optional supporting cast"
+                help="Library characters the AI should know in this story. They are not auto-spawned into scenes — only used when you reference them or when it makes narrative sense."
+              >
+                <ImportedCharactersPicker
+                  selectedIds={formState.importedCharacterIds}
+                  excludeCharacterId={formState.playerCharacterId || undefined}
+                  universeIds={
+                    formState.universeIds.length > 0
+                      ? formState.universeIds
+                      : formState.universeId
+                        ? [formState.universeId]
+                        : []
+                  }
+                  disabled={isSubmitting}
+                  getPlayerCharactersForUniverse={getPlayerCharactersForUniverse}
+                  getUniverseById={getUniverseById}
+                  getPlayerCharacterById={getPlayerCharacterById}
+                  onChange={(importedCharacterIds) =>
+                    setFormState((currentState) => ({
+                      ...currentState,
+                      importedCharacterIds,
+                    }))
+                  }
+                />
+              </Field>
+            ) : null}
 
             {!isDerivedMode ? (
               <div className="grid gap-6 md:grid-cols-2">

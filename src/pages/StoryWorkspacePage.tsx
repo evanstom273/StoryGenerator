@@ -36,6 +36,7 @@ import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
 import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
 import { normalizePlayerCharacterAliases, resolvePlayerCharacterSceneName } from "../lib/playerCharacterPrompt";
+import { buildStoryImportedCharacterAllowlist } from "../lib/storyImportedCharacters";
 import { buildCharacterGenderHintsFromStoryState } from "../lib/ai/characterTtsVoices";
 import {
   countGeneratedChapters,
@@ -162,6 +163,7 @@ export function StoryWorkspacePage() {
     getMessagesForStory,
     getParentStory,
     getPlayerCharacterById,
+    playerCharacters,
     getStoryById,
     getUniverseById,
     generateGuidedChapterPlan,
@@ -182,6 +184,10 @@ export function StoryWorkspacePage() {
   const playerCharacter = story
     ? getPlayerCharacterById(story.playerCharacterId)
     : undefined;
+  const universeImportedCharacters = useMemo(
+    () => (story ? buildStoryImportedCharacterAllowlist(story, playerCharacters) : []),
+    [playerCharacters, story],
+  );
   const parentStory = story ? getParentStory(story.id) : undefined;
   const childStories = useMemo(
     () =>
@@ -2129,7 +2135,7 @@ export function StoryWorkspacePage() {
           storyId={storyId}
           playerName={activePlayerCharacter?.name}
           playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter?.aliases)}
-          universeImportedCharacters={activeStory?.universePackSnapshot?.universe?.importedCharacters}
+          universeImportedCharacters={universeImportedCharacters}
           onClose={() => setRelationshipsOpen(false)}
           refreshKey={relationshipsRefreshKey}
           onRelationshipsChange={() => setRelationshipsRefreshKey((key) => key + 1)}

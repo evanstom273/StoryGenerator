@@ -211,6 +211,11 @@ import {
   resolvePlayerCharacterPreferredSceneName,
   resolvePlayerCharacterSceneName,
 } from "../../lib/playerCharacterPrompt";
+import {
+	buildStoryImportedCharacterAllowlist,
+	normalizeStoryImportedCharacterIds,
+	resolveStoryImportedCharacters,
+} from "../../lib/storyImportedCharacters";
 import { findPlayerStoryStateEntry } from "../../lib/storyText/playerSceneName";
 import type {
   AIModelRole,
@@ -2998,6 +3003,17 @@ export function StoryEngineProvider({
     [cancelBackgroundJob, repository],
   );
 
+  const getStoryImportedCharacterContext = useCallback(
+    (story: Story) => {
+      const importedStoryCharacters = resolveStoryImportedCharacters(story, playerCharacters);
+      return {
+        importedStoryCharacters,
+        universeImportedCharacters: buildStoryImportedCharacterAllowlist(story, playerCharacters),
+      };
+    },
+    [playerCharacters],
+  );
+
   const runDeepIndexProcess = useCallback(
     async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean; jobId?: string }) => {
       rebuildAbortRef.current?.abort();
@@ -3195,7 +3211,7 @@ export function StoryEngineProvider({
                 aliases: playerCharacter.aliases,
               },
               messages: allMessages,
-              universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
+              universeImportedCharacters: getStoryImportedCharacterContext(story).universeImportedCharacters,
             });
           } catch {
             return JSON.stringify(
@@ -3398,7 +3414,7 @@ export function StoryEngineProvider({
         }
       }
     },
-    [getNormalizedAISettings, hydrate, repository, resolveAIProfile, touchStory],
+    [getNormalizedAISettings, getStoryImportedCharacterContext, hydrate, repository, resolveAIProfile, touchStory],
   );
 
   const generateMetaChatAssistantReply = useCallback(
@@ -4911,7 +4927,7 @@ export function StoryEngineProvider({
               aliases: playerCharacter.aliases,
             },
             messages: refreshedMessages,
-            universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
+            universeImportedCharacters: getStoryImportedCharacterContext(story).universeImportedCharacters,
           });
         } catch {
           return JSON.stringify(
@@ -5677,6 +5693,7 @@ export function StoryEngineProvider({
           accentThemeKey: draft.accentThemeKey,
           accentThemeCustom: draft.accentThemeCustom,
           currentSummary: draft.currentSummary.trim(),
+          importedCharacterIds: normalizeStoryImportedCharacterIds(draft.importedCharacterIds),
           guidedGenerationMeta: useGuidedHistory
             ? {
                 historyChapterCount:
@@ -5792,6 +5809,7 @@ export function StoryEngineProvider({
           accentThemeKey: sourceStory.accentThemeKey,
           accentThemeCustom: sourceStory.accentThemeCustom,
           currentSummary: sequelSummary.trim(),
+          importedCharacterIds: normalizeStoryImportedCharacterIds(sourceStory.importedCharacterIds),
           createdAt: now,
           updatedAt: now,
         };
@@ -5989,6 +6007,15 @@ export function StoryEngineProvider({
             nextStory.accentThemeCustom = patch.accentThemeCustom.trim();
           } else {
             delete nextStory.accentThemeCustom;
+          }
+        }
+
+        if ("importedCharacterIds" in patch) {
+          const normalizedIds = normalizeStoryImportedCharacterIds(patch.importedCharacterIds);
+          if (normalizedIds.length) {
+            nextStory.importedCharacterIds = normalizedIds;
+          } else {
+            delete nextStory.importedCharacterIds;
           }
         }
 
@@ -6258,6 +6285,7 @@ export function StoryEngineProvider({
           previousMessage,
           latestPriorUserMessage,
         );
+        const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
 
         const context = buildStoryChatContext({
           universe: effectiveUniverse,
@@ -6271,6 +6299,7 @@ export function StoryEngineProvider({
           latestUserMessageSpeakerType: previousMessage.speakerType,
           allowDirectedPlayerControl,
           directorIntent: previousMessage.directorIntent ?? null,
+          importedStoryCharacters,
         });
 
         const streamAttempt = { current: 0 };
@@ -6812,7 +6841,9 @@ export function StoryEngineProvider({
           {
             playerName: playerCharacter?.name,
             playerAliases: normalizePlayerCharacterAliases(playerCharacter?.aliases),
-            universeImportedCharacters: story?.universePackSnapshot?.universe?.importedCharacters ?? [],
+            universeImportedCharacters: story
+              ? getStoryImportedCharacterContext(story).universeImportedCharacters
+              : [],
           },
         );
         const next = {
@@ -6838,7 +6869,7 @@ export function StoryEngineProvider({
 
         const stateJson = storyState?.stateJson ?? "";
         const universeImportedCharacters =
-          story.universePackSnapshot?.universe?.importedCharacters ?? [];
+          getStoryImportedCharacterContext(story).universeImportedCharacters;
 
         const { relationships, changed } = reconcileRelationshipsFromStateJson(stateJson, {
           playerName: playerCharacter?.name,
@@ -7150,6 +7181,7 @@ export function StoryEngineProvider({
           : sortedMessages.slice(-30);
         const effectiveUniverse = universeContext.universe;
         const effectiveImports = universeContext.imports;
+        const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
         const context = useDirectorAssist
           ? buildDirectorAssistContext({
               universe: effectiveUniverse,
@@ -7159,6 +7191,7 @@ export function StoryEngineProvider({
               summaries,
               recentMessages,
               existingText,
+              importedStoryCharacters,
             })
           : buildPlayerAssistContext({
               universe: effectiveUniverse,
@@ -7168,6 +7201,7 @@ export function StoryEngineProvider({
               summaries,
               recentMessages,
               existingText,
+              importedStoryCharacters,
             });
 
         const suggestion = await generateResponseWithRetry({
@@ -7714,6 +7748,7 @@ export function StoryEngineProvider({
             } catch {}
             return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
           })();
+          const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
 
           const context = buildStoryChatContext({
             universe: effectiveUniverse,
@@ -7733,6 +7768,7 @@ export function StoryEngineProvider({
             rpStats: currentRpStats,
             rpConfig: story.rpConfig ?? null,
             playerStateHintOverride: opts?.zeroHpConsequence ?? null,
+            importedStoryCharacters,
           });
           // #region debug-point A:story-request-shape
           reportGenerationAudit({
@@ -7822,6 +7858,7 @@ export function StoryEngineProvider({
                   latestUserMessageSpeakerType: userMessage.speakerType,
                   allowDirectedPlayerControl,
                   directorIntent: userMessage.directorIntent ?? null,
+                  importedStoryCharacters,
                 });
                 const note = buildTransmitSafeSystemNote(transmitSafe);
                 const lastUserIndex = (() => {
@@ -8465,7 +8502,7 @@ export function StoryEngineProvider({
                 const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages, {
                   playerName: playerCharacter.name,
                   playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
-                  universeImportedCharacters: story.universePackSnapshot?.universe?.importedCharacters ?? [],
+                  universeImportedCharacters: getStoryImportedCharacterContext(story).universeImportedCharacters,
                 });
 
                 const patched = withIndexedMetadata(
@@ -8554,6 +8591,7 @@ export function StoryEngineProvider({
     touchStory,
     universes,
     getNormalizedAISettings,
+    getStoryImportedCharacterContext,
     resolveAIProfile,
     developerBugs,
     developerFeatureRequests,
