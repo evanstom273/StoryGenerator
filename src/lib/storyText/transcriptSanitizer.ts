@@ -19,6 +19,7 @@ import {
 } from "./playerSceneName";
 import { getPlayerCharacterAuthorshipViolation } from "./playerProtection";
 import type { StoryFormatIssue } from "./storyStandardizer";
+import { repairClockTimeColonCorruption } from "./clockTimeInProse";
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -818,7 +819,8 @@ export function sanitizeAssistantTranscript(args: {
 }) {
   const preambleStripped = stripReasoningPreamble(args.text);
   const echoed = removeEchoBlocks(preambleStripped, args.latestUserMessage);
-  const narratorStripped = stripNarratorHeaders(echoed.text);
+  const clockRepaired = repairClockTimeColonCorruption(echoed.text);
+  const narratorStripped = stripNarratorHeaders(clockRepaired);
   const markdownStripped = stripMarkdownArtifacts(narratorStripped.text);
   const bareNamesFixed = fixBareNameHeaders(markdownStripped.text);
   const dialogueColonsFixed = fixDialogueColons(bareNamesFixed);
@@ -872,7 +874,9 @@ export function sanitizeAssistantTranscript(args: {
 }
 
 export function normalizeTranscriptForDisplay(text: string): string {
-	return capitalizeFirstLetter(normalizeTranscriptWhitespace(text));
+	return capitalizeFirstLetter(
+		normalizeTranscriptWhitespace(repairClockTimeColonCorruption(text)),
+	);
 }
 
 export function sanitizeMessageForDisplay(args: {

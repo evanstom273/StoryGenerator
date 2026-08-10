@@ -1,5 +1,6 @@
 import { parseActionSegments, type StoryTextSegment } from "./parseActionSegments";
 import { isDeniedSpeakerLabel, isPossessiveSpeakerLabel } from "../relationshipIndex";
+import { findSpeakerColonIndex, looksLikeClockTimeFragment, repairClockTimeColonCorruption } from "./clockTimeInProse";
 
 export interface SceneBlock {
   speakerLabel?: string;
@@ -26,6 +27,7 @@ export function looksLikeNarrationContinuation(remainder: string): boolean {
 	const trimmed = remainder.trim();
 	if (!trimmed) return false;
 	if (/^["'*(\[]/.test(trimmed)) return false;
+	if (looksLikeClockTimeFragment(trimmed)) return false;
 	return /^[a-z]/.test(trimmed);
 }
 
@@ -46,8 +48,6 @@ function isValidSpeakerLabel(label: string): boolean {
   return true;
 }
 
-const NAME_SPEAKER_LABEL_LINE =
-	/^([A-Z][a-zA-Z''-]*(?:\s+[A-Z][a-zA-Z''-]*){0,3})\s*:\s*(.*)$/;
 
 /** Join label-only lines (Amy:, Jamie's:) with the prose line that follows. */
 export function repairNarratorLabelLines(text: string): string {
@@ -67,7 +67,7 @@ export function repairNarratorLabelLines(text: string): string {
 		}
 
 		const nameOnly = trimmed.match(/^([A-Z][a-zA-Z''-]*(?:\s+[A-Z][a-zA-Z''-]*){0,3})\s*:\s*$/);
-		if (nameOnly?.[1] && isValidSpeakerLabel(nameOnly[1].trim())) {
+		if (nameOnly?.[1] && isValidSpeakerLabel(nameOnly[1].trim()) && !/^\d{1,2}$/.test(nameOnly[1].trim())) {
 			const next = lines[index + 1]?.trim();
 			if (next) {
 				out.push(`${nameOnly[1].trim()} ${next}`);
@@ -84,7 +84,7 @@ export function repairNarratorLabelLines(text: string): string {
 
 /** Display-only: strip Narrator labels; remove colons from other name pseudo-labels. */
 export function stripNarratorBlockDisplayPrefix(line: string): string {
-	const trimmed = line.trim();
+	const trimmed = repairClockTimeColonCorruption(line.trim());
 	if (!trimmed) return trimmed;
 
 	const wrapped = trimmed.match(/^\*(.+)\*$/s);
@@ -106,10 +106,23 @@ export function stripNarratorBlockDisplayPrefix(line: string): string {
 		return remainder ? `${possessiveLabel[1]} ${remainder}` : possessiveLabel[1];
 	}
 
-	const nameLabel = trimmed.match(NAME_SPEAKER_LABEL_LINE);
-	if (nameLabel?.[1]) {
-		const label = nameLabel[1].trim();
-		const remainder = nameLabel[2]?.trim() ?? "";
+	const nameLabel = (() => {
+		const colonIndex = findSpeakerColonIndex(trimmed);
+		if (colonIndex === null) {
+			return null;
+		}
+
+		const label = trimmed.slice(0, colonIndex).trim();
+		const remainder = trimmed.slice(colonIndex + 1).trim();
+		if (!label) {
+			return null;
+		}
+
+		return { label, remainder };
+	})();
+
+	if (nameLabel) {
+		const { label, remainder } = nameLabel;
 		if (remainder && looksLikeNarrationContinuation(remainder)) {
 			return `${label} ${remainder}`;
 		}
@@ -122,7 +135,7 @@ export function stripNarratorBlockDisplayPrefix(line: string): string {
 }
 
 export function formatNarratorBlockForDisplay(text: string): string {
-	return repairNarratorLabelLines(text)
+	return repairNarratorLabelLines(repairClockTimeColonCorruption(text))
 		.split("\n")
 		.map((line) => stripNarratorBlockDisplayPrefix(line))
 		.map((line) => stripNarratorDisplayArtifacts(line))
@@ -155,42 +168,61 @@ export function stripNarratorDisplayArtifacts(line: string): string {
 }
 
 function isSpeakerHeader(line: string) {
-  const match = line.match(/^([^\n:]{1,48})(:|\s[-—])\s*$/);
-  if (!match) {
-    return null;
-  }
+	const trimmed = line.trim();
+	const colonIndex = findSpeakerColonIndex(trimmed);
+	if (colonIndex === null) {
+		return null;
+	}
 
-  const label = match[1]?.trim();
-  if (!label || !isValidSpeakerLabel(label)) return null;
-  return label;
+	const after = trimmed.slice(colonIndex + 1);
+	if (!/^\s*$/.test(after)) {
+		return null;
+	}
+
+	const label = trimmed.slice(0, colonIndex).trim();
+	if (!label || !isValidSpeakerLabel(label)) {
+		return null;
+	}
+
+	return label;
 }
 
 function parseInlineSpeakerLine(line: string) {
-  const match = line.match(/^([^\n:]{1,48})(:|\s[-—])\s+(.+)\s*$/);
-  if (!match) {
-    return null;
-  }
+	const trimmed = line.trim();
+	const colonIndex = findSpeakerColonIndex(trimmed);
+	if (colonIndex === null) {
+		return null;
+	}
 
-  const label = match[1]?.trim();
-  const remainder = match[3]?.trim();
+	const after = trimmed.slice(colonIndex + 1);
+	if (!/^\s+\S/.test(after)) {
+		return null;
+	}
 
-  if (!label || !remainder) {
-    return null;
-  }
+	const label = trimmed.slice(0, colonIndex).trim();
+	const remainder = after.trim();
 
-  if (!isValidSpeakerLabel(label)) {
-    return null;
-  }
+	if (!label || !remainder) {
+		return null;
+	}
 
-  if (looksLikeNarrationContinuation(remainder)) {
-    return null;
-  }
+	if (!isValidSpeakerLabel(label)) {
+		return null;
+	}
 
-  if (label === "Time") {
-    return null;
-  }
+	if (looksLikeNarrationContinuation(remainder)) {
+		return null;
+	}
 
-  return { speakerLabel: label, text: remainder };
+	if (looksLikeClockTimeFragment(remainder)) {
+		return null;
+	}
+
+	if (label === "Time") {
+		return null;
+	}
+
+	return { speakerLabel: label, text: remainder };
 }
 
 export function parseSceneBlocks(content: string): SceneBlock[] {

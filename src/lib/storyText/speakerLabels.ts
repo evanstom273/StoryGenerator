@@ -1,4 +1,5 @@
 import { splitDialogueQuoteRegions } from "./dialogueQuoteRegions";
+import { findSpeakerColonIndex } from "./clockTimeInProse";
 
 const RESERVED_SPEAKER_LABELS = new Set(["narrator", "director", "time"]);
 
@@ -127,18 +128,17 @@ export function normalizeSpeakerNamesInTranscript(text: string) {
 
 	return lines
 		.map((line) => {
-			const match = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/);
-			if (!match?.[1]) {
+			const colonIndex = findSpeakerColonIndex(line);
+			if (colonIndex === null) {
 				return normalizeProseMentions(line);
 			}
 
-			const label = match[1].trim();
-			const separator = match[2] ?? ":";
-			const remainder = match[3] ?? "";
+			const label = line.slice(0, colonIndex).trim();
+			const remainder = line.slice(colonIndex + 1).trim();
 			const normalizedLabel = normalizeSceneSpeakerLabel(label);
 			const normalizedRemainder = normalizeProseMentions(remainder);
 
-			return `${normalizedLabel}${separator} ${normalizedRemainder}`;
+			return `${normalizedLabel}: ${normalizedRemainder}`;
 		})
 		.join("\n");
 }

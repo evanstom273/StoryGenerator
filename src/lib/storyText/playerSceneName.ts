@@ -7,6 +7,7 @@ import {
 import { isDeniedSpeakerLabel } from "../relationshipIndex";
 import { extractSpeakerPrefix } from "./extractSpeakerPrefix";
 import { splitDialogueQuoteRegions } from "./dialogueQuoteRegions";
+import { findSpeakerColonIndex, looksLikeClockTimeFragment } from "./clockTimeInProse";
 import { normalizeSceneSpeakerLabel } from "./speakerLabels";
 
 const RESERVED_SPEAKER_LABELS = new Set(["narrator", "director", "time", "system", "assistant"]);
@@ -244,6 +245,12 @@ function looksLikeBareActionProse(text: string) {
 	if (/^["'*(\[]/.test(trimmed)) {
 		return false;
 	}
+	if (looksLikeClockTimeFragment(trimmed)) {
+		return false;
+	}
+	if (/^\d/.test(trimmed)) {
+		return false;
+	}
 	if (/[!?]$/.test(trimmed)) {
 		return false;
 	}
@@ -410,6 +417,40 @@ function resolveSpeakerActionPronoun(
 	return inferred ?? "They";
 }
 
+function parseSpeakerLineForActionBeats(line: string): {
+	speakerLabel: string;
+	separator: string;
+	remainder: string;
+	headerOnly: boolean;
+} | null {
+	const trimmed = line.trim();
+	const colonIndex = findSpeakerColonIndex(trimmed);
+	if (colonIndex === null) {
+		return null;
+	}
+
+	const label = trimmed.slice(0, colonIndex).trim();
+	if (!label || shouldSkipActionBeatSpeaker(label)) {
+		return null;
+	}
+
+	const after = trimmed.slice(colonIndex + 1);
+	if (/^\s*$/.test(after)) {
+		return { speakerLabel: label, separator: ":", remainder: "", headerOnly: true };
+	}
+
+	if (!/^\s+\S/.test(after)) {
+		return null;
+	}
+
+	return {
+		speakerLabel: label,
+		separator: ":",
+		remainder: after.trim(),
+		headerOnly: false,
+	};
+}
+
 function normalizeSpeakerRemainderActionBeats(
 	remainder: string,
 	speakerLabel: string,
@@ -462,21 +503,23 @@ export function normalizeCharacterActionBeatsInTranscript(
 	}
 
 	for (const line of lines) {
-		const headerOnly = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*$/);
-		if (headerOnly?.[1] && !shouldSkipActionBeatSpeaker(headerOnly[1])) {
+		const parsed = parseSpeakerLineForActionBeats(line);
+		if (parsed?.headerOnly) {
 			flushPending();
-			pendingSpeaker = headerOnly[1].trim();
-			pendingSeparator = headerOnly[2] ?? ":";
+			pendingSpeaker = parsed.speakerLabel;
+			pendingSeparator = parsed.separator;
 			pendingRemainder = [];
 			continue;
 		}
 
-		const inline = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/);
-		if (inline?.[1] && !shouldSkipActionBeatSpeaker(inline[1])) {
+		if (parsed && !parsed.headerOnly) {
 			flushPending();
-			const speakerLabel = inline[1].trim();
-			const normalized = normalizeSpeakerRemainderActionBeats(inline[3] ?? "", speakerLabel, opts);
-			output.push(`${speakerLabel}${inline[2]} ${normalized}`);
+			const normalized = normalizeSpeakerRemainderActionBeats(
+				parsed.remainder,
+				parsed.speakerLabel,
+				opts,
+			);
+			output.push(`${parsed.speakerLabel}${parsed.separator} ${normalized}`);
 			continue;
 		}
 

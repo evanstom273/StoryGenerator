@@ -35,6 +35,14 @@ describe("parseSceneBlocks", () => {
 		expect(blocks[0]?.text).toBe("*crosses her arms*");
 	});
 
+	it("does not treat clock times as speaker labels", () => {
+		const text = "By 11:30 AM, the precinct is already buzzing.";
+		const blocks = parseSceneBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0]?.speakerLabel).toBeUndefined();
+		expect(blocks[0]?.text).toContain("11:30 AM");
+	});
+
 	it("does not treat time-skip headers as speaker-only lines", () => {
 		const text = "Twenty:\nminutes pass before anyone speaks again.";
 		const blocks = parseSceneBlocks(text);

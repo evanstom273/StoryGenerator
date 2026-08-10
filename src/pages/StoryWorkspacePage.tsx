@@ -173,6 +173,7 @@ export function StoryWorkspacePage() {
     editAssistantMessage,
     generatePlayerAssistMessage,
     regenerateLastAssistantMessage,
+    repairStoryTranscriptClockTimes,
     sendChatMessage,
     setMessageDirectorIntent,
     updateMessage,
@@ -204,6 +205,16 @@ export function StoryWorkspacePage() {
     () => (story ? getMessagesForStory(story.id) : []),
     [getMessagesForStory, story],
   );
+  const repairedClockTimeStoryRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!story?.id || repairedClockTimeStoryRef.current === story.id) {
+      return;
+    }
+
+    repairedClockTimeStoryRef.current = story.id;
+    void repairStoryTranscriptClockTimes(story.id).catch(() => undefined);
+  }, [repairStoryTranscriptClockTimes, story?.id]);
   const assistDefaultsToDirector = useMemo(() => storyHasGeneratedScenes(messages), [messages]);
   const [storyStateJson, setStoryStateJson] = useState<string | null>(null);
   const playerSceneName = useMemo(() => {

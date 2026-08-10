@@ -134,6 +134,7 @@ import {
   shouldAcceptStreamDespiteSpeakerAttributionFlags,
   type AssistantTranscriptValidationStage,
 } from "../../lib/storyText/transcriptSanitizer";
+import { repairClockTimeColonCorruption } from "../../lib/storyText/clockTimeInProse";
 import { STREAM_VALIDATION_MAX_ATTEMPTS } from "../../lib/storyText/streamValidationPolicy";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
@@ -423,6 +424,7 @@ interface StoryEngineContextValue {
     draft: Omit<StoryMessageDraft, "storyId">,
   ) => Promise<StoryMessage | null>;
   deleteMessage: (id: string) => Promise<void>;
+  repairStoryTranscriptClockTimes: (storyId: string) => Promise<number>;
   setMessageDirectorIntent: (
     messageId: string,
     intent: StoryMessage["directorIntent"] | null,
@@ -6537,6 +6539,34 @@ export function StoryEngineProvider({
         await repository.deleteStoryMessage(id);
         await touchStory(currentMessage.storyId);
         await hydrate(false);
+      },
+      async repairStoryTranscriptClockTimes(storyId) {
+        const storyMessages = await repository.listStoryMessages(storyId);
+        let repairedCount = 0;
+
+        for (const message of storyMessages) {
+          if (message.role !== "assistant") {
+            continue;
+          }
+
+          const repaired = repairClockTimeColonCorruption(message.content);
+          if (repaired === message.content) {
+            continue;
+          }
+
+          await repository.saveStoryMessage({
+            ...message,
+            content: repaired,
+          });
+          repairedCount += 1;
+        }
+
+        if (repairedCount > 0) {
+          await touchStory(storyId);
+          await hydrate(false);
+        }
+
+        return repairedCount;
       },
       async setMessageDirectorIntent(messageId, intent) {
         const currentMessage = await repository.getStoryMessage(messageId);
