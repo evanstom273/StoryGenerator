@@ -249,6 +249,7 @@ export interface Story {
   accentThemeKey?: string;
   accentThemeCustom?: string;
   currentSummary: string;
+  importedCharacterIds?: EntityId[];
   guidedGenerationMeta?: {
     historyChapterCount?: number;
     historyDividerMessageId?: string;
@@ -778,6 +779,7 @@ export interface StoryDraft {
   accentThemeKey?: string;
   accentThemeCustom?: string;
   currentSummary: string;
+  importedCharacterIds?: EntityId[];
   guidedStoryHistory?: {
     enabled: boolean;
     overallDirection?: string;

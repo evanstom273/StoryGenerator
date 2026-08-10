@@ -12,6 +12,7 @@ import { buildDirectorAssistContinuationRequest, buildDirectorAssistRequest, bui
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { formatUniverseWikiSources } from "../universeSources";
 import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterPreferredSceneName } from "../playerCharacterPrompt";
+import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
 import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
@@ -158,6 +159,7 @@ export function buildPlayerAssistContext({
   summaries,
   recentMessages,
   existingText,
+  importedStoryCharacters = [],
 }: {
   universe: Universe;
   story: Story;
@@ -166,10 +168,12 @@ export function buildPlayerAssistContext({
   summaries: StorySummary[];
   recentMessages: StoryMessage[];
   existingText?: string;
+  importedStoryCharacters?: PlayerCharacter[];
 }): AIChatMessage[] {
   const universeInfo = buildAssistUniverseInfo({ universe, story, playerCharacter });
   const importedLore = buildAssistImportedLore(imports);
   const summaryBlock = buildAssistSummaryBlock(story, summaries);
+  const importedCharactersBlock = formatStoryImportedCharactersForPrompt(importedStoryCharacters);
 
   const assistGuidance = normalizeWhitespace(
     [
@@ -195,6 +199,9 @@ export function buildPlayerAssistContext({
   return [
     { role: "system", content: `Universe Information\n\n${universeInfo}` },
     { role: "system", content: `Imported Lore\n\n${importedLore}` },
+    ...(importedCharactersBlock
+      ? [{ role: "system" as const, content: `Imported Story Characters\n\n${importedCharactersBlock}` }]
+      : []),
     { role: "system", content: `Story Summary\n\n${summaryBlock}` },
     { role: "system", content: `Player Assist Mode\n\n${assistGuidance}` },
     ...chatHistory,
@@ -217,6 +224,7 @@ export function buildDirectorAssistContext({
   summaries,
   recentMessages,
   existingText,
+  importedStoryCharacters = [],
 }: {
   universe: Universe;
   story: Story;
@@ -225,10 +233,12 @@ export function buildDirectorAssistContext({
   summaries: StorySummary[];
   recentMessages: StoryMessage[];
   existingText?: string;
+  importedStoryCharacters?: PlayerCharacter[];
 }): AIChatMessage[] {
   const universeInfo = buildAssistUniverseInfo({ universe, story, playerCharacter });
   const importedLore = buildAssistImportedLore(imports);
   const summaryBlock = buildAssistSummaryBlock(story, summaries);
+  const importedCharactersBlock = formatStoryImportedCharactersForPrompt(importedStoryCharacters);
 
   const assistGuidance = normalizeWhitespace(
     [
@@ -256,6 +266,9 @@ export function buildDirectorAssistContext({
   return [
     { role: "system", content: `Universe Information\n\n${universeInfo}` },
     { role: "system", content: `Imported Lore\n\n${importedLore}` },
+    ...(importedCharactersBlock
+      ? [{ role: "system" as const, content: `Imported Story Characters\n\n${importedCharactersBlock}` }]
+      : []),
     { role: "system", content: `Story Summary\n\n${summaryBlock}` },
     { role: "system", content: `Director Assist Mode\n\n${assistGuidance}` },
     ...chatHistory,

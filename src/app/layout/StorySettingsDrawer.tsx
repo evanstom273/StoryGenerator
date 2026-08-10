@@ -19,6 +19,7 @@ import {
 	type AudiobookPerformanceMode,
 } from "../../lib/ai/audiobookPerformance";
 import { AudiobookChapterProgressList } from "../../components/story/AudiobookChapterProgressList";
+import { ImportedCharactersPicker } from "../../components/story/ImportedCharactersPicker";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
 import {
 	resolveVisibleProvider,
@@ -26,6 +27,8 @@ import {
 } from "../../lib/ai/providerConfig";
 import { ProviderSelect } from "../../components/settings/ProviderSelect";
 import { serializeStoryExport } from "../../lib/storyExport";
+import { normalizeStoryImportedCharacterIds } from "../../lib/storyImportedCharacters";
+import { getUniverseIds } from "../../lib/universeIds";
 import { buildStorySupportBundleZip } from "../../lib/supportBundle";
 import { navigateToStoryMessageNumber } from "../../lib/events/storyNavigation";
 import {
@@ -173,6 +176,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     getStoryById,
     getUniverseById,
     getPlayerCharacterById,
+    getPlayerCharactersForUniverse,
     getMessagesForStory,
     getChaptersForStory,
     exportStory,
@@ -211,6 +215,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     autoIndexInterval: (story?.autoIndexInterval ?? 20) as AutoIndexInterval,
     accentThemeKey: (story?.accentThemeKey ?? null) as AccentThemeKey | null,
     accentThemeCustom: story?.accentThemeCustom ?? themes.custom.accent,
+    importedCharacterIds: normalizeStoryImportedCharacterIds(story?.importedCharacterIds),
   });
   const { themeKey } = useTheme();
   const [isExportingSupportBundle, setIsExportingSupportBundle] = useState(false);
@@ -338,6 +343,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       autoIndexInterval: (story.autoIndexInterval ?? 20) as AutoIndexInterval,
       accentThemeKey: (story.accentThemeKey ?? null) as AccentThemeKey | null,
       accentThemeCustom: story.accentThemeCustom ?? themes.custom.accent,
+      importedCharacterIds: normalizeStoryImportedCharacterIds(story.importedCharacterIds),
     });
   }, [story]);
 
@@ -391,6 +397,12 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         return;
       }
 
+      const storyImportedIds = normalizeStoryImportedCharacterIds(story.importedCharacterIds);
+      const fieldsImportedIds = normalizeStoryImportedCharacterIds(storyFields.importedCharacterIds);
+      const importedIdsMatch =
+        storyImportedIds.length === fieldsImportedIds.length &&
+        storyImportedIds.every((id, index) => id === fieldsImportedIds[index]);
+
       if (
         storyFields.title === story.title &&
         storyFields.currentSummary === story.currentSummary &&
@@ -400,7 +412,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
             (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode) &&
         storyFields.autoIndexInterval === (story.autoIndexInterval ?? 20) &&
         storyFields.accentThemeKey === ((story.accentThemeKey ?? null) as AccentThemeKey | null) &&
-        storyFields.accentThemeCustom === (story.accentThemeCustom ?? themes.custom.accent)
+        storyFields.accentThemeCustom === (story.accentThemeCustom ?? themes.custom.accent) &&
+        importedIdsMatch
       ) {
         return;
       }
@@ -418,11 +431,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         accentThemeKey: storyFields.accentThemeKey ?? undefined,
         accentThemeCustom:
           storyFields.accentThemeKey === "custom" ? storyFields.accentThemeCustom : undefined,
+        importedCharacterIds: fieldsImportedIds,
       }).catch(() => {});
     },
     800,
     [
       story?.id,
+      story?.importedCharacterIds,
       storyFields.title,
       storyFields.currentSummary,
       storyFields.matureFictionMode,
@@ -430,6 +445,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       storyFields.autoIndexInterval,
       storyFields.accentThemeKey,
       storyFields.accentThemeCustom,
+      storyFields.importedCharacterIds,
     ],
   );
 
@@ -693,6 +709,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         accentThemeKey: storyFields.accentThemeKey ?? undefined,
         accentThemeCustom:
           storyFields.accentThemeKey === "custom" ? storyFields.accentThemeCustom : undefined,
+        importedCharacterIds: normalizeStoryImportedCharacterIds(storyFields.importedCharacterIds),
       });
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to save story details.");
@@ -1157,6 +1174,30 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       placeholder="Optional summary for the current state of the story."
                     />
                   </label>
+                  {story ? (
+                    <div className="space-y-2">
+                      <FieldLabel
+                        label="Imported Characters"
+                        help="Library characters the AI should know in this story. Edits apply to the library character, not a story copy."
+                        labelClassName="text-xs text-ink-muted"
+                      />
+                      <ImportedCharactersPicker
+                        selectedIds={storyFields.importedCharacterIds}
+                        excludeCharacterId={story.playerCharacterId}
+                        universeIds={getUniverseIds(story)}
+                        disabled={isReadOnly}
+                        getPlayerCharactersForUniverse={getPlayerCharactersForUniverse}
+                        getUniverseById={getUniverseById}
+                        getPlayerCharacterById={getPlayerCharacterById}
+                        onChange={(importedCharacterIds) =>
+                          setStoryFields((current) => ({
+                            ...current,
+                            importedCharacterIds,
+                          }))
+                        }
+                      />
+                    </div>
+                  ) : null}
                   <Button type="submit" className="w-full" disabled={isSavingStory || isReadOnly}>
                     {isSavingStory ? "Saving..." : "Save Story"}
                   </Button>

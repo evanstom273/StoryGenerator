@@ -8,6 +8,7 @@ import { normalizeSpeakerNamesInTranscript } from "../storyText/speakerLabels";
 import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing, applyOpenThreadReconciliation } from "../storyStateV2";
 import { applyTranscriptPresenceGate } from "../transcriptPresence";
 import { normalizePlayerCharacterAliases } from "../playerCharacterPrompt";
+import { loadStoryImportedCharacters, mergeImportedCharacterAllowlist } from "../storyImportedCharacters";
 import { ensureIndexedCharacterStatus } from "../characterStatus";
 import { AIError } from "./errors";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
@@ -105,7 +106,13 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
   const messages = sortByTimestampAsc(rawMessages);
   const total = messages.length;
-  const universeImportedCharacters = story.universePackSnapshot?.universe?.importedCharacters ?? [];
+  const storyImportedCharacters = await loadStoryImportedCharacters(story, (id) =>
+    repository.getPlayerCharacter(id),
+  );
+  const universeImportedCharacters = mergeImportedCharacterAllowlist(
+    story.universePackSnapshot?.universe?.importedCharacters ?? [],
+    storyImportedCharacters,
+  );
 
   const baseParsed = storyState?.stateJson ? safeParseStoryStateData(storyState.stateJson) : null;
   let currentState: StoryStateDataV2 = normalizeStoryStateToV2(baseParsed);

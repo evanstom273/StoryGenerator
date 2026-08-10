@@ -24,6 +24,7 @@ import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
 import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
+import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
 import { createNarrativeIdentityPromptContext, redactNarrativePromptText, resolveNarrativePromptName } from "../narrativeIdentity";
 import { applyTranscriptPresenceGate } from "../transcriptPresence";
 import {
@@ -129,6 +130,7 @@ export interface BuildStoryChatContextInput {
   rpStats?: RpStats | null;
   rpConfig?: RpConfig | null;
   playerStateHintOverride?: string | null;
+  importedStoryCharacters?: PlayerCharacter[];
 }
 
 export function buildStoryChatContext({
@@ -149,6 +151,7 @@ export function buildStoryChatContext({
   rpStats,
   rpConfig,
   playerStateHintOverride,
+  importedStoryCharacters = [],
 }: BuildStoryChatContextInput): AIChatMessage[] {
   const parsedStoryState = storyState?.stateJson?.trim()
     ? safeParseStoryStateData(storyState.stateJson)
@@ -238,6 +241,11 @@ export function buildStoryChatContext({
         ].join("\n"),
       )
     : "No imported lore is available for this universe yet.";
+
+  const importedCharactersBlock = formatStoryImportedCharactersForPrompt(
+    importedStoryCharacters,
+    gatedStoryState ?? parsedStoryState,
+  );
 
   const summaryBlock = latestSummary
     ? normalizeWhitespace(redactNarrativePromptText(latestSummary, narrativeIdentity))
@@ -495,6 +503,9 @@ export function buildStoryChatContext({
       "Interpret any *...* text in the conversation as an action and react to it naturally.",
       "When an unknown person is required, generate a new NPC instead of pulling a canon character by default.",
       "Canon characters should appear only if already present, introduced by the player, or logically located in the scene.",
+      importedStoryCharacters.length
+        ? "Imported story characters are known to this story like universe canon. Use them only when naturally referenced by the player or when it makes narrative sense. Do not auto-insert them into scenes."
+        : "",
       "Do not introduce major characters into a scene unless their presence has been established, their arrival is logically explained by the narrative, or the player has explicitly invited, contacted, or sought them out. Do not introduce characters solely to solve problems or remove consequences.",
       "Output format guidance:",
       "- Use speaker headers like 'Morgan:' and 'Alex:' on their own line when switching speakers. The colon after the name is REQUIRED — never write 'Morgan' alone on a line. Always write 'Morgan:'. Without the colon the parser cannot identify the speaker and the text will be misattributed.",
@@ -591,6 +602,9 @@ export function buildStoryChatContext({
   return [
     { role: "system", content: `Universe Information\n\n${universeInfo}` },
     { role: "system", content: `Imported Lore\n\n${importedLore}` },
+    ...(importedCharactersBlock
+      ? [{ role: "system" as const, content: `Imported Story Characters\n\n${importedCharactersBlock}` }]
+      : []),
     { role: "system", content: `Story Summary\n\n${summaryBlock}` },
     { role: "system", content: `Long-Term Memory\n\n${storyStateBlock.longTerm}` },
     ...(storyStateBlock.scene
