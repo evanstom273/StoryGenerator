@@ -3,6 +3,15 @@ import type { AIProvider, AIChatMessage } from "./types";
 import type { StoryMessage, StoryStateDataV2 } from "../../types/models";
 import { sortByTimestampAsc } from "../dates";
 import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storyStateExtractor";
+import {
+	buildIndexingContinuitySnapshot,
+	serializeIndexingContinuitySnapshot,
+} from "./indexingContinuitySnapshot";
+import {
+	estimatePromptTokens,
+	estimateTokensFromText,
+	logIndexingCallDiagnostics,
+} from "./indexingDiagnostics";
 import { repairMalformedTranscriptFormat } from "../storyText/transcriptFormatRepair";
 import { normalizeSpeakerNamesInTranscript } from "../storyText/speakerLabels";
 import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing, applyOpenThreadReconciliation } from "../storyStateV2";
@@ -167,39 +176,41 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       },
     };
 
-    const existingStateJson = (() => {
+    const chunkEnd = processed + chunk.length;
+    const sanitizedChunk = chunk.map((message) =>
+      message.role === "assistant"
+        ? {
+            ...message,
+            content: sanitizeIndexingMessageContent(message.content, playerCharacter.name),
+          }
+        : message,
+    );
+
+    const fullStateForPrompt = (() => {
       try {
-        // Strip indexes from the prompt — the model rebuilds them from the transcript.
-        // Keeping them just bloats the prompt and pushes the response over token limits.
-        const { indexes: _indexes, ...stateForPrompt } = currentState as any;
+        const { indexes: _indexes, ...stateForPrompt } = currentState as StoryStateDataV2 & {
+          indexes?: StoryStateDataV2["indexes"];
+        };
         return JSON.stringify(stateForPrompt);
       } catch {
         return "";
       }
     })();
 
-    const summaryText = (() => {
-      const direct = story.currentSummary?.trim();
-      if (direct) return direct;
-      const fromState = currentState.summaries?.worldSummary?.trim();
-      return fromState ?? "";
-    })();
+    const continuitySnapshot = buildIndexingContinuitySnapshot({
+      state: currentState,
+      currentMessageNumber: chunkEnd,
+      playerName: playerCharacter.name,
+      playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
+      currentChunkMessages: sanitizedChunk,
+    });
+    const continuitySnapshotJson = serializeIndexingContinuitySnapshot(continuitySnapshot);
 
-    const chunkEnd = processed + chunk.length;
     const extractionContext = buildStoryStateExtractionPrompt({
       playerName: playerCharacter.name,
       playerCharacter,
-      summaryText,
-      recentMessages: chunk.map((message) =>
-        message.role === "assistant"
-          ? {
-              ...message,
-              content: sanitizeIndexingMessageContent(message.content, playerCharacter.name),
-            }
-          : message,
-      ),
-      existingStateJson,
-      existingOpenThreads: currentState.indexes?.openThreads,
+      recentMessages: sanitizedChunk,
+      continuitySnapshotJson,
       messageNumberStart: processed + 1,
       messageNumberTotal: total,
       perMessageIndexing: chunk.length === 1,
@@ -223,7 +234,20 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       message: `Indexing message ${chunkEnd}/${total}…`,
     });
 
+    const indexingStartedAtMs = Date.now();
     let responseContent = await generateWithRetry(provider, generateParams);
+    logIndexingCallDiagnostics({
+      storyId,
+      messageNumber: chunkEnd,
+      totalMessages: total,
+      model,
+      promptCharacters: extractionContext.reduce((sum, message) => sum + (message.content?.length ?? 0), 0),
+      estimatedInputTokens: estimatePromptTokens(extractionContext),
+      estimatedOutputTokens: estimateTokensFromText(responseContent),
+      durationMs: Date.now() - indexingStartedAtMs,
+      continuitySnapshotCharacters: continuitySnapshotJson.length,
+      fullStateCharacters: fullStateForPrompt.length,
+    });
 
     if (signal?.aborted) {
       throw new Error("Rebuild aborted.");

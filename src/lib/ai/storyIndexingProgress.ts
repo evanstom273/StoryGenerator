@@ -50,21 +50,50 @@ export interface StoryIndexingDisplayProgress {
 	chapterReviews?: IndexingChapterReviewItem[];
 }
 
+export interface SelectChaptersForArchiveRebuildOptions {
+	incremental: boolean;
+	previousDeepIndexedMessageCount?: number;
+	rebuildAllChapterSummaries?: boolean;
+	storedChapters?: StoryChapter[];
+}
+
+function chapterBoundariesMatch(left: StoryChapter, right: StoryChapter | undefined): boolean {
+	if (!right) {
+		return false;
+	}
+	return left.endsAtIndex === right.endsAtIndex && left.endsAtMessageId === right.endsAtMessageId;
+}
+
+export function shouldRebuildChapterArchiveSummary(
+	chapter: StoryChapter,
+	opts: SelectChaptersForArchiveRebuildOptions,
+): boolean {
+	if (opts.rebuildAllChapterSummaries) {
+		return true;
+	}
+
+	if (!chapter.summary?.trim()) {
+		return true;
+	}
+
+	const storedChapter = opts.storedChapters?.find((entry) => entry.id === chapter.id);
+	if (!storedChapter || !chapterBoundariesMatch(chapter, storedChapter)) {
+		return true;
+	}
+
+	if (opts.incremental) {
+		return chapter.endsAtIndex > (opts.previousDeepIndexedMessageCount ?? 0);
+	}
+
+	return false;
+}
+
 export function selectChaptersForArchiveRebuild(
 	chapters: StoryChapter[],
-	incremental: boolean,
-	previousDeepIndexedMessageCount?: number,
+	opts: SelectChaptersForArchiveRebuildOptions,
 ): StoryChapter[] {
 	const sorted = [...chapters].sort((left, right) => left.endsAtIndex - right.endsAtIndex);
-	return sorted.filter((chapter) => {
-		if (!incremental) {
-			return true;
-		}
-		if (!chapter.summary?.trim()) {
-			return true;
-		}
-		return chapter.endsAtIndex > (previousDeepIndexedMessageCount ?? 0);
-	});
+	return sorted.filter((chapter) => shouldRebuildChapterArchiveSummary(chapter, opts));
 }
 
 export function buildInitialChapterReviewProgress(
