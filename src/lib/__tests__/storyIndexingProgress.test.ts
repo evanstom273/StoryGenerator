@@ -4,6 +4,7 @@ import {
 	getIndexingProgressPercent,
 	resolveIndexingDisplayProgress,
 	selectChaptersForArchiveRebuild,
+	shouldRebuildChapterArchiveSummary,
 } from "../ai/storyIndexingProgress";
 import type { StoryChapter } from "../../types/models";
 
@@ -30,8 +31,84 @@ describe("storyIndexingProgress", () => {
 			},
 		];
 
-		const selected = selectChaptersForArchiveRebuild(chapters, true, 15);
+		const selected = selectChaptersForArchiveRebuild(chapters, {
+			incremental: true,
+			previousDeepIndexedMessageCount: 15,
+			storedChapters: chapters,
+		});
 		expect(selected.map((chapter) => chapter.id)).toEqual(["ch-2"]);
+	});
+
+	it("skips unchanged chapters with valid summaries during non-manual rebuilds", () => {
+		const stored: StoryChapter[] = [
+			{
+				id: "ch-1",
+				storyId: "story-1",
+				label: "Chapter One",
+				endsAtMessageId: "m-10",
+				endsAtIndex: 10,
+				createdAt: "2026-01-01T00:00:00.000Z",
+				summary: "Stable summary",
+			},
+		];
+		const rebuilt: StoryChapter[] = [...stored];
+
+		expect(
+			shouldRebuildChapterArchiveSummary(rebuilt[0]!, {
+				incremental: false,
+				rebuildAllChapterSummaries: false,
+				storedChapters: stored,
+			}),
+		).toBe(false);
+	});
+
+	it("rebuilds all chapter summaries when explicitly requested", () => {
+		const chapter: StoryChapter = {
+			id: "ch-1",
+			storyId: "story-1",
+			label: "Chapter One",
+			endsAtMessageId: "m-10",
+			endsAtIndex: 10,
+			createdAt: "2026-01-01T00:00:00.000Z",
+			summary: "Stable summary",
+		};
+
+		expect(
+			shouldRebuildChapterArchiveSummary(chapter, {
+				incremental: false,
+				rebuildAllChapterSummaries: true,
+				storedChapters: [chapter],
+			}),
+		).toBe(true);
+	});
+
+	it("rebuilds when chapter boundaries change", () => {
+		const stored: StoryChapter[] = [
+			{
+				id: "ch-1",
+				storyId: "story-1",
+				label: "Chapter One",
+				endsAtMessageId: "m-10",
+				endsAtIndex: 10,
+				createdAt: "2026-01-01T00:00:00.000Z",
+				summary: "Stable summary",
+			},
+		];
+		const rebuilt: StoryChapter[] = [
+			{
+				...stored[0]!,
+				endsAtIndex: 12,
+				endsAtMessageId: "m-12",
+			},
+		];
+
+		expect(
+			shouldRebuildChapterArchiveSummary(rebuilt[0]!, {
+				incremental: false,
+				rebuildAllChapterSummaries: false,
+				storedChapters: stored,
+			}),
+		).toBe(true);
 	});
 
 	it("builds chapter review progress rows", () => {

@@ -1552,6 +1552,7 @@ async function rebuildChapterArchiveSummaries(params: {
   repository: StoryEngineRepository;
   messages: StoryMessage[];
   chapters: StoryChapter[];
+  storedChapters?: StoryChapter[];
   storyStateJson?: string;
   providerType: string;
   provider: AIProvider;
@@ -1559,18 +1560,16 @@ async function rebuildChapterArchiveSummaries(params: {
   model: string;
   signal?: AbortSignal;
   incremental?: boolean;
+  rebuildAllChapterSummaries?: boolean;
   previousDeepIndexedMessageCount?: number;
   onProgress?: (args: { processed: number; total: number; label: string }) => void;
 }) {
   const sortedChapters = [...params.chapters].sort((left, right) => left.endsAtIndex - right.endsAtIndex);
-  const chaptersToRebuild = sortedChapters.filter((chapter) => {
-    if (!params.incremental) {
-      return true;
-    }
-    if (!chapter.summary?.trim()) {
-      return true;
-    }
-    return chapter.endsAtIndex > (params.previousDeepIndexedMessageCount ?? 0);
+  const chaptersToRebuild = selectChaptersForArchiveRebuild(sortedChapters, {
+    incremental: params.incremental ?? false,
+    previousDeepIndexedMessageCount: params.previousDeepIndexedMessageCount,
+    rebuildAllChapterSummaries: params.rebuildAllChapterSummaries ?? false,
+    storedChapters: params.storedChapters ?? params.chapters,
   });
 
   if (!chaptersToRebuild.length) {
@@ -3017,7 +3016,7 @@ export function StoryEngineProvider({
   );
 
   const runDeepIndexProcess = useCallback(
-    async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean; jobId?: string }) => {
+    async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean; jobId?: string; rebuildAllChapterSummaries?: boolean }) => {
       rebuildAbortRef.current?.abort();
       const controller = new AbortController();
       rebuildAbortRef.current = controller;
@@ -3256,8 +3255,13 @@ export function StoryEngineProvider({
 
         const chaptersToRebuild = selectChaptersForArchiveRebuild(
           rebuiltChapters,
-          opts?.incremental ?? false,
-          previousDeepIndexedMessageCount,
+          {
+            incremental: opts?.incremental ?? false,
+            previousDeepIndexedMessageCount,
+            rebuildAllChapterSummaries:
+              opts?.rebuildAllChapterSummaries ?? !(opts?.incremental ?? false),
+            storedChapters: storedChapters,
+          },
         );
 
         if (chaptersToRebuild.length) {
@@ -3281,6 +3285,7 @@ export function StoryEngineProvider({
             repository,
             messages: allMessages,
             chapters: rebuiltChapters,
+            storedChapters,
             storyStateJson: nextStateJson,
             providerType,
             provider,
@@ -3288,6 +3293,8 @@ export function StoryEngineProvider({
             model,
             signal,
             incremental: opts?.incremental ?? false,
+            rebuildAllChapterSummaries:
+              opts?.rebuildAllChapterSummaries ?? !(opts?.incremental ?? false),
             previousDeepIndexedMessageCount,
             onProgress: ({ processed, total, label }) => {
               const nowMs = Date.now();
@@ -4124,6 +4131,7 @@ export function StoryEngineProvider({
             signal,
             trigger: job.payload?.trigger ?? "manual",
             incremental: job.payload?.incremental ?? false,
+            rebuildAllChapterSummaries: job.payload?.rebuild ?? !(job.payload?.incremental ?? false),
             jobId: job.id,
           });
           const refreshed = await repository.getBackgroundJob(job.id);
@@ -6104,7 +6112,7 @@ export function StoryEngineProvider({
         await repository.saveStoryMessage(nextMessage);
         if (authorDirective) {
           await syncAuthorDirectiveStateForStory(draft.storyId);
-          void runDeepIndexProcess(draft.storyId, { trigger: "auto" }).catch(() => undefined);
+          void runDeepIndexProcess(draft.storyId, { trigger: "auto", incremental: true }).catch(() => undefined);
         }
         await touchStory(draft.storyId);
         await hydrate(false);
@@ -6183,7 +6191,7 @@ export function StoryEngineProvider({
         await repository.saveStoryMessage(nextMessage);
         if (authorDirective || currentMessage.authorDirective) {
           await syncAuthorDirectiveStateForStory(currentMessage.storyId);
-          void runDeepIndexProcess(currentMessage.storyId, { trigger: "auto" }).catch(() => undefined);
+          void runDeepIndexProcess(currentMessage.storyId, { trigger: "auto", incremental: true }).catch(() => undefined);
         }
         await touchStory(currentMessage.storyId);
         await hydrate(false);
@@ -6843,6 +6851,7 @@ export function StoryEngineProvider({
           if (indexStatus.needsRefresh) {
             await runDeepIndexProcess(storyId, {
               trigger: "manual",
+              incremental: true,
             });
           }
         }
@@ -7675,7 +7684,7 @@ export function StoryEngineProvider({
         if (shouldSkipAssistantResponse) {
           if (authorDirective) {
             await syncAuthorDirectiveStateForStory(storyId);
-            void runDeepIndexProcess(storyId, { trigger: "auto" }).catch(() => undefined);
+            void runDeepIndexProcess(storyId, { trigger: "auto", incremental: true }).catch(() => undefined);
           }
           await touchStory(storyId);
           await hydrate(false);

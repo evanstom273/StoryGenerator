@@ -71,20 +71,16 @@ function formatRecentMessages(
 export function buildStoryStateExtractionPrompt({
   playerName,
   playerCharacter,
-  summaryText,
   recentMessages,
-  existingStateJson,
-  existingOpenThreads,
+  continuitySnapshotJson,
   messageNumberStart,
   messageNumberTotal,
   perMessageIndexing,
 }: {
   playerName: string;
   playerCharacter?: PlayerCharacter | null;
-  summaryText: string;
   recentMessages: StoryMessage[];
-  existingStateJson?: string;
-  existingOpenThreads?: Array<{ thread: string; evidence?: { messageNumbers?: number[] } }>;
+  continuitySnapshotJson?: string;
   messageNumberStart?: number;
   messageNumberTotal?: number;
   perMessageIndexing?: boolean;
@@ -251,17 +247,11 @@ export function buildStoryStateExtractionPrompt({
             .filter(Boolean)
             .join("\n")
         : "",
-      summaryText.trim() ? `Current Summary:\n${summaryText.trim()}` : "",
-      existingStateJson?.trim() ? `Existing Story State JSON:\n${existingStateJson.trim()}` : "",
-      existingOpenThreads?.length
+      continuitySnapshotJson?.trim()
         ? [
-            "Current Open Threads (remove any that are now resolved; return indexes.openThreads as the full updated unresolved set only):",
-            ...existingOpenThreads.slice(0, 12).map((entry, index) => {
-              const evidence = Array.isArray(entry.evidence?.messageNumbers)
-                ? entry.evidence.messageNumbers.filter((n) => Number.isFinite(n)).join(", ")
-                : "";
-              return `${index + 1}. ${entry.thread}${evidence ? ` [Messages ${evidence}]` : ""}`;
-            }),
+            "Continuity Snapshot JSON (active story state for incremental merge; preserve omitted entities from prior canon):",
+            "indexes.openThreads lists unresolved threads — return indexes.openThreads as the full updated unresolved set only.",
+            continuitySnapshotJson.trim(),
           ].join("\n")
         : "",
       perMessageIndexing && messageNumberStart && messageNumberTotal
