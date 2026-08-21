@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	applyPlayerSceneNameToTranscript,
+	inferPlayerPronounsFromDirectorNotes,
+	inferPlayerPronounsFromMessages,
+	inferPlayerSceneNameFromDirectorNotes,
 	inferPlayerSceneNameFromMessages,
 	normalizeCharacterActionBeatsInTranscript,
 	resolveSubjectPronoun,
@@ -38,6 +41,61 @@ describe("resolvePlayerCharacterSceneName", () => {
 				},
 			),
 		).toBe("Mark Owen");
+	});
+});
+
+describe("inferPlayerSceneNameFromDirectorNotes", () => {
+	it("reads a new scene name from the latest director note", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "30",
+				storyId: "story-1",
+				role: "user",
+				content:
+					'*A few moments go by. Lyra finally pulls back from her parents, wiping her eyes on her sleeve ("Mac. Come here...")*',
+				speakerType: "director",
+				timestamp: "2026-08-21T00:08:00.000Z",
+			},
+		];
+
+		expect(
+			inferPlayerSceneNameFromDirectorNotes(messages, "James Peralta", "Jamie"),
+		).toBe("Lyra");
+	});
+});
+
+describe("inferPlayerPronounsFromDirectorNotes", () => {
+	it("reads feminine pronouns from a director note", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "30",
+				storyId: "story-1",
+				role: "user",
+				content: "*Lyra finally pulls back from her parents, wiping her eyes on her sleeve.*",
+				speakerType: "director",
+				timestamp: "2026-08-21T00:08:00.000Z",
+			},
+		];
+
+		expect(inferPlayerPronounsFromDirectorNotes(messages)).toBe("she/her");
+	});
+});
+
+describe("inferPlayerPronounsFromMessages", () => {
+	it("infers she/her from recent assistant scenes about the player", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "27",
+				storyId: "story-1",
+				role: "assistant",
+				content:
+					'Jamie: *She buries her face against Amy\'s shoulder.* "Lyra... that\'s my... name."\nAmy: *She eases back just enough to look at her daughter\'s face.* "Lyra... like the heroine from His Dark Materials?"',
+				speakerType: "assistant",
+				timestamp: "2026-08-21T00:07:00.000Z",
+			},
+		];
+
+		expect(inferPlayerPronounsFromMessages(messages, "James Peralta", "Lyra")).toBe("she/her");
 	});
 });
 

@@ -11,7 +11,7 @@ import { sortByTimestampAsc } from "../dates";
 import { buildDirectorAssistContinuationRequest, buildDirectorAssistRequest, buildPlayerAssistContinuationRequest, buildPlayerAssistRequest } from "./playerAssist";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterPreferredSceneName } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolveEffectivePlayerIdentity } from "../playerCharacterPrompt";
 import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
 import { isAuthorDirectiveMessage } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
@@ -175,21 +175,26 @@ export function buildPlayerAssistContext({
   const summaryBlock = buildAssistSummaryBlock(story, summaries);
   const importedCharactersBlock = formatStoryImportedCharactersForPrompt(importedStoryCharacters);
 
+  const playerIdentity = resolveEffectivePlayerIdentity(playerCharacter, { recentMessages });
+  const preferredName = playerIdentity.sceneName;
+  const playerPronouns = playerIdentity.pronouns;
+
   const assistGuidance = normalizeWhitespace(
     [
       "You are generating a Player Assist draft.",
       "This is a suggested player turn and is not canon until the user chooses to send it.",
       "Output only the player's message in the required format. No other speakers. No narration. No commentary.",
       "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
-      "The player character sheet is authoritative canon for identity facts. Do not contradict it or introduce genre-default assumptions about the protagonist.",
-      `Use "${resolvePlayerCharacterPreferredSceneName(playerCharacter)}" as the player character's preferred name. Use their specified pronouns (${playerCharacter.pronouns.trim() || "unspecified"}) and never infer he/him or she/her from name or gender.`,
+      playerIdentity.hasInStoryTransition
+        ? "The transcript has established a current in-story identity for the protagonist. Use that instead of outdated character sheet defaults."
+        : "The player character sheet defines starting identity facts. Do not introduce genre-default assumptions about the protagonist.",
+      `Use "${preferredName}" as the player character's preferred name. Use their specified pronouns (${playerPronouns || "unspecified"}) and never infer he/him or she/her from name or gender.`,
       buildMatureFictionPolicyBlock({
         includeParity: true,
       }),
     ].join("\n"),
   );
 
-  const preferredName = resolvePlayerCharacterPreferredSceneName(playerCharacter);
   const chatHistory = sortByTimestampAsc(recentMessages)
     .slice(-MAX_RECENT_MESSAGES)
     .map((message) => formatTimelineMessage(message, preferredName));
@@ -240,6 +245,10 @@ export function buildDirectorAssistContext({
   const summaryBlock = buildAssistSummaryBlock(story, summaries);
   const importedCharactersBlock = formatStoryImportedCharactersForPrompt(importedStoryCharacters);
 
+  const playerIdentity = resolveEffectivePlayerIdentity(playerCharacter, { recentMessages });
+  const preferredName = playerIdentity.sceneName;
+  const playerPronouns = playerIdentity.pronouns;
+
   const assistGuidance = normalizeWhitespace(
     [
       "You are generating a Director Assist draft.",
@@ -249,14 +258,18 @@ export function buildDirectorAssistContext({
       "Output only the Director note in the required format. No other speakers. No narration. No commentary.",
       "Use first names for characters. Stage the immediate next beat — do not summarize prior scenes.",
       formatDirectorNoteAuthoringGuidance(),
-      `Use "${resolvePlayerCharacterPreferredSceneName(playerCharacter)}" as the player character's preferred name.`,
+      `Use "${preferredName}" as the player character's preferred name${playerPronouns ? ` with pronouns ${playerPronouns}` : ""}.`,
+      playerIdentity.hasInStoryTransition
+        ? "The transcript has already established this in-story identity. Do not revert to earlier names or pronouns."
+        : "",
       buildMatureFictionPolicyBlock({
         includeParity: true,
       }),
-    ].join("\n"),
+    ]
+      .filter(Boolean)
+      .join("\n"),
   );
 
-  const preferredName = resolvePlayerCharacterPreferredSceneName(playerCharacter);
   const chatHistory = sortByTimestampAsc(recentMessages).map((message) =>
     formatTimelineMessage(message, preferredName),
   );

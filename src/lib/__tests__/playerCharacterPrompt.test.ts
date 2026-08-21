@@ -10,8 +10,11 @@ import {
 	getPlayerCharacterNameVariants,
 	normalizePlayerCharacterAliases,
 	normalizePlayerCharacterKnownTies,
+	resolveEffectivePlayerIdentity,
+	resolveEffectivePlayerPronouns,
 	resolvePlayerCharacterPreferredSceneName,
 } from "../playerCharacterPrompt";
+import type { StoryMessage } from "../../types/models";
 
 describe("resolvePlayerCharacterPreferredSceneName", () => {
 	it("prefers the first alias over the legal name", () => {
@@ -64,6 +67,94 @@ describe("buildPlayerNameForValidation", () => {
 	});
 });
 
+describe("resolveEffectivePlayerIdentity", () => {
+	const jamieCharacter = {
+		name: "James Peralta",
+		aliases: ["Jamie"],
+		pronouns: "he/him",
+		gender: "male",
+		species: "human",
+		age: "15",
+	};
+
+	it("uses in-story displayName and pronouns after a coming-out rename", () => {
+		const identity = resolveEffectivePlayerIdentity(jamieCharacter, {
+			storyState: {
+				updatedAt: "2026-08-21T00:00:00.000Z",
+				characters: {
+					"James Peralta": {
+						displayName: "Lyra",
+						pronouns: "she/her",
+					},
+				},
+				worldFacts: [],
+				unresolvedThreads: [],
+			},
+		});
+
+		expect(identity.sceneName).toBe("Lyra");
+		expect(identity.pronouns).toBe("she/her");
+		expect(identity.hasInStoryTransition).toBe(true);
+	});
+
+	it("infers Lyra and she/her from a director note after coming out", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "27",
+				storyId: "story-1",
+				role: "assistant",
+				content:
+					'Jamie: *She buries her face against Amy\'s shoulder.* "Lyra... that\'s my... name."\nAmy: *She eases back.* "Lyra... like the heroine from His Dark Materials?"',
+				speakerType: "assistant",
+				timestamp: "2026-08-21T00:07:00.000Z",
+			},
+			{
+				id: "30",
+				storyId: "story-1",
+				role: "user",
+				content:
+					'*A few moments go by. Lyra finally pulls back from her parents, wiping her eyes on her sleeve ("Mac. Come here...")*',
+				speakerType: "director",
+				timestamp: "2026-08-21T00:08:00.000Z",
+			},
+		];
+
+		const identity = resolveEffectivePlayerIdentity(jamieCharacter, { recentMessages: messages });
+
+		expect(identity.sceneName).toBe("Lyra");
+		expect(identity.pronouns).toBe("she/her");
+		expect(identity.hasInStoryTransition).toBe(true);
+	});
+});
+
+describe("resolveEffectivePlayerPronouns", () => {
+	it("prefers story-state pronouns over the character sheet", () => {
+		expect(
+			resolveEffectivePlayerPronouns(
+				{
+					name: "James Peralta",
+					aliases: ["Jamie"],
+					pronouns: "he/him",
+				},
+				{
+					sceneName: "Lyra",
+					storyState: {
+						updatedAt: "2026-08-21T00:00:00.000Z",
+						characters: {
+							"James Peralta": {
+								displayName: "Lyra",
+								pronouns: "she/her",
+							},
+						},
+						worldFacts: [],
+						unresolvedThreads: [],
+					},
+				},
+			),
+		).toBe("she/her");
+	});
+});
+
 describe("formatPlayerCharacterIdentityForPrompt", () => {
 	it("mandates preferred scene name and pronouns", () => {
 		const prompt = formatPlayerCharacterIdentityForPrompt({
@@ -80,6 +171,25 @@ describe("formatPlayerCharacterIdentityForPrompt", () => {
 		expect(prompt).toContain("Player Pronouns: they/them");
 		expect(prompt).toContain("NEVER infer pronouns");
 		expect(prompt).toContain("Never write he/him/his or she/her/hers");
+	});
+
+	it("surfaces in-story identity overrides for coming-out transitions", () => {
+		const prompt = formatPlayerCharacterIdentityForPrompt(
+			{
+				name: "James Peralta",
+				aliases: ["Jamie"],
+				pronouns: "he/him",
+				gender: "trans girl",
+				species: "human",
+				age: "15",
+			},
+			"Lyra",
+			"she/her",
+		);
+
+		expect(prompt).toContain("current in-story identity): Lyra (she/her)");
+		expect(prompt).toContain("In-story identity transitions override the character sheet defaults");
+		expect(prompt).toContain("Never write he/him/his for this character");
 	});
 });
 

@@ -1,4 +1,5 @@
 import type { StoryMessage, StoryStateCharacterState, StoryStateData, StoryStateDataV2 } from "../../types/models";
+import { isDirectorMessage } from "./directorMode";
 import {
 	type CharacterTtsGenderMap,
 	inferGenderFromPronounsInText,
@@ -68,6 +69,166 @@ export function findPlayerStoryStateEntry(
 	for (const entry of Object.values(storyState.characters)) {
 		if (entry?.canonicalName?.trim().toLowerCase() === legalLower) {
 			return entry;
+		}
+	}
+
+	return null;
+}
+
+const DIRECTOR_NOTE_NAME_STOPWORDS = new Set([
+	"director",
+	"narrator",
+	"continue",
+	"chapter",
+	"system",
+	"assistant",
+	"morning",
+	"afternoon",
+	"evening",
+	"before",
+	"after",
+	"while",
+	"when",
+	"then",
+	"they",
+	"their",
+]);
+
+export function inferPlayerSceneNameFromDirectorNotes(
+	messages: StoryMessage[],
+	legalName: string,
+	sheetPreferredName?: string,
+): string | null {
+	const legalLower = legalName.trim().toLowerCase();
+	const preferredLower = sheetPreferredName?.trim().toLowerCase() ?? "";
+	if (!legalLower) {
+		return null;
+	}
+
+	const legalTokens = new Set(nameTokens(legalName).map((token) => token.toLowerCase()));
+
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (message.role !== "user" || !isDirectorMessage(message)) {
+			continue;
+		}
+
+		const candidates = message.content.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g) ?? [];
+		for (const candidate of candidates) {
+			const trimmed = candidate.trim();
+			const lower = trimmed.toLowerCase();
+			const firstToken = nameTokens(trimmed)[0]?.toLowerCase() ?? lower;
+			if (!trimmed || DIRECTOR_NOTE_NAME_STOPWORDS.has(lower) || DIRECTOR_NOTE_NAME_STOPWORDS.has(firstToken)) {
+				continue;
+			}
+			if (legalTokens.has(lower) || legalTokens.has(firstToken)) {
+				continue;
+			}
+			if (preferredLower && (lower === preferredLower || firstToken === preferredLower)) {
+				continue;
+			}
+			return nameTokens(trimmed)[0] ?? trimmed;
+		}
+	}
+
+	return null;
+}
+
+export function inferPlayerPronounsFromMessages(
+	messages: StoryMessage[],
+	legalName: string,
+	sceneName: string,
+): string | null {
+	const sceneLabel = sceneName.trim();
+	const legalLabel = legalName.trim();
+	if (!sceneLabel) {
+		return null;
+	}
+
+	let sheScore = 0;
+	let heScore = 0;
+	let theyScore = 0;
+	const scanStart = Math.max(0, messages.length - 20);
+
+	for (let index = messages.length - 1; index >= scanStart; index -= 1) {
+		const message = messages[index];
+		if (message.role !== "assistant") {
+			continue;
+		}
+
+		const content = message.content.replace(/\r\n/g, "\n");
+		const lines = content.split("\n");
+		for (const line of lines) {
+			const speakerMatch = line.match(/^([^:\n]{1,64}):\s*\*(She|He|They)\b/i);
+			if (speakerMatch?.[1] && speakerMatch[2]) {
+				const label = speakerMatch[1].trim();
+				if (
+					isLegalNameReference(label, legalLabel) ||
+					label.toLowerCase() === sceneLabel.toLowerCase()
+				) {
+					const token = speakerMatch[2].toLowerCase();
+					if (token === "she") {
+						sheScore += 4;
+					} else if (token === "he") {
+						heScore += 4;
+					} else {
+						theyScore += 4;
+					}
+				}
+			}
+		}
+
+		const scenePattern = new RegExp(
+			`\\b(?:${escapeRegex(sceneLabel)}|${escapeRegex(nameTokens(legalLabel)[0] ?? sceneLabel)})\\b`,
+			"i",
+		);
+		if (!scenePattern.test(content)) {
+			continue;
+		}
+
+		const feminineMatches = content.match(/\b(she|her|hers|daughter)\b/gi)?.length ?? 0;
+		const masculineMatches = content.match(/\b(he|him|his|son)\b/gi)?.length ?? 0;
+		const neutralMatches = content.match(/\b(they|them|their|themself|themselves)\b/gi)?.length ?? 0;
+		sheScore += feminineMatches;
+		heScore += masculineMatches;
+		theyScore += neutralMatches;
+	}
+
+	if (sheScore >= 2 && sheScore > heScore && sheScore >= theyScore) {
+		return "she/her";
+	}
+	if (heScore >= 2 && heScore > sheScore && heScore >= theyScore) {
+		return "he/him";
+	}
+	if (theyScore >= 2 && theyScore > sheScore && theyScore > heScore) {
+		return "they/them";
+	}
+
+	return null;
+}
+
+export function inferPlayerPronounsFromDirectorNotes(
+	messages: StoryMessage[],
+): string | null {
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (message.role !== "user" || !isDirectorMessage(message)) {
+			continue;
+		}
+
+		const content = message.content;
+		const hasFeminine = /\b(she|her|hers|daughter)\b/i.test(content);
+		const hasMasculine = /\b(he|him|his|son)\b/i.test(content);
+		const hasNeutral = /\b(they|them|their|themself|themselves)\b/i.test(content);
+
+		if (hasFeminine && !hasMasculine) {
+			return "she/her";
+		}
+		if (hasMasculine && !hasFeminine) {
+			return "he/him";
+		}
+		if (hasNeutral && !hasFeminine && !hasMasculine) {
+			return "they/them";
 		}
 	}
 

@@ -35,7 +35,7 @@ import { DiceRollModal, type DiceRollResult } from "../components/story/DiceRoll
 import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
 import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
-import { normalizePlayerCharacterAliases, resolvePlayerCharacterSceneName } from "../lib/playerCharacterPrompt";
+import { normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity } from "../lib/playerCharacterPrompt";
 import { buildStoryImportedCharacterAllowlist } from "../lib/storyImportedCharacters";
 import { buildCharacterGenderHintsFromStoryState } from "../lib/ai/characterTtsVoices";
 import {
@@ -217,16 +217,18 @@ export function StoryWorkspacePage() {
   }, [repairStoryTranscriptClockTimes, story?.id]);
   const assistDefaultsToDirector = useMemo(() => storyHasGeneratedScenes(messages), [messages]);
   const [storyStateJson, setStoryStateJson] = useState<string | null>(null);
-  const playerSceneName = useMemo(() => {
+  const playerIdentity = useMemo(() => {
     if (!playerCharacter) {
-      return "";
+      return null;
     }
 
-    return resolvePlayerCharacterSceneName(playerCharacter, {
+    return resolveEffectivePlayerIdentity(playerCharacter, {
       storyState: storyStateJson ? safeParseStoryStateData(storyStateJson) : null,
       recentMessages: messages,
     });
   }, [messages, playerCharacter, storyStateJson]);
+  const playerSceneName = playerIdentity?.sceneName ?? "";
+  const playerEffectivePronouns = playerIdentity?.pronouns ?? playerCharacter?.pronouns ?? "";
   const characterGenders = useMemo(() => {
     if (!playerCharacter) {
       return {};
@@ -237,7 +239,7 @@ export function StoryWorkspacePage() {
       {
         playerName: playerCharacter.name,
         playerGender: playerCharacter.gender,
-        playerPronouns: playerCharacter.pronouns,
+        playerPronouns: playerEffectivePronouns,
       },
     );
   }, [playerCharacter, storyStateJson]);
@@ -1703,7 +1705,7 @@ export function StoryWorkspacePage() {
                       playerCharacterName={activePlayerCharacter.name}
                       playerLegalName={activePlayerCharacter.name}
                       playerSceneName={playerSceneName}
-                      playerPronouns={activePlayerCharacter.pronouns}
+                      playerPronouns={playerEffectivePronouns}
                       characterGenders={characterGenders}
                       onEdit={populateComposerFromMessage}
                       onQuickEdit={isReadOnly ? undefined : handleOpenAssistantEdit}
@@ -1724,7 +1726,7 @@ export function StoryWorkspacePage() {
               playerCharacterName={activePlayerCharacter.name}
               playerLegalName={activePlayerCharacter.name}
               playerSceneName={playerSceneName}
-              playerPronouns={activePlayerCharacter.pronouns}
+              playerPronouns={playerEffectivePronouns}
               characterGenders={characterGenders}
               storyTitle={activeStory.title}
               chapters={storyChapters}

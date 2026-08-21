@@ -23,7 +23,7 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolveEffectivePlayerIdentity, resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
 import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
 import { createNarrativeIdentityPromptContext, redactNarrativePromptText, resolveNarrativePromptName } from "../narrativeIdentity";
 import { applyTranscriptPresenceGate } from "../transcriptPresence";
@@ -162,10 +162,12 @@ export function buildStoryChatContext({
           messageCount: recentMessages.length,
         })
       : parsedStoryState;
-  const playerSceneName = resolvePlayerCharacterSceneName(playerCharacter, {
+  const playerIdentity = resolveEffectivePlayerIdentity(playerCharacter, {
     storyState: gatedStoryState,
     recentMessages,
   });
+  const playerSceneName = playerIdentity.sceneName;
+  const playerPronouns = playerIdentity.pronouns;
   const narrativeIdentity = createNarrativeIdentityPromptContext({
     storyState: gatedStoryState,
     playerCharacter,
@@ -219,7 +221,7 @@ export function buildStoryChatContext({
         : "",
       universeMode === "referenced" && universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : "",
       `Story Title: ${story.title}`,
-      formatPlayerCharacterIdentityForPrompt(playerCharacter, playerSceneName),
+      formatPlayerCharacterIdentityForPrompt(playerCharacter, playerSceneName, playerPronouns),
       formatPlayerCharacterKnownTiesForPrompt(playerCharacter),
       playerCharacter.characterConcept?.trim()
         ? `Player Concept/Role: ${playerCharacter.characterConcept.trim()}`
@@ -408,7 +410,7 @@ export function buildStoryChatContext({
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
       "Continue notes may appear in the transcript as out-of-character instructions to keep the current scene moving without requiring a fresh player action. They are visible in the transcript but are not themselves spoken dialogue or canon events.",
       "Director notes may appear in the transcript as out-of-character production guidance. They are visible in the transcript but are not themselves spoken dialogue or automatic canon facts. Canon comes from what actually happens in the generated scene that follows.",
-      "The player character sheet is authoritative canon for identity facts (name, age, gender, pronouns, species, role/occupation, disabilities/limitations). Do not contradict it with genre assumptions or defaults.",
+      "The player character sheet defines starting identity. When the transcript or Long-Term Memory establishes an in-story identity transition (coming out, stable name change, pronoun change), use the current in-story identity instead of outdated sheet defaults.",
       "Stay anchored in the story's premise, player character, and current situation. In ensemble scenes, also track the active group dynamic, shared objective, and who currently holds the conversational or dramatic focus. Recent beats matter, but they should not erase what the story is fundamentally about.",
       "Do not automatically introduce cases, missions, mysteries, assignments, emergencies, villains, or conflicts simply because the story has started.",
       "Character interaction alone is a valid scene.",
@@ -423,8 +425,11 @@ export function buildStoryChatContext({
       playerSceneName.toLowerCase() !== playerCharacter.name.trim().toLowerCase()
         ? `Do NOT use the player character's legal/full name "${playerCharacter.name.trim()}" in speaker headers or casual narration while they are using the in-story alias "${playerSceneName}".`
         : "",
-      playerCharacter.pronouns.trim()
-        ? `Player character pronouns: ${playerCharacter.pronouns.trim()}. Never infer different pronouns from name or gender.`
+      playerPronouns.trim()
+        ? `Player character pronouns: ${playerPronouns.trim()}. Never infer different pronouns from name or gender.`
+        : "",
+      playerIdentity.hasInStoryTransition
+        ? `In-story identity is now "${playerSceneName}"${playerPronouns.trim() ? ` (${playerPronouns.trim()})` : ""}. Do NOT revert to earlier names or pronouns from before this transition.`
         : "",
       "Formality rule: if identity and familiarity are established, prefer first names over formal titles (Detective/Doctor/Captain) unless the scene is explicitly formal or a title is being used for emphasis.",
       "If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation. React, investigate, speculate, and ask questions, but do not resolve the mystery unless the player explicitly provides the answer.",

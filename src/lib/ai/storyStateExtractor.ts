@@ -15,7 +15,7 @@ import {
 } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolveEffectivePlayerIdentity } from "../playerCharacterPrompt";
 import {
 	type NarrativeIdentityPromptContext,
 	redactNarrativePromptText,
@@ -89,7 +89,7 @@ export function buildStoryStateExtractionPrompt({
     [
       "You extract and maintain current story-state for continuity.",
       "Story events define current truth. The character sheet and transcript define the starting state.",
-      "The player character sheet is authoritative canon for the protagonist's identity facts (name, age, gender, pronouns, species, role/occupation, disabilities/limitations). Do not contradict it with genre assumptions.",
+      "The player character sheet defines the protagonist's starting identity facts (name, age, gender, pronouns, species, role/occupation, disabilities/limitations). When the transcript establishes an in-story identity transition such as coming out, a stable name change, or a pronoun change, update characters.displayName, characters.pronouns, summaries, and indexes to reflect the current in-story identity.",
       "Prefer existing story-state; update only when new evidence appears.",
       "Track only explicit, high-confidence changes. Do not invent facts.",
       "Transcript is the source of truth. Indexes are derived and rebuildable.",
@@ -153,6 +153,7 @@ export function buildStoryStateExtractionPrompt({
       "- Open threads should ask reader-appropriate questions (e.g. 'Who is Mark Owen?' / 'Can Mark Owen be trusted?') rather than stating unrevealed truths.",
       "- Do not write 'posing as', 'secretly', 'unaware that X is Y', or parenthetical true identities in reader-facing summary/thread text unless the reveal has already happened in the transcript.",
       "- Treat major identity transitions as significant memories when they are story-defining or emotionally pivotal, such as coming out, a stable name change, a gender identity reveal, or a lasting change in how the protagonist is known.",
+      "- After a stable in-story name or pronoun change, update the player character entry's displayName and pronouns, use the new name in summaries and relationship labels, and treat the old name as a prior alias only when still relevant in dialogue.",
       "- Include the player character in characters ONLY after they appear or are mentioned in in-fiction transcript text (dialogue, narration, or on-screen action). Do NOT index the player from the character sheet, premise, Director notes, chapter markers, or author metadata alone.",
       "- If the player character has not yet appeared in the indexed transcript, omit protagonistSummary entirely and do not write premise/currentSituation/openThreads/relationships/locations that name or describe the hidden protagonist.",
       "- Never create indexes.relationships entries between the player and themselves, or between two names that refer to the same player character (legal name vs nickname vs preferred scene name).",
@@ -228,12 +229,20 @@ export function buildStoryStateExtractionPrompt({
     ].join("\n"),
   );
 
+  const playerIdentity = playerCharacter
+    ? resolveEffectivePlayerIdentity(playerCharacter, { recentMessages })
+    : null;
+
   const user = normalizeWhitespace(
     [
       playerCharacter
         ? [
-            "Player Character Sheet (authoritative canon):",
-            formatPlayerCharacterIdentityForPrompt(playerCharacter),
+            "Player Character Sheet (starting identity; transcript may override with current in-story identity):",
+            formatPlayerCharacterIdentityForPrompt(
+              playerCharacter,
+              playerIdentity?.sceneName,
+              playerIdentity?.pronouns,
+            ),
             (() => {
               const knownTiesLine = formatPlayerCharacterKnownTiesForPrompt(playerCharacter);
               return knownTiesLine ? `- ${knownTiesLine}` : "";
