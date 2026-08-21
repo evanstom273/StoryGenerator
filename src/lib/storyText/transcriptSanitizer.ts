@@ -879,6 +879,31 @@ export function normalizeTranscriptForDisplay(text: string): string {
 	);
 }
 
+export function applyStoryLocalIdentityToAssistantTranscript(
+	text: string,
+	args: {
+		legalName: string;
+		sceneName: string;
+		pronouns?: string | null;
+		characterGenders?: CharacterTtsGenderMap | null;
+	},
+): string {
+	const legalName = args.legalName.trim();
+	const sceneName = args.sceneName.trim();
+	let normalized = normalizeTranscriptForDisplay(text);
+
+	if (legalName && sceneName && legalName.toLowerCase() !== sceneName.toLowerCase()) {
+		normalized = applyPlayerSceneNameToTranscript(normalized, legalName, sceneName);
+	}
+
+	return normalizeCharacterActionBeatsInTranscript(normalized, {
+		playerSceneName: sceneName,
+		playerLegalName: legalName,
+		playerPronouns: args.pronouns,
+		characterGenders: args.characterGenders,
+	});
+}
+
 export function sanitizeMessageForDisplay(args: {
   message: StoryMessage;
   latestUserMessage?: string | null;

@@ -16,6 +16,7 @@ import {
 import { ensureIndexedCharacterStatus, dedupeStatusBullets } from "./characterStatus";
 import { applyTranscriptPresenceGate } from "./transcriptPresence";
 import { findPlayerStoryStateEntry } from "./storyText/playerSceneName";
+import { resolvePlayerCharacterPreferredSceneName } from "./playerCharacterPrompt";
 import {
 	mergeOpenThreadsAuthoritative,
 	reconcileResolvedOpenThreads,
@@ -911,4 +912,63 @@ export function createSequelStoryStateData(params: {
         }
       : undefined,
   };
+}
+
+export function mergeStoryLocalPlayerIdentityIntoState(
+	storyState: StoryStateData | StoryStateDataV2 | null | undefined,
+	legalName: string,
+	identity: {
+		sceneName: string;
+		pronouns: string;
+		hasInStoryTransition: boolean;
+	},
+): StoryStateData | StoryStateDataV2 | null {
+	if (!storyState || !identity.hasInStoryTransition) {
+		return storyState ?? null;
+	}
+
+	const trimmedLegal = legalName.trim();
+	const trimmedScene = identity.sceneName.trim();
+	const trimmedPronouns = identity.pronouns.trim();
+	if (!trimmedLegal || !trimmedScene || !trimmedPronouns) {
+		return storyState;
+	}
+
+	const existingEntry = findPlayerStoryStateEntry(storyState, trimmedLegal);
+	const existingKey =
+		Object.entries(storyState.characters ?? {}).find(([, entry]) => entry === existingEntry)?.[0] ??
+		(storyState.characters?.[trimmedLegal] ? trimmedLegal : trimmedLegal);
+
+	const priorAliases = new Set(
+		(existingEntry?.aliases ?? [])
+			.map((alias) => alias.trim())
+			.filter(Boolean),
+	);
+	const sheetPreferred = resolvePlayerCharacterPreferredSceneName({
+		name: trimmedLegal,
+		aliases: existingEntry?.aliases ?? [],
+	});
+	if (
+		sheetPreferred.toLowerCase() !== trimmedScene.toLowerCase() &&
+		sheetPreferred.toLowerCase() !== trimmedLegal.toLowerCase()
+	) {
+		priorAliases.add(sheetPreferred);
+	}
+
+	const nextEntry = {
+		...(existingEntry ?? {}),
+		canonicalName: trimmedLegal,
+		displayName: trimmedScene,
+		pronouns: trimmedPronouns,
+		...(priorAliases.size ? { aliases: Array.from(priorAliases).slice(0, 12) } : {}),
+	};
+
+	return {
+		...storyState,
+		updatedAt: new Date().toISOString(),
+		characters: {
+			...(storyState.characters ?? {}),
+			[existingKey]: nextEntry,
+		},
+	};
 }

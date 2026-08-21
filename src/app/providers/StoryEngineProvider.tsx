@@ -95,6 +95,7 @@ import {
   parseStoryStateJson,
   reconcileStoryIndexes,
   safeParseStoryStateData,
+  mergeStoryLocalPlayerIdentityIntoState,
   withIndexedMetadata,
 } from "../../lib/storyStateV2";
 import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
@@ -130,6 +131,7 @@ import {
 import { isGlobalMetaChatScope } from "../../lib/metaChatScope";
 import {
   normalizeTranscriptForDisplay,
+  applyStoryLocalIdentityToAssistantTranscript,
   validateAssistantTranscriptForSave,
   shouldAcceptStreamDespiteSpeakerAttributionFlags,
   type AssistantTranscriptValidationStage,
@@ -210,6 +212,7 @@ import {
   formatPlayerCharacterOwnershipRulesForRewrite,
   formatPlayerCharacterPronounAndNamingRules,
   resolveEffectivePlayerIdentity,
+  type EffectivePlayerIdentity,
   resolvePlayerCharacterSceneName,
 } from "../../lib/playerCharacterPrompt";
 import {
@@ -1132,6 +1135,54 @@ async function resolveStreamedAssistantTranscript(args: {
 			},
 		),
 	);
+}
+
+function applyStoryLocalIdentityToSavedAssistantText(args: {
+	text: string;
+	playerCharacter: PlayerCharacter;
+	playerIdentity: EffectivePlayerIdentity;
+	storyStateData: StoryStateData | null;
+}): string {
+	const characterGenders = buildCharacterGenderHintsFromStoryState(args.storyStateData, {
+		playerName: args.playerCharacter.name,
+		playerGender: args.playerCharacter.gender,
+		playerPronouns: args.playerIdentity.pronouns,
+	});
+
+	return applyStoryLocalIdentityToAssistantTranscript(args.text, {
+		legalName: args.playerIdentity.legalName,
+		sceneName: args.playerIdentity.sceneName,
+		pronouns: args.playerIdentity.pronouns,
+		characterGenders,
+	});
+}
+
+async function persistStoryLocalPlayerIdentity(args: {
+	storyId: string;
+	storyState: StoryState | null | undefined;
+	playerCharacter: PlayerCharacter;
+	playerIdentity: EffectivePlayerIdentity;
+	repository: StoryEngineRepository;
+}): Promise<void> {
+	if (!args.playerIdentity.hasInStoryTransition || !args.storyState?.stateJson?.trim()) {
+		return;
+	}
+
+	const parsed = safeParseStoryStateData(args.storyState.stateJson);
+	const merged = mergeStoryLocalPlayerIdentityIntoState(
+		parsed,
+		args.playerCharacter.name,
+		args.playerIdentity,
+	);
+	if (!merged || JSON.stringify(merged) === JSON.stringify(parsed)) {
+		return;
+	}
+
+	await args.repository.saveStoryState({
+		...args.storyState,
+		stateJson: JSON.stringify(merged),
+		updatedAt: new Date().toISOString(),
+	});
 }
 
 async function generateSummaryWithRetry(params: {
@@ -6548,14 +6599,28 @@ export function StoryEngineProvider({
           storyId,
         });
 
+        const normalizedStreamText = applyStoryLocalIdentityToSavedAssistantText({
+          text: finalStreamText,
+          playerCharacter,
+          playerIdentity,
+          storyStateData: parsedStoryStateForIdentity,
+        });
+
         const nextAssistantMessage: StoryMessage = {
           ...lastMessage,
-          content: finalStreamText,
+          content: normalizedStreamText,
           regeneratedAt: new Date().toISOString(),
           revision: (lastMessage.revision ?? 0) + 1,
         };
 
         await repository.saveStoryMessage(nextAssistantMessage);
+        await persistStoryLocalPlayerIdentity({
+          storyId,
+          storyState,
+          playerCharacter,
+          playerIdentity,
+          repository,
+        });
         await touchStory(storyId);
         await hydrate(false);
 
@@ -8221,17 +8286,31 @@ export function StoryEngineProvider({
             storyId,
           });
 
+          const normalizedStreamText = applyStoryLocalIdentityToSavedAssistantText({
+            text: finalStreamText,
+            playerCharacter,
+            playerIdentity,
+            storyStateData: parsedStoryStateForIdentity,
+          });
+
           assistantMessage = {
             id: createEntityId("story-message"),
             storyId,
             role: "assistant",
-            content: finalStreamText,
+            content: normalizedStreamText,
             timestamp: new Date().toISOString(),
             speakerType: "narrator",
             ...(currentRpStats?.timeState ? { storyTime: currentRpStats.timeState } : {}),
           };
 
           await repository.saveStoryMessage(assistantMessage);
+          await persistStoryLocalPlayerIdentity({
+            storyId,
+            storyState,
+            playerCharacter,
+            playerIdentity,
+            repository,
+          });
           // #region debug-point C:story-save
           reportGenerationAudit({
             hypothesisId: "C",
