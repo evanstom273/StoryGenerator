@@ -2,6 +2,9 @@ import type { PlayerCharacter, PlayerCharacterDraft, StoryMessage, StoryStateDat
 import { safeParseStoryStateData } from "./storyStateV2";
 import {
 	findPlayerStoryStateEntry,
+	inferPlayerPronounsFromDirectorNotes,
+	inferPlayerPronounsFromMessages,
+	inferPlayerSceneNameFromDirectorNotes,
 	inferPlayerSceneNameFromMessages,
 } from "./storyText/playerSceneName";
 
@@ -163,6 +166,99 @@ export function resolvePlayerCharacterSceneName(
 	return sheetPreferred;
 }
 
+export interface EffectivePlayerIdentity {
+	sceneName: string;
+	pronouns: string;
+	legalName: string;
+	hasInStoryTransition: boolean;
+}
+
+export function resolveEffectivePlayerPronouns(
+	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns">,
+	opts?: {
+		storyState?: StoryStateData | StoryStateDataV2 | null;
+		recentMessages?: StoryMessage[];
+		sceneName?: string;
+	},
+): string {
+	const sheetPronouns = character.pronouns.trim();
+	const sceneName =
+		opts?.sceneName?.trim() ||
+		resolvePlayerCharacterSceneName(character, {
+			storyState: opts?.storyState,
+			recentMessages: opts?.recentMessages,
+		});
+
+	const storyEntry = findPlayerStoryStateEntry(opts?.storyState, character.name.trim());
+	const storyPronouns = storyEntry?.pronouns?.trim();
+	if (storyPronouns) {
+		return storyPronouns;
+	}
+
+	const fromDirectorNotes = opts?.recentMessages?.length
+		? inferPlayerPronounsFromDirectorNotes(opts.recentMessages)
+		: null;
+	if (fromDirectorNotes) {
+		return fromDirectorNotes;
+	}
+
+	const fromMessages = opts?.recentMessages?.length
+		? inferPlayerPronounsFromMessages(opts.recentMessages, character.name.trim(), sceneName)
+		: null;
+	if (fromMessages) {
+		return fromMessages;
+	}
+
+	return sheetPronouns;
+}
+
+export function resolveEffectivePlayerIdentity(
+	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns">,
+	opts?: {
+		storyState?: StoryStateData | StoryStateDataV2 | null;
+		recentMessages?: StoryMessage[];
+	},
+): EffectivePlayerIdentity {
+	const legalName = character.name.trim();
+	const sheetPreferred = resolvePlayerCharacterPreferredSceneName(character);
+	const storyEntry = findPlayerStoryStateEntry(opts?.storyState, legalName);
+
+	let sceneName = resolvePlayerCharacterSceneName(character, {
+		storyState: opts?.storyState,
+		recentMessages: opts?.recentMessages,
+	});
+
+	const fromDirectorNotes = opts?.recentMessages?.length
+		? inferPlayerSceneNameFromDirectorNotes(opts.recentMessages, legalName, sheetPreferred)
+		: null;
+	if (fromDirectorNotes) {
+		sceneName = fromDirectorNotes;
+	}
+
+	const pronouns = resolveEffectivePlayerPronouns(character, {
+		storyState: opts?.storyState,
+		recentMessages: opts?.recentMessages,
+		sceneName,
+	});
+
+	const hasNameTransition = sceneName.toLowerCase() !== sheetPreferred.toLowerCase();
+	const hasPronounTransition =
+		!!character.pronouns.trim() &&
+		!!pronouns &&
+		pronouns.toLowerCase() !== character.pronouns.trim().toLowerCase();
+	const hasStoryStateIdentity =
+		!!storyEntry?.displayName?.trim() ||
+		!!storyEntry?.pronouns?.trim() ||
+		!!fromDirectorNotes;
+
+	return {
+		sceneName,
+		pronouns,
+		legalName,
+		hasInStoryTransition: hasNameTransition || hasPronounTransition || hasStoryStateIdentity,
+	};
+}
+
 export function resolvePlayerCharacterSceneNameFromStateJson(
 	character: Pick<PlayerCharacter, "name" | "aliases">,
 	storyStateJson?: string | null,
@@ -254,23 +350,35 @@ export function buildPlayerNameForValidation(
 export function formatPlayerCharacterPronounAndNamingRules(
 	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns">,
 	sceneNameOverride?: string,
+	pronounOverride?: string,
 ): string {
 	const preferredName = sceneNameOverride?.trim() || resolvePlayerCharacterPreferredSceneName(character);
 	const legalName = character.name.trim();
-	const pronouns = character.pronouns.trim();
+	const pronouns = pronounOverride?.trim() || character.pronouns.trim();
 	const usesDifferentPreferredName = preferredName.toLowerCase() !== legalName.toLowerCase();
+	const usesDifferentPronouns =
+		!!pronounOverride?.trim() &&
+		!!character.pronouns.trim() &&
+		pronounOverride.trim().toLowerCase() !== character.pronouns.trim().toLowerCase();
 
 	return [
 		"Player identity rules (mandatory):",
 		usesDifferentPreferredName
 			? `- Preferred name for speaker headers and third-person narration: "${preferredName}". Do NOT use the full legal name "${legalName}" in speaker headers or casual narration unless the scene is explicitly formal or a character who does not know them well addresses them.`
 			: `- Preferred name for speaker headers and third-person narration: "${preferredName}".`,
+		usesDifferentPronouns
+			? `- In-story identity transition: the transcript has established current pronouns ${pronouns}. Use these instead of the character sheet default (${character.pronouns.trim()}).`
+			: "",
 		pronouns
 			? `- Player pronouns: ${pronouns}. These are authoritative. NEVER infer pronouns from name, gender field, or stereotypes. Use only these pronouns when referring to the player character in narration.`
 			: "- Player pronouns were not specified. Do not assume he/him or she/her from name or gender.",
 		pronouns.includes("they")
 			? `- Use they/them/their forms in narration for ${preferredName}. Never write he/him/his or she/her/hers for this character.`
-			: "",
+			: pronouns.includes("she")
+				? `- Use she/her/hers forms in narration for ${preferredName}. Never write he/him/his for this character.`
+				: pronouns.includes("he")
+					? `- Use he/him/his forms in narration for ${preferredName}. Never write she/her/hers for this character.`
+					: "",
 	]
 		.filter(Boolean)
 		.join("\n");
@@ -282,18 +390,31 @@ export function formatPlayerCharacterIdentityForPrompt(
 		"name" | "aliases" | "pronouns" | "gender" | "species" | "age"
 	>,
 	sceneNameOverride?: string,
+	pronounOverride?: string,
 ): string {
 	const preferredName = sceneNameOverride?.trim() || resolvePlayerCharacterPreferredSceneName(character);
 	const legalName = character.name.trim();
+	const pronouns = pronounOverride?.trim() || character.pronouns.trim();
 	const aliases = normalizePlayerCharacterAliases(character.aliases).filter(
 		(alias) => alias.toLowerCase() !== legalName.toLowerCase(),
 	);
 	const otherAliases = aliases.filter(
 		(alias) => alias.toLowerCase() !== preferredName.toLowerCase(),
 	);
+	const hasInStoryTransition =
+		(!!sceneNameOverride?.trim() &&
+			sceneNameOverride.trim().toLowerCase() !== resolvePlayerCharacterPreferredSceneName(character).toLowerCase()) ||
+		(!!pronounOverride?.trim() &&
+			!!character.pronouns.trim() &&
+			pronounOverride.trim().toLowerCase() !== character.pronouns.trim().toLowerCase());
 
 	return [
-		`Player Character (preferred scene name): ${preferredName}`,
+		hasInStoryTransition
+			? `Player Character (current in-story identity): ${preferredName}${pronouns ? ` (${pronouns})` : ""}`
+			: `Player Character (preferred scene name): ${preferredName}`,
+		hasInStoryTransition
+			? "In-story identity transitions override the character sheet defaults below when writing new scenes."
+			: "",
 		preferredName.toLowerCase() !== legalName.toLowerCase()
 			? `Legal/full name: ${legalName}`
 			: "",
@@ -301,8 +422,8 @@ export function formatPlayerCharacterIdentityForPrompt(
 		character.age.trim() ? `Player Age: ${character.age.trim()}` : "",
 		character.gender.trim() ? `Player Gender: ${character.gender.trim()}` : "",
 		character.species?.trim() ? `Player Species: ${character.species.trim()}` : "",
-		character.pronouns.trim() ? `Player Pronouns: ${character.pronouns.trim()}` : "",
-		formatPlayerCharacterPronounAndNamingRules(character, preferredName),
+		pronouns ? `Player Pronouns: ${pronouns}` : "",
+		formatPlayerCharacterPronounAndNamingRules(character, preferredName, pronouns),
 	]
 		.filter(Boolean)
 		.join("\n");
@@ -314,13 +435,16 @@ export function formatPlayerCharacterOwnershipRulesForRewrite(
 		"name" | "aliases" | "pronouns" | "gender" | "species" | "age"
 	>,
 	allowDirectedPlayerControl: boolean,
+	sceneNameOverride?: string,
+	pronounOverride?: string,
 ): string {
-	const preferredName = resolvePlayerCharacterPreferredSceneName(character);
+	const preferredName = sceneNameOverride?.trim() || resolvePlayerCharacterPreferredSceneName(character);
+	const pronouns = pronounOverride?.trim() || character.pronouns.trim();
 
 	return [
 		`The player character is: ${preferredName}.`,
-		`Player character sheet is authoritative canon. Pronouns: ${character.pronouns.trim() || "unspecified"}. Gender: ${character.gender.trim() || "unspecified"}. Species: ${(character.species ?? "").trim() || "unspecified"}. Age: ${character.age.trim() || "unspecified"}.`,
-		formatPlayerCharacterPronounAndNamingRules(character),
+		`Player character pronouns: ${pronouns || "unspecified"}. Gender: ${character.gender.trim() || "unspecified"}. Species: ${(character.species ?? "").trim() || "unspecified"}. Age: ${character.age.trim() || "unspecified"}.`,
+		formatPlayerCharacterPronounAndNamingRules(character, preferredName, pronouns),
 		allowDirectedPlayerControl
 			? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewrite when required by the direction."
 			: "- Never write dialogue/actions/thoughts/decisions for the player character.",

@@ -209,7 +209,7 @@ import {
   buildPlayerNameForValidation,
   formatPlayerCharacterOwnershipRulesForRewrite,
   formatPlayerCharacterPronounAndNamingRules,
-  resolvePlayerCharacterPreferredSceneName,
+  resolveEffectivePlayerIdentity,
   resolvePlayerCharacterSceneName,
 } from "../../lib/playerCharacterPrompt";
 import {
@@ -6296,6 +6296,13 @@ export function StoryEngineProvider({
           latestPriorUserMessage,
         );
         const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
+        const parsedStoryStateForIdentity = storyState?.stateJson?.trim()
+          ? safeParseStoryStateData(storyState.stateJson)
+          : null;
+        const playerIdentity = resolveEffectivePlayerIdentity(playerCharacter, {
+          storyState: parsedStoryStateForIdentity,
+          recentMessages: [...sanitizedHistoryMessages, previousMessage],
+        });
 
         const context = buildStoryChatContext({
           universe: effectiveUniverse,
@@ -6407,7 +6414,12 @@ export function StoryEngineProvider({
             ? "- Never write lines that pretend the Director note was spoken aloud in-scene."
             : "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
           "Ownership rules (strict):",
-          formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
+          formatPlayerCharacterOwnershipRulesForRewrite(
+            playerCharacter,
+            allowDirectedPlayerControl,
+            playerIdentity.sceneName,
+            playerIdentity.pronouns,
+          ),
           allowDirectedPlayerControl
             ? "- Do not treat the Director note itself as in-world dialogue."
             : "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
@@ -6420,7 +6432,12 @@ export function StoryEngineProvider({
 
         const ownershipRewritePrompt = [
           "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
-          formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, false),
+          formatPlayerCharacterOwnershipRulesForRewrite(
+            playerCharacter,
+            false,
+            playerIdentity.sceneName,
+            playerIdentity.pronouns,
+          ),
           "Never narrate actions/thoughts for the player character.",
           "Remove any repetition of the latest player message.",
           "Keep continuity, character voice, and natural pacing.",
@@ -6452,8 +6469,12 @@ export function StoryEngineProvider({
           allowDirectedPlayerControl
             ? `The latest Director note is:\n${previousMessage.content}`
             : `The latest player message is:\n${previousMessage.content}`,
-          `The player character is: ${resolvePlayerCharacterPreferredSceneName(playerCharacter)}.`,
-          formatPlayerCharacterPronounAndNamingRules(playerCharacter),
+          `The player character is: ${playerIdentity.sceneName}.`,
+          formatPlayerCharacterPronounAndNamingRules(
+            playerCharacter,
+            playerIdentity.sceneName,
+            playerIdentity.pronouns,
+          ),
           allowDirectedPlayerControl
             ? "Do not repeat the Director note as dialogue. Realize it as scene content and continue naturally."
             : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
@@ -6494,7 +6515,12 @@ export function StoryEngineProvider({
           "- Assign each speaker only their own dialogue and actions. Never label another character's line with the player character's name.",
           "Never use asterisks for emphasis.",
           "Ownership rules:",
-          formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
+          formatPlayerCharacterOwnershipRulesForRewrite(
+            playerCharacter,
+            allowDirectedPlayerControl,
+            playerIdentity.sceneName,
+            playerIdentity.pronouns,
+          ),
         ].join("\n");
 
         const { text: finalStreamText } = await resolveStreamedAssistantTranscript({
@@ -7788,6 +7814,13 @@ export function StoryEngineProvider({
             return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
           })();
           const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
+          const parsedStoryStateForIdentity = storyState?.stateJson?.trim()
+            ? safeParseStoryStateData(storyState.stateJson)
+            : null;
+          const playerIdentity = resolveEffectivePlayerIdentity(playerCharacter, {
+            storyState: parsedStoryStateForIdentity,
+            recentMessages: [...sanitizedHistoryMessages, userMessage],
+          });
 
           const context = buildStoryChatContext({
             universe: effectiveUniverse,
@@ -8042,7 +8075,12 @@ export function StoryEngineProvider({
               ? "- Never write lines that pretend the Director note was spoken aloud in-scene."
               : "- Never write lines like 'You're saying X' or 'You said X' unless X is explicitly present in the player's message or already established in prior story events/state.",
             "Ownership rules (strict):",
-            formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
+            formatPlayerCharacterOwnershipRulesForRewrite(
+            playerCharacter,
+            allowDirectedPlayerControl,
+            playerIdentity.sceneName,
+            playerIdentity.pronouns,
+          ),
             allowDirectedPlayerControl
               ? "- Do not treat the Director note itself as in-world dialogue."
               : "- Never continue the player's action chain beyond consequences and NPC/world reactions.",
@@ -8057,7 +8095,12 @@ export function StoryEngineProvider({
             allowDirectedPlayerControl
               ? "Rewrite the following story scene to preserve the directed scene while removing any formatting or continuity problems."
               : "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
-            formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
+            formatPlayerCharacterOwnershipRulesForRewrite(
+            playerCharacter,
+            allowDirectedPlayerControl,
+            playerIdentity.sceneName,
+            playerIdentity.pronouns,
+          ),
             allowDirectedPlayerControl
               ? "The latest user message was a Director note, not protagonist dialogue."
               : "",
@@ -8098,8 +8141,12 @@ export function StoryEngineProvider({
             allowDirectedPlayerControl
               ? `The latest Director note is:\n${userMessage.content}`
               : `The latest player message is:\n${userMessage.content}`,
-            `The player character is: ${resolvePlayerCharacterPreferredSceneName(playerCharacter)}.`,
-            formatPlayerCharacterPronounAndNamingRules(playerCharacter),
+            `The player character is: ${playerIdentity.sceneName}.`,
+            formatPlayerCharacterPronounAndNamingRules(
+              playerCharacter,
+              playerIdentity.sceneName,
+              playerIdentity.pronouns,
+            ),
             allowDirectedPlayerControl
               ? "Do not repeat the Director note as dialogue. Realize it as scene content and continue naturally."
               : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
@@ -8140,7 +8187,12 @@ export function StoryEngineProvider({
           "- Assign each speaker only their own dialogue and actions. Never label another character's line with the player character's name.",
             "Never use asterisks for emphasis.",
             "Ownership rules:",
-            formatPlayerCharacterOwnershipRulesForRewrite(playerCharacter, allowDirectedPlayerControl),
+            formatPlayerCharacterOwnershipRulesForRewrite(
+            playerCharacter,
+            allowDirectedPlayerControl,
+            playerIdentity.sceneName,
+            playerIdentity.pronouns,
+          ),
           ].join("\n");
 
           const { text: finalStreamText } = await resolveStreamedAssistantTranscript({
