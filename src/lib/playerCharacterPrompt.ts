@@ -6,6 +6,7 @@ import {
 	inferPlayerPronounsFromMessages,
 	inferPlayerSceneNameFromDirectorNotes,
 	inferPlayerSceneNameFromMessages,
+	detectEstablishedPlayerIdentityFromMessages,
 } from "./storyText/playerSceneName";
 
 export function normalizePlayerCharacterAliases(value: unknown): string[] {
@@ -182,6 +183,7 @@ export function resolveEffectivePlayerPronouns(
 	},
 ): string {
 	const sheetPronouns = character.pronouns.trim();
+	const sheetPreferred = resolvePlayerCharacterPreferredSceneName(character);
 	const sceneName =
 		opts?.sceneName?.trim() ||
 		resolvePlayerCharacterSceneName(character, {
@@ -193,6 +195,17 @@ export function resolveEffectivePlayerPronouns(
 	const storyPronouns = storyEntry?.pronouns?.trim();
 	if (storyPronouns) {
 		return storyPronouns;
+	}
+
+	const establishedIdentity = opts?.recentMessages?.length
+		? detectEstablishedPlayerIdentityFromMessages(
+				opts.recentMessages,
+				character.name.trim(),
+				sheetPreferred,
+			)
+		: null;
+	if (establishedIdentity?.pronouns?.trim()) {
+		return establishedIdentity.pronouns.trim();
 	}
 
 	const fromDirectorNotes = opts?.recentMessages?.length
@@ -227,6 +240,17 @@ export function resolveEffectivePlayerIdentity(
 		storyState: opts?.storyState,
 		recentMessages: opts?.recentMessages,
 	});
+
+	const establishedIdentity = opts?.recentMessages?.length
+		? detectEstablishedPlayerIdentityFromMessages(
+				opts.recentMessages,
+				legalName,
+				sheetPreferred,
+			)
+		: null;
+	if (establishedIdentity?.sceneName?.trim()) {
+		sceneName = establishedIdentity.sceneName.trim();
+	}
 
 	const fromDirectorNotes = opts?.recentMessages?.length
 		? inferPlayerSceneNameFromDirectorNotes(opts.recentMessages, legalName, sheetPreferred)

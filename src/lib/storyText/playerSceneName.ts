@@ -235,6 +235,101 @@ export function inferPlayerPronounsFromDirectorNotes(
 	return null;
 }
 
+export interface EstablishedPlayerIdentity {
+	sceneName?: string;
+	pronouns?: string;
+}
+
+function extractChosenNameCandidate(
+	content: string,
+	legalName: string,
+	sheetPreferredName: string,
+): string | null {
+	const patterns = [
+		/"([A-Z][a-z]+)\.{0,3}\s*that['']?s my\.{0,3}\s*name/i,
+		/\bmy name is\s+"?([A-Z][a-z]+)"?/i,
+		/\bcall me\s+"?([A-Z][a-z]+)"?/i,
+		/\bIt suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
+		/\bIt'?s beautiful\.?\s*It suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
+	];
+
+	for (const pattern of patterns) {
+		const match = content.match(pattern);
+		const candidate = match?.[1]?.trim();
+		if (!candidate) {
+			continue;
+		}
+		if (isLegalNameReference(candidate, legalName)) {
+			continue;
+		}
+		if (candidate.toLowerCase() === sheetPreferredName.trim().toLowerCase()) {
+			continue;
+		}
+		return candidate;
+	}
+
+	return null;
+}
+
+export function detectEstablishedPlayerIdentityFromMessages(
+	messages: StoryMessage[],
+	legalName: string,
+	sheetPreferredName: string,
+): EstablishedPlayerIdentity | null {
+	let pronouns: string | null = null;
+	let sceneName: string | null = null;
+
+	for (const message of messages) {
+		const content = message.content.replace(/\r\n/g, "\n");
+
+		const explicitPronouns = content.match(/\b(she\/her|he\/him|they\/them)\b/i);
+		if (explicitPronouns?.[1]) {
+			pronouns = explicitPronouns[1].toLowerCase();
+		}
+
+		if (
+			/\bI['']?m trans\b/i.test(content) &&
+			(/\bdaughter\b/i.test(content) || /\bI['']?m your daughter\b/i.test(content))
+		) {
+			pronouns = "she/her";
+		} else if (/\bI['']?m (?:your )?daughter\b/i.test(content) || /\bI am (?:your )?daughter\b/i.test(content)) {
+			pronouns = "she/her";
+		}
+
+		if (/\b(?:our|your) (?:daughter|girl)\b/i.test(content) && /\b(she|her|hers)\b/i.test(content)) {
+			pronouns = "she/her";
+		}
+
+		const chosenName = extractChosenNameCandidate(content, legalName, sheetPreferredName);
+		if (chosenName) {
+			sceneName = chosenName;
+		}
+	}
+
+	const latestDirectorSceneName = inferPlayerSceneNameFromDirectorNotes(
+		messages,
+		legalName,
+		sheetPreferredName,
+	);
+	if (latestDirectorSceneName) {
+		sceneName = latestDirectorSceneName;
+	}
+
+	const latestDirectorPronouns = inferPlayerPronounsFromDirectorNotes(messages);
+	if (latestDirectorPronouns) {
+		pronouns = latestDirectorPronouns;
+	}
+
+	if (!pronouns && !sceneName) {
+		return null;
+	}
+
+	return {
+		sceneName: sceneName ?? undefined,
+		pronouns: pronouns ?? undefined,
+	};
+}
+
 export function inferPlayerSceneNameFromMessages(
 	messages: StoryMessage[],
 	legalName: string,

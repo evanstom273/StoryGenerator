@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	applyPlayerSceneNameToTranscript,
+	detectEstablishedPlayerIdentityFromMessages,
 	inferPlayerPronounsFromDirectorNotes,
 	inferPlayerPronounsFromMessages,
 	inferPlayerSceneNameFromDirectorNotes,
@@ -10,6 +11,7 @@ import {
 	resolveSubjectPronounFromActionBeat,
 	stripLeadingSubjectPronounForAudiobook,
 } from "../storyText/playerSceneName";
+import { applyStoryLocalIdentityToAssistantTranscript } from "../storyText/transcriptSanitizer";
 import { resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
 import type { StoryMessage } from "../../types/models";
 
@@ -41,6 +43,54 @@ describe("resolvePlayerCharacterSceneName", () => {
 				},
 			),
 		).toBe("Mark Owen");
+	});
+});
+
+describe("detectEstablishedPlayerIdentityFromMessages", () => {
+	it("locks Lyra and she/her after a coming-out scene", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "23",
+				storyId: "story-1",
+				role: "assistant",
+				content:
+					'Jamie: "I know. I\'m trans. I\'m your daughter... and I\'m really sorry."\nAmy: "Oh, sweetie... you have nothing to be sorry for."',
+				speakerType: "assistant",
+				timestamp: "2026-08-21T00:06:00.000Z",
+			},
+			{
+				id: "27",
+				storyId: "story-1",
+				role: "assistant",
+				content:
+					'Jamie: "Lyra... that\'s my... name."\nAmy: *She eases back to look at her daughter\'s face.* "Lyra... like the heroine from His Dark Materials?"',
+				speakerType: "assistant",
+				timestamp: "2026-08-21T00:07:00.000Z",
+			},
+		];
+
+		expect(
+			detectEstablishedPlayerIdentityFromMessages(messages, "James Peralta", "Jamie"),
+		).toEqual({
+			sceneName: "Lyra",
+			pronouns: "she/her",
+		});
+	});
+});
+
+describe("applyStoryLocalIdentityToAssistantTranscript", () => {
+	it("rewrites player action-beat pronouns using story-local identity", () => {
+		const normalized = applyStoryLocalIdentityToAssistantTranscript(
+			'Lyra: *He takes a breath and looks Mac in the eye.* "I realized I\'m actually a big sister. And my name is Lyra now."',
+			{
+				legalName: "James Peralta",
+				sceneName: "Lyra",
+				pronouns: "she/her",
+			},
+		);
+
+		expect(normalized).toContain("*She takes a breath and looks Mac in the eye.*");
+		expect(normalized).not.toContain("*He takes a breath");
 	});
 });
 

@@ -100,22 +100,38 @@ describe("resolveEffectivePlayerIdentity", () => {
 	it("infers Lyra and she/her from a director note after coming out", () => {
 		const messages: StoryMessage[] = [
 			{
+				id: "23",
+				storyId: "story-1",
+				role: "assistant",
+				content: 'Jamie: "I know. I\'m trans. I\'m your daughter."',
+				speakerType: "assistant",
+				timestamp: "2026-08-21T00:06:00.000Z",
+			},
+			{
 				id: "27",
 				storyId: "story-1",
 				role: "assistant",
 				content:
-					'Jamie: *She buries her face against Amy\'s shoulder.* "Lyra... that\'s my... name."\nAmy: *She eases back.* "Lyra... like the heroine from His Dark Materials?"',
+					'Jamie: "Lyra... that\'s my... name."\nAmy: *She eases back to look at her daughter\'s face.*',
 				speakerType: "assistant",
 				timestamp: "2026-08-21T00:07:00.000Z",
 			},
 			{
-				id: "30",
+				id: "34",
+				storyId: "story-1",
+				role: "assistant",
+				content:
+					'Lyra: *He takes a breath and looks Mac in the eye.* "I realized I\'m actually a big sister."',
+				speakerType: "assistant",
+				timestamp: "2026-08-21T00:20:00.000Z",
+			},
+			{
+				id: "35",
 				storyId: "story-1",
 				role: "user",
-				content:
-					'*A few moments go by. Lyra finally pulls back from her parents, wiping her eyes on her sleeve ("Mac. Come here...")*',
+				content: "*Lyra smiles at Ellie.*",
 				speakerType: "director",
-				timestamp: "2026-08-21T00:08:00.000Z",
+				timestamp: "2026-08-21T00:21:00.000Z",
 			},
 		];
 
