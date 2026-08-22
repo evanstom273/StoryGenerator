@@ -34,6 +34,16 @@ describe("unlabelled narration repair", () => {
     expect(autoRepairedNarration).toBe(false);
   });
 
+	it("does not turn a weekday heading into a speaker label", () => {
+		const result = sanitizeAssistantTranscript({
+			text: "Saturday\n*He stumbles into the living room.* \"Mom?\"",
+			playerName: "Jamie Peralta",
+		});
+
+		expect(result.text).not.toMatch(/^Saturday:/m);
+		expect(result.text).toContain("Narrator:");
+	});
+
 	it("does not wrap pronoun-attributed action lines as Narrator", () => {
 		const input = 'She: *takes two slow, deliberate steps toward the crib.*';
 		const { text, autoRepairedNarration } = sanitizeAssistantTranscript({ text: input });
