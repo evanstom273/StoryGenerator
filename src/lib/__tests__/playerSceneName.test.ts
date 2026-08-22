@@ -12,7 +12,7 @@ import {
 	stripLeadingSubjectPronounForAudiobook,
 } from "../storyText/playerSceneName";
 import { applyStoryLocalIdentityToAssistantTranscript } from "../storyText/transcriptSanitizer";
-import { resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
+import { resolveEffectivePlayerIdentity, resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
 import type { StoryMessage } from "../../types/models";
 
 describe("resolvePlayerCharacterSceneName", () => {
@@ -43,6 +43,29 @@ describe("resolvePlayerCharacterSceneName", () => {
 				},
 			),
 		).toBe("Mark Owen");
+	});
+});
+
+describe("resolveEffectivePlayerIdentity with director notes", () => {
+	it("keeps Jamie as the scene name when a director note starts with The", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "31",
+				storyId: "story-1",
+				role: "user",
+				content:
+					"Director: *The front door bangs open violently. Jamie sprints in, breathing heavily. There's no Ellie.*",
+				speakerType: "director",
+				timestamp: "2026-08-22T00:00:00.000Z",
+			},
+		];
+
+		expect(
+			resolveEffectivePlayerIdentity(
+				{ name: "James Peralta", aliases: ["Jamie"], pronouns: "he/him" },
+				{ recentMessages: messages },
+			).sceneName,
+		).toBe("Jamie");
 	});
 });
 
@@ -95,7 +118,7 @@ describe("applyStoryLocalIdentityToAssistantTranscript", () => {
 });
 
 describe("inferPlayerSceneNameFromDirectorNotes", () => {
-	it("reads a new scene name from the latest director note", () => {
+	it("reads a new scene name from the latest director note when the protagonist acts under that name", () => {
 		const messages: StoryMessage[] = [
 			{
 				id: "30",
@@ -111,6 +134,51 @@ describe("inferPlayerSceneNameFromDirectorNotes", () => {
 		expect(
 			inferPlayerSceneNameFromDirectorNotes(messages, "James Peralta", "Jamie"),
 		).toBe("Lyra");
+	});
+
+	it("does not treat sentence openers like The or Saturday as a renamed player", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "31",
+				storyId: "story-1",
+				role: "user",
+				content:
+					"Director: *The front door bangs open violently, nearly flying off of the hinges. Jamie sprints in, breathing heavily. There's no Ellie. He can't speak, struggling to catch his breath.*",
+				speakerType: "director",
+				timestamp: "2026-08-22T00:00:00.000Z",
+			},
+			{
+				id: "32",
+				storyId: "story-1",
+				role: "user",
+				content:
+					"Director: *it's a Saturday afternoon. Jake, Amy and Mac are in the living room playing a board game (Uno).*",
+				speakerType: "director",
+				timestamp: "2026-08-22T00:01:00.000Z",
+			},
+		];
+
+		expect(
+			inferPlayerSceneNameFromDirectorNotes(messages, "James Peralta", "Jamie"),
+		).toBeNull();
+	});
+
+	it("does not treat other characters mentioned in a director note as the player", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "33",
+				storyId: "story-1",
+				role: "user",
+				content:
+					"Director: *Jamie sprints in, breathing heavily. There's no Ellie. He can't speak, struggling to catch his breath.*",
+				speakerType: "director",
+				timestamp: "2026-08-22T00:02:00.000Z",
+			},
+		];
+
+		expect(
+			inferPlayerSceneNameFromDirectorNotes(messages, "James Peralta", "Jamie"),
+		).toBeNull();
 	});
 });
 

@@ -263,7 +263,16 @@ function validateStandardText(text: string): StoryFormatIssue[] {
 
     const speakerMatch = trimmed.match(/^([^:\n]{1,48}):\s*(.*)$/);
     if (speakerMatch) {
+      const label = speakerMatch[1]?.trim() ?? "";
       const remainder = speakerMatch[2] ?? "";
+      if (isDeniedSpeakerLabel(label) && label.trim().toLowerCase() !== "narrator") {
+        issues.push({
+          code: "denied-speaker-label",
+          detail: "Speaker line uses a forbidden pseudo-label.",
+          line: trimmed,
+        });
+        continue;
+      }
       if (!remainder.trim()) {
         issues.push({ code: "empty-speaker-line", detail: "Speaker line has no content.", line: trimmed });
         continue;

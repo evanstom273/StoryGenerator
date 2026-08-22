@@ -1005,6 +1005,7 @@ async function resolveStreamedAssistantTranscript(args: {
 	initialText: string;
 	latestUserMessage: string;
 	playerName: string;
+	playerSceneName: string;
 	allowDirectedPlayerControl: boolean;
 	skipSceneStateCheck?: boolean;
 	hiddenDialoguePattern: RegExp;
@@ -1040,6 +1041,7 @@ async function resolveStreamedAssistantTranscript(args: {
 			text: candidateAssistantText,
 			latestUserMessage: args.latestUserMessage,
 			playerName: args.playerName,
+			playerSceneName: args.playerSceneName,
 			allowDirectedPlayerControl: args.allowDirectedPlayerControl,
 			skipSceneStateCheck: args.skipSceneStateCheck,
 			hiddenDialoguePattern: args.hiddenDialoguePattern,
@@ -6578,6 +6580,7 @@ export function StoryEngineProvider({
           initialText: finalAssistantText,
           latestUserMessage: previousMessage.content,
           playerName: playerNameForValidation,
+          playerSceneName: playerIdentity.sceneName,
           allowDirectedPlayerControl,
           hiddenDialoguePattern: hiddenDialogueInferencePattern,
           rewritePrompts: {
@@ -8264,6 +8267,7 @@ export function StoryEngineProvider({
             initialText: finalAssistantText,
             latestUserMessage: userMessage.content,
             playerName: playerNameForValidation,
+            playerSceneName: playerIdentity.sceneName,
             allowDirectedPlayerControl,
             skipSceneStateCheck: opts?.guidedGenerationInternal,
             hiddenDialoguePattern: hiddenDialogueInferencePattern,

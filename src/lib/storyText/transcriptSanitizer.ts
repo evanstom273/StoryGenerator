@@ -835,11 +835,14 @@ export function sanitizeAssistantTranscript(args: {
   const actionPeriodsFixed = ensureActionPeriods(quotedDialogueRepaired);
   const normalizedActions = normalizeThirdPersonActions(actionPeriodsFixed, args.playerName);
   const emphasisStripped = stripInlineAsteriskEmphasis(normalizedActions);
-  const orphanActionsFixed = repairPlayerOrphanActionLines(emphasisStripped, args.playerName);
+  const orphanActionsFixed = repairPlayerOrphanActionLines(emphasisStripped, {
+    playerName: args.playerName,
+  });
   const narrationRepaired = repairUnlabelledNarration(orphanActionsFixed);
   const formatRepaired = normalizeSpeakerNamesInTranscript(
     repairMalformedTranscriptFormat(narrationRepaired.text, {
       playerName: args.playerName,
+      latestUserMessage: args.latestUserMessage,
     }),
   );
   if (needsSpeakerAttributionRewrite(formatRepaired, args.playerName)) {
@@ -1091,11 +1094,15 @@ export type AssistantTranscriptValidationResult = {
 export function prevalidateAssistantTranscript(args: {
 	text: string;
 	playerName?: string | null;
+	playerSceneName?: string | null;
+	latestUserMessage?: string | null;
 }) {
 	const clockRepaired = repairClockTimeColonCorruption(args.text);
 	return normalizeSpeakerNamesInTranscript(
 		repairMalformedTranscriptFormat(clockRepaired, {
 			playerName: args.playerName,
+			playerSceneName: args.playerSceneName,
+			latestUserMessage: args.latestUserMessage,
 		}),
 	);
 }
@@ -1104,6 +1111,7 @@ export function validateAssistantTranscriptForSave(args: {
 	text: string;
 	latestUserMessage?: string | null;
 	playerName?: string | null;
+	playerSceneName?: string | null;
 	allowDirectedPlayerControl?: boolean;
 	skipSceneStateCheck?: boolean;
 	hiddenDialoguePattern: RegExp;
@@ -1113,6 +1121,8 @@ export function validateAssistantTranscriptForSave(args: {
 	const preparedText = prevalidateAssistantTranscript({
 		text: args.text,
 		playerName,
+		playerSceneName: args.playerSceneName,
+		latestUserMessage,
 	});
 
 	if (!isSubstantialTranscriptText(preparedText)) {
