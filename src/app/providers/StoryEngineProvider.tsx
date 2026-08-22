@@ -1047,7 +1047,7 @@ async function resolveStreamedAssistantTranscript(args: {
 
 		if (validation.valid) {
 			return {
-				text: normalizeTranscriptForDisplay(candidateAssistantText),
+				text: normalizeTranscriptForDisplay(validation.text),
 				diagnostic: lastValidationDiagnostic,
 			};
 		}
@@ -1062,7 +1062,7 @@ async function resolveStreamedAssistantTranscript(args: {
 			})
 		) {
 			return {
-				text: normalizeTranscriptForDisplay(candidateAssistantText),
+				text: normalizeTranscriptForDisplay(validation.text),
 				diagnostic: [
 					lastValidationDiagnostic,
 					"accepted_stream_with_speaker_attribution_flags",
@@ -6420,7 +6420,7 @@ export function StoryEngineProvider({
                         "- Actions must be wrapped as *...* (asterisks only for actions).",
                         '- Dialogue must be wrapped in double quotes like \"...\"',
                         "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-                        "- Narration is plain prose with no speaker label. Do not wrap narration in *...*.",
+                        "- Narration must use the format: Narrator: *prose text.*",
                         "Mystery rule:",
                         "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
                       ].join("\n"),
@@ -8088,7 +8088,7 @@ export function StoryEngineProvider({
                           "- Actions must be wrapped as *...* (asterisks only for actions).",
                           '- Dialogue must be wrapped in double quotes like "..."',
                           "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-                          "- Narration is plain prose with no speaker label. Do not wrap narration in *...*.",
+                          "- Narration must use the format: Narrator: *prose text.*",
                           "Mystery rule:",
                           "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
                         ].join("\n"),

@@ -421,6 +421,13 @@ function stripNarratorPrefixFromLine(line: string) {
   if (remainder.startsWith("*")) {
     return { changed: false, line };
   }
+  // Keep malformed narrator attribution for later repair instead of exposing bare He:/She: lines.
+  if (/^(He|She|They|Her|His|Him|Their|Them|It|Its):/i.test(remainder)) {
+    return { changed: false, line };
+  }
+  if (/^[A-Z][a-zA-Z''\-\.]{0,59}:/.test(remainder)) {
+    return { changed: false, line };
+  }
   // Name-led third-person narration ("Narrator: Ed walked in") must keep its prefix.
   // Stripping to bare prose causes normalizeThirdPersonActions to mis-attribute Ed: as dialogue.
   if (looksLikeThirdPersonNarration(remainder)) {
@@ -455,7 +462,7 @@ function stripNarratorHeaders(text: string) {
     if (collapseDouble) {
       changed = true;
       const remainder = collapseDouble[1]?.trim() ?? "";
-      nextLines.push(remainder);
+      nextLines.push(remainder.startsWith("*") ? `Narrator: ${remainder}` : remainder);
       continue;
     }
 
@@ -1078,7 +1085,20 @@ export type AssistantTranscriptValidationResult = {
 	stage: AssistantTranscriptValidationStage | null;
 	diagnostic: string;
 	formatIssues: StoryFormatIssue[];
+	text: string;
 };
+
+export function prevalidateAssistantTranscript(args: {
+	text: string;
+	playerName?: string | null;
+}) {
+	const clockRepaired = repairClockTimeColonCorruption(args.text);
+	return normalizeSpeakerNamesInTranscript(
+		repairMalformedTranscriptFormat(clockRepaired, {
+			playerName: args.playerName,
+		}),
+	);
+}
 
 export function validateAssistantTranscriptForSave(args: {
 	text: string;
@@ -1088,32 +1108,38 @@ export function validateAssistantTranscriptForSave(args: {
 	skipSceneStateCheck?: boolean;
 	hiddenDialoguePattern: RegExp;
 }): AssistantTranscriptValidationResult {
-	const text = args.text;
 	const playerName = args.playerName ?? null;
 	const latestUserMessage = args.latestUserMessage ?? "";
+	const preparedText = prevalidateAssistantTranscript({
+		text: args.text,
+		playerName,
+	});
 
-	if (!isSubstantialTranscriptText(text)) {
+	if (!isSubstantialTranscriptText(preparedText)) {
 		return {
 			valid: false,
 			stage: "insubstantial",
-			diagnostic: `rewrite_stage=insubstantial; length=${text.trim().length}`,
+			diagnostic: `rewrite_stage=insubstantial; length=${preparedText.trim().length}`,
 			formatIssues: [],
+			text: preparedText,
 		};
 	}
 
-	if (needsSpeakerAttributionRewrite(text, playerName)) {
+	if (needsSpeakerAttributionRewrite(preparedText, playerName)) {
 		return {
 			valid: false,
 			stage: "speaker_attribution",
 			diagnostic: "rewrite_stage=speaker_attribution",
 			formatIssues: [],
+			text: preparedText,
 		};
 	}
 
 	const standardized = standardizeAssistantStoryText({
-		text,
+		text: preparedText,
 		playerName,
 	});
+	const candidateText = repairStrayAsteriskArtifacts(standardized.text);
 	if (!standardized.valid) {
 		return {
 			valid: false,
@@ -1123,13 +1149,14 @@ export function validateAssistantTranscriptForSave(args: {
 				`issues=${standardized.issues.map((issue) => issue.code).join(",") || "unknown"}`,
 			].join("; "),
 			formatIssues: standardized.issues,
+			text: candidateText,
 		};
 	}
 
 	if (!args.allowDirectedPlayerControl) {
 		const violation = getPlayerCharacterAuthorshipViolation({
 			playerName: playerName ?? "",
-			text,
+			text: candidateText,
 		});
 		if (violation) {
 			return {
@@ -1142,23 +1169,25 @@ export function validateAssistantTranscriptForSave(args: {
 					`line=${violation.line ?? ""}`,
 				].join("; "),
 				formatIssues: [],
+				text: candidateText,
 			};
 		}
 	}
 
-	if (args.hiddenDialoguePattern.test(text)) {
+	if (args.hiddenDialoguePattern.test(candidateText)) {
 		return {
 			valid: false,
 			stage: "hidden_dialogue",
 			diagnostic: "rewrite_stage=hidden_dialogue",
 			formatIssues: [],
+			text: candidateText,
 		};
 	}
 
 	if (!args.allowDirectedPlayerControl && !args.skipSceneStateCheck) {
 		const sceneDup = detectSceneStateRenarration({
 			latestUserMessage,
-			assistantText: text,
+			assistantText: candidateText,
 		});
 		if (sceneDup.triggered) {
 			return {
@@ -1170,6 +1199,7 @@ export function validateAssistantTranscriptForSave(args: {
 					`snippet=${sceneDup.snippet}`,
 				].join("; "),
 				formatIssues: [],
+				text: candidateText,
 			};
 		}
 	}
@@ -1179,6 +1209,7 @@ export function validateAssistantTranscriptForSave(args: {
 		stage: null,
 		diagnostic: "",
 		formatIssues: [],
+		text: candidateText,
 	};
 }
 
@@ -1189,11 +1220,15 @@ export function shouldAcceptStreamDespiteSpeakerAttributionFlags(args: {
 	if (!isSubstantialTranscriptText(args.text)) {
 		return false;
 	}
-	if (!needsSpeakerAttributionRewrite(args.text, args.playerName)) {
+	const preparedText = prevalidateAssistantTranscript({
+		text: args.text,
+		playerName: args.playerName,
+	});
+	if (!needsSpeakerAttributionRewrite(preparedText, args.playerName)) {
 		return true;
 	}
 	return standardizeAssistantStoryText({
-		text: args.text,
+		text: preparedText,
 		playerName: args.playerName,
 	}).valid;
 }

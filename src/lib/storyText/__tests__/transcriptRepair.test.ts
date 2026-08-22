@@ -44,11 +44,11 @@ describe("unlabelled narration repair", () => {
 		expect(result.text).toContain("Narrator:");
 	});
 
-	it("does not wrap pronoun-attributed action lines as Narrator", () => {
+	it("converts pronoun pseudo-speaker action lines into narrator prose", () => {
 		const input = 'She: *takes two slow, deliberate steps toward the crib.*';
 		const { text, autoRepairedNarration } = sanitizeAssistantTranscript({ text: input });
-		expect(text).not.toContain("Narrator:");
-		expect(text).toContain("She:");
+		expect(text).toContain("Narrator:");
+		expect(text).toContain("She takes two slow, deliberate steps toward the crib.");
 		expect(autoRepairedNarration).toBe(false);
 	});
 
