@@ -88,6 +88,9 @@ export const SPEAKER_LABEL_DENYLIST = new Set([
 	// Weather / atmosphere headers the model sometimes emits as pseudo-speakers
 	"Sun", "Moon", "Rain", "Snow", "Wind", "Storm", "Thunder", "Lightning",
 	"Morning", "Evening", "Dawn", "Dusk", "Day", "Night", "Midnight", "Noon",
+	"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+	"January", "February", "March", "April", "May", "June", "July", "August",
+	"September", "October", "November", "December",
 	"Spring", "Summer", "Autumn", "Fall", "Winter",
 	"Weather", "Sky", "Clouds", "Fog", "Mist", "Darkness", "Silence",
 	...NUMBER_WORD_SPEAKER_DENY,
