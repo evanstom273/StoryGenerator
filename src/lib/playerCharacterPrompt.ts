@@ -1,4 +1,5 @@
 import type { PlayerCharacter, PlayerCharacterDraft, StoryMessage, StoryStateData, StoryStateDataV2 } from "../types/models";
+import { isDeniedSpeakerLabel } from "./relationshipIndex";
 import { safeParseStoryStateData } from "./storyStateV2";
 import {
 	findPlayerStoryStateEntry,
@@ -255,7 +256,7 @@ export function resolveEffectivePlayerIdentity(
 	const fromDirectorNotes = opts?.recentMessages?.length
 		? inferPlayerSceneNameFromDirectorNotes(opts.recentMessages, legalName, sheetPreferred)
 		: null;
-	if (fromDirectorNotes) {
+	if (fromDirectorNotes && !isDeniedSpeakerLabel(fromDirectorNotes)) {
 		sceneName = fromDirectorNotes;
 	}
 

@@ -13,6 +13,35 @@ export function stripEmbeddedNicknameQuotes(value: string) {
 	return next.replace(/\s+/g, " ").trim();
 }
 
+/** Prefer the in-scene player label (e.g. Jamie) over the legal name (James). */
+export function resolvePlayerSceneLabelForRepairs(
+	playerName?: string | null,
+	playerSceneName?: string | null,
+): string | null {
+	const scene = playerSceneName?.trim();
+	if (scene) {
+		return normalizeSceneSpeakerLabel(scene);
+	}
+
+	const trimmed = playerName?.trim() ?? "";
+	if (!trimmed) {
+		return null;
+	}
+
+	const parenMatch = trimmed.match(/^([^(]+?)(?:\s*\(([^)]+)\))?$/);
+	if (parenMatch?.[2]) {
+		const legalLabel = normalizeSceneSpeakerLabel(parenMatch[1].trim());
+		for (const alias of parenMatch[2].split(/,\s*/)) {
+			const candidate = normalizeSceneSpeakerLabel(alias.trim());
+			if (candidate && candidate.toLowerCase() !== legalLabel.toLowerCase()) {
+				return candidate;
+			}
+		}
+	}
+
+	return normalizeSceneSpeakerLabel(trimmed);
+}
+
 /** Reduce a speaker label to the short scene name (first name). */
 export function normalizeSceneSpeakerLabel(label: string): string {
 	const trimmed = label.trim();

@@ -1,11 +1,31 @@
+import { isDeniedSpeakerLabel } from "../relationshipIndex";
 import { repairSpeakerLabelArtifacts } from "./exportCleaner";
-import { normalizeSceneSpeakerLabel } from "./speakerLabels";
+import {
+	normalizeSceneSpeakerLabel,
+	resolvePlayerSceneLabelForRepairs,
+} from "./speakerLabels";
 import { countMisattributedPlayerSpeakerLines } from "./playerDialogueVoice";
+
+export type TranscriptFormatRepairOptions = {
+	playerName?: string | null;
+	playerSceneName?: string | null;
+	latestUserMessage?: string | null;
+};
+
+const RESERVED_SPEAKER_LABELS = new Set(["narrator", "director", "time", "system", "assistant"]);
+
+function isRepairableDeniedPseudoSpeakerLabel(label: string) {
+	const trimmed = label.trim();
+	if (!trimmed || RESERVED_SPEAKER_LABELS.has(trimmed.toLowerCase())) {
+		return false;
+	}
+	return isDeniedSpeakerLabel(trimmed);
+}
+
+const SPEAKER_LINE = /^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/;
 
 const MISPLACED_DIALOGUE_SPEAKER_LABEL =
 	/^(She|He|They|Her|Him|His|Their|Them|It|Its|[A-Z][a-zA-Z''-]{0,30})\??:\s+/;
-
-const SPEAKER_LINE = /^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/;
 
 function normalizeNewlines(text: string) {
 	return text.replace(/\r\n/g, "\n");
@@ -42,9 +62,103 @@ const ORPHAN_ACTION_LINE =
 const IMPLIED_SUBJECT_START =
 	/^(?:\*?)(?:steps|walks|turns|glances|looks|moves|crosses|places|sets|picks|reaches|leans|nods|shakes|smiles|flicks|gives|adjusts|flashes|slumps|hastily|quietly|strains|whispers|slides|slams|uncaps|lets|sets)\b/i;
 
+const PLAYER_THIRD_PERSON_ACTION =
+	/^(?:\*+\s*)?(?:He|She|They|His|Her|Their|Them)\b/i;
+
+const PLAYER_PARENT_CALL_DIALOGUE =
+	/"(?:[^"]*\b(?:Mom|Mother|Dad|Father)\b[^"]*)"/i;
+
+function lineLooksLikePlayerCharacterBeat(remainder: string) {
+	const trimmed = remainder.trim();
+	if (!trimmed) {
+		return false;
+	}
+
+	if (PLAYER_THIRD_PERSON_ACTION.test(trimmed)) {
+		return true;
+	}
+
+	if (PLAYER_PARENT_CALL_DIALOGUE.test(trimmed)) {
+		return true;
+	}
+
+	if (/"\s*(?:Mom|Mother|Dad|Father)\b/i.test(trimmed)) {
+		return true;
+	}
+
+	return false;
+}
+
+function directorNoteHintsPlayerBeat(
+	latestUserMessage: string | null | undefined,
+	playerLabel: string,
+) {
+	const note = latestUserMessage?.trim() ?? "";
+	if (!note) {
+		return false;
+	}
+
+	const escaped = playerLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	if (new RegExp(`\\b${escaped}\\b`, "i").test(note)) {
+		return true;
+	}
+
+	return /\b(?:sprints?|stumbles?|runs?|rushes?|breath(?:ing|less)?|panics?)\b/i.test(note);
+}
+
+/** Reassign denied pseudo-speaker labels (The, Saturday, He) to the player scene name. */
+export function repairDeniedPseudoSpeakerPlayerLines(
+	text: string,
+	options: TranscriptFormatRepairOptions = {},
+) {
+	const playerLabel = resolvePlayerSceneLabelForRepairs(
+		options.playerName,
+		options.playerSceneName,
+	);
+	if (!playerLabel) {
+		return text;
+	}
+
+	const directorHintsPlayer = directorNoteHintsPlayerBeat(
+		options.latestUserMessage,
+		playerLabel,
+	);
+
+	return normalizeNewlines(text)
+		.split("\n")
+		.map((line) => {
+			const trimmed = line.trim();
+			const match = trimmed.match(SPEAKER_LINE);
+			if (!match?.[1] || !match[3]) {
+				return line;
+			}
+
+			const label = match[1].trim();
+			const remainder = match[3].trim();
+			if (!isRepairableDeniedPseudoSpeakerLabel(label)) {
+				return line;
+			}
+
+			const looksLikePlayer =
+				lineLooksLikePlayerCharacterBeat(remainder) || directorHintsPlayer;
+			if (!looksLikePlayer) {
+				return line;
+			}
+
+			return `${playerLabel}: ${remainder}`;
+		})
+		.join("\n");
+}
+
 /** Assign player label only to unlabeled implied-subject action lines without dialogue. */
-export function repairPlayerOrphanActionLines(text: string, playerName?: string | null) {
-	const playerLabel = playerName?.trim() ? normalizeSceneSpeakerLabel(playerName) : null;
+export function repairPlayerOrphanActionLines(
+	text: string,
+	options: TranscriptFormatRepairOptions = {},
+) {
+	const playerLabel = resolvePlayerSceneLabelForRepairs(
+		options.playerName,
+		options.playerSceneName,
+	);
 	if (!playerLabel) {
 		return text;
 	}
@@ -181,8 +295,12 @@ export function repairSpeakerEmbeddedActions(text: string) {
 }
 
 /** Fix "Before can take" style clauses missing the subject. */
-export function repairMissingActionSubjects(text: string, playerName?: string | null) {
-	const subject = playerName?.trim() ? normalizeSceneSpeakerLabel(playerName) : "She";
+export function repairMissingActionSubjects(
+	text: string,
+	options: TranscriptFormatRepairOptions = {},
+) {
+	const subject =
+		resolvePlayerSceneLabelForRepairs(options.playerName, options.playerSceneName) ?? "She";
 	return text.replace(/\bBefore can take\b/gi, `Before ${subject} can take`);
 }
 
@@ -198,24 +316,25 @@ export function repairMisplacedSpeakerLabelsInDialogue(text: string) {
 
 export function repairMalformedTranscriptFormat(
 	text: string,
-	options: { playerName?: string | null } = {},
+	options: TranscriptFormatRepairOptions = {},
 ) {
 	let next = text;
 	next = repairInlineSpeakerBoundaries(next);
 	next = repairSpeakerLabelEmDash(next);
 	next = repairMalformedNarratorLines(next);
+	next = repairDeniedPseudoSpeakerPlayerLines(next, options);
 	next = repairMisplacedSpeakerLabelsInDialogue(next);
 	next = repairStrayAsteriskArtifacts(next);
 	next = repairSpeakerEmbeddedActions(next);
-	next = repairMissingActionSubjects(next, options.playerName);
-	next = repairPlayerOrphanActionLines(next, options.playerName);
+	next = repairMissingActionSubjects(next, options);
+	next = repairPlayerOrphanActionLines(next, options);
 	next = repairSpeakerLabelArtifacts(next);
 	return next;
 }
 
 export function repairMalformedTranscriptFormatWithMeta(
 	text: string,
-	options: { playerName?: string | null } = {},
+	options: TranscriptFormatRepairOptions = {},
 ) {
 	return {
 		text: repairMalformedTranscriptFormat(text, options),

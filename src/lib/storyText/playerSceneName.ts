@@ -94,6 +94,64 @@ const DIRECTOR_NOTE_NAME_STOPWORDS = new Set([
 	"their",
 ]);
 
+const DIRECTOR_PROTAGONIST_VERBS =
+	"(?:pulls|steps|turns|walks|sprints|stumbles|runs|rushes|enters|moves|looks|glances|sits|stands|reaches|leans|nods|shakes|smiles|wipes|bursts|collapses|gasps|freezes|spins|waves|hugs|cries|laughs|speaks|whispers|shouts|yells|screams|continues|stops|waits|pauses|breathes|sighs|sobs)";
+
+function directorNoteUsesNameAsProtagonist(content: string, name: string) {
+	const escaped = escapeRegex(name);
+	return new RegExp(
+		`\\b${escaped}\\b(?:\\s+\\w+){0,5}\\s+${DIRECTOR_PROTAGONIST_VERBS}\\b`,
+		"i",
+	).test(content);
+}
+
+function directorNoteReferencesKnownPlayerName(content: string, names: string[]) {
+	for (const name of names) {
+		const trimmed = name.trim();
+		if (!trimmed) {
+			continue;
+		}
+		if (new RegExp(`\\b${escapeRegex(trimmed)}\\b`, "i").test(content)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function extractChosenNameCandidate(
+	content: string,
+	legalName: string,
+	sheetPreferredName: string,
+): string | null {
+	const patterns = [
+		/"([A-Z][a-z]+)\.{0,3}\s*that['']?s my\.{0,3}\s*name/i,
+		/\bmy name is\s+"?([A-Z][a-z]+)"?/i,
+		/\bcall me\s+"?([A-Z][a-z]+)"?/i,
+		/\bIt suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
+		/\bIt'?s beautiful\.?\s*It suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
+	];
+
+	for (const pattern of patterns) {
+		const match = content.match(pattern);
+		const candidate = match?.[1]?.trim();
+		if (!candidate) {
+			continue;
+		}
+		if (isLegalNameReference(candidate, legalName)) {
+			continue;
+		}
+		if (candidate.toLowerCase() === sheetPreferredName.trim().toLowerCase()) {
+			continue;
+		}
+		if (isDeniedSpeakerLabel(candidate)) {
+			continue;
+		}
+		return candidate;
+	}
+
+	return null;
+}
+
 export function inferPlayerSceneNameFromDirectorNotes(
 	messages: StoryMessage[],
 	legalName: string,
@@ -106,6 +164,13 @@ export function inferPlayerSceneNameFromDirectorNotes(
 	}
 
 	const legalTokens = new Set(nameTokens(legalName).map((token) => token.toLowerCase()));
+	const knownPlayerNames = new Set<string>();
+	if (preferredLower) {
+		knownPlayerNames.add(preferredLower);
+	}
+	for (const token of legalTokens) {
+		knownPlayerNames.add(token);
+	}
 
 	for (let index = messages.length - 1; index >= 0; index -= 1) {
 		const message = messages[index];
@@ -113,21 +178,46 @@ export function inferPlayerSceneNameFromDirectorNotes(
 			continue;
 		}
 
-		const candidates = message.content.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g) ?? [];
+		const content = message.content.replace(/\r\n/g, "\n");
+		const chosenName = extractChosenNameCandidate(
+			content,
+			legalName,
+			sheetPreferredName ?? "",
+		);
+		if (chosenName) {
+			return chosenName;
+		}
+
+		if (directorNoteReferencesKnownPlayerName(content, Array.from(knownPlayerNames))) {
+			continue;
+		}
+
+		const candidates = content.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g) ?? [];
 		for (const candidate of candidates) {
 			const trimmed = candidate.trim();
 			const lower = trimmed.toLowerCase();
-			const firstToken = nameTokens(trimmed)[0]?.toLowerCase() ?? lower;
-			if (!trimmed || DIRECTOR_NOTE_NAME_STOPWORDS.has(lower) || DIRECTOR_NOTE_NAME_STOPWORDS.has(firstToken)) {
+			const firstToken = nameTokens(trimmed)[0] ?? trimmed;
+			const firstTokenLower = firstToken.toLowerCase();
+			if (
+				!trimmed ||
+				DIRECTOR_NOTE_NAME_STOPWORDS.has(lower) ||
+				DIRECTOR_NOTE_NAME_STOPWORDS.has(firstTokenLower)
+			) {
 				continue;
 			}
-			if (legalTokens.has(lower) || legalTokens.has(firstToken)) {
+			if (isDeniedSpeakerLabel(firstToken)) {
 				continue;
 			}
-			if (preferredLower && (lower === preferredLower || firstToken === preferredLower)) {
+			if (legalTokens.has(lower) || legalTokens.has(firstTokenLower)) {
 				continue;
 			}
-			return nameTokens(trimmed)[0] ?? trimmed;
+			if (preferredLower && (lower === preferredLower || firstTokenLower === preferredLower)) {
+				continue;
+			}
+			if (!directorNoteUsesNameAsProtagonist(content, firstToken)) {
+				continue;
+			}
+			return firstToken;
 		}
 	}
 
@@ -238,37 +328,6 @@ export function inferPlayerPronounsFromDirectorNotes(
 export interface EstablishedPlayerIdentity {
 	sceneName?: string;
 	pronouns?: string;
-}
-
-function extractChosenNameCandidate(
-	content: string,
-	legalName: string,
-	sheetPreferredName: string,
-): string | null {
-	const patterns = [
-		/"([A-Z][a-z]+)\.{0,3}\s*that['']?s my\.{0,3}\s*name/i,
-		/\bmy name is\s+"?([A-Z][a-z]+)"?/i,
-		/\bcall me\s+"?([A-Z][a-z]+)"?/i,
-		/\bIt suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
-		/\bIt'?s beautiful\.?\s*It suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
-	];
-
-	for (const pattern of patterns) {
-		const match = content.match(pattern);
-		const candidate = match?.[1]?.trim();
-		if (!candidate) {
-			continue;
-		}
-		if (isLegalNameReference(candidate, legalName)) {
-			continue;
-		}
-		if (candidate.toLowerCase() === sheetPreferredName.trim().toLowerCase()) {
-			continue;
-		}
-		return candidate;
-	}
-
-	return null;
 }
 
 export function detectEstablishedPlayerIdentityFromMessages(

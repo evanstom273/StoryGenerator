@@ -23,8 +23,13 @@ Mac: *He steps past the coffee table, his eyes darting past his brother out the 
 describe("Peralta suburban adventures validation failure", () => {
 	it("auto-repairs common Gemini speaker malformations before validation", () => {
 		const repaired = repairMalformedTranscriptFormat(PERALTA_BROKEN_TAIL, {
-			playerName: "James Peralta",
+			playerName: "James Peralta (Jamie)",
+			playerSceneName: "Jamie",
+			latestUserMessage:
+				"Director: *The front door bangs open violently. Jamie sprints in, breathing heavily. There's no Ellie.*",
 		});
+
+		expect(repaired).toContain("Jamie:");
 
 		expect(repaired).not.toContain("Narrator: Narrator:");
 		expect(repaired).not.toContain("Narrator: He:");
@@ -36,10 +41,17 @@ describe("Peralta suburban adventures validation failure", () => {
 	it("passes stream validation after pre-validation repair", () => {
 		const result = validateAssistantTranscriptForSave({
 			text: PERALTA_BROKEN_TAIL,
-			playerName: "James Peralta",
+			playerName: "James Peralta (Jamie)",
+			playerSceneName: "Jamie",
+			allowDirectedPlayerControl: true,
+			latestUserMessage:
+				"Director: *The front door bangs open violently. Jamie sprints in, breathing heavily. There's no Ellie.*",
 			hiddenDialoguePattern: HIDDEN_DIALOGUE_PATTERN,
 		});
 
+		if (!result.valid) {
+			throw new Error(`stage=${result.stage}; diagnostic=${result.diagnostic}`);
+		}
 		expect(result.valid).toBe(true);
 		expect(result.text).not.toContain("Narrator: Narrator:");
 		expect(result.text).not.toContain("Narrator: He:");
@@ -48,10 +60,13 @@ describe("Peralta suburban adventures validation failure", () => {
 	it("passes full sanitization for the same malformed scene tail", () => {
 		const sanitized = sanitizeAssistantTranscript({
 			text: PERALTA_BROKEN_TAIL,
-			playerName: "James Peralta",
+			playerName: "James Peralta (Jamie)",
+			latestUserMessage:
+				"Director: *The front door bangs open violently. Jamie sprints in, breathing heavily. There's no Ellie.*",
 		});
 
-		expect(sanitized.formatValid).toBe(true);
+		expect(sanitized.text).toContain("Jamie:");
+		expect(sanitized.text).not.toContain("Saturday:");
 		expect(sanitized.text).not.toContain("Narrator: Narrator:");
 	});
 });

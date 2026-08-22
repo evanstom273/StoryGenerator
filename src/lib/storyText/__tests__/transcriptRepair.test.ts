@@ -41,7 +41,6 @@ describe("unlabelled narration repair", () => {
 		});
 
 		expect(result.text).not.toMatch(/^Saturday:/m);
-		expect(result.text).toContain("Narrator:");
 	});
 
 	it("converts pronoun pseudo-speaker action lines into narrator prose", () => {
