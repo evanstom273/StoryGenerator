@@ -85,11 +85,16 @@ function fixSpeakerLabels(text: string): string {
   return text.split("\n").map(fixLine).join("\n");
 }
 
+/** Repair malformed speaker/narrator labels without export-only encoding cleanup. */
+export function repairSpeakerLabelArtifacts(text: string): string {
+  return fixSpeakerLabels(text);
+}
+
 export function cleanTextForExport(text: string): string {
   if (!text) return text;
   let result = fixEncodingGlitches(text);
   result = fixMalformedQuoteEndings(result);
-  result = fixSpeakerLabels(result);
+  result = repairSpeakerLabelArtifacts(result);
   return result;
 }
 

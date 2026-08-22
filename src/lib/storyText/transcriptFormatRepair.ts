@@ -1,5 +1,9 @@
+import { repairSpeakerLabelArtifacts } from "./exportCleaner";
 import { normalizeSceneSpeakerLabel } from "./speakerLabels";
 import { countMisattributedPlayerSpeakerLines } from "./playerDialogueVoice";
+
+const MISPLACED_DIALOGUE_SPEAKER_LABEL =
+	/^(She|He|They|Her|Him|His|Their|Them|It|Its|[A-Z][a-zA-Z''-]{0,30})\??:\s+/;
 
 const SPEAKER_LINE = /^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/;
 
@@ -182,6 +186,16 @@ export function repairMissingActionSubjects(text: string, playerName?: string | 
 	return text.replace(/\bBefore can take\b/gi, `Before ${subject} can take`);
 }
 
+/** Remove speaker labels the model accidentally placed inside quoted dialogue. */
+export function repairMisplacedSpeakerLabelsInDialogue(text: string) {
+	return normalizeNewlines(text).replace(/"([^"]+)"/g, (full, inner: string) => {
+		let next = inner.trim();
+		next = next.replace(/^([A-Z][a-zA-Z''-]{0,30})\?:\s+/, "$1, ");
+		next = next.replace(MISPLACED_DIALOGUE_SPEAKER_LABEL, "");
+		return next === inner.trim() ? full : `"${next}"`;
+	});
+}
+
 export function repairMalformedTranscriptFormat(
 	text: string,
 	options: { playerName?: string | null } = {},
@@ -190,10 +204,12 @@ export function repairMalformedTranscriptFormat(
 	next = repairInlineSpeakerBoundaries(next);
 	next = repairSpeakerLabelEmDash(next);
 	next = repairMalformedNarratorLines(next);
+	next = repairMisplacedSpeakerLabelsInDialogue(next);
 	next = repairStrayAsteriskArtifacts(next);
 	next = repairSpeakerEmbeddedActions(next);
 	next = repairMissingActionSubjects(next, options.playerName);
 	next = repairPlayerOrphanActionLines(next, options.playerName);
+	next = repairSpeakerLabelArtifacts(next);
 	return next;
 }
 
