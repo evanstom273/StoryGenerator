@@ -150,4 +150,30 @@ describe("unified identity through sanitizer entry points", () => {
 
 		expect(display).toBe("Becca: *She gently runs a hand down her arm.*");
 	});
+
+	it("repairs orphan They player action lines from the wine-on-the-couch scene", () => {
+		const raw = `Rosa: She leans back against Rebecca's shoulder. "Movie?"
+
+They wraps an arm around Rosa's shoulders, lightly resting a hand on her arm.
+
+Rosa: She takes a slow sip of her wine. "Nineteen minutes."
+
+They laughs softly, resting their chin lightly against Rosa's hair while looking at the screen.`;
+
+		const repaired = prevalidateAssistantTranscript({
+			text: raw,
+			playerName: "Becca",
+			playerSceneName: "Becca",
+			playerPronouns: "she/her",
+			playerAliases: ["Rebecca"],
+			characterGenders: BECCA_IDENTITY.characterGenders,
+			latestUserMessage:
+				"It's a quiet Saturday night. Becca and Rosa are on the couch in their apartment, wine glasses on the table, cuddling while watching a film.",
+		});
+
+		expect(repaired).toContain("Becca: *She wraps an arm around Rosa's shoulders, lightly resting a hand on her arm.*");
+		expect(repaired).toContain("Becca: *She laughs softly, resting her chin lightly against Rosa's hair while looking at the screen.*");
+		expect(repaired).not.toMatch(/^They wraps/im);
+		expect(repaired).not.toMatch(/^They laughs/im);
+	});
 });

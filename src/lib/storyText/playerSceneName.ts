@@ -245,7 +245,10 @@ export function inferPlayerPronounsFromDirectorNotes(
 		const content = message.content;
 		const hasFeminine = /\b(she|her|hers|daughter)\b/i.test(content);
 		const hasMasculine = /\b(he|him|his|son)\b/i.test(content);
-		const hasNeutral = /\b(they|them|their|themself|themselves)\b/i.test(content);
+		// Do not treat collective possessive "their" (e.g. "their apartment") as a player pronoun signal.
+		const hasNeutral =
+			/\bthey\/them\b/i.test(content) ||
+			/\b(they|them|themself|themselves)\b/i.test(content);
 
 		if (hasFeminine && !hasMasculine) {
 			return "she/her";
