@@ -133,6 +133,7 @@ import { isGlobalMetaChatScope } from "../../lib/metaChatScope";
 import {
   normalizeTranscriptForDisplay,
   applyStoryLocalIdentityToAssistantTranscript,
+  repairAssistantMessageContent,
   validateAssistantTranscriptForSave,
   shouldAcceptStreamDespiteSpeakerAttributionFlags,
   type AssistantTranscriptValidationStage,
@@ -6390,7 +6391,7 @@ export function StoryEngineProvider({
 
         const nextMessage: StoryMessage = {
           ...currentMessage,
-          content: content.trim(),
+          content: repairAssistantMessageContent(content),
           editedAt: new Date().toISOString(),
           revision: (currentMessage.revision ?? 0) + 1,
         };
