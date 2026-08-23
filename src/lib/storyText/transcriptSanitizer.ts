@@ -1001,7 +1001,8 @@ export function sanitizeMessageForDisplay(args: {
     return args.message.content;
   }
 
-  let text = normalizeTranscriptForDisplay(args.message.content);
+  let text = repairClockTimeColonCorruption(args.message.content);
+  text = normalizeTranscriptForDisplay(text);
   const legalName = args.playerName?.trim();
   const sceneName = args.playerSceneName?.trim() || legalName;
 
@@ -1178,20 +1179,38 @@ export function prevalidateAssistantTranscript(args: {
 	text: string;
 	playerName?: string | null;
 	playerSceneName?: string | null;
+	playerPronouns?: string | null;
+	characterGenders?: CharacterTtsGenderMap | null;
 	latestUserMessage?: string | null;
 	knownTies?: string[] | null;
 	transcriptText?: string | null;
 }) {
+	const legalName = args.playerName?.trim() ?? "";
+	const sceneName = args.playerSceneName?.trim() || legalName;
 	const clockRepaired = repairClockTimeColonCorruption(args.text);
-	return normalizeSpeakerNamesInTranscript(
+	const transcriptText = args.transcriptText ?? args.latestUserMessage ?? args.text;
+	let prepared = normalizeSpeakerNamesInTranscript(
 		repairMalformedTranscriptFormat(clockRepaired, {
 			playerName: args.playerName,
 			playerSceneName: args.playerSceneName,
 			latestUserMessage: args.latestUserMessage,
 			knownTies: args.knownTies,
-			transcriptText: args.transcriptText ?? args.latestUserMessage ?? args.text,
+			transcriptText,
 		}),
 	);
+
+	if (legalName) {
+		prepared = applyStoryLocalIdentityToAssistantTranscript(prepared, {
+			legalName,
+			sceneName,
+			pronouns: args.playerPronouns,
+			characterGenders: args.characterGenders,
+			knownTies: args.knownTies,
+			transcriptText,
+		});
+	}
+
+	return prepared;
 }
 
 export function validateAssistantTranscriptForSave(args: {
@@ -1199,6 +1218,8 @@ export function validateAssistantTranscriptForSave(args: {
 	latestUserMessage?: string | null;
 	playerName?: string | null;
 	playerSceneName?: string | null;
+	playerPronouns?: string | null;
+	characterGenders?: CharacterTtsGenderMap | null;
 	allowDirectedPlayerControl?: boolean;
 	skipSceneStateCheck?: boolean;
 	hiddenDialoguePattern: RegExp;
@@ -1211,6 +1232,8 @@ export function validateAssistantTranscriptForSave(args: {
 		text: args.text,
 		playerName,
 		playerSceneName: args.playerSceneName,
+		playerPronouns: args.playerPronouns,
+		characterGenders: args.characterGenders,
 		latestUserMessage,
 		knownTies: args.knownTies,
 		transcriptText: args.transcriptText ?? latestUserMessage,

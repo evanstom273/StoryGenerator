@@ -68,6 +68,9 @@ export function dialogueReferencesPlayerInThirdPerson(dialogue: string, playerNa
 	const variants = getPlayerNameVariants(playerName);
 	for (const variant of variants) {
 		const escaped = escapeRegex(variant);
+		if (new RegExp(`(?:^|[\\s—-])${escaped}\\s+is\\b`, "i").test(trimmed)) {
+			return true;
+		}
 		if (new RegExp(`\\b${escaped}\\s+is\\b`, "i").test(trimmed)) {
 			return true;
 		}
@@ -151,24 +154,33 @@ export function dialogueLooksAddressedToPlayer(dialogue: string, playerName: str
 	);
 }
 
-export function dialogueLooksLikePlayerVoice(dialogue: string, _playerName?: string) {
-	return dialogueHasFirstPersonVoice(dialogue);
-}
+const MISATTRIBUTED_DIALOGUE_SUBJECT_STOPWORDS = new Set([
+	"where",
+	"what",
+	"how",
+	"why",
+	"when",
+	"who",
+	"which",
+	"there",
+	"here",
+	"it",
+	"this",
+	"that",
+]);
 
-function dialogueDiscussesOtherCharacterInThirdPerson(dialogue: string, playerLabel: string) {
-	if (/\b(?:he|his|him|she|her|they|their)\b/i.test(dialogue)) {
-		return true;
-	}
-
+export function dialogueMentionsAnotherNamedSubject(dialogue: string, playerVariants: Set<string>) {
 	const properSubject = dialogue.match(/\b([A-Z][a-zA-Z''-]+)\s+(?:is|was|are|were)\b/);
-	if (
-		properSubject?.[1] &&
-		properSubject[1].toLowerCase() !== playerLabel.toLowerCase()
-	) {
-		return true;
+	if (!properSubject?.[1]) {
+		return false;
 	}
 
-	return false;
+	const subject = normalizeSceneSpeakerLabel(properSubject[1]).toLowerCase();
+	if (MISATTRIBUTED_DIALOGUE_SUBJECT_STOPWORDS.has(subject)) {
+		return false;
+	}
+
+	return !playerVariants.has(subject);
 }
 
 export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName: string) {
@@ -179,8 +191,12 @@ export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName
 	}
 
 	const speaker = normalizeSceneSpeakerLabel(speakerMatch[1].trim());
-	const playerLabel = normalizeSceneSpeakerLabel(playerName);
-	if (speaker.toLowerCase() !== playerLabel.toLowerCase()) {
+	const playerVariants = new Set(
+		getPlayerNameVariants(playerName).map((variant) =>
+			normalizeSceneSpeakerLabel(variant).toLowerCase(),
+		),
+	);
+	if (!playerVariants.has(speaker.toLowerCase())) {
 		return false;
 	}
 
@@ -201,11 +217,10 @@ export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName
 		return true;
 	}
 
-	if (
-		!dialogueHasFirstPersonVoice(dialogue) &&
-		dialogueDiscussesOtherCharacterInThirdPerson(dialogue, playerLabel)
-	) {
-		return true;
+	if (!dialogueHasFirstPersonVoice(dialogue)) {
+		if (dialogueMentionsAnotherNamedSubject(dialogue, playerVariants)) {
+			return true;
+		}
 	}
 
 	return false;

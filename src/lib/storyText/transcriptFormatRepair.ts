@@ -329,13 +329,13 @@ export function repairMalformedTranscriptFormat(
 		knownTies: options.knownTies,
 		transcriptText: options.transcriptText ?? options.latestUserMessage,
 	});
+	next = repairSpeakerLabelArtifacts(next);
 	next = repairDeniedPseudoSpeakerPlayerLines(next, options);
 	next = repairMisplacedSpeakerLabelsInDialogue(next);
 	next = repairStrayAsteriskArtifacts(next);
 	next = repairSpeakerEmbeddedActions(next);
 	next = repairMissingActionSubjects(next, options);
 	next = repairPlayerOrphanActionLines(next, options);
-	next = repairSpeakerLabelArtifacts(next);
 	return next;
 }
 

@@ -1,3 +1,5 @@
+import { isClockTimeColonAt, looksLikeClockTimeFragment } from "./clockTimeInProse";
+
 const PRONOUN_PSEUDO_SPEAKERS = new Set([
   "She", "Her", "He", "His", "Him", "They", "Their", "Them", "It", "Its",
 ]);
@@ -116,11 +118,18 @@ function fixLine(line: string): string {
   const wrappedMatch = trimmed.match(/^Narrator:\s*([A-Z][^:\n]{0,59}):\s*(.*)$/);
   if (wrappedMatch) {
     const innerLabel = wrappedMatch[1].trim();
+    const narratorPrefixLength = trimmed.match(/^Narrator:\s*/i)?.[0].length ?? 0;
+    const innerColonIndex = trimmed.indexOf(":", narratorPrefixLength);
+    const remainder = wrappedMatch[2].trim();
+    const innerColonIsClockTime =
+      innerColonIndex >= 0 && isClockTimeColonAt(trimmed, innerColonIndex);
     if (
+      !innerColonIsClockTime &&
+      !looksLikeClockTimeFragment(remainder) &&
       !PRONOUN_PSEUDO_SPEAKERS.has(innerLabel) &&
       VALID_INNER_LABEL_RE.test(innerLabel)
     ) {
-      return `${innerLabel}: ${wrappedMatch[2].trim()}`;
+      return `${innerLabel}: ${remainder}`;
     }
   }
 

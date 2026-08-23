@@ -1021,6 +1021,8 @@ async function resolveStreamedAssistantTranscript(args: {
 	latestUserMessage: string;
 	playerName: string;
 	playerSceneName: string;
+	playerPronouns?: string | null;
+	characterGenders?: ReturnType<typeof buildCharacterGenderHintsFromStoryState>;
 	allowDirectedPlayerControl: boolean;
 	skipSceneStateCheck?: boolean;
 	hiddenDialoguePattern: RegExp;
@@ -1059,6 +1061,8 @@ async function resolveStreamedAssistantTranscript(args: {
 			latestUserMessage: args.latestUserMessage,
 			playerName: args.playerName,
 			playerSceneName: args.playerSceneName,
+			playerPronouns: args.playerPronouns,
+			characterGenders: args.characterGenders,
 			allowDirectedPlayerControl: args.allowDirectedPlayerControl,
 			skipSceneStateCheck: args.skipSceneStateCheck,
 			hiddenDialoguePattern: args.hiddenDialoguePattern,
@@ -6720,11 +6724,19 @@ export function StoryEngineProvider({
           previousMessage,
         ]);
 
+        const streamCharacterGenders = buildCharacterGenderHintsFromStoryState(parsedStoryStateForIdentity, {
+          playerName: playerCharacter.name,
+          playerGender: playerCharacter.gender,
+          playerPronouns: playerIdentity.pronouns,
+        });
+
         const { text: finalStreamText } = await resolveStreamedAssistantTranscript({
           initialText: finalAssistantText,
           latestUserMessage: previousMessage.content,
           playerName: playerNameForValidation,
           playerSceneName: playerIdentity.sceneName,
+          playerPronouns: playerIdentity.pronouns,
+          characterGenders: streamCharacterGenders,
           allowDirectedPlayerControl,
           hiddenDialoguePattern: hiddenDialogueInferencePattern,
           knownTies: normalizePlayerCharacterKnownTies(playerCharacter.knownTies),
@@ -8438,11 +8450,19 @@ export function StoryEngineProvider({
             userMessage,
           ]);
 
+          const streamCharacterGenders = buildCharacterGenderHintsFromStoryState(parsedStoryStateForIdentity, {
+            playerName: playerCharacter.name,
+            playerGender: playerCharacter.gender,
+            playerPronouns: playerIdentity.pronouns,
+          });
+
           const { text: finalStreamText } = await resolveStreamedAssistantTranscript({
             initialText: finalAssistantText,
             latestUserMessage: userMessage.content,
             playerName: playerNameForValidation,
             playerSceneName: playerIdentity.sceneName,
+            playerPronouns: playerIdentity.pronouns,
+            characterGenders: streamCharacterGenders,
             allowDirectedPlayerControl,
             skipSceneStateCheck: opts?.guidedGenerationInternal,
             hiddenDialoguePattern: hiddenDialogueInferencePattern,
