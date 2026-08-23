@@ -223,6 +223,29 @@ export function speakerContentReferencesPlayerNamePossessive(content: string, pl
 	);
 }
 
+export function speakerContentReferencesPlayerNameAsObject(content: string, playerName: string) {
+	const actionMatch = content.match(/\*([^*]+)\*/);
+	if (!actionMatch?.[1]) {
+		return false;
+	}
+
+	const action = actionMatch[1].trim();
+	if (!action || !/\b(?:she|he|they)\b/i.test(action)) {
+		return false;
+	}
+
+	const variants = getPlayerNameVariants(playerName).filter((variant) => variant.length >= 2);
+	const namePattern = variants.map((variant) => escapeRegex(variant)).join("|");
+	if (!namePattern) {
+		return false;
+	}
+
+	return new RegExp(
+		`\\b(?:pull(?:s)?|push(?:es)?|draw(?:s)?|drag(?:s)?|yank(?:s)?|grab(?:s)?|grip(?:s)?|tug(?:s)?|guide(?:s)?|lead(?:s)?|bring(?:s)?|lift(?:s)?|carry(?:ies)?|hold(?:s)?|pin(?:s)?|press(?:es)?|shove(?:s)?|nudge(?:s)?|steer(?:s)?)\\b[\\s\\S]{0,96}\\b(?:${namePattern})\\b(?!'s)`,
+		"i",
+	).test(action);
+}
+
 export function speakerActionLooksLikeMisattributedPlayer(content: string, playerName: string) {
 	const actionMatch = content.match(/\*([^*]+)\*/);
 	if (!actionMatch?.[1]) {
@@ -273,6 +296,10 @@ export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName
 
 	const content = speakerMatch[2];
 	if (speakerContentReferencesPlayerNamePossessive(content, playerName)) {
+		return true;
+	}
+
+	if (speakerContentReferencesPlayerNameAsObject(content, playerName)) {
 		return true;
 	}
 
