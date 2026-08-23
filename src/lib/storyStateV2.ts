@@ -16,7 +16,7 @@ import {
 import { ensureIndexedCharacterStatus, dedupeStatusBullets } from "./characterStatus";
 import { applyTranscriptPresenceGate } from "./transcriptPresence";
 import { findPlayerStoryStateEntry } from "./storyText/playerSceneName";
-import { isValidPlayerSceneName, resolvePlayerCharacterPreferredSceneName } from "./playerCharacterPrompt";
+import { isValidPlayerSceneName, isStoryLocalDisplayNameOverride, resolvePlayerCharacterPreferredSceneName } from "./playerCharacterPrompt";
 import {
 	mergeOpenThreadsAuthoritative,
 	reconcileResolvedOpenThreads,
@@ -916,24 +916,30 @@ export function createSequelStoryStateData(params: {
 
 export function repairCorruptedPlayerIdentityInStoryState(
 	storyState: StoryStateData | StoryStateDataV2 | null | undefined,
-	legalName: string,
+	character: Pick<PlayerCharacter, "name" | "aliases">,
 ): { state: StoryStateData | StoryStateDataV2 | null; changed: boolean } {
 	if (!storyState?.characters) {
 		return { state: storyState ?? null, changed: false };
 	}
 
+	const legalName = character.name.trim();
+	const sheetPreferred = resolvePlayerCharacterPreferredSceneName(character);
 	const entry = findPlayerStoryStateEntry(storyState, legalName);
-	if (!entry?.displayName?.trim()) {
+	const displayName = entry?.displayName?.trim();
+	if (!displayName) {
 		return { state: storyState, changed: false };
 	}
 
-	if (isValidPlayerSceneName(entry.displayName)) {
+	const shouldStrip =
+		!isValidPlayerSceneName(displayName) ||
+		!isStoryLocalDisplayNameOverride(displayName, legalName, sheetPreferred);
+	if (!shouldStrip || !entry) {
 		return { state: storyState, changed: false };
 	}
 
 	const entryKey =
 		Object.entries(storyState.characters).find(([, value]) => value === entry)?.[0] ??
-		legalName.trim();
+		legalName;
 	const { displayName: _removed, ...rest } = entry;
 
 	return {
@@ -951,7 +957,7 @@ export function repairCorruptedPlayerIdentityInStoryState(
 
 export function mergeStoryLocalPlayerIdentityIntoState(
 	storyState: StoryStateData | StoryStateDataV2 | null | undefined,
-	legalName: string,
+	character: Pick<PlayerCharacter, "name" | "aliases">,
 	identity: {
 		sceneName: string;
 		pronouns: string;
@@ -962,7 +968,7 @@ export function mergeStoryLocalPlayerIdentityIntoState(
 		return storyState ?? null;
 	}
 
-	const trimmedLegal = legalName.trim();
+	const trimmedLegal = character.name.trim();
 	const trimmedScene = identity.sceneName.trim();
 	const trimmedPronouns = identity.pronouns.trim();
 	if (!trimmedLegal || !trimmedScene || !trimmedPronouns) {
@@ -973,6 +979,11 @@ export function mergeStoryLocalPlayerIdentityIntoState(
 	}
 
 	const existingEntry = findPlayerStoryStateEntry(storyState, trimmedLegal);
+	const primaryAlias = resolvePlayerCharacterPreferredSceneName(character);
+	if (!isStoryLocalDisplayNameOverride(trimmedScene, trimmedLegal, primaryAlias)) {
+		return storyState;
+	}
+
 	const existingKey =
 		Object.entries(storyState.characters ?? {}).find(([, entry]) => entry === existingEntry)?.[0] ??
 		(storyState.characters?.[trimmedLegal] ? trimmedLegal : trimmedLegal);
@@ -982,15 +993,11 @@ export function mergeStoryLocalPlayerIdentityIntoState(
 			.map((alias) => alias.trim())
 			.filter(Boolean),
 	);
-	const sheetPreferred = resolvePlayerCharacterPreferredSceneName({
-		name: trimmedLegal,
-		aliases: existingEntry?.aliases ?? [],
-	});
 	if (
-		sheetPreferred.toLowerCase() !== trimmedScene.toLowerCase() &&
-		sheetPreferred.toLowerCase() !== trimmedLegal.toLowerCase()
+		primaryAlias.toLowerCase() !== trimmedScene.toLowerCase() &&
+		primaryAlias.toLowerCase() !== trimmedLegal.toLowerCase()
 	) {
-		priorAliases.add(sheetPreferred);
+		priorAliases.add(primaryAlias);
 	}
 
 	const nextEntry = {

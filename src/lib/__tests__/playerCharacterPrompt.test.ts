@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	formatPlayerCharacterAliasesForPrompt,
 	formatPlayerCharacterIdentityForPrompt,
+	formatPlayerPrimaryAliasNamingPolicy,
 	formatPlayerCharacterKnownTiesForPrompt,
 	formatPlayerCharacterPronounAndNamingRules,
 	formatCharacterKnownTiesConstraint,
@@ -172,7 +173,7 @@ describe("resolveEffectivePlayerPronouns", () => {
 });
 
 describe("formatPlayerCharacterIdentityForPrompt", () => {
-	it("mandates preferred scene name and pronouns", () => {
+	it("mandates primary alias and pronouns", () => {
 		const prompt = formatPlayerCharacterIdentityForPrompt({
 			name: "James Peralta",
 			aliases: ["Jamie", "Static"],
@@ -183,10 +184,20 @@ describe("formatPlayerCharacterIdentityForPrompt", () => {
 		});
 
 		expect(prompt).toContain("preferred scene name): Jamie");
+		expect(prompt).toContain('Primary alias (default): "Jamie"');
 		expect(prompt).toContain("Legal/full name: James Peralta");
 		expect(prompt).toContain("Player Pronouns: they/them");
 		expect(prompt).toContain("NEVER infer pronouns");
 		expect(prompt).toContain("Never write he/him/his or she/her/hers");
+	});
+
+	it("states primary alias naming policy for characters with aliases", () => {
+		const policy = formatPlayerPrimaryAliasNamingPolicy({
+			name: "James Peralta",
+			aliases: ["Jamie"],
+		});
+		expect(policy).toContain("official documents");
+		expect(policy).toContain("Director note realization");
 	});
 
 	it("surfaces in-story identity overrides for coming-out transitions", () => {
@@ -218,7 +229,8 @@ describe("formatPlayerCharacterPronounAndNamingRules", () => {
 		});
 
 		expect(rules).toContain('"Jamie"');
-		expect(rules).toContain('Do NOT use the full legal name "James Peralta"');
+		expect(rules).toContain('Legal/full name: "James Peralta"');
+		expect(rules).toContain("official documents");
 	});
 });
 

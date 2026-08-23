@@ -23,7 +23,8 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolveEffectivePlayerIdentity, resolvePlayerCharacterSceneName, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, formatPlayerPrimaryAliasNamingPolicy, resolveEffectivePlayerIdentity, resolvePlayerCharacterSceneName, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
+import { formatHumanNovelistProseGuidance } from "../storyProseGuidance";
 import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
 import { createNarrativeIdentityPromptContext, redactNarrativePromptText, resolveNarrativePromptName } from "../narrativeIdentity";
 import { applyTranscriptPresenceGate } from "../transcriptPresence";
@@ -426,10 +427,7 @@ export function buildStoryChatContext({
       "Name resolution rule: treat nicknames, shortened names, last-name references, and informal variants as referring to the same character unless the story explicitly introduces a separate person.",
       "Narrative identity rule: Long-Term Memory and summaries reflect what the story audience currently knows. Do not reveal hidden identities, undercover aliases, or true names that have not been established in the transcript.",
       "Use Long-Term Memory name preferences: if a character has a narrative or display name recorded, prefer that for speaker headers and how other characters address them.",
-      `Player character naming: use "${playerSceneName}" for speaker headers and third-person narration unless the scene is explicitly formal or the legal identity has been revealed in-story.`,
-      playerSceneName.toLowerCase() !== playerCharacter.name.trim().toLowerCase()
-        ? `Do NOT use the player character's legal/full name "${playerCharacter.name.trim()}" in speaker headers or casual narration while they are using the in-story alias "${playerSceneName}".`
-        : "",
+      formatPlayerPrimaryAliasNamingPolicy(playerCharacter, playerSceneName),
       playerPronouns.trim()
         ? `Player character pronouns: ${playerPronouns.trim()}. Never infer different pronouns from name or gender.`
         : "",
@@ -476,6 +474,7 @@ export function buildStoryChatContext({
         ? "Director intent: the player has requested a scene cut/transition. Treat this as permission to transition scenes cleanly without re-litigating the previous beat."
         : "",
       "Avoid generic AI phrasing; match each character's cadence, vocabulary, humor/formality, and emotional baseline.",
+      formatHumanNovelistProseGuidance(),
       "Do not generate suggested player lines or options unless explicitly asked via Player Assist. Focus on canon characters, NPCs, and narration.",
       "Drive the story forward with complications, discoveries, and tension, but never remove player agency.",
       latestMessageIsContinueNote
@@ -520,7 +519,9 @@ export function buildStoryChatContext({
       "Output format guidance:",
       "- Use speaker headers like 'Morgan:' and 'Alex:' on their own line when switching speakers. The colon after the name is REQUIRED — never write 'Morgan' alone on a line. Always write 'Morgan:'. Without the colon the parser cannot identify the speaker and the text will be misattributed.",
       "- Ensemble scenes may switch speakers multiple times in sequence when several characters react to the same beat. That is valid as long as each turn stays distinct and relationship-aware.",
-      "- In dialogue, use an em dash (—) for casual speech transitions and filler, not a colon. Write: 'Like — I've been watching him his whole life.' NOT 'Like: I've been watching him.' Colons in dialogue are only appropriate when directly introducing a specific statement or answer: 'He said it plain: no.' or 'went: no.'",
+      "- In dialogue, use an em dash (—) sparingly for a single mid-sentence interruption or cutoff only. Prefer commas and periods for normal pacing. Never chain multiple em dashes in one sentence.",
+      "- Do not use em dashes as a default pause between clauses. Write: \"I ran as fast as I could, Dad. I tried to catch them, but she's gone.\" NOT: \"I ran — I tried — she's gone —\".",
+      "- Casual filler words (like, well, look) should flow with commas or an occasional single em dash — never a colon mid-sentence: \"Like, I've been watching him his whole life.\" or \"Like — I've been watching him.\" NOT \"Like: I've been watching him.\"",
       "- EVERY line of prose narration must start with 'Narrator:'. Never write prose narration as orphaned/unattributed text between character blocks — it will be incorrectly attributed to the previous speaker. If you need to describe the environment, atmosphere, or ambient action between two character lines, start a new 'Narrator:' block.",
       "- Use 'Narrator:' for scene-setting, ambient sounds, atmosphere, time passing, and any prose that is not a character speaking or acting.",
       "- In Narrator blocks, refer to known characters by name (e.g. Captain Reyes, Alex, Morgan), not only by titles or ranks (Captain, Sergeant, Detective) unless the scene is explicitly formal.",

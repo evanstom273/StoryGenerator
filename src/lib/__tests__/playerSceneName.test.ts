@@ -64,6 +64,26 @@ describe("resolvePlayerCharacterSceneName", () => {
 			),
 		).toBe("Jamie");
 	});
+
+	it("ignores legal-name-token displayName when a sheet alias exists", () => {
+		expect(
+			resolvePlayerCharacterSceneName(
+				{ name: "James Peralta", aliases: ["Jamie"] },
+				{
+					storyState: {
+						updatedAt: "2026-08-22T00:00:00.000Z",
+						characters: {
+							"James Peralta": {
+								displayName: "James",
+							},
+						},
+						worldFacts: [],
+						unresolvedThreads: [],
+					},
+				},
+			),
+		).toBe("Jamie");
+	});
 });
 
 describe("resolveEffectivePlayerIdentity with director notes", () => {
