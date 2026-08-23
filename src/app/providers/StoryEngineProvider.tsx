@@ -888,6 +888,9 @@ async function generateResponseWithRetry(params: {
   const isStreaming = !!params.onChunk;
   const streamConfig = isStreaming ? getModelStreamConfig(params.model) : null;
   const indexingConfig = !isStreaming ? getIndexingRequestConfig(params.model) : null;
+  const thinking =
+    params.thinking ??
+    (params.providerType === "gemini" ? resolveGeminiMinimalThinkingSettings(params.model) : undefined);
   const maxAttempts =
     streamConfig?.maxAttempts ?? params.maxAttempts ?? indexingConfig?.maxAttempts ?? AI_MAX_ATTEMPTS;
   const requestTimeoutMs =
@@ -929,7 +932,7 @@ async function generateResponseWithRetry(params: {
         maxTokens: params.maxTokens,
         temperature: params.temperature,
         jsonMode: params.jsonMode,
-        thinking: params.thinking,
+        thinking,
         signal: params.signal,
         timeoutMs: requestTimeoutMs,
         idleTimeoutMs: params.idleTimeoutMs ?? streamConfig?.idleTimeoutMs,
@@ -1045,6 +1048,28 @@ async function resolveStreamedAssistantTranscript(args: {
 }): Promise<{ text: string; diagnostic: string }> {
 	let candidateAssistantText = args.initialText;
 	let lastValidationDiagnostic = "";
+
+	if (!candidateAssistantText.trim()) {
+		throw new GenerationFailureError(
+			createGenerationFailure(
+				createAIGenerationError(
+					"validation",
+					"The model returned an empty response. No story text was generated.",
+					{
+						retryable: true,
+						diagnostic: "rewrite_stage=empty_provider_response",
+					},
+				),
+				{
+					providerName: args.providerType,
+					model: args.model,
+					attempts: 1,
+					maxAttempts: STREAM_VALIDATION_MAX_REWRITES,
+					stage: "validation",
+				},
+			),
+		);
+	}
 
 	const rewriteStageToPrompt: Record<
 		Exclude<AssistantTranscriptValidationStage, "insubstantial">,
