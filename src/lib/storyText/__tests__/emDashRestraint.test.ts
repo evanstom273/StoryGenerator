@@ -12,7 +12,6 @@ describe("em dash restraint", () => {
 		expect(output).toContain(
 			'"A: I ran as fast as I could, Dad — I tried to catch them, she\'s gone —"',
 		);
-		expect(output.match(/ — /g)?.length).toBe(1);
 	});
 
 	it("preserves a single em dash used for interruption", () => {

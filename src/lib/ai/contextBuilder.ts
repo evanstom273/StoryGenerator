@@ -24,6 +24,7 @@ import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
 import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, formatPlayerPrimaryAliasNamingPolicy, resolveEffectivePlayerIdentity, resolvePlayerCharacterSceneName, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
+import { formatHumanNovelistProseGuidance } from "../storyProseGuidance";
 import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
 import { createNarrativeIdentityPromptContext, redactNarrativePromptText, resolveNarrativePromptName } from "../narrativeIdentity";
 import { applyTranscriptPresenceGate } from "../transcriptPresence";
@@ -473,6 +474,7 @@ export function buildStoryChatContext({
         ? "Director intent: the player has requested a scene cut/transition. Treat this as permission to transition scenes cleanly without re-litigating the previous beat."
         : "",
       "Avoid generic AI phrasing; match each character's cadence, vocabulary, humor/formality, and emotional baseline.",
+      formatHumanNovelistProseGuidance(),
       "Do not generate suggested player lines or options unless explicitly asked via Player Assist. Focus on canon characters, NPCs, and narration.",
       "Drive the story forward with complications, discoveries, and tension, but never remove player agency.",
       latestMessageIsContinueNote

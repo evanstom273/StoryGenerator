@@ -201,6 +201,9 @@ import {
   normalizeUniverseWikiSources,
 } from "../../lib/universeSources";
 import {
+  formatHumanNovelistProseGuidance,
+} from "../../lib/storyProseGuidance";
+import {
   formatPlayerCharacterAliasesForPrompt,
   normalizePlayerCharacterAliases,
   buildCharacterConceptConstraintsFromDraft,
@@ -6525,6 +6528,7 @@ export function StoryEngineProvider({
                       content: [
                         "Rewrite the following story scene to match a light interaction.",
                         `Target length: ${target.minWords}-${target.maxWords} words.`,
+                        formatHumanNovelistProseGuidance(),
                         "Keep character voice and only the essential beats.",
                         "Do not reintroduce unchanged environments or participants.",
                         "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
@@ -6560,6 +6564,7 @@ export function StoryEngineProvider({
         const formatRewritePrompt = [
           "Rewrite the following story scene into the required Story Engine transcript grammar.",
           "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
+          formatHumanNovelistProseGuidance(),
           allowDirectedPlayerControl
             ? "Do not repeat the latest Director note verbatim. Realize it as scene content and continue from the next beat."
             : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
@@ -6601,6 +6606,7 @@ export function StoryEngineProvider({
 
         const ownershipRewritePrompt = [
           "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
+          formatHumanNovelistProseGuidance(),
           formatPlayerCharacterOwnershipRulesForRewrite(
             playerCharacter,
             false,
@@ -6635,6 +6641,7 @@ export function StoryEngineProvider({
           /\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
         const hiddenDialogueRewritePrompt = [
           "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
+          formatHumanNovelistProseGuidance(),
           allowDirectedPlayerControl
             ? `The latest Director note is:\n${previousMessage.content}`
             : `The latest player message is:\n${previousMessage.content}`,
@@ -6668,6 +6675,7 @@ export function StoryEngineProvider({
           allowDirectedPlayerControl
             ? "Rewrite the following scene to remove any re-narration of the latest Director note."
             : "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
+          formatHumanNovelistProseGuidance(),
           allowDirectedPlayerControl
             ? `The latest Director note is staging guidance, not spoken dialogue:\n${previousMessage.content}`
             : `The latest player message is canon scene state:\n${previousMessage.content}`,
@@ -8255,6 +8263,7 @@ export function StoryEngineProvider({
           const formatRewritePrompt = [
             "Rewrite the following story scene into the required Story Engine transcript grammar.",
             "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
+            formatHumanNovelistProseGuidance(),
             allowDirectedPlayerControl
               ? "Do not repeat the latest Director note verbatim. Realize it as scene content and continue from the next beat."
               : "Do not re-narrate the latest player message. Treat it as established scene state and continue from the next beat.",
@@ -8298,6 +8307,7 @@ export function StoryEngineProvider({
             allowDirectedPlayerControl
               ? "Rewrite the following story scene to preserve the directed scene while removing any formatting or continuity problems."
               : "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
+            formatHumanNovelistProseGuidance(),
             formatPlayerCharacterOwnershipRulesForRewrite(
             playerCharacter,
             allowDirectedPlayerControl,
@@ -8341,6 +8351,7 @@ export function StoryEngineProvider({
             /\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
           const hiddenDialogueRewritePrompt = [
             "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
+            formatHumanNovelistProseGuidance(),
             allowDirectedPlayerControl
               ? `The latest Director note is:\n${userMessage.content}`
               : `The latest player message is:\n${userMessage.content}`,
@@ -8374,6 +8385,7 @@ export function StoryEngineProvider({
             allowDirectedPlayerControl
               ? "Rewrite the following scene to remove any re-narration of the latest Director note."
               : "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
+            formatHumanNovelistProseGuidance(),
             allowDirectedPlayerControl
               ? `The latest Director note is staging guidance, not spoken dialogue:\n${userMessage.content}`
               : `The latest player message is canon scene state:\n${userMessage.content}`,
