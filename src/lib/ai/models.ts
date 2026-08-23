@@ -91,6 +91,7 @@ export function getAIModelForRole(
 export interface ModelStreamConfig {
   idleTimeoutMs: number;
   totalTimeoutMs: number;
+  /** Retry ceiling for transient failures; terminal refusals stop immediately. */
   maxAttempts: number;
 }
 
@@ -121,6 +122,7 @@ export function getModelStreamConfig(model: string): ModelStreamConfig {
 
 export interface IndexingRequestConfig {
   timeoutMs: number;
+  /** Retry ceiling for transient failures; terminal refusals stop immediately. */
   maxAttempts: number;
   maxTokens: number;
 }

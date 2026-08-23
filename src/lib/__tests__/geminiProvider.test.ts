@@ -151,23 +151,39 @@ describe("Gemini blocked responses", () => {
 		expect(error.diagnostic).toContain("finishReason=RECITATION");
 	});
 
-	it("rejects a streamed prompt block without falling back to another request", async () => {
+	it("preserves a Gemini 3 mature-fiction prompt block without falling back", async () => {
 		const fetchMock = vi.fn().mockResolvedValue(
-			sseResponse([{ promptFeedback: { blockReason: "SAFETY" } }]),
+			sseResponse([{ promptFeedback: { blockReason: "PROHIBITED_CONTENT" } }]),
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		const error = await expectSafetyRefusal(
 			createGeminiProvider().generateResponse({
 				apiKey: "test-key",
-				model: "gemini-test",
+				model: "gemini-3.6-flash",
 				messages: [{ role: "user", content: "test" }],
+				geminiMatureFictionMode: true,
 				onChunk: vi.fn(),
 			}),
 		);
 
-		expect(error.message).toBe("Gemini blocked the prompt (SAFETY).");
+		expect(error.message).toBe("Gemini blocked the prompt (PROHIBITED_CONTENT).");
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(fetchMock).toHaveBeenCalledWith(
+			expect.stringContaining("gemini-3.6-flash:streamGenerateContent"),
+			expect.objectContaining({
+				body: expect.any(String),
+			}),
+		);
+		const request = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+		expect(JSON.parse(String(request?.body))).toMatchObject({
+			safetySettings: [
+				{
+					category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+					threshold: "OFF",
+				},
+			],
+		});
 	});
 
 	it("rejects streamed partial text followed by a blocked finish reason", async () => {
@@ -204,19 +220,17 @@ describe("Gemini blocked responses", () => {
 	});
 
 	it("continues to accept a normal non-stream STOP response", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue(
-				jsonResponse({
-					candidates: [
-						{
-							finishReason: "STOP",
-							content: { parts: [{ text: "Rosa: \"All good.\"" }] },
-						},
-					],
-				}),
-			),
+		const fetchMock = vi.fn().mockResolvedValue(
+			jsonResponse({
+				candidates: [
+					{
+						finishReason: "STOP",
+						content: { parts: [{ text: "Rosa: \"All good.\"" }] },
+					},
+				],
+			}),
 		);
+		vi.stubGlobal("fetch", fetchMock);
 
 		const result = await createGeminiProvider().generateResponse({
 			apiKey: "test-key",
@@ -225,6 +239,8 @@ describe("Gemini blocked responses", () => {
 		});
 
 		expect(result.content).toBe('Rosa: "All good."');
+		const request = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+		expect(JSON.parse(String(request?.body))).not.toHaveProperty("safetySettings");
 	});
 });
 
