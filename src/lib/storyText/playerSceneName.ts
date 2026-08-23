@@ -387,6 +387,10 @@ export function resolveSubjectPronounFromActionBeat(beatText: string): "He" | "S
 		return "They";
 	}
 
+	if (/\b(?:their|them|they)\b/i.test(inner)) {
+		return null;
+	}
+
 	const inferred = inferGenderFromPronounsInText(inner);
 	if (inferred === "male") {
 		return "He";
@@ -534,6 +538,35 @@ function wrapBareActionProseInUnquotedText(text: string) {
 	return rebuilt;
 }
 
+function conjugateThirdPersonSingular(verb: string) {
+	const lower = verb.toLowerCase();
+	if (!lower || /^(is|was|are|were|has|have|had|does|do|did)$/.test(lower)) {
+		return lower;
+	}
+	if (lower.endsWith("s") || lower.endsWith("ed") || lower.endsWith("ing")) {
+		return lower;
+	}
+	if (/(?:ch|sh|x|z|o)$/.test(lower)) {
+		return `${lower}es`;
+	}
+	if (lower.endsWith("y") && !/[aeiou]y$/.test(lower)) {
+		return `${lower.slice(0, -1)}ies`;
+	}
+	return `${lower}s`;
+}
+
+function alignSelfPossessivesForSubject(inner: string, pronoun: "He" | "She" | "They") {
+	if (pronoun === "They") {
+		return inner;
+	}
+
+	const possessive = pronoun === "She" ? "her" : "his";
+	const objectPronoun = pronoun === "She" ? "her" : "him";
+	return inner
+		.replace(/\btheir\b/gi, possessive)
+		.replace(/\bthem\b/gi, objectPronoun);
+}
+
 function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" | null) {
 	let inner = beat.replace(/^\*+|\*+$/g, "").trim();
 	if (!inner) {
@@ -541,6 +574,9 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 	}
 
 	inner = inner.replace(/^(He|She|They)\s+/i, "").trim();
+	if (pronoun) {
+		inner = alignSelfPossessivesForSubject(inner, pronoun);
+	}
 	if (!/[.!?…]$/.test(inner)) {
 		inner = `${inner}.`;
 	}
@@ -549,9 +585,11 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 		return `*${inner}*`;
 	}
 
-	const firstChar = inner.charAt(0);
-	const rest = inner.slice(1);
-	const normalizedRest = firstChar ? firstChar.toLowerCase() + rest : inner;
+	const [firstWord, ...restWords] = inner.split(/\s+/);
+	const firstToken = firstWord ?? "";
+	const remainder = restWords.join(" ");
+	const normalizedVerb = conjugateThirdPersonSingular(firstToken);
+	const normalizedRest = remainder ? `${normalizedVerb} ${remainder}` : normalizedVerb;
 	return `*${pronoun} ${normalizedRest}*`;
 }
 
@@ -646,9 +684,11 @@ function resolveSpeakerActionPronoun(
 		? normalizeSceneSpeakerLabel(opts.playerLegalName)
 		: "";
 	const normalizedSpeaker = normalizeSceneSpeakerLabel(speakerLabel);
+	const legalFirstName = playerLegalLabel.split(/\s+/)[0] ?? "";
 	const isPlayerSpeaker =
 		(playerSceneLabel && normalizedSpeaker === playerSceneLabel) ||
-		(playerLegalLabel && normalizedSpeaker === playerLegalLabel);
+		(playerLegalLabel && normalizedSpeaker === playerLegalLabel) ||
+		(legalFirstName.length >= 2 && normalizedSpeaker === legalFirstName);
 
 	if (isPlayerSpeaker && opts?.playerPronouns?.trim()) {
 		return resolveSubjectPronoun(opts.playerPronouns);

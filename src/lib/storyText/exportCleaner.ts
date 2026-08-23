@@ -73,6 +73,12 @@ function fixLine(line: string): string {
   const trimmed = line.trim();
   if (!trimmed) return line;
 
+  // Rebecca: Narrator: *action* → Rebecca: *action*
+  const embeddedNarratorMatch = trimmed.match(/^([A-Z][a-zA-Z''\-\. ]{1,48}):\s*Narrator:\s*(.*)$/);
+  if (embeddedNarratorMatch?.[1] && embeddedNarratorMatch[2]) {
+    return `${embeddedNarratorMatch[1].trim()}: ${embeddedNarratorMatch[2].trim()}`;
+  }
+
   // He narrator: prose → Narrator: *prose.*
   const pronounNarratorMatch = trimmed.match(/^(He|She|They)\s+narrator\s*:\s*(.*)$/i);
   if (pronounNarratorMatch) {
