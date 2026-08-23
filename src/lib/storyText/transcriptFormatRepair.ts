@@ -63,7 +63,9 @@ const ORPHAN_ACTION_LINE =
 	/^(?:\*([^*]+)\*|([a-z][a-zA-Z''-]*(?:\s+[a-z][a-zA-Z''-]*){0,12}))\.?$/;
 
 const IMPLIED_SUBJECT_START =
-	/^(?:\*?)(?:steps|walks|turns|glances|looks|moves|crosses|places|sets|picks|reaches|leans|nods|shakes|smiles|flicks|gives|adjusts|flashes|slumps|hastily|quietly|strains|whispers|slides|slams|uncaps|lets|sets)\b/i;
+	/^(?:\*?)(?:steps|walks|turns|glances|looks|moves|crosses|places|sets|picks|reaches|leans|nods|shakes|smiles|flicks|gives|adjusts|flashes|slumps|hastily|quietly|strains|whispers|slides|slams|uncaps|lets|sets|wraps|laughs|rests|cuddles)\b/i;
+
+const ORPHAN_PRONOUN_ACTION_LINE = /^(He|She|They)\s+(.+)$/i;
 
 const PLAYER_THIRD_PERSON_ACTION =
 	/^(?:\*+\s*)?(?:He|She|They|His|Her|Their|Them)\b/i;
@@ -166,6 +168,11 @@ export function repairPlayerOrphanActionLines(
 		return text;
 	}
 
+	const directorHintsPlayer = directorNoteHintsPlayerBeat(
+		options.latestUserMessage,
+		playerLabel,
+	);
+
 	const lines = normalizeNewlines(text).split("\n");
 	const output: string[] = [];
 
@@ -173,6 +180,15 @@ export function repairPlayerOrphanActionLines(
 		const trimmed = line.trim();
 		if (!trimmed || /^[^\n:]{1,64}:\s/.test(trimmed) || /"[^"]+"/.test(trimmed)) {
 			output.push(line);
+			continue;
+		}
+
+		const pronounOrphan = trimmed.match(ORPHAN_PRONOUN_ACTION_LINE);
+		if (
+			pronounOrphan?.[2]?.trim() &&
+			(lineLooksLikePlayerCharacterBeat(trimmed) || directorHintsPlayer)
+		) {
+			output.push(`${playerLabel}: ${wrapAction(trimmed)}`);
 			continue;
 		}
 

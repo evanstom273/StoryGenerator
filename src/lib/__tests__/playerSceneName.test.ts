@@ -236,6 +236,22 @@ describe("inferPlayerPronounsFromDirectorNotes", () => {
 
 		expect(inferPlayerPronounsFromDirectorNotes(messages)).toBe("she/her");
 	});
+
+	it("does not treat collective possessive their as a they/them player pronoun signal", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "31",
+				storyId: "story-1",
+				role: "user",
+				content:
+					"It's a quiet Saturday night. Becca and Rosa are on the couch in their apartment, wine glasses on the table, cuddling while watching a film.",
+				speakerType: "director",
+				timestamp: "2026-08-21T00:08:00.000Z",
+			},
+		];
+
+		expect(inferPlayerPronounsFromDirectorNotes(messages)).toBeNull();
+	});
 });
 
 describe("inferPlayerPronounsFromMessages", () => {
