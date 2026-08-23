@@ -29,6 +29,157 @@ const AGE_DESCRIPTOR_PATTERN =
 const MISSING_CHILD_NAME_PATTERN =
 	/\b(?:where(?:'s| is)|no|find|missing)\s+([A-Z][a-zA-Z''-]{1,24})\b/g;
 
+function looksLikeVerbToken(token: string) {
+	const lower = token.toLowerCase();
+	const auxiliaryVerbs = new Set([
+		"is",
+		"was",
+		"are",
+		"were",
+		"has",
+		"had",
+		"will",
+		"would",
+		"can",
+		"could",
+		"should",
+		"might",
+		"must",
+	]);
+	const irregularVerbs = new Set([
+		"am",
+		"be",
+		"been",
+		"being",
+		"do",
+		"did",
+		"done",
+		"go",
+		"went",
+		"gone",
+		"come",
+		"came",
+		"run",
+		"ran",
+		"sit",
+		"sat",
+		"stand",
+		"stood",
+		"say",
+		"said",
+		"see",
+		"saw",
+		"hear",
+		"heard",
+		"take",
+		"took",
+		"taken",
+		"give",
+		"gave",
+		"given",
+		"make",
+		"made",
+		"get",
+		"got",
+		"gotten",
+		"feel",
+		"felt",
+		"nod",
+		"nods",
+		"shake",
+		"shook",
+		"smile",
+		"smiled",
+		"glance",
+		"glanced",
+		"sprint",
+		"sprints",
+		"check",
+		"checks",
+	]);
+
+	return (
+		auxiliaryVerbs.has(lower) ||
+		irregularVerbs.has(lower) ||
+		lower.endsWith("ed") ||
+		lower.endsWith("ing") ||
+		lower.endsWith("s")
+	);
+}
+
+export function sanitizeNarratorInnerContent(content: string) {
+	let result = content.trim();
+	if (!result) {
+		return result;
+	}
+
+	result = result.replace(/^(?:He|She|They)\s+narrator:\s*/i, "");
+
+	const leadingPronoun = result.match(/^(He|She|They)\s+(\S+)/i);
+	if (!leadingPronoun?.[1] || !leadingPronoun[2]) {
+		return result;
+	}
+
+	if (looksLikeVerbToken(leadingPronoun[2])) {
+		return result;
+	}
+
+	result = result.slice(leadingPronoun[1].length).trimStart();
+	if (result.length > 0) {
+		result = result.charAt(0).toUpperCase() + result.slice(1);
+	}
+
+	return result;
+}
+
+function repairNarratorLineInnerContent(line: string) {
+	const trimmed = line.trim();
+	if (!trimmed) {
+		return line;
+	}
+
+	const pronounNarratorOnly = trimmed.match(/^(He|She|They)\s+narrator\s*(?::|\s[-—])\s*(.*)$/i);
+	if (pronounNarratorOnly) {
+		const remainder = sanitizeNarratorInnerContent(pronounNarratorOnly[2]?.trim() ?? "");
+		return remainder ? `Narrator: *${remainder}*` : "Narrator:";
+	}
+
+	const narratorMatch = trimmed.match(/^(Narrator\s*(?::|\s[-—])\s*)(.*)$/i);
+	if (narratorMatch) {
+		const prefix = narratorMatch[1] ?? "Narrator: ";
+		const remainder = narratorMatch[2]?.trim() ?? "";
+		const wrapped = remainder.match(/^\*([\s\S]+)\*$/);
+		if (wrapped?.[1]) {
+			const fixed = sanitizeNarratorInnerContent(wrapped[1]);
+			if (fixed !== wrapped[1].trim()) {
+				return `${prefix}*${fixed}*`;
+			}
+			return line;
+		}
+
+		const fixed = sanitizeNarratorInnerContent(remainder);
+		if (fixed !== remainder) {
+			return `${prefix}*${fixed}*`;
+		}
+		return line;
+	}
+
+	const bareWrapped = trimmed.match(/^\*([\s\S]+)\*$/);
+	if (bareWrapped?.[1]) {
+		const fixed = sanitizeNarratorInnerContent(bareWrapped[1]);
+		if (fixed !== bareWrapped[1].trim()) {
+			return `Narrator: *${fixed}*`;
+		}
+	}
+
+	return line;
+}
+
+export function repairNarratorWrappedInnerContent(text: string) {
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+	return lines.map((line) => repairNarratorLineInnerContent(line)).join("\n");
+}
+
 function escapeRegex(value: string) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -306,6 +457,7 @@ export function repairNarratorBlocks(
 	},
 ) {
 	let next = repairNarratorPronounPseudoLabels(text);
+	next = repairNarratorWrappedInnerContent(next);
 	next = repairGenericAgeDescriptorsInNarratorBlocks(next, args);
 	return next;
 }
