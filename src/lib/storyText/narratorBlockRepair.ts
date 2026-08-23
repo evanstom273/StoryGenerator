@@ -1,4 +1,5 @@
 import type { StoryStateData, StoryStateDataV2 } from "../../types/models";
+import { isDeniedSpeakerLabel } from "../relationshipIndex";
 import { normalizePlayerCharacterKnownTies } from "../playerCharacterPrompt";
 import { findSpeakerColonIndex } from "./clockTimeInProse";
 
@@ -289,6 +290,59 @@ function collectMissingChildNamesFromTranscript(text: string) {
 	return names;
 }
 
+const PROSE_RANK_TITLE_WORDS = new Set([
+	"captain",
+	"sergeant",
+	"lieutenant",
+	"chief",
+	"officer",
+	"inspector",
+	"commissioner",
+	"commander",
+]);
+
+const PROSE_CHARACTER_SUBJECT_PATTERN =
+	/\b([A-Z][a-zA-Z''-]{1,24})\s+(?:lies|lied|sprawls|sprawled|sits|sat|stands|stood|waits|waited|watches|watched|stares|stared|reclines|reclined|uncoils|uncoiled|shifts|moves|turns|glances|looks|breathes|moans|gasps|whispers|murmurs|smirks|grins|laughs|sighs|steps|walks|runs|sprints|stumbles|collapses|settles|curls|stretches|yawns|freezes|trembles|shudders)\b/g;
+
+function collectProseLinesForCharacterNameInference(text: string) {
+	return text
+		.replace(/\r\n/g, "\n")
+		.split("\n")
+		.filter((line) => {
+			const trimmed = line.trim();
+			if (!trimmed) {
+				return false;
+			}
+			if (/^Narrator\s*(?::|\s[-—])\s*/i.test(trimmed)) {
+				return true;
+			}
+			return findSpeakerColonIndex(trimmed) === null;
+		})
+		.map((line) => line.replace(/^Narrator\s*(?::|\s[-—])\s*/i, ""))
+		.join("\n");
+}
+
+function collectProperNamesFromNarratorProse(text: string) {
+	const names = new Set<string>();
+	const proseOnly = collectProseLinesForCharacterNameInference(text);
+
+	for (const match of proseOnly.matchAll(PROSE_CHARACTER_SUBJECT_PATTERN)) {
+		const name = match[1]?.trim() ?? "";
+		const normalized = name.toLowerCase();
+		if (
+			name.length >= 2 &&
+			!RESERVED_SPEAKER_LABELS.has(normalized) &&
+			!SUBJECT_PRONOUN_PSEUDO_SPEAKERS.has(normalized) &&
+			!PROSE_RANK_TITLE_WORDS.has(normalized) &&
+			!isDeniedSpeakerLabel(name)
+		) {
+			names.add(firstNameToken(name));
+		}
+	}
+
+	return names;
+}
+
 export function collectEstablishedCharacterNames(args: {
 	storyStateData?: StoryStateData | StoryStateDataV2 | null;
 	knownTies?: string[] | null;
@@ -312,6 +366,10 @@ export function collectEstablishedCharacterNames(args: {
 	}
 
 	for (const name of collectMissingChildNamesFromTranscript(args.transcriptText ?? "")) {
+		names.add(name);
+	}
+
+	for (const name of collectProperNamesFromNarratorProse(args.transcriptText ?? "")) {
 		names.add(name);
 	}
 

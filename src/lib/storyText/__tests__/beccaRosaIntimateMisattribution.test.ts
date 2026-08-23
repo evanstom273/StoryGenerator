@@ -45,7 +45,7 @@ describe("Becca/Rosa intimate speaker misattribution", () => {
 		).toBe(false);
 	});
 
-	it("requires speaker-attribution rewrite before local repair for the user-reported scene", () => {
+	it("auto-repairs Rosa lines when Rosa appears in narrator prose", () => {
 		const result = validateAssistantTranscriptForSave({
 			text: USER_REPORTED_SCENE,
 			playerName: 'Rebecca "Becca" Alvarez',
@@ -62,8 +62,8 @@ describe("Becca/Rosa intimate speaker misattribution", () => {
 			hiddenDialoguePattern: HIDDEN_DIALOGUE_PATTERN,
 		});
 
-		expect(result.valid).toBe(false);
-		expect(result.stage).toBe("speaker_attribution");
+		expect(result.valid).toBe(true);
+		expect(result.text).toContain("Rosa:");
 	});
 
 	it("passes validation after prevalidate repair for the user-reported scene", () => {
