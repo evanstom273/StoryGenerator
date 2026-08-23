@@ -7,6 +7,7 @@ import {
 	normalizeCharacterActionBeatsInTranscript,
 } from "./playerSceneName";
 import type { PlayerTranscriptIdentity } from "./playerTranscriptIdentity";
+import { repairMisattributedPlayerSpeakerLabels } from "./speakerAttributionRepair";
 import { runTranscriptRepairSanityPass } from "./transcriptRepairSanity";
 
 export type TranscriptRepairOptions = {
@@ -63,6 +64,13 @@ export function repairAssistantTranscript(
 	});
 
 	normalized = runTranscriptRepairSanityPass(normalized, identity);
+
+	const speakerRepair = repairMisattributedPlayerSpeakerLabels(normalized, {
+		playerName: identity.legalName,
+		knownTies: identity.knownTies,
+		transcriptText: normalized,
+	});
+	normalized = speakerRepair.text;
 
 	return normalized;
 }

@@ -81,6 +81,7 @@ import {
   isGenerationFailureError,
   withTransmitSafeDiagnostics,
 } from "../../lib/ai/errors";
+import { repairMisattributedPlayerSpeakerLabels } from "../../lib/storyText/speakerAttributionRepair";
 import { buildMatureFictionTransmitSafeSystemNote, buildTransmitSafeSystemNote, makeTransmitSafe } from "../../lib/ai/transmitSafe";
 import type {
   AIChatMessage,
@@ -1151,6 +1152,25 @@ async function resolveStreamedAssistantTranscript(args: {
 			.join("; ");
 
 		const stage = validation.stage;
+
+		if (stage === "speaker_attribution") {
+			const localSpeakerRepair = repairMisattributedPlayerSpeakerLabels(
+				candidateAssistantText,
+				{
+					playerName: args.playerName,
+					knownTies: args.knownTies,
+					transcriptText: args.transcriptText ?? args.latestUserMessage,
+				},
+			);
+			if (localSpeakerRepair.repaired) {
+				candidateAssistantText = localSpeakerRepair.text;
+				lastValidationDiagnostic = [
+					lastValidationDiagnostic,
+					`local_speaker_repair=${localSpeakerRepair.repairedCount}`,
+				].join("; ");
+				continue;
+			}
+		}
 
 		if (!stage || stage === "insubstantial" || attempt >= STREAM_VALIDATION_MAX_REWRITES) {
 			break;

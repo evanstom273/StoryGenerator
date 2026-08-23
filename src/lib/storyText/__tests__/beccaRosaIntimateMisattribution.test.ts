@@ -45,7 +45,7 @@ describe("Becca/Rosa intimate speaker misattribution", () => {
 		).toBe(false);
 	});
 
-	it("requires speaker-attribution rewrite for the user-reported scene", () => {
+	it("requires speaker-attribution rewrite before local repair for the user-reported scene", () => {
 		const result = validateAssistantTranscriptForSave({
 			text: USER_REPORTED_SCENE,
 			playerName: 'Rebecca "Becca" Alvarez',
@@ -64,6 +64,27 @@ describe("Becca/Rosa intimate speaker misattribution", () => {
 
 		expect(result.valid).toBe(false);
 		expect(result.stage).toBe("speaker_attribution");
+	});
+
+	it("passes validation after prevalidate repair for the user-reported scene", () => {
+		const result = validateAssistantTranscriptForSave({
+			text: USER_REPORTED_SCENE,
+			playerName: 'Rebecca "Becca" Alvarez',
+			playerSceneName: "Becca",
+			playerPronouns: "she/her",
+			characterGenders: {
+				rebecca: "female",
+				becca: "female",
+				rosa: "female",
+			},
+			allowDirectedPlayerControl: true,
+			latestUserMessage:
+				"Director: *Both Rosa and Becca strip down. Rosa waits on the couch while Becca puts on the strap-on.*",
+			hiddenDialoguePattern: HIDDEN_DIALOGUE_PATTERN,
+			knownTies: ["Rosa"],
+		});
+
+		expect(result.valid).toBe(true);
 	});
 
 	it("repairs Hers eyes corruption from possessive determiner normalization", () => {
