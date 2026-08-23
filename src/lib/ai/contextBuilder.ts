@@ -19,7 +19,7 @@ import {
   formatStorySceneStateForPrompt,
 } from "./storyStateExtractor";
 import { safeParseStoryStateData } from "../storyStateV2";
-import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
+import { buildMatureFictionModeNote, buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
@@ -400,12 +400,13 @@ export function buildStoryChatContext({
     );
   })();
 
-  const matureFictionPolicy = buildMatureFictionPolicyBlock({
-    includeParity: true,
-  });
-  const matureFictionModeNote = story.matureFictionMode
-    ? "Mature Fiction (non-graphic) mode is enabled for this story. Treat injury, medical aftermath, trauma, grief, and recovery as legitimate in-story material when supported by canon. Keep it serious and non-gratuitous."
+  const matureFictionPolicy = story.matureFictionMode
+    ? buildMatureFictionPolicyBlock({
+        includeParity: true,
+        includeAdultIntimacy: true,
+      })
     : "";
+  const matureFictionModeNote = buildMatureFictionModeNote(Boolean(story.matureFictionMode));
 
   const sceneGuidance = normalizeWhitespace(
     [

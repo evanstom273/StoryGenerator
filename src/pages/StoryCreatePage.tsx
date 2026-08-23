@@ -1028,9 +1028,9 @@ export function StoryCreatePage() {
             {!isDerivedMode ? (
               <div className="grid gap-6 md:grid-cols-2">
                 <Field
-                  label="Mature fiction (non-graphic)"
+                  label="Mature fiction"
                   hint="Defaults to on for new stories"
-                  help="Allows adult themes and non-graphic intimacy when appropriate to the scene. Does not enable explicit content."
+                  help="Allows serious adult fiction: trauma, violence aftermath, grief, recovery, and consensual adult intimacy between fictional adults."
                 >
                   <SelectInput
                     value={formState.matureFictionMode ? "on" : "off"}

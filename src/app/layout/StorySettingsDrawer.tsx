@@ -1317,8 +1317,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 <div className="space-y-3">
                   <label className="block space-y-2">
                     <FieldLabel
-                      label="Mature fiction (non-graphic)"
-                      help="Allows adult themes and non-graphic intimacy when appropriate. Does not enable explicit content."
+                      label="Mature fiction"
+                      help="Allows serious adult fiction: trauma, violence aftermath, grief, recovery, and consensual adult intimacy between fictional adults."
                       labelClassName="text-xs text-ink-muted"
                     />
                     <select
@@ -1337,7 +1337,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     </select>
                   </label>
                   <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
-                    When enabled, prompts and transmit-safe retries are tuned for serious fiction: injury aftermath, trauma, grief, and recovery are treated as legitimate narrative context (still non-graphic, still no harmful instructions).
+                    When enabled, prompts and transmit-safe retries are tuned for serious adult fiction: injury aftermath, trauma, grief, recovery, and consensual intimacy between consenting adult characters. Illegal, exploitative, or non-consensual content remains blocked.
                   </div>
                 </div>
               </CollapsibleSection>
