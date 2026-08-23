@@ -6,6 +6,95 @@ const PRONOUN_PSEUDO_SPEAKERS = new Set([
 
 const VALID_INNER_LABEL_RE = /^[A-Z][a-zA-Z0-9 ''\-\.]{0,59}$/;
 
+const RESERVED_CHARACTER_SPEAKER_LABELS = new Set([
+	"narrator",
+	"director",
+	"time",
+	"system",
+	"assistant",
+]);
+
+function isCharacterSpeakerHeaderLine(line: string) {
+	const trimmed = line.trim();
+	const match = trimmed.match(/^([A-Z][a-zA-Z''\-\. ]{1,48}):\s*$/);
+	if (!match?.[1]) {
+		return false;
+	}
+	return !RESERVED_CHARACTER_SPEAKER_LABELS.has(match[1].trim().toLowerCase());
+}
+
+function nextNonEmptyLineIndex(lines: string[], start: number) {
+	for (let index = start; index < lines.length; index += 1) {
+		if (lines[index]?.trim()) {
+			return index;
+		}
+	}
+	return -1;
+}
+
+/** Merge `Rebecca:\nNarrator: *action*` and `Rosa:\n*action*` split blocks onto one speaker line. */
+export function repairSplitSpeakerHeaderBlocks(text: string) {
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+	const output: string[] = [];
+	let index = 0;
+
+	while (index < lines.length) {
+		const line = lines[index] ?? "";
+		if (!isCharacterSpeakerHeaderLine(line)) {
+			output.push(line);
+			index += 1;
+			continue;
+		}
+
+		const speaker = line.trim().match(/^([A-Z][a-zA-Z''\-\. ]{1,48}):/)?.[1]?.trim() ?? "";
+		const collected: string[] = [];
+		let cursor = index + 1;
+
+		while (cursor < lines.length) {
+			const current = lines[cursor] ?? "";
+			const trimmed = current.trim();
+
+			if (!trimmed) {
+				const nextIndex = nextNonEmptyLineIndex(lines, cursor + 1);
+				if (nextIndex === -1) {
+					collected.push(current);
+					cursor += 1;
+					continue;
+				}
+				const nextLine = lines[nextIndex]?.trim() ?? "";
+				if (
+					isCharacterSpeakerHeaderLine(lines[nextIndex] ?? "") ||
+					(/^Narrator\s*(?::|\s[-—])/i.test(nextLine) && collected.length > 0)
+				) {
+					break;
+				}
+				collected.push(current);
+				cursor += 1;
+				continue;
+			}
+
+			if (isCharacterSpeakerHeaderLine(current)) {
+				break;
+			}
+
+			const narratorMatch = trimmed.match(/^Narrator:\s*(.+)$/i);
+			collected.push(narratorMatch?.[1]?.trim() ?? trimmed);
+			cursor += 1;
+		}
+
+		if (!collected.length) {
+			output.push(line);
+			index += 1;
+			continue;
+		}
+
+		output.push(`${speaker}: ${collected.map((part) => part.trim()).filter(Boolean).join(" ")}`);
+		index = cursor;
+	}
+
+	return output.join("\n");
+}
+
 function looksLikeNamedCharacterNarration(content: string) {
   const trimmed = content.trim();
   const match = trimmed.match(/^([A-Z][a-zA-Z''-]{1,24})\s+([a-z][a-zA-Z''-]*)/);
@@ -137,7 +226,9 @@ function fixLine(line: string): string {
 }
 
 function fixSpeakerLabels(text: string): string {
-  return text.split("\n").map(fixLine).join("\n");
+  let next = repairSplitSpeakerHeaderBlocks(text);
+  next = next.split("\n").map(fixLine).join("\n");
+  return next;
 }
 
 /** Repair malformed speaker/narrator labels without export-only encoding cleanup. */

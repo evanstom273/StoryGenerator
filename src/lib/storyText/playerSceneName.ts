@@ -543,6 +543,9 @@ function conjugateThirdPersonSingular(verb: string) {
 	if (!lower || /^(is|was|are|were|has|have|had|does|do|did)$/.test(lower)) {
 		return lower;
 	}
+	if (/^[a-z]+ly$/.test(lower)) {
+		return lower;
+	}
 	if (lower.endsWith("s") || lower.endsWith("ed") || lower.endsWith("ing")) {
 		return lower;
 	}
@@ -574,6 +577,9 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 	}
 
 	inner = inner.replace(/^(He|She|They)\s+/i, "").trim();
+	inner = inner.replace(/\bgentlies\s+(\w+)\b/gi, (_, verb: string) => `gently ${conjugateThirdPersonSingular(verb)}`);
+	inner = inner.replace(/\bgentlies\b/gi, "gently");
+	inner = inner.replace(/^(\w+),s\b/, "$1s");
 	if (pronoun) {
 		inner = alignSelfPossessivesForSubject(inner, pronoun);
 	}
@@ -588,6 +594,15 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 	const [firstWord, ...restWords] = inner.split(/\s+/);
 	const firstToken = firstWord ?? "";
 	const remainder = restWords.join(" ");
+	if (/^[a-z]+ly$/i.test(firstToken) && restWords.length > 0) {
+		const verb = restWords[0] ?? "";
+		const normalizedVerb = conjugateThirdPersonSingular(verb);
+		const tail = restWords.slice(1).join(" ");
+		const normalizedRest = tail
+			? `${firstToken} ${normalizedVerb} ${tail}`
+			: `${firstToken} ${normalizedVerb}`;
+		return `*${pronoun} ${normalizedRest}*`;
+	}
 	const normalizedVerb = conjugateThirdPersonSingular(firstToken);
 	const normalizedRest = remainder ? `${normalizedVerb} ${remainder}` : normalizedVerb;
 	return `*${pronoun} ${normalizedRest}*`;
@@ -772,13 +787,15 @@ export function normalizeCharacterActionBeatsInTranscript(
 			return;
 		}
 
-		const remainder = pendingRemainder.join("\n");
+		let remainder = pendingRemainder.join("\n");
+		remainder = remainder
+			.split("\n")
+			.map((pendingLine) => pendingLine.replace(/^Narrator:\s*/i, "").trim())
+			.filter(Boolean)
+			.join(" ");
 		if (remainder.trim()) {
 			const normalized = normalizeSpeakerRemainderActionBeats(remainder, pendingSpeaker, opts);
-			output.push(`${pendingSpeaker}${pendingSeparator}`);
-			for (const normalizedLine of normalized.split("\n")) {
-				output.push(normalizedLine);
-			}
+			output.push(`${pendingSpeaker}${pendingSeparator} ${normalized}`);
 		} else {
 			output.push(`${pendingSpeaker}${pendingSeparator}`);
 		}
@@ -810,6 +827,12 @@ export function normalizeCharacterActionBeatsInTranscript(
 		}
 
 		if (pendingSpeaker) {
+			const trimmed = line.trim();
+			if (/^Narrator:\s*/i.test(trimmed) && pendingRemainder.length > 0) {
+				flushPending();
+				output.push(line);
+				continue;
+			}
 			pendingRemainder.push(line);
 			continue;
 		}
