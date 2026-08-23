@@ -957,7 +957,7 @@ export function repairCorruptedPlayerIdentityInStoryState(
 
 export function mergeStoryLocalPlayerIdentityIntoState(
 	storyState: StoryStateData | StoryStateDataV2 | null | undefined,
-	legalName: string,
+	character: Pick<PlayerCharacter, "name" | "aliases">,
 	identity: {
 		sceneName: string;
 		pronouns: string;
@@ -968,7 +968,7 @@ export function mergeStoryLocalPlayerIdentityIntoState(
 		return storyState ?? null;
 	}
 
-	const trimmedLegal = legalName.trim();
+	const trimmedLegal = character.name.trim();
 	const trimmedScene = identity.sceneName.trim();
 	const trimmedPronouns = identity.pronouns.trim();
 	if (!trimmedLegal || !trimmedScene || !trimmedPronouns) {
@@ -979,11 +979,8 @@ export function mergeStoryLocalPlayerIdentityIntoState(
 	}
 
 	const existingEntry = findPlayerStoryStateEntry(storyState, trimmedLegal);
-	const sheetPreferred = resolvePlayerCharacterPreferredSceneName({
-		name: trimmedLegal,
-		aliases: existingEntry?.aliases ?? [],
-	});
-	if (!isStoryLocalDisplayNameOverride(trimmedScene, trimmedLegal, sheetPreferred)) {
+	const primaryAlias = resolvePlayerCharacterPreferredSceneName(character);
+	if (!isStoryLocalDisplayNameOverride(trimmedScene, trimmedLegal, primaryAlias)) {
 		return storyState;
 	}
 
@@ -997,10 +994,10 @@ export function mergeStoryLocalPlayerIdentityIntoState(
 			.filter(Boolean),
 	);
 	if (
-		sheetPreferred.toLowerCase() !== trimmedScene.toLowerCase() &&
-		sheetPreferred.toLowerCase() !== trimmedLegal.toLowerCase()
+		primaryAlias.toLowerCase() !== trimmedScene.toLowerCase() &&
+		primaryAlias.toLowerCase() !== trimmedLegal.toLowerCase()
 	) {
-		priorAliases.add(sheetPreferred);
+		priorAliases.add(primaryAlias);
 	}
 
 	const nextEntry = {

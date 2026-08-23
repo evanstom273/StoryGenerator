@@ -1280,7 +1280,7 @@ async function persistStoryLocalPlayerIdentity(args: {
 	const parsed = safeParseStoryStateData(args.storyState.stateJson);
 	const merged = mergeStoryLocalPlayerIdentityIntoState(
 		parsed,
-		args.playerCharacter.name,
+		args.playerCharacter,
 		args.playerIdentity,
 	);
 	if (!merged || JSON.stringify(merged) === JSON.stringify(parsed)) {

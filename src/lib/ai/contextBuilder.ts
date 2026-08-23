@@ -23,7 +23,7 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolveEffectivePlayerIdentity, resolvePlayerCharacterSceneName, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, formatPlayerPrimaryAliasNamingPolicy, resolveEffectivePlayerIdentity, resolvePlayerCharacterSceneName, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
 import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
 import { createNarrativeIdentityPromptContext, redactNarrativePromptText, resolveNarrativePromptName } from "../narrativeIdentity";
 import { applyTranscriptPresenceGate } from "../transcriptPresence";
@@ -426,10 +426,7 @@ export function buildStoryChatContext({
       "Name resolution rule: treat nicknames, shortened names, last-name references, and informal variants as referring to the same character unless the story explicitly introduces a separate person.",
       "Narrative identity rule: Long-Term Memory and summaries reflect what the story audience currently knows. Do not reveal hidden identities, undercover aliases, or true names that have not been established in the transcript.",
       "Use Long-Term Memory name preferences: if a character has a narrative or display name recorded, prefer that for speaker headers and how other characters address them.",
-      `Player character naming: use "${playerSceneName}" for speaker headers and third-person narration unless the scene is explicitly formal or the legal identity has been revealed in-story.`,
-      playerSceneName.toLowerCase() !== playerCharacter.name.trim().toLowerCase()
-        ? `Do NOT use the player character's legal/full name "${playerCharacter.name.trim()}" in speaker headers or casual narration while they are using the in-story alias "${playerSceneName}".`
-        : "",
+      formatPlayerPrimaryAliasNamingPolicy(playerCharacter, playerSceneName),
       playerPronouns.trim()
         ? `Player character pronouns: ${playerPronouns.trim()}. Never infer different pronouns from name or gender.`
         : "",

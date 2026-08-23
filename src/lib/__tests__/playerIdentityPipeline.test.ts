@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { StoryMessage } from "../../types/models";
 import {
 	isValidPlayerSceneName,
+	formatPlayerPrimaryAliasNamingPolicy,
 	resolveEffectivePlayerIdentity,
 	resolvePlayerCharacterSceneName,
+	resolvePrimaryPlayerAlias,
 } from "../playerCharacterPrompt";
 import {
 	inferExplicitPlayerSceneRenameFromDirectorNotes,
@@ -112,8 +114,25 @@ describe("player identity pipeline", () => {
 			).toBe("Jamie");
 		});
 
+		it("prefers sheet primary alias over story-state aliases that are legal-name fragments", () => {
+			expect(
+				resolvePlayerCharacterSceneName(jamieCharacter, {
+					storyState: {
+						updatedAt: "2026-08-22T00:00:00.000Z",
+						characters: {
+							"James Peralta": {
+								aliases: ["James"],
+							},
+						},
+						worldFacts: [],
+						unresolvedThreads: [],
+					},
+				}),
+			).toBe("Jamie");
+		});
+
 		it("does not persist invalid scene names back into story state", () => {
-			const merged = mergeStoryLocalPlayerIdentityIntoState(corruptedState, "James Peralta", {
+			const merged = mergeStoryLocalPlayerIdentityIntoState(corruptedState, jamieCharacter, {
 				sceneName: "The",
 				pronouns: "he/him",
 				hasInStoryTransition: true,
@@ -127,7 +146,7 @@ describe("player identity pipeline", () => {
 					...corruptedState,
 					characters: {},
 				},
-				"James Peralta",
+				jamieCharacter,
 				{
 					sceneName: "Lyra",
 					pronouns: "she/her",
@@ -225,6 +244,20 @@ describe("player identity pipeline", () => {
 					},
 				}).sceneName,
 			).toBe("Lyra");
+		});
+	});
+
+	describe("primary alias naming policy", () => {
+		it("resolves Jamie as the primary alias from the character sheet", () => {
+			expect(resolvePrimaryPlayerAlias(jamieCharacter)).toBe("Jamie");
+		});
+
+		it("documents legal-name reservation in prompt policy", () => {
+			const policy = formatPlayerPrimaryAliasNamingPolicy(jamieCharacter, "Jamie");
+			expect(policy).toContain('Primary alias (default): "Jamie"');
+			expect(policy).toContain('Legal/full name: "James Peralta"');
+			expect(policy).toContain("official documents");
+			expect(policy).toContain("Director note realization");
 		});
 	});
 

@@ -219,6 +219,13 @@ export function isStoryLocalDisplayNameOverride(
 	return true;
 }
 
+/** Primary alias from the character sheet — the default for everyday story use. */
+export function resolvePrimaryPlayerAlias(
+	character: Pick<PlayerCharacter, "name" | "aliases">,
+): string {
+	return resolvePlayerCharacterPreferredSceneName(character);
+}
+
 export function resolvePlayerCharacterPreferredSceneName(
 	character: Pick<PlayerCharacter, "name" | "aliases">,
 ): string {
@@ -247,32 +254,22 @@ export function resolvePlayerCharacterSceneName(
 	},
 ): string {
 	const legalName = character.name.trim();
-	const sheetPreferred = resolvePlayerCharacterPreferredSceneName(character);
+	const primaryAlias = resolvePrimaryPlayerAlias(character);
 
 	const storyEntry = findPlayerStoryStateEntry(opts?.storyState, legalName);
 	const storyDisplayName = storyEntry?.displayName?.trim();
 	if (
 		storyDisplayName &&
-		isStoryLocalDisplayNameOverride(storyDisplayName, legalName, sheetPreferred)
+		isStoryLocalDisplayNameOverride(storyDisplayName, legalName, primaryAlias)
 	) {
 		return storyDisplayName;
-	}
-
-	const storyAliases = normalizePlayerCharacterAliases(storyEntry?.aliases).filter(
-		(alias) => alias.toLowerCase() !== legalName.toLowerCase(),
-	);
-	if (storyAliases.length) {
-		const firstValidAlias = storyAliases.find((alias) => isValidPlayerSceneName(alias));
-		if (firstValidAlias) {
-			return firstValidAlias;
-		}
 	}
 
 	if (opts?.recentMessages?.length) {
 		const explicitRename = resolveExplicitPlayerSceneRenameFromMessages(
 			opts.recentMessages,
 			legalName,
-			sheetPreferred,
+			primaryAlias,
 		);
 		if (explicitRename) {
 			return explicitRename;
@@ -287,13 +284,13 @@ export function resolvePlayerCharacterSceneName(
 		isValidPlayerSceneName(inferredFromMessages) &&
 		!(
 			isLegalNameOnlyFragment(inferredFromMessages, legalName) &&
-			inferredFromMessages.toLowerCase() !== sheetPreferred.toLowerCase()
+			inferredFromMessages.toLowerCase() !== primaryAlias.toLowerCase()
 		)
 	) {
 		return inferredFromMessages;
 	}
 
-	return sheetPreferred;
+	return primaryAlias;
 }
 
 export interface EffectivePlayerIdentity {
@@ -498,25 +495,47 @@ export function buildPlayerNameForValidation(
 	return aliasText ? `${base} (${aliasText})` : base;
 }
 
+export function formatPlayerPrimaryAliasNamingPolicy(
+	character: Pick<PlayerCharacter, "name" | "aliases">,
+	sceneNameOverride?: string,
+): string {
+	const legalName = character.name.trim();
+	const primaryAlias = sceneNameOverride?.trim() || resolvePrimaryPlayerAlias(character);
+	const sheetAliases = normalizePlayerCharacterAliases(character.aliases).filter(
+		(alias) => alias.toLowerCase() !== legalName.toLowerCase(),
+	);
+	const usesPrimaryAlias =
+		sheetAliases.length > 0 && primaryAlias.toLowerCase() !== legalName.toLowerCase();
+
+	if (!usesPrimaryAlias) {
+		return [
+			"Player naming policy:",
+			`- Use "${primaryAlias}" for speaker headers, third-person narration, Director note realization, and everyday dialogue.`,
+		].join("\n");
+	}
+
+	return [
+		"Player naming policy (mandatory):",
+		`- Primary alias (default): "${primaryAlias}". Use this for speaker headers, third-person narration, Director note realization, and everyday dialogue.`,
+		`- Legal/full name: "${legalName}". Reserve this only for official documents, formal introductions, legal contexts, or when another character deliberately uses the full name for emphasis.`,
+		`- Do NOT use "${legalName}" or legal-name fragments in speaker headers or casual narration while the primary alias is "${primaryAlias}".`,
+	].join("\n");
+}
+
 export function formatPlayerCharacterPronounAndNamingRules(
 	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns">,
 	sceneNameOverride?: string,
 	pronounOverride?: string,
 ): string {
-	const preferredName = sceneNameOverride?.trim() || resolvePlayerCharacterPreferredSceneName(character);
-	const legalName = character.name.trim();
+	const preferredName = sceneNameOverride?.trim() || resolvePrimaryPlayerAlias(character);
 	const pronouns = pronounOverride?.trim() || character.pronouns.trim();
-	const usesDifferentPreferredName = preferredName.toLowerCase() !== legalName.toLowerCase();
 	const usesDifferentPronouns =
 		!!pronounOverride?.trim() &&
 		!!character.pronouns.trim() &&
 		pronounOverride.trim().toLowerCase() !== character.pronouns.trim().toLowerCase();
 
 	return [
-		"Player identity rules (mandatory):",
-		usesDifferentPreferredName
-			? `- Preferred name for speaker headers and third-person narration: "${preferredName}". Do NOT use the full legal name "${legalName}" in speaker headers or casual narration unless the scene is explicitly formal or a character who does not know them well addresses them.`
-			: `- Preferred name for speaker headers and third-person narration: "${preferredName}".`,
+		formatPlayerPrimaryAliasNamingPolicy(character, preferredName),
 		usesDifferentPronouns
 			? `- In-story identity transition: the transcript has established current pronouns ${pronouns}. Use these instead of the character sheet default (${character.pronouns.trim()}).`
 			: "",
@@ -543,7 +562,7 @@ export function formatPlayerCharacterIdentityForPrompt(
 	sceneNameOverride?: string,
 	pronounOverride?: string,
 ): string {
-	const preferredName = sceneNameOverride?.trim() || resolvePlayerCharacterPreferredSceneName(character);
+	const preferredName = sceneNameOverride?.trim() || resolvePrimaryPlayerAlias(character);
 	const legalName = character.name.trim();
 	const pronouns = pronounOverride?.trim() || character.pronouns.trim();
 	const aliases = normalizePlayerCharacterAliases(character.aliases).filter(
@@ -589,7 +608,7 @@ export function formatPlayerCharacterOwnershipRulesForRewrite(
 	sceneNameOverride?: string,
 	pronounOverride?: string,
 ): string {
-	const preferredName = sceneNameOverride?.trim() || resolvePlayerCharacterPreferredSceneName(character);
+	const preferredName = sceneNameOverride?.trim() || resolvePrimaryPlayerAlias(character);
 	const pronouns = pronounOverride?.trim() || character.pronouns.trim();
 
 	return [
