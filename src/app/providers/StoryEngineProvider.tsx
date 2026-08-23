@@ -96,6 +96,7 @@ import {
   reconcileStoryIndexes,
   safeParseStoryStateData,
   mergeStoryLocalPlayerIdentityIntoState,
+  repairCorruptedPlayerIdentityInStoryState,
   withIndexedMetadata,
 } from "../../lib/storyStateV2";
 import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
@@ -214,13 +215,22 @@ import {
   resolveEffectivePlayerIdentity,
   type EffectivePlayerIdentity,
   resolvePlayerCharacterSceneName,
+  resolvePlayerCharacterPreferredSceneName,
+  formatPlayerCharacterIdentityForPrompt,
 } from "../../lib/playerCharacterPrompt";
+import {
+  buildPlayerIdentityAuditSnapshot,
+  formatPlayerIdentityAuditBlock,
+} from "../../lib/playerIdentityAudit";
+import {
+  detectEstablishedPlayerIdentityFromMessages,
+  findPlayerStoryStateEntry,
+} from "../../lib/storyText/playerSceneName";
 import {
 	buildStoryImportedCharacterAllowlist,
 	normalizeStoryImportedCharacterIds,
 	resolveStoryImportedCharacters,
 } from "../../lib/storyImportedCharacters";
-import { findPlayerStoryStateEntry } from "../../lib/storyText/playerSceneName";
 import type {
   AIModelRole,
   AIProviderType,
@@ -1156,6 +1166,102 @@ function applyStoryLocalIdentityToSavedAssistantText(args: {
 		sceneName: args.playerIdentity.sceneName,
 		pronouns: args.playerIdentity.pronouns,
 		characterGenders,
+	});
+}
+
+function resolveStoryPlayerIdentityForGeneration(args: {
+	playerCharacter: PlayerCharacter;
+	storyState: StoryState | null | undefined;
+	recentMessages: StoryMessage[];
+}): {
+	parsedStoryState: StoryStateData | null;
+	playerIdentity: EffectivePlayerIdentity;
+	establishedFromTranscript: ReturnType<typeof detectEstablishedPlayerIdentityFromMessages>;
+	repairedStoryState: StoryStateData | null;
+} {
+	let parsedStoryState = args.storyState?.stateJson?.trim()
+		? safeParseStoryStateData(args.storyState.stateJson)
+		: null;
+	let repairedStoryState: StoryStateData | null = null;
+
+	if (parsedStoryState) {
+		const repaired = repairCorruptedPlayerIdentityInStoryState(
+			parsedStoryState,
+			args.playerCharacter.name,
+		);
+		if (repaired.changed && repaired.state) {
+			parsedStoryState = repaired.state;
+			repairedStoryState = repaired.state;
+		}
+	}
+
+	const sheetPreferred = resolvePlayerCharacterPreferredSceneName(args.playerCharacter);
+	const establishedFromTranscript = detectEstablishedPlayerIdentityFromMessages(
+		args.recentMessages,
+		args.playerCharacter.name.trim(),
+		sheetPreferred,
+	);
+	const playerIdentity = resolveEffectivePlayerIdentity(args.playerCharacter, {
+		storyState: parsedStoryState,
+		recentMessages: args.recentMessages,
+	});
+
+	return {
+		parsedStoryState,
+		playerIdentity,
+		establishedFromTranscript,
+		repairedStoryState,
+	};
+}
+
+function reportPlayerIdentityBeforeGeneration(args: {
+	traceId: string;
+	storyId: string;
+	playerCharacter: PlayerCharacter;
+	playerIdentity: EffectivePlayerIdentity;
+	parsedStoryState: StoryStateData | null;
+	establishedFromTranscript: ReturnType<typeof detectEstablishedPlayerIdentityFromMessages>;
+}) {
+	const audit = buildPlayerIdentityAuditSnapshot({
+		playerCharacter: args.playerCharacter,
+		playerIdentity: args.playerIdentity,
+		storyState: args.parsedStoryState,
+		establishedFromTranscript: args.establishedFromTranscript,
+	});
+
+	// #region debug-point B:player-identity
+	reportGenerationAudit({
+		hypothesisId: "B",
+		traceId: args.traceId,
+		location: "StoryEngineProvider.tsx:sendChatMessage:player-identity",
+		msg: "player identity before gemini request",
+		data: {
+			storyId: args.storyId,
+			auditBlock: formatPlayerIdentityAuditBlock(audit),
+			playerCharacterPromptFragment: formatPlayerCharacterIdentityForPrompt(
+				args.playerCharacter,
+				args.playerIdentity.sceneName,
+				args.playerIdentity.pronouns,
+			),
+		},
+	});
+	// #endregion
+}
+
+async function persistRepairedStoryStateIfNeeded(args: {
+	storyId: string;
+	storyState: StoryState | null | undefined;
+	repairedStoryState: StoryStateData | null;
+	repository: StoryEngineRepository;
+}): Promise<void> {
+	if (!args.repairedStoryState || !args.storyState?.stateJson?.trim()) {
+		return;
+	}
+
+	await args.repository.saveStoryState({
+		...args.storyState,
+		stateJson: JSON.stringify(args.repairedStoryState),
+		updatedAt: new Date().toISOString(),
 	});
 }
 
@@ -6349,12 +6455,21 @@ export function StoryEngineProvider({
           latestPriorUserMessage,
         );
         const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
-        const parsedStoryStateForIdentity = storyState?.stateJson?.trim()
-          ? safeParseStoryStateData(storyState.stateJson)
-          : null;
-        const playerIdentity = resolveEffectivePlayerIdentity(playerCharacter, {
-          storyState: parsedStoryStateForIdentity,
+        const {
+          parsedStoryState: parsedStoryStateForIdentity,
+          playerIdentity,
+          establishedFromTranscript,
+          repairedStoryState,
+        } = resolveStoryPlayerIdentityForGeneration({
+          playerCharacter,
+          storyState,
           recentMessages: [...sanitizedHistoryMessages, previousMessage],
+        });
+        await persistRepairedStoryStateIfNeeded({
+          storyId,
+          storyState,
+          repairedStoryState,
+          repository,
         });
 
         const context = buildStoryChatContext({
@@ -6370,6 +6485,7 @@ export function StoryEngineProvider({
           allowDirectedPlayerControl,
           directorIntent: previousMessage.directorIntent ?? null,
           importedStoryCharacters,
+          playerIdentity,
         });
 
         const streamAttempt = { current: 0 };
@@ -7882,12 +7998,21 @@ export function StoryEngineProvider({
             return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
           })();
           const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
-          const parsedStoryStateForIdentity = storyState?.stateJson?.trim()
-            ? safeParseStoryStateData(storyState.stateJson)
-            : null;
-          const playerIdentity = resolveEffectivePlayerIdentity(playerCharacter, {
-            storyState: parsedStoryStateForIdentity,
+          const {
+            parsedStoryState: parsedStoryStateForIdentity,
+            playerIdentity,
+            establishedFromTranscript,
+            repairedStoryState,
+          } = resolveStoryPlayerIdentityForGeneration({
+            playerCharacter,
+            storyState,
             recentMessages: [...sanitizedHistoryMessages, userMessage],
+          });
+          await persistRepairedStoryStateIfNeeded({
+            storyId,
+            storyState,
+            repairedStoryState,
+            repository,
           });
 
           const context = buildStoryChatContext({
@@ -7909,6 +8034,15 @@ export function StoryEngineProvider({
             rpConfig: story.rpConfig ?? null,
             playerStateHintOverride: opts?.zeroHpConsequence ?? null,
             importedStoryCharacters,
+            playerIdentity,
+          });
+          reportPlayerIdentityBeforeGeneration({
+            traceId,
+            storyId,
+            playerCharacter,
+            playerIdentity,
+            parsedStoryState: parsedStoryStateForIdentity,
+            establishedFromTranscript,
           });
           // #region debug-point A:story-request-shape
           reportGenerationAudit({
@@ -7998,6 +8132,7 @@ export function StoryEngineProvider({
                   latestUserMessageSpeakerType: userMessage.speakerType,
                   allowDirectedPlayerControl,
                   directorIntent: userMessage.directorIntent ?? null,
+                  playerIdentity,
                   importedStoryCharacters,
                 });
                 const note = buildTransmitSafeSystemNote(transmitSafe);
@@ -8296,6 +8431,22 @@ export function StoryEngineProvider({
             playerIdentity,
             storyStateData: parsedStoryStateForIdentity,
           });
+
+          // #region debug-point B:transcript-stages
+          reportGenerationAudit({
+            hypothesisId: "B",
+            traceId,
+            location: "StoryEngineProvider.tsx:sendChatMessage:transcript-stages",
+            msg: "assistant transcript at raw, post-validation, and final save stages",
+            data: {
+              storyId,
+              playerSceneName: playerIdentity.sceneName,
+              rawGeminiResponse: assistantContent.content,
+              postProcessedResponse: finalStreamText,
+              finalStoredResponse: normalizedStreamText,
+            },
+          });
+          // #endregion
 
           assistantMessage = {
             id: createEntityId("story-message"),

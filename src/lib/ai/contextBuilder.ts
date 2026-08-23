@@ -23,7 +23,7 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolveEffectivePlayerIdentity, resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolveEffectivePlayerIdentity, resolvePlayerCharacterSceneName, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
 import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
 import { createNarrativeIdentityPromptContext, redactNarrativePromptText, resolveNarrativePromptName } from "../narrativeIdentity";
 import { applyTranscriptPresenceGate } from "../transcriptPresence";
@@ -131,6 +131,8 @@ export interface BuildStoryChatContextInput {
   rpConfig?: RpConfig | null;
   playerStateHintOverride?: string | null;
   importedStoryCharacters?: PlayerCharacter[];
+  /** When set, used for prompt identity instead of re-resolving from recentMessages alone. */
+  playerIdentity?: EffectivePlayerIdentity;
 }
 
 export function buildStoryChatContext({
@@ -152,6 +154,7 @@ export function buildStoryChatContext({
   rpConfig,
   playerStateHintOverride,
   importedStoryCharacters = [],
+  playerIdentity: playerIdentityOverride,
 }: BuildStoryChatContextInput): AIChatMessage[] {
   const parsedStoryState = storyState?.stateJson?.trim()
     ? safeParseStoryStateData(storyState.stateJson)
@@ -162,10 +165,12 @@ export function buildStoryChatContext({
           messageCount: recentMessages.length,
         })
       : parsedStoryState;
-  const playerIdentity = resolveEffectivePlayerIdentity(playerCharacter, {
-    storyState: gatedStoryState,
-    recentMessages,
-  });
+  const playerIdentity =
+    playerIdentityOverride ??
+    resolveEffectivePlayerIdentity(playerCharacter, {
+      storyState: gatedStoryState,
+      recentMessages,
+    });
   const playerSceneName = playerIdentity.sceneName;
   const playerPronouns = playerIdentity.pronouns;
   const narrativeIdentity = createNarrativeIdentityPromptContext({

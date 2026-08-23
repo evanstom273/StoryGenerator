@@ -16,7 +16,7 @@ import {
 import { ensureIndexedCharacterStatus, dedupeStatusBullets } from "./characterStatus";
 import { applyTranscriptPresenceGate } from "./transcriptPresence";
 import { findPlayerStoryStateEntry } from "./storyText/playerSceneName";
-import { resolvePlayerCharacterPreferredSceneName } from "./playerCharacterPrompt";
+import { isValidPlayerSceneName, resolvePlayerCharacterPreferredSceneName } from "./playerCharacterPrompt";
 import {
 	mergeOpenThreadsAuthoritative,
 	reconcileResolvedOpenThreads,
@@ -914,6 +914,41 @@ export function createSequelStoryStateData(params: {
   };
 }
 
+export function repairCorruptedPlayerIdentityInStoryState(
+	storyState: StoryStateData | StoryStateDataV2 | null | undefined,
+	legalName: string,
+): { state: StoryStateData | StoryStateDataV2 | null; changed: boolean } {
+	if (!storyState?.characters) {
+		return { state: storyState ?? null, changed: false };
+	}
+
+	const entry = findPlayerStoryStateEntry(storyState, legalName);
+	if (!entry?.displayName?.trim()) {
+		return { state: storyState, changed: false };
+	}
+
+	if (isValidPlayerSceneName(entry.displayName)) {
+		return { state: storyState, changed: false };
+	}
+
+	const entryKey =
+		Object.entries(storyState.characters).find(([, value]) => value === entry)?.[0] ??
+		legalName.trim();
+	const { displayName: _removed, ...rest } = entry;
+
+	return {
+		state: {
+			...storyState,
+			updatedAt: new Date().toISOString(),
+			characters: {
+				...storyState.characters,
+				[entryKey]: rest,
+			},
+		},
+		changed: true,
+	};
+}
+
 export function mergeStoryLocalPlayerIdentityIntoState(
 	storyState: StoryStateData | StoryStateDataV2 | null | undefined,
 	legalName: string,
@@ -931,6 +966,9 @@ export function mergeStoryLocalPlayerIdentityIntoState(
 	const trimmedScene = identity.sceneName.trim();
 	const trimmedPronouns = identity.pronouns.trim();
 	if (!trimmedLegal || !trimmedScene || !trimmedPronouns) {
+		return storyState;
+	}
+	if (!isValidPlayerSceneName(trimmedScene)) {
 		return storyState;
 	}
 
