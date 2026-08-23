@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildMatureFictionPolicyBlock } from "../matureFictionPolicy";
+import {
+  buildContentMinimizedRefusalRetryPolicyBlock,
+  buildMatureFictionPolicyBlock,
+} from "../matureFictionPolicy";
 
 describe("mature-fiction policy modes", () => {
   it("keeps standard mode non-graphic without claiming mature mode is enabled", () => {
@@ -53,5 +56,18 @@ describe("mature-fiction policy modes", () => {
 
     expect(policy).toContain("Adult content mode: mature fiction (non-graphic).");
     expect(policy).not.toContain("explicit consensual-adult fiction");
+  });
+});
+
+describe("content-minimized refusal retry policy", () => {
+  it("downgrades the retry and forbids reconstructing refused material", () => {
+    const policy = buildContentMinimizedRefusalRetryPolicyBlock();
+
+    expect(policy).toContain("mature, non-graphic continuation only");
+    expect(policy).toContain("Do not quote, reconstruct, transform, or expand");
+    expect(policy).toContain("Do not invent a specific intimate act or outcome");
+    expect(policy).toContain("If this minimized request is also refused, stop");
+    expect(policy).not.toContain("strap-on");
+    expect(policy).not.toContain("dildo");
   });
 });

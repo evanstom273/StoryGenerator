@@ -3,13 +3,14 @@ import { Panel } from "../ui/Panel";
 import { cn } from "../../utils/cn";
 import type { GenerationFailure } from "../../lib/ai/errors";
 
-function formatFailureDetails(failure: GenerationFailure) {
+export function formatFailureDetails(failure: GenerationFailure) {
   const lines = [
     `kind=${failure.kind}`,
     `stage=${failure.stage}`,
     failure.providerName ? `provider=${failure.providerName}` : "",
     failure.model ? `model=${failure.model}` : "",
     `attempts=${failure.attempts}/${failure.maxAttempts}`,
+    `automaticRetry=${failure.retryable ? "available" : "stopped"}`,
     failure.requestId ? `requestId=${failure.requestId}` : "",
     failure.diagnostic ? `diagnostic=${failure.diagnostic}` : "",
     failure.transmitSafe
@@ -20,6 +21,30 @@ function formatFailureDetails(failure: GenerationFailure) {
   return lines.join("\n");
 }
 
+export function getGenerationFailurePresentation(failure: GenerationFailure | null) {
+  if (failure?.kind === "provider_refusal") {
+    const contentMinimizedFallbackAttempted =
+      /(?:^|;\s*)fallback=content_minimized_mature_non_graphic(?:;|$)/i.test(
+        failure.diagnostic ?? "",
+      );
+    return {
+      eyebrow: "Provider Refusal",
+      title: "The provider declined this request",
+      recovery: contentMinimizedFallbackAttempted
+        ? "Provider safeguards cannot be overridden. A separate content-minimized, mature non-graphic fallback was attempted once and was also declined, so no further automatic request was made. Your turn remains available and no refused assistant scene was saved."
+        : "Provider safeguards cannot be overridden, and the explicit request was not retried automatically. Your turn remains available and no refused assistant scene was saved. You can retry, edit the turn, switch to mature non-graphic mode, or choose another configured provider.",
+      retryLabel: "Retry original request",
+    };
+  }
+
+  return {
+    eyebrow: "Generation Failed",
+    title: "Why it failed",
+    recovery: null,
+    retryLabel: "Retry",
+  };
+}
+
 export function GenerationFailureModal(props: {
   open: boolean;
   failure: GenerationFailure | null;
@@ -28,6 +53,7 @@ export function GenerationFailureModal(props: {
 }) {
   const failure = props.failure;
   const detailText = failure ? formatFailureDetails(failure) : "";
+  const presentation = getGenerationFailurePresentation(failure);
 
   async function handleCopy() {
     if (!failure) {
@@ -98,14 +124,19 @@ export function GenerationFailureModal(props: {
             className="flex max-h-[88vh] flex-col overflow-hidden"
           >
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-              Generation Failed
+              {presentation.eyebrow}
             </div>
             <div className="mt-3 text-xl font-semibold tracking-tight text-ink">
-              Why it failed
+              {presentation.title}
             </div>
             <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-ink-soft">
               {failure?.summaryMessage || "Unable to generate a response."}
             </div>
+            {presentation.recovery ? (
+              <div className="mt-4 rounded-2xl border border-divider bg-white/[0.02] px-4 py-3 text-sm leading-6 text-ink-muted">
+                {presentation.recovery}
+              </div>
+            ) : null}
 
             {failure?.rawDraft ? (
               <details className="mt-6 min-h-0 rounded-2xl border border-divider bg-white/[0.02] px-4 py-4">
@@ -167,7 +198,7 @@ export function GenerationFailureModal(props: {
                 Copy diagnostics
               </Button>
               <Button variant="secondary" onClick={props.onRetry} disabled={!failure}>
-                Retry
+                {presentation.retryLabel}
               </Button>
               <Button onClick={props.onClose}>Close</Button>
             </div>

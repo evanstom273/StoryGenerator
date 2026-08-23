@@ -54,6 +54,8 @@ export type GenerationFailure = {
   model?: string;
   attempts: number;
   maxAttempts: number;
+  /** Whether the app may automatically retry this failure without user input. */
+  retryable: boolean;
   diagnostic?: string;
   requestId?: string;
   rawDraft?: string;
@@ -391,7 +393,7 @@ export function classifyAIGenerationError(error: unknown): ClassifiedAIGeneratio
         retryable: normalized.retryable,
         diagnostic,
         message:
-          "The provider refused this request under its safety rules. Story Engine supports serious fiction, but exploitative, gratuitously graphic, or instructional harm remains blocked.",
+          "The provider declined this request under its own safeguards. Provider safeguards cannot be overridden.",
       };
     case "parse":
       return {
@@ -500,6 +502,42 @@ function mapStage(kind: AIGenerationFailureKind): GenerationFailStage {
   }
 }
 
+function fingerprintDiagnostic(value: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+const REDACTED_DIAGNOSTIC_PATTERN =
+  /^\[redacted length=\d+ fingerprint=fnv1a:[0-9a-f]{8}\]$/i;
+
+/**
+ * Provider refusal diagnostics can contain echoed request text or provider prose.
+ * Keep only bounded machine metadata and replace everything else with a stable
+ * fingerprint so copied diagnostics remain useful without copying provider prose.
+ */
+export function formatProviderRefusalDiagnostic(value: string | undefined) {
+  const diagnostic = value?.trim();
+  if (!diagnostic) return undefined;
+  if (REDACTED_DIAGNOSTIC_PATTERN.test(diagnostic)) return diagnostic;
+
+  const safeSegments = diagnostic
+    .split(";")
+    .map((segment) => segment.trim())
+    .filter((segment) =>
+      /^(?:status=\d{3}|provider=[a-z0-9 ._-]{1,40}|stage=(?:prompt|request|response)|(?:blockReason|finishReason)=[A-Z0-9_-]{1,64})$/i.test(
+        segment,
+      ),
+    );
+  const allSegmentsWereSafe = safeSegments.length === diagnostic.split(";").length;
+  const redacted = `[redacted length=${diagnostic.length} fingerprint=fnv1a:${fingerprintDiagnostic(diagnostic)}]`;
+
+  return [...safeSegments, ...(allSegmentsWereSafe ? [] : [redacted])].join("; ");
+}
+
 export function createGenerationFailure(error: unknown, opts: {
   providerName?: string;
   model?: string;
@@ -512,16 +550,37 @@ export function createGenerationFailure(error: unknown, opts: {
   const classified = classifyAIGenerationError(error);
   const normalized = normalizeAIError(error);
   const diagnostic = normalized.diagnostic ?? normalized.message;
-  const stage = opts.stage ?? mapStage(classified.kind);
+  const diagnosticStage = /(?:^|;\s*)stage=response(?:;|$)/i.test(diagnostic)
+    ? "response"
+    : /(?:^|;\s*)stage=(?:prompt|request)(?:;|$)/i.test(diagnostic)
+      ? "request"
+      : null;
+  const stage =
+    opts.stage ??
+    (classified.kind === "safety" && diagnosticStage
+      ? diagnosticStage
+      : mapStage(classified.kind));
+  const attempts = Math.max(1, Math.trunc(opts.attempts));
+  // A refusal is terminal for this automatic request sequence. Reporting the
+  // configured transient-error ceiling (for example 1/5) implies four refusal
+  // retries are still available even though the provider call stopped at once.
+  const maxAttempts =
+    classified.kind === "safety" && !classified.retryable
+      ? attempts
+      : Math.max(attempts, Math.trunc(opts.maxAttempts));
   return {
     kind: mapGenerationKind(classified.kind),
     stage,
     summaryMessage: classified.message,
     providerName: opts.providerName,
     model: opts.model,
-    attempts: opts.attempts,
-    maxAttempts: opts.maxAttempts,
-    diagnostic,
+    attempts,
+    maxAttempts,
+    retryable: classified.retryable,
+    diagnostic:
+      classified.kind === "safety"
+        ? formatProviderRefusalDiagnostic(diagnostic)
+        : diagnostic,
     requestId: opts.requestId,
     rawDraft: opts.rawDraft,
   };

@@ -4,6 +4,7 @@ import {
   adultContentModeUsesMatureFiction,
   isAdultContentMode,
   resolveAdultContentMode,
+  resolveExplicitAdultRefusalFallback,
   resolveNewStoryAdultContentMode,
 } from "../adultContentMode";
 
@@ -66,5 +67,56 @@ describe("adult content mode compatibility", () => {
         "explicit_consensual_adults",
       ),
     ).toBe(true);
+  });
+});
+
+describe("explicit adult provider-refusal fallback", () => {
+  it("allows exactly one Gemini request-stage downgrade", () => {
+    expect(
+      resolveExplicitAdultRefusalFallback({
+        providerType: "gemini",
+        mode: "explicit_consensual_adults",
+        failureStage: "request",
+      }),
+    ).toEqual({
+      eligible: true,
+      retryMode: "mature_non_graphic",
+      maxFallbackAttempts: 1,
+    });
+  });
+
+  it("rejects response-stage, repeat, non-explicit, and non-Gemini retries", () => {
+    expect(
+      resolveExplicitAdultRefusalFallback({
+        providerType: "gemini",
+        mode: "explicit_consensual_adults",
+        failureStage: "response",
+      }),
+    ).toMatchObject({
+      eligible: false,
+      reason: "refusal_not_at_request_stage",
+    });
+    expect(
+      resolveExplicitAdultRefusalFallback({
+        providerType: "gemini",
+        mode: "explicit_consensual_adults",
+        failureStage: "request",
+        fallbackAttemptsUsed: 1,
+      }),
+    ).toMatchObject({ eligible: false, reason: "fallback_already_used" });
+    expect(
+      resolveExplicitAdultRefusalFallback({
+        providerType: "gemini",
+        mode: "mature_non_graphic",
+        failureStage: "request",
+      }),
+    ).toMatchObject({ eligible: false, reason: "mode_not_explicit" });
+    expect(
+      resolveExplicitAdultRefusalFallback({
+        providerType: "openai",
+        mode: "explicit_consensual_adults",
+        failureStage: "request",
+      }),
+    ).toMatchObject({ eligible: false, reason: "provider_not_supported" });
   });
 });

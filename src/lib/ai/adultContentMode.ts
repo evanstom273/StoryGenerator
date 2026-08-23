@@ -1,4 +1,4 @@
-import type { StoryAdultContentMode } from "../../types/models";
+import type { AIProviderType, StoryAdultContentMode } from "../../types/models";
 
 export const ADULT_CONTENT_MODES = [
   "standard",
@@ -7,6 +7,34 @@ export const ADULT_CONTENT_MODES = [
 ] as const satisfies readonly StoryAdultContentMode[];
 
 export type AdultContentMode = StoryAdultContentMode;
+
+export const EXPLICIT_ADULT_REFUSAL_FALLBACK_MAX_ATTEMPTS = 1 as const;
+
+export type AdultContentRefusalStage =
+  | "precheck"
+  | "request"
+  | "response"
+  | "parse"
+  | "validation";
+
+export type ExplicitAdultRefusalFallbackIneligibleReason =
+  | "mode_not_explicit"
+  | "provider_not_supported"
+  | "refusal_not_at_request_stage"
+  | "fallback_already_used";
+
+export type ExplicitAdultRefusalFallbackDecision =
+  | {
+      eligible: true;
+      retryMode: "mature_non_graphic";
+      maxFallbackAttempts: typeof EXPLICIT_ADULT_REFUSAL_FALLBACK_MAX_ATTEMPTS;
+    }
+  | {
+      eligible: false;
+      retryMode: null;
+      maxFallbackAttempts: typeof EXPLICIT_ADULT_REFUSAL_FALLBACK_MAX_ATTEMPTS;
+      reason: ExplicitAdultRefusalFallbackIneligibleReason;
+    };
 
 /**
  * The structural shape deliberately accepts persisted records from both sides of
@@ -60,4 +88,54 @@ export function adultContentModeToLegacyMatureFictionMode(
   mode: AdultContentMode,
 ): boolean {
   return adultContentModeUsesMatureFiction(mode);
+}
+
+/**
+ * A provider refusal is authoritative: this decision never retries the same
+ * explicit request. It only permits Gemini's request-stage refusal to fall
+ * back once to the product's existing mature, non-graphic mode.
+ *
+ * Response-stage refusals are deliberately excluded because a response may
+ * contain a partial generated draft, which must not be sent back to the
+ * provider as retry input.
+ */
+export function resolveExplicitAdultRefusalFallback(options: {
+  providerType: AIProviderType;
+  mode: AdultContentMode;
+  failureStage: AdultContentRefusalStage;
+  fallbackAttemptsUsed?: number;
+}): ExplicitAdultRefusalFallbackDecision {
+  const common = {
+    retryMode: null,
+    maxFallbackAttempts: EXPLICIT_ADULT_REFUSAL_FALLBACK_MAX_ATTEMPTS,
+  } as const;
+
+  if (options.mode !== "explicit_consensual_adults") {
+    return { eligible: false, reason: "mode_not_explicit", ...common };
+  }
+
+  if (options.providerType !== "gemini") {
+    return { eligible: false, reason: "provider_not_supported", ...common };
+  }
+
+  if (options.failureStage !== "request") {
+    return {
+      eligible: false,
+      reason: "refusal_not_at_request_stage",
+      ...common,
+    };
+  }
+
+  const fallbackAttemptsUsed = Number.isFinite(options.fallbackAttemptsUsed)
+    ? Math.max(0, Math.floor(options.fallbackAttemptsUsed ?? 0))
+    : 0;
+  if (fallbackAttemptsUsed >= EXPLICIT_ADULT_REFUSAL_FALLBACK_MAX_ATTEMPTS) {
+    return { eligible: false, reason: "fallback_already_used", ...common };
+  }
+
+  return {
+    eligible: true,
+    retryMode: "mature_non_graphic",
+    maxFallbackAttempts: EXPLICIT_ADULT_REFUSAL_FALLBACK_MAX_ATTEMPTS,
+  };
 }

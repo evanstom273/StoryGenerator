@@ -73,6 +73,7 @@ import {
   adultContentModeToLegacyMatureFictionMode,
   resolveAdultContentMode,
   resolveNewStoryAdultContentMode,
+  type AdultContentMode,
 } from "../../lib/ai/adultContentMode";
 import { getAdultContentProviderCapability } from "../../lib/ai/providerCapabilities";
 import { applyOptionalValidatedRewrite } from "../../lib/ai/validatedOptionalRewrite";
@@ -87,8 +88,18 @@ import {
   GenerationFailureError,
   isGenerationFailureError,
   withTransmitSafeDiagnostics,
+  type GenerationFailure,
 } from "../../lib/ai/errors";
-import { buildMatureFictionTransmitSafeSystemNote, buildTransmitSafeSystemNote, makeTransmitSafe } from "../../lib/ai/transmitSafe";
+import {
+  buildContentMinimizedAdultRefusalRetryPlan,
+  buildMatureFictionTransmitSafeSystemNote,
+  buildTransmitSafeSystemNote,
+  makeTransmitSafe,
+} from "../../lib/ai/transmitSafe";
+import {
+  buildContentMinimizedAdultRefusalRetryMessages,
+  resolveProviderRefusalOrigin,
+} from "../../lib/ai/contentMinimizedRefusalRetry";
 import type {
   AIChatMessage,
   AIProvider,
@@ -1436,7 +1447,85 @@ function formatUnsupportedExplicitProviderMessage(providerType: AIProviderType) 
 
 function formatExplicitProviderRefusalMessage(providerType: AIProviderType) {
   const providerName = providerType === "gemini" ? "Gemini" : providerType;
-  return `${providerName} filtered this explicit consensual-adult fiction request. Provider safeguards cannot be overridden. Your Director/player turn is still saved, and no invalid assistant scene was saved. You can retry, switch to mature non-graphic mode, edit/continue manually, or choose another supported provider.`;
+  return `${providerName} filtered this explicit consensual-adult fiction request. Provider safeguards cannot be overridden. Your Director/player turn is still saved, and no invalid assistant scene was saved. You can retry, switch to mature non-graphic mode, edit/continue manually, or choose a configured provider/model whose policies permit the request.`;
+}
+
+function formatContentMinimizedFallbackRefusalMessage(providerType: AIProviderType) {
+  const providerName = providerType === "gemini" ? "Gemini" : providerType;
+  return `${providerName} filtered the explicit request and also declined a separate mature non-graphic continuation fallback. Provider safeguards cannot be overridden. Your Director/player turn is still saved, and no invalid assistant scene was saved.`;
+}
+
+async function tryGenerateContentMinimizedAdultRefusalFallback(args: {
+  failure: GenerationFailure;
+  providerType: AIProviderType;
+  adultContentMode: AdultContentMode;
+  provider: AIProvider;
+  apiKey: string;
+  model: string;
+  speakerRegistry: ActiveSceneSpeakerRegistry;
+  signal?: AbortSignal;
+  onChunk?: (chunk: string) => void;
+  onChunkReset?: () => void;
+  traceId: string;
+  storyId: string;
+  debugStage: string;
+}): Promise<GenerateResponseResult | null> {
+  const plan = buildContentMinimizedAdultRefusalRetryPlan({
+    providerType: args.providerType,
+    mode: args.adultContentMode,
+    failureStage: resolveProviderRefusalOrigin(args.failure),
+    fallbackAttemptsUsed: 0,
+  });
+  if (!plan) return null;
+
+  const messages = buildContentMinimizedAdultRefusalRetryMessages({
+    plan,
+    speakerRegistryPrompt: formatSceneSpeakerRegistryPrompt(
+      args.speakerRegistry,
+      false,
+    ),
+  });
+
+  args.onChunkReset?.();
+  try {
+    const result = await generateResponseWithRetry({
+      providerType: args.providerType,
+      provider: args.provider,
+      apiKey: args.apiKey,
+      model: args.model,
+      messages,
+      maxAttempts: plan.maxAttempts,
+      signal: args.signal,
+      geminiMatureFictionMode: true,
+      debugTrace: {
+        traceId: args.traceId,
+        mode: "story",
+        storyId: args.storyId,
+        stage: args.debugStage,
+        lastUserText: plan.latestUserMessage,
+        redactContent: true,
+      },
+    });
+    args.onChunk?.(result.content);
+    return result;
+  } catch (error) {
+    if (isGenerationFailureError(error) && error.failure.kind === "provider_refusal") {
+      throw new GenerationFailureError({
+        ...error.failure,
+        summaryMessage: formatContentMinimizedFallbackRefusalMessage(args.providerType),
+        retryable: false,
+        diagnostic: [
+          error.failure.diagnostic,
+          "fallback=content_minimized_mature_non_graphic",
+          "fallback_source_content=omitted",
+          ...plan.notes,
+        ]
+          .filter(Boolean)
+          .join("; "),
+      });
+    }
+    throw error;
+  }
 }
 
 function buildSpeakerAttributionAudit(
@@ -6925,6 +7014,7 @@ export function StoryEngineProvider({
             idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
             onChunk: opts?.onChunk,
             onChunkReset: opts?.onChunkReset,
+            geminiMatureFictionMode: adultContentMode !== "standard",
             debugTrace: {
               traceId,
               mode: "story",
@@ -6935,18 +7025,39 @@ export function StoryEngineProvider({
             },
           });
         } catch (error) {
-          if (
+          const refusalFailure =
             redactSensitiveContent &&
             isGenerationFailureError(error) &&
             error.failure.kind === "provider_refusal"
-          ) {
+              ? error.failure
+              : null;
+          const fallback = refusalFailure
+            ? await tryGenerateContentMinimizedAdultRefusalFallback({
+                failure: refusalFailure,
+                providerType,
+                adultContentMode,
+                provider,
+                apiKey,
+                model,
+                speakerRegistry,
+                signal: opts?.signal,
+                onChunk: opts?.onChunk,
+                onChunkReset: opts?.onChunkReset,
+                traceId,
+                storyId,
+                debugStage: "regenerate-explicit-refusal-fallback",
+              })
+            : null;
+          if (fallback) {
+            assistantContent = fallback;
+          } else if (refusalFailure) {
             throw new GenerationFailureError({
-              ...error.failure,
+              ...refusalFailure,
               summaryMessage: formatExplicitProviderRefusalMessage(providerType),
-              diagnostic: formatGenerationAuditText(error.failure.diagnostic, true, 1200),
             });
+          } else {
+            throw error;
           }
-          throw error;
         }
 
         const sceneDepth = inferSceneDepth(previousMessage.content);
@@ -8619,7 +8730,7 @@ export function StoryEngineProvider({
               idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
               onChunk: opts?.onChunk,
               onChunkReset: opts?.onChunkReset,
-              geminiMatureFictionMode: Boolean(story.matureFictionMode),
+              geminiMatureFictionMode: adultContentMode !== "standard",
               debugTrace: {
                 traceId,
                 mode: "story",
@@ -8658,18 +8769,36 @@ export function StoryEngineProvider({
             });
             // #endregion
 
-            if (redactSensitiveContent && isProviderRefusal) {
+            const contentMinimizedFallback =
+              redactSensitiveContent && isProviderRefusal && baseFailure
+                ? await tryGenerateContentMinimizedAdultRefusalFallback({
+                    failure: baseFailure,
+                    providerType,
+                    adultContentMode,
+                    provider,
+                    apiKey,
+                    model,
+                    speakerRegistry,
+                    signal: opts?.signal,
+                    onChunk: opts?.onChunk,
+                    onChunkReset: opts?.onChunkReset,
+                    traceId,
+                    storyId,
+                    debugStage: "explicit-refusal-fallback",
+                  })
+                : null;
+
+            if (contentMinimizedFallback) {
+              assistantContent = contentMinimizedFallback;
+            } else if (redactSensitiveContent && isProviderRefusal) {
               if (baseFailure) {
                 throw new GenerationFailureError({
                   ...baseFailure,
                   summaryMessage: formatExplicitProviderRefusalMessage(providerType),
-                  diagnostic: formatGenerationAuditText(baseFailure.diagnostic, true, 1200),
                 });
               }
               throw new Error(formatExplicitProviderRefusalMessage(providerType));
-            }
-
-            if (providerType === "gemini" && isProviderRefusal) {
+            } else if (providerType === "gemini" && isProviderRefusal) {
               const transmitSafe = makeTransmitSafe(userMessage.content, {
                 allowPainSoftening: adultContentMode !== "standard",
                 allowIntimacySoftening: adultContentMode !== "standard",

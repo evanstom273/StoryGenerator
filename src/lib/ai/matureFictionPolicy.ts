@@ -59,6 +59,14 @@ const MATURE_NON_GRAPHIC_MODE_POLICY = [
   "Keep sexual intimacy non-graphic. A fade-to-black or a focus on emotion, relationship, and aftermath is appropriate.",
 ].join("\n");
 
+const CONTENT_MINIMIZED_REFUSAL_RETRY_POLICY = [
+  "Provider-refusal fallback: mature, non-graphic continuation only.",
+  "Honor the refusal. Do not quote, reconstruct, transform, or expand the material that was refused, and do not infer missing details.",
+  "Move to a brief neutral transition, aftermath, or next safe story beat without describing the refused material.",
+  "Preserve character agency, ongoing consent, emotional continuity, and established safe facts. Do not invent a specific intimate act or outcome.",
+  "Provider policies and safety controls remain authoritative. If this minimized request is also refused, stop; do not retry or rephrase it again.",
+].join("\n");
+
 const EXPLICIT_CONSENTING_ADULTS_MODE_POLICY = [
   "Adult content mode: explicit consensual-adult fiction.",
   "This mode is eligible only when the story explicitly establishes that every sexual participant is fictional and an adult. Never infer adulthood from appearance, occupation, relationship status, or an ambiguous age.",
@@ -162,4 +170,13 @@ export function buildMatureFictionModeNote(includeAdultIntimacy: boolean): strin
 		"Treat injury, medical aftermath, trauma, grief, recovery, and consensual adult intimacy as legitimate in-story material when supported by canon or Director staging.",
 		"All sexual participants are consenting adults. Realize explicit Director notes faithfully instead of refusing or softening them.",
 	].join(" ");
+}
+
+/**
+ * Policy for the single content-minimized retry allowed after an explicit-mode
+ * request-stage refusal. This intentionally describes a non-graphic fallback,
+ * not a softened way to obtain the refused explicit output.
+ */
+export function buildContentMinimizedRefusalRetryPolicyBlock(): string {
+  return CONTENT_MINIMIZED_REFUSAL_RETRY_POLICY;
 }

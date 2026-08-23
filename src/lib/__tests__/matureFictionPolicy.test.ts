@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildMatureFictionModeNote,
+	buildContentMinimizedRefusalRetryPolicyBlock,
 	buildMatureFictionPolicyBlock,
 } from "../ai/matureFictionPolicy";
 
@@ -20,6 +21,15 @@ describe("buildMatureFictionPolicyBlock", () => {
 		expect(policy).toContain("strap-ons");
 		expect(policy).toContain("Do not refuse, sanitize, fade-to-black");
 		expect(policy).not.toContain("eroticised");
+	});
+});
+
+describe("buildContentMinimizedRefusalRetryPolicyBlock", () => {
+	it("keeps a provider-refusal retry non-graphic and one-shot", () => {
+		const policy = buildContentMinimizedRefusalRetryPolicyBlock();
+		expect(policy).toContain("mature, non-graphic continuation only");
+		expect(policy).toContain("Provider policies and safety controls remain authoritative");
+		expect(policy).toContain("do not retry or rephrase it again");
 	});
 });
 

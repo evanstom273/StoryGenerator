@@ -743,6 +743,16 @@ consensual-adult mode never sends generated prose back for a provider rewrite, s
 its validation budget is shown and reported as 1/1; an unresolved draft is kept
 available for recovery but is not saved into the story.
 
+A confirmed Gemini prompt-level `PROHIBITED_CONTENT` refusal may trigger one
+separate mature non-graphic fallback. That request is assembled from a constant
+continuation directive and the speaker-name registry only: it omits the refused
+turn, prior assistant prose, and any partial generated draft. It asks only for a
+neutral transition/aftermath beat and does not retry or disguise the refused
+explicit request. Response-stage blocks, unknown refusal origins, and a refused
+fallback terminate immediately. Non-retryable refusals report their effective
+automatic attempt budget (for example, 1/1 rather than the model's transient
+error ceiling of 1/5).
+
 ### 14.3 Ingestion sanitization
 
 `sanitizeAssistantTranscript()` runs on save (broader than display):

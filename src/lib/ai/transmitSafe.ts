@@ -1,3 +1,11 @@
+import type { AIProviderType } from "../../types/models";
+import {
+	resolveExplicitAdultRefusalFallback,
+	type AdultContentMode,
+	type AdultContentRefusalStage,
+} from "./adultContentMode";
+import { buildContentMinimizedRefusalRetryPolicyBlock } from "./matureFictionPolicy";
+
 export type TransmitSafeSeverity = "none" | "low" | "medium" | "high";
 
 export type TransmitSafeResult = {
@@ -5,6 +13,28 @@ export type TransmitSafeResult = {
 	wasModified: boolean;
 	notes: string[];
 	severity: TransmitSafeSeverity;
+};
+
+export const CONTENT_MINIMIZED_ADULT_REFUSAL_RETRY_TEXT = [
+	"Continue with a brief mature, non-graphic transition to the next safe story beat.",
+	"Do not restate, reconstruct, or add details to the refused material.",
+	"Use only Narrator: *...* transcript lines and leave room for the player to continue.",
+].join(" ");
+
+export type ContentMinimizedAdultRefusalRetryPlan = {
+	retryMode: "mature_non_graphic";
+	latestUserMessage: string;
+	systemNote: string;
+	maxAttempts: 1;
+	contextPolicy: {
+		includeOriginalRefusedTurn: false;
+		includePriorAssistantProse: false;
+		includePartialAssistantDraft: false;
+	};
+	notes: readonly [
+		"adult_refusal_fallback:mature_non_graphic",
+		"adult_refusal_fallback:source_content_omitted",
+	];
 };
 
 function applyReplace(
@@ -164,22 +194,51 @@ export function buildTransmitSafeSystemNote(result: TransmitSafeResult) {
 
 export function buildMatureFictionTransmitSafeSystemNote(
 	result: TransmitSafeResult,
-	originalText: string,
+	_originalText?: string,
 ) {
 	const baseNote = buildTransmitSafeSystemNote(result);
-	const canonical = originalText.trim();
-	if (!canonical) {
-		return baseNote;
-	}
 
 	return [
 		baseNote,
 		"Mature Fiction transmit-safe fallback:",
-		"The softened Director note above is only to satisfy provider input filters.",
-		"Canonical Director staging preserved in the transcript (write the scene with THIS explicitness, not euphemisms):",
-		canonical,
-		"Use the canonical anatomical terms from the staging above (for example clit, dildo, strap-on) in the generated scene.",
+		"Continue only at a mature, non-graphic level.",
+		"Do not reconstruct or add details that were removed from the transmitted Director note.",
+		"Preserve character agency, consent, emotional continuity, and safe established outcomes.",
 	]
 		.filter(Boolean)
 		.join("\n");
+}
+
+/**
+ * Builds a request-stage-only fallback that cannot leak source content because
+ * it accepts policy metadata only: neither the refused turn nor a generated
+ * draft is an input to this function. Callers must honor `contextPolicy` when
+ * assembling the retry context.
+ */
+export function buildContentMinimizedAdultRefusalRetryPlan(options: {
+	providerType: AIProviderType;
+	mode: AdultContentMode;
+	failureStage: AdultContentRefusalStage;
+	fallbackAttemptsUsed?: number;
+}): ContentMinimizedAdultRefusalRetryPlan | null {
+	const decision = resolveExplicitAdultRefusalFallback(options);
+	if (!decision.eligible) {
+		return null;
+	}
+
+	return {
+		retryMode: decision.retryMode,
+		latestUserMessage: CONTENT_MINIMIZED_ADULT_REFUSAL_RETRY_TEXT,
+		systemNote: buildContentMinimizedRefusalRetryPolicyBlock(),
+		maxAttempts: decision.maxFallbackAttempts,
+		contextPolicy: {
+			includeOriginalRefusedTurn: false,
+			includePriorAssistantProse: false,
+			includePartialAssistantDraft: false,
+		},
+		notes: [
+			"adult_refusal_fallback:mature_non_graphic",
+			"adult_refusal_fallback:source_content_omitted",
+		],
+	};
 }

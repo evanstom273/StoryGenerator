@@ -15,9 +15,10 @@ export type GeminiSafetySetting = {
 };
 
 /**
- * Relaxed sexually-explicit filtering for consensual adult fiction when Mature
- * Fiction mode is enabled. Gemini 3.x models accept OFF; older models use
- * BLOCK_NONE.
+ * Configures only Gemini's adjustable sexually-explicit classifier for mature
+ * fiction. Gemini's built-in prohibited-content safeguards remain in force and
+ * can still return a prompt/response block regardless of this setting.
+ * Gemini 3.x models accept OFF; older models use BLOCK_NONE.
  */
 export function resolveGeminiMatureFictionSafetySettings(model: string): GeminiSafetySetting[] {
 	const normalized = model.trim().toLowerCase();
