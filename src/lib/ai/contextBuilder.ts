@@ -508,6 +508,9 @@ export function buildStoryChatContext({
       latestMessageIsDirectorNote || guidedDirectedContinue
         ? formatDirectorNoteInterpretationGuidance()
         : "",
+      latestMessageIsDirectorNote || guidedDirectedContinue
+        ? "Speaker attribution rule (strict): assign each character only their own dialogue and action beats. Never put another character's lines or actions under the player character's speaker label. In two-character intimate scenes, alternate Rosa: and the player character's label correctly."
+        : "",
       "Asterisks are reserved exclusively for actions. Never use asterisks for emphasis, sarcasm, or formatting.",
       "Actions should read like prose, not stage directions. Avoid repetitive filler actions (nods/looks/shrugs) unless truly warranted.",
       "Interpret any *...* text in the conversation as an action and react to it naturally.",

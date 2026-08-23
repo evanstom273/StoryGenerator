@@ -1383,13 +1383,7 @@ export function shouldAcceptStreamDespiteSpeakerAttributionFlags(args: {
 		text: args.text,
 		playerName: args.playerName,
 	});
-	if (!needsSpeakerAttributionRewrite(preparedText, args.playerName)) {
-		return true;
-	}
-	return standardizeAssistantStoryText({
-		text: preparedText,
-		playerName: args.playerName,
-	}).valid;
+	return !needsSpeakerAttributionRewrite(preparedText, args.playerName);
 }
 
 export function getNarrationSpeakerLabel(message: StoryMessage) {

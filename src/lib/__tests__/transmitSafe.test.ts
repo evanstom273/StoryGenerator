@@ -1,24 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildTransmitSafeSystemNote, makeTransmitSafe } from "../ai/transmitSafe";
+import { makeTransmitSafe } from "../ai/transmitSafe";
 
 describe("makeTransmitSafe", () => {
-	it("softens intimacy language for mature-mode provider retries", () => {
+	it("does not soften intimacy language", () => {
 		const result = makeTransmitSafe(
 			"Becca puts the strap on, adjusting the dildo against her clit.",
-			{ allowIntimacySoftening: true },
+			{ allowPainSoftening: true },
 		);
-		expect(result.wasModified).toBe(true);
-		expect(result.transmitText).toContain("harness");
-		expect(result.transmitText).toContain("toy");
-		expect(result.transmitText).toContain("sensitive spot");
-		expect(result.transmitText).not.toContain("dildo");
-	});
-
-	it("includes mature-fiction guidance in the transmit-safe note", () => {
-		const result = makeTransmitSafe("Rosa wears the strap-on tonight.", {
-			allowIntimacySoftening: true,
-		});
-		const note = buildTransmitSafeSystemNote(result);
-		expect(note).toContain("Mature Fiction mode is enabled");
+		expect(result.wasModified).toBe(false);
+		expect(result.transmitText).toContain("dildo");
+		expect(result.transmitText).toContain("clit");
 	});
 });
