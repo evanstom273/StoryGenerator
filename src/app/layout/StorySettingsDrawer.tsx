@@ -64,6 +64,12 @@ import { themes, type AccentThemeKey, isAccentThemeKey } from "../theming/themes
 import { FieldLabel } from "../../components/forms/Fields";
 import { ThemePicker } from "../../components/settings/ThemePicker";
 import { useUiPrefs } from "../ui/UiPrefsContext";
+import {
+  adultContentModeToLegacyMatureFictionMode,
+  isAdultContentMode,
+  resolveAdultContentMode,
+} from "../../lib/ai/adultContentMode";
+import { getAdultContentProviderProfile } from "../../lib/ai/providerCapabilities";
 
 const ARCHIVE_PDF_DEBUG_URL = "http://127.0.0.1:7777/event";
 const ARCHIVE_PDF_DEBUG_SESSION = "archive-pdf-no-op";
@@ -209,7 +215,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [storyFields, setStoryFields] = useState({
     title: story?.title ?? "",
     currentSummary: story?.currentSummary ?? "",
-    matureFictionMode: story?.matureFictionMode ?? false,
+    adultContentMode: resolveAdultContentMode(story),
     autoIndexMode: (story?.autoIndexMode ??
       (story?.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode,
     autoIndexInterval: (story?.autoIndexInterval ?? 20) as AutoIndexInterval,
@@ -337,7 +343,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     setStoryFields({
       title: story.title,
       currentSummary: story.currentSummary,
-      matureFictionMode: story.matureFictionMode ?? false,
+      adultContentMode: resolveAdultContentMode(story),
       autoIndexMode: (story.autoIndexMode ??
         (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode,
       autoIndexInterval: (story.autoIndexInterval ?? 20) as AutoIndexInterval,
@@ -406,7 +412,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       if (
         storyFields.title === story.title &&
         storyFields.currentSummary === story.currentSummary &&
-        storyFields.matureFictionMode === (story.matureFictionMode ?? false) &&
+        storyFields.adultContentMode ===
+          resolveAdultContentMode(story) &&
         storyFields.autoIndexMode ===
           ((story.autoIndexMode ??
             (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode) &&
@@ -425,7 +432,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       void updateStory(story.id, {
         title: storyFields.title,
         currentSummary: storyFields.currentSummary,
-        matureFictionMode: storyFields.matureFictionMode,
+        adultContentMode: storyFields.adultContentMode,
+        // Keep older readers in sync while adultContentMode rolls out.
+        matureFictionMode: adultContentModeToLegacyMatureFictionMode(
+          storyFields.adultContentMode,
+        ),
         autoIndexMode: storyFields.autoIndexMode,
         autoIndexInterval: storyFields.autoIndexInterval,
         accentThemeKey: storyFields.accentThemeKey ?? undefined,
@@ -440,7 +451,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       story?.importedCharacterIds,
       storyFields.title,
       storyFields.currentSummary,
-      storyFields.matureFictionMode,
+      storyFields.adultContentMode,
       storyFields.autoIndexMode,
       storyFields.autoIndexInterval,
       storyFields.accentThemeKey,
@@ -703,7 +714,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       await updateStory(story.id, {
         title: storyFields.title,
         currentSummary: storyFields.currentSummary,
-        matureFictionMode: storyFields.matureFictionMode,
+        adultContentMode: storyFields.adultContentMode,
+        // Keep older readers in sync while adultContentMode rolls out.
+        matureFictionMode: adultContentModeToLegacyMatureFictionMode(
+          storyFields.adultContentMode,
+        ),
         autoIndexMode: storyFields.autoIndexMode,
         autoIndexInterval: storyFields.autoIndexInterval,
         accentThemeKey: storyFields.accentThemeKey ?? undefined,
@@ -1317,27 +1332,38 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                 <div className="space-y-3">
                   <label className="block space-y-2">
                     <FieldLabel
-                      label="Mature fiction"
-                      help="Allows serious adult fiction: trauma, violence aftermath, grief, recovery, and consensual adult intimacy between fictional adults."
+                      label="Adult content mode"
+                      help="Choose the intended content boundary. Explicit mode is only for fictional, confirmed adults whose participation is consensual; providers may still filter individual requests."
                       labelClassName="text-xs text-ink-muted"
                     />
                     <select
                       className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-accent/[0.4] focus:ring-2 focus:ring-accent/[0.15]"
-                      value={storyFields.matureFictionMode ? "on" : "off"}
+                      value={storyFields.adultContentMode}
                       disabled={isReadOnly}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const mode = event.target.value;
+                        if (!isAdultContentMode(mode)) {
+                          return;
+                        }
                         setStoryFields((current) => ({
                           ...current,
-                          matureFictionMode: event.target.value === "on",
-                        }))
-                      }
+                          adultContentMode: mode,
+                        }));
+                      }}
                     >
-                      <option value="off">Off</option>
-                      <option value="on">On</option>
+                      <option value="standard">Standard</option>
+                      <option value="mature_non_graphic">Mature fiction (non-graphic)</option>
+                      <option value="explicit_consensual_adults">
+                        Explicit fiction (consenting adults)
+                      </option>
                     </select>
                   </label>
                   <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-sm text-ink-muted">
-                    When enabled, prompts and transmit-safe retries are tuned for serious adult fiction: injury aftermath, trauma, grief, recovery, and consensual intimacy between consenting adult characters. Illegal, exploitative, or non-consensual content remains blocked.
+                    {storyFields.adultContentMode === "explicit_consensual_adults"
+                      ? getAdultContentProviderProfile(aiProviderType).explanation
+                      : storyFields.adultContentMode === "mature_non_graphic"
+                        ? "Prompts are tuned for serious fiction, including injury aftermath, trauma, grief, recovery, and non-graphic intimacy."
+                        : "Uses the standard story boundary without mature-fiction prompt guidance."}
                   </div>
                 </div>
               </CollapsibleSection>

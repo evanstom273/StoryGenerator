@@ -10,9 +10,28 @@ export type StoryMessageSpeakerType =
   | "canon"
   | "narrator"
   | "system";
+export type StorySpeakerAttributionEvidence =
+  | "named-player-action-target"
+  | "dialogue-second-person-address"
+  | "dialogue-imperative-address"
+  | "dialogue-player-vocative";
+export interface StorySpeakerAttributionAudit {
+  version: 1;
+  repairedAt: Timestamp;
+  repairs: Array<{
+    lineNumber: number;
+    from: string;
+    to: string;
+    evidence: StorySpeakerAttributionEvidence[];
+  }>;
+}
 export type StoryAuthorDirectiveKind = "canon" | "secret" | "reveal" | "retcon";
 export type ExportFormat = "json" | "markdown" | "txt" | "pdf" | "archive_pdf";
 export type AIProviderType = "openai" | "gemini" | "openrouter" | "anthropic";
+export type StoryAdultContentMode =
+  | "standard"
+  | "mature_non_graphic"
+  | "explicit_consensual_adults";
 export type DeveloperBugStatus = "open" | "in-progress" | "resolved" | "closed";
 export type DeveloperFeaturePriority = "low" | "medium" | "high";
 export type AutoIndexInterval = 5 | 10 | 15 | 20 | "disabled";
@@ -241,6 +260,8 @@ export interface Story {
   isArchived?: boolean;
   readOnlyReason?: "sequel_prequel";
   readOnlyLockedAt?: Timestamp;
+  adultContentMode?: StoryAdultContentMode;
+  /** Legacy compatibility flag. Prefer adultContentMode for new writes. */
   matureFictionMode?: boolean;
   rpMode?: boolean;
   rpConfig?: RpConfig;
@@ -267,6 +288,7 @@ export interface StoryMessage {
   timestamp: Timestamp;
   speakerName?: string;
   speakerType?: StoryMessageSpeakerType;
+  speakerAttribution?: StorySpeakerAttributionAudit;
   directorIntent?: DirectorIntent;
   authorDirective?: StoryAuthorDirective;
   chapterBoundary?: {
@@ -771,6 +793,8 @@ export interface StoryDraft {
   lineageType?: "sequel" | "branch";
   sequelSeedSourceStoryId?: EntityId;
   isArchived?: boolean;
+  adultContentMode?: StoryAdultContentMode;
+  /** Legacy compatibility flag. Prefer adultContentMode for new writes. */
   matureFictionMode?: boolean;
   rpMode?: boolean;
   rpConfig?: RpConfig;

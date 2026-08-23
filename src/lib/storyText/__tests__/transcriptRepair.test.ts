@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { detectSceneStateRenarration, sanitizeAssistantTranscript } from "../transcriptSanitizer";
+import {
+  collapseRepeatedNarratorPrefixes,
+  detectSceneStateRenarration,
+  normalizeTranscriptForDisplay,
+  sanitizeAssistantTranscript,
+} from "../transcriptSanitizer";
 
 describe("unlabelled narration repair", () => {
   it("repairs underscore-italic narration", () => {
@@ -32,6 +37,36 @@ describe("unlabelled narration repair", () => {
     });
     expect(text).toMatch(/^Narrator: \*The room goes quiet\.\*$/m);
     expect(autoRepairedNarration).toBe(false);
+  });
+
+  it("collapses repeated narrator prefixes without changing the remaining bytes", () => {
+    const input = [
+      "  Narrator: Narrator: Narrator: *The room goes quiet.*",
+      'Rosa: *She listens.* "Did you hear that?"',
+    ].join("\r\n");
+
+    expect(collapseRepeatedNarratorPrefixes(input)).toEqual({
+      text: [
+        "  Narrator: *The room goes quiet.*",
+        'Rosa: *She listens.* "Did you hear that?"',
+      ].join("\r\n"),
+      changed: true,
+    });
+  });
+
+  it("removes a doubled narrator prefix at the display normalization boundary", () => {
+    expect(normalizeTranscriptForDisplay("Narrator: Narrator: *The room goes quiet.*")).toBe(
+      "Narrator: *The room goes quiet.*",
+    );
+  });
+
+  it("sanitizes a doubled narrator prefix as a local narrator-label repair", () => {
+    const result = sanitizeAssistantTranscript({
+      text: "Narrator: Narrator: *The room goes quiet.*",
+    });
+
+    expect(result.text).toBe("Narrator: *The room goes quiet.*");
+    expect(result.removedNarratorLabels).toBe(true);
   });
 
 	it("does not turn a weekday heading into a speaker label", () => {

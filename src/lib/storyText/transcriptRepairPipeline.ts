@@ -14,6 +14,7 @@ export type TranscriptRepairOptions = {
 	identity: PlayerTranscriptIdentity;
 	latestUserMessage?: string | null;
 	applyActionBeatFormatting?: boolean;
+	repairSpeakerAttribution?: boolean;
 };
 
 function capitalizeFirstLetter(text: string): string {
@@ -65,12 +66,14 @@ export function repairAssistantTranscript(
 
 	normalized = runTranscriptRepairSanityPass(normalized, identity);
 
-	const speakerRepair = repairMisattributedPlayerSpeakerLabels(normalized, {
-		playerName: identity.legalName,
-		knownTies: identity.knownTies,
-		transcriptText: normalized,
-	});
-	normalized = speakerRepair.text;
+	if (options.repairSpeakerAttribution !== false) {
+		const speakerRepair = repairMisattributedPlayerSpeakerLabels(normalized, {
+			playerName: identity.legalName,
+			knownTies: identity.knownTies,
+			transcriptText: normalized,
+		});
+		normalized = speakerRepair.text;
+	}
 
 	return normalized;
 }

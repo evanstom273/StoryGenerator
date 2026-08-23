@@ -437,10 +437,32 @@ function stripNarratorPrefixFromLine(line: string) {
   return { changed: true, line: remainder };
 }
 
-function stripNarratorHeaders(text: string) {
+/**
+ * Remove only duplicated narrator prefixes, retaining the first prefix and all
+ * remaining transcript bytes. This is safe to run at the generation boundary:
+ * it does not reinterpret prose or change any character attribution.
+ */
+export function collapseRepeatedNarratorPrefixes(text: string): {
+  text: string;
+  changed: boolean;
+} {
   let changed = false;
+  const collapsed = text.replace(
+    /^([ \t]*Narrator[ \t]*(?::|[ \t]+[-\u2014])[ \t]*)(?:Narrator[ \t]*(?::|[ \t]+[-\u2014])[ \t]*)+/gim,
+    (_match, retainedPrefix: string) => {
+      changed = true;
+      return retainedPrefix;
+    },
+  );
 
-  const lines = normalizeNewlines(text).split("\n");
+  return { text: collapsed, changed };
+}
+
+function stripNarratorHeaders(text: string) {
+  const repeatedPrefixes = collapseRepeatedNarratorPrefixes(text);
+  let changed = repeatedPrefixes.changed;
+
+  const lines = normalizeNewlines(repeatedPrefixes.text).split("\n");
   const nextLines: string[] = [];
 
   for (const line of lines) {
@@ -933,8 +955,11 @@ export function sanitizeAssistantTranscript(args: {
 }
 
 export function normalizeTranscriptForDisplay(text: string): string {
+	const narratorPrefixesCollapsed = collapseRepeatedNarratorPrefixes(text);
 	return capitalizeFirstLetter(
-		normalizeTranscriptWhitespace(repairClockTimeColonCorruption(text)),
+		normalizeTranscriptWhitespace(
+			repairClockTimeColonCorruption(narratorPrefixesCollapsed.text),
+		),
 	);
 }
 
@@ -974,6 +999,7 @@ export function applyStoryLocalIdentityToAssistantTranscript(
 		transcriptText?: string | null;
 		aliases?: string[] | null;
 		latestUserMessage?: string | null;
+		repairSpeakerAttribution?: boolean;
 	},
 ): string {
 	const identity = buildSanitizerPlayerIdentity({
@@ -992,6 +1018,7 @@ export function applyStoryLocalIdentityToAssistantTranscript(
 	const normalized = repairAssistantTranscript(text, {
 		identity,
 		latestUserMessage: args.latestUserMessage,
+		repairSpeakerAttribution: args.repairSpeakerAttribution,
 	});
 	return restrainEmDashUsageInTranscript(normalized);
 }
@@ -1214,6 +1241,7 @@ export function prevalidateAssistantTranscript(args: {
 	knownTies?: string[] | null;
 	transcriptText?: string | null;
 	playerAliases?: string[] | null;
+	repairSpeakerAttribution?: boolean;
 }) {
 	const transcriptText = args.transcriptText ?? args.latestUserMessage ?? args.text;
 	const identity = buildSanitizerPlayerIdentity({
@@ -1242,6 +1270,7 @@ export function prevalidateAssistantTranscript(args: {
 	const prepared = repairAssistantTranscript(args.text, {
 		identity,
 		latestUserMessage: args.latestUserMessage,
+		repairSpeakerAttribution: args.repairSpeakerAttribution,
 	});
 	return restrainEmDashUsageInTranscript(prepared);
 }
@@ -1259,9 +1288,46 @@ export function validateAssistantTranscriptForSave(args: {
 	hiddenDialoguePattern: RegExp;
 	knownTies?: string[] | null;
 	transcriptText?: string | null;
+	repairSpeakerAttribution?: boolean;
 }): AssistantTranscriptValidationResult {
 	const playerName = args.playerName ?? null;
 	const latestUserMessage = args.latestUserMessage ?? "";
+
+	if (!isSubstantialTranscriptText(args.text)) {
+		return {
+			valid: false,
+			stage: "insubstantial",
+			diagnostic: `rewrite_stage=insubstantial; length=${args.text.trim().length}`,
+			formatIssues: [],
+			text: args.text,
+		};
+	}
+
+	const hasContextualSpeakerRepairEvidence =
+		args.repairSpeakerAttribution !== false &&
+		Boolean(
+			args.playerSceneName?.trim() &&
+				(args.latestUserMessage?.trim() ||
+					args.transcriptText?.trim() ||
+					args.knownTies?.length ||
+					Object.keys(args.characterGenders ?? {}).length),
+		);
+
+	// Without scene identity evidence, generic repair can infer owners from the
+	// broken output itself. Preserve the raw attribution failure instead.
+	if (
+		needsSpeakerAttributionRewrite(args.text, playerName) &&
+		!hasContextualSpeakerRepairEvidence
+	) {
+		return {
+			valid: false,
+			stage: "speaker_attribution",
+			diagnostic: "rewrite_stage=speaker_attribution",
+			formatIssues: [],
+			text: args.text,
+		};
+	}
+
 	const preparedText = prevalidateAssistantTranscript({
 		text: args.text,
 		playerName,
@@ -1272,6 +1338,7 @@ export function validateAssistantTranscriptForSave(args: {
 		latestUserMessage,
 		knownTies: args.knownTies,
 		transcriptText: args.transcriptText ?? latestUserMessage,
+		repairSpeakerAttribution: args.repairSpeakerAttribution,
 	});
 
 	if (!isSubstantialTranscriptText(preparedText)) {
@@ -1370,20 +1437,6 @@ export function validateAssistantTranscriptForSave(args: {
 		formatIssues: [],
 		text: candidateText,
 	};
-}
-
-export function shouldAcceptStreamDespiteSpeakerAttributionFlags(args: {
-	text: string;
-	playerName?: string | null;
-}): boolean {
-	if (!isSubstantialTranscriptText(args.text)) {
-		return false;
-	}
-	const preparedText = prevalidateAssistantTranscript({
-		text: args.text,
-		playerName: args.playerName,
-	});
-	return !needsSpeakerAttributionRewrite(preparedText, args.playerName);
 }
 
 export function getNarrationSpeakerLabel(message: StoryMessage) {

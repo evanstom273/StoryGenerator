@@ -29,6 +29,7 @@ interface GeminiGenerateContentRequest {
 interface GeminiGenerateContentResponse {
   candidates?: Array<{
     finishReason?: string;
+    finishMessage?: string;
     safetyRatings?: unknown;
     content?: {
       parts?: Array<{ text?: string; thought?: boolean }>;
@@ -36,6 +37,8 @@ interface GeminiGenerateContentResponse {
   }>;
   promptFeedback?: {
     blockReason?: string;
+    blockReasonMessage?: string;
+    safetyRatings?: unknown;
   };
 }
 
@@ -113,6 +116,102 @@ function assertGeminiResponseHasText(meta: GeminiResponseExtraction): string {
       kind: isRetryableGeminiEmptyResponse(meta) ? "provider" : "safety",
     },
   );
+}
+
+const GEMINI_BLOCKED_FINISH_REASONS = new Set([
+  "SAFETY",
+  "RECITATION",
+  "LANGUAGE",
+  "OTHER",
+  "BLOCKLIST",
+  "PROHIBITED_CONTENT",
+  "SPII",
+  "IMAGE_SAFETY",
+  "IMAGE_PROHIBITED_CONTENT",
+  "IMAGE_RECITATION",
+  "IMAGE_OTHER",
+  "CONTENT_BLOCKED",
+  "ESCALATION",
+]);
+
+function normalizeGeminiReason(reason: string | undefined) {
+  return reason?.trim().toUpperCase().replace(/[\s-]+/g, "_") ?? "";
+}
+
+function isGeminiPromptBlocked(reason: string | undefined) {
+  const normalized = normalizeGeminiReason(reason);
+  return Boolean(normalized && normalized !== "BLOCK_REASON_UNSPECIFIED");
+}
+
+function isGeminiResponseBlocked(reason: string | undefined) {
+  const normalized = normalizeGeminiReason(reason).replace(/^FINISH_REASON_/, "");
+  return GEMINI_BLOCKED_FINISH_REASONS.has(normalized);
+}
+
+function formatGeminiDiagnosticValue(value: unknown) {
+  if (value == null) return undefined;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function throwIfGeminiBlocked(json: GeminiGenerateContentResponse, status: number) {
+  const promptReason = json.promptFeedback?.blockReason;
+  if (isGeminiPromptBlocked(promptReason)) {
+    const reason = normalizeGeminiReason(promptReason);
+    const message = `Gemini blocked the prompt (${reason}).`;
+    const diagnostic = [
+      `status=${status}`,
+      "provider=Gemini",
+      "stage=prompt",
+      `blockReason=${reason}`,
+      json.promptFeedback?.blockReasonMessage
+        ? `blockMessage=${json.promptFeedback.blockReasonMessage}`
+        : undefined,
+      json.promptFeedback?.safetyRatings != null
+        ? `safetyRatings=${formatGeminiDiagnosticValue(json.promptFeedback.safetyRatings)}`
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join("; ");
+    throw new AIError("safety_refusal", message, status, {
+      diagnostic,
+      retryable: false,
+      kind: "safety",
+    });
+  }
+
+  const blockedCandidate = json.candidates?.find((candidate) =>
+    isGeminiResponseBlocked(candidate.finishReason),
+  );
+  if (!blockedCandidate) return;
+
+  const reason = normalizeGeminiReason(blockedCandidate.finishReason).replace(
+    /^FINISH_REASON_/,
+    "",
+  );
+  const message = `Gemini blocked the response (${reason}).`;
+  const diagnostic = [
+    `status=${status}`,
+    "provider=Gemini",
+    "stage=response",
+    `finishReason=${reason}`,
+    blockedCandidate.finishMessage
+      ? `finishMessage=${blockedCandidate.finishMessage}`
+      : undefined,
+    blockedCandidate.safetyRatings != null
+      ? `safetyRatings=${formatGeminiDiagnosticValue(blockedCandidate.safetyRatings)}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join("; ");
+  throw new AIError("safety_refusal", message, status, {
+    diagnostic,
+    retryable: false,
+    kind: "safety",
+  });
 }
 
 function buildGeminiRequest(
@@ -297,6 +396,7 @@ async function callGenerateContent(
               if (!raw || raw === "[DONE]") continue;
               try {
                 const json = JSON.parse(raw) as GeminiGenerateContentResponse;
+                throwIfGeminiBlocked(json, response.status);
                 const responseMeta = extractGeminiGenerateContentResponse(json);
                 lastResponseMeta = responseMeta;
                 const text = responseMeta.text;
@@ -304,7 +404,8 @@ async function callGenerateContent(
                   opts.onChunk(text);
                   streamAccumulated += text;
                 }
-              } catch {
+              } catch (error) {
+                if (error instanceof AIError) throw error;
                 // malformed SSE chunk — skip
               }
             }
@@ -315,6 +416,7 @@ async function callGenerateContent(
             if (raw && raw !== "[DONE]") {
               try {
                 const json = JSON.parse(raw) as GeminiGenerateContentResponse;
+                throwIfGeminiBlocked(json, response.status);
                 const responseMeta = extractGeminiGenerateContentResponse(json);
                 lastResponseMeta = responseMeta;
                 const text = responseMeta.text;
@@ -322,7 +424,8 @@ async function callGenerateContent(
                   opts.onChunk(text);
                   streamAccumulated += text;
                 }
-              } catch {
+              } catch (error) {
+                if (error instanceof AIError) throw error;
                 // ignore
               }
             }
@@ -338,6 +441,9 @@ async function callGenerateContent(
           blockReason: lastResponseMeta.blockReason,
         });
       } catch (streamErr) {
+        if (streamErr instanceof AIError && streamErr.code === "safety_refusal") {
+          throw streamErr;
+        }
         if (streamAccumulated !== "") throw streamErr;
         // No chunks delivered — fall through to non-streaming path
       }
@@ -360,6 +466,7 @@ async function callGenerateContent(
     }
 
     const json = (await response.json()) as GeminiGenerateContentResponse;
+    throwIfGeminiBlocked(json, response.status);
     return assertGeminiResponseHasText(extractGeminiGenerateContentResponse(json));
   } catch (error) {
     throw normalizeAIError(error, { userCancelled: opts?.signal?.aborted });
