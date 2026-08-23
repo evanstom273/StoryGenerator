@@ -5,7 +5,6 @@ import {
 	findPlayerStoryStateEntry,
 	inferPlayerPronounsFromDirectorNotes,
 	inferPlayerPronounsFromMessages,
-	inferExplicitPlayerSceneRenameFromDirectorNotes,
 	inferPlayerSceneNameFromMessages,
 	detectEstablishedPlayerIdentityFromMessages,
 } from "./storyText/playerSceneName";

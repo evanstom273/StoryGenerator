@@ -269,6 +269,7 @@ import type {
   StoryMessageDraft,
   StoryState,
   StoryStateData,
+  StoryStateDataV2,
   StorySummary,
   UniverseExportBundleV1,
   Universe,
@@ -1153,7 +1154,7 @@ function applyStoryLocalIdentityToSavedAssistantText(args: {
 	text: string;
 	playerCharacter: PlayerCharacter;
 	playerIdentity: EffectivePlayerIdentity;
-	storyStateData: StoryStateData | null;
+	storyStateData: StoryStateData | StoryStateDataV2 | null;
 }): string {
 	const characterGenders = buildCharacterGenderHintsFromStoryState(args.storyStateData, {
 		playerName: args.playerCharacter.name,
@@ -1174,15 +1175,15 @@ function resolveStoryPlayerIdentityForGeneration(args: {
 	storyState: StoryState | null | undefined;
 	recentMessages: StoryMessage[];
 }): {
-	parsedStoryState: StoryStateData | null;
+	parsedStoryState: StoryStateData | StoryStateDataV2 | null;
 	playerIdentity: EffectivePlayerIdentity;
 	establishedFromTranscript: ReturnType<typeof detectEstablishedPlayerIdentityFromMessages>;
-	repairedStoryState: StoryStateData | null;
+	repairedStoryState: StoryStateData | StoryStateDataV2 | null;
 } {
-	let parsedStoryState = args.storyState?.stateJson?.trim()
+	let parsedStoryState: StoryStateData | StoryStateDataV2 | null = args.storyState?.stateJson?.trim()
 		? safeParseStoryStateData(args.storyState.stateJson)
 		: null;
-	let repairedStoryState: StoryStateData | null = null;
+	let repairedStoryState: StoryStateData | StoryStateDataV2 | null = null;
 
 	if (parsedStoryState) {
 		const repaired = repairCorruptedPlayerIdentityInStoryState(
@@ -1219,7 +1220,7 @@ function reportPlayerIdentityBeforeGeneration(args: {
 	storyId: string;
 	playerCharacter: PlayerCharacter;
 	playerIdentity: EffectivePlayerIdentity;
-	parsedStoryState: StoryStateData | null;
+	parsedStoryState: StoryStateData | StoryStateDataV2 | null;
 	establishedFromTranscript: ReturnType<typeof detectEstablishedPlayerIdentityFromMessages>;
 }) {
 	const audit = buildPlayerIdentityAuditSnapshot({
@@ -1251,7 +1252,7 @@ function reportPlayerIdentityBeforeGeneration(args: {
 async function persistRepairedStoryStateIfNeeded(args: {
 	storyId: string;
 	storyState: StoryState | null | undefined;
-	repairedStoryState: StoryStateData | null;
+	repairedStoryState: StoryStateData | StoryStateDataV2 | null;
 	repository: StoryEngineRepository;
 }): Promise<void> {
 	if (!args.repairedStoryState || !args.storyState?.stateJson?.trim()) {
@@ -6458,7 +6459,6 @@ export function StoryEngineProvider({
         const {
           parsedStoryState: parsedStoryStateForIdentity,
           playerIdentity,
-          establishedFromTranscript,
           repairedStoryState,
         } = resolveStoryPlayerIdentityForGeneration({
           playerCharacter,

@@ -75,49 +75,6 @@ export function findPlayerStoryStateEntry(
 	return null;
 }
 
-const DIRECTOR_NOTE_NAME_STOPWORDS = new Set([
-	"director",
-	"narrator",
-	"continue",
-	"chapter",
-	"system",
-	"assistant",
-	"morning",
-	"afternoon",
-	"evening",
-	"before",
-	"after",
-	"while",
-	"when",
-	"then",
-	"they",
-	"their",
-]);
-
-const DIRECTOR_PROTAGONIST_VERBS =
-	"(?:pulls|steps|turns|walks|sprints|stumbles|runs|rushes|enters|moves|looks|glances|sits|stands|reaches|leans|nods|shakes|smiles|wipes|bursts|collapses|gasps|freezes|spins|waves|hugs|cries|laughs|speaks|whispers|shouts|yells|screams|continues|stops|waits|pauses|breathes|sighs|sobs)";
-
-function directorNoteUsesNameAsProtagonist(content: string, name: string) {
-	const escaped = escapeRegex(name);
-	return new RegExp(
-		`\\b${escaped}\\b(?:\\s+\\w+){0,5}\\s+${DIRECTOR_PROTAGONIST_VERBS}\\b`,
-		"i",
-	).test(content);
-}
-
-function directorNoteReferencesKnownPlayerName(content: string, names: string[]) {
-	for (const name of names) {
-		const trimmed = name.trim();
-		if (!trimmed) {
-			continue;
-		}
-		if (new RegExp(`\\b${escapeRegex(trimmed)}\\b`, "i").test(content)) {
-			return true;
-		}
-	}
-	return false;
-}
-
 function extractChosenNameCandidate(
 	content: string,
 	legalName: string,

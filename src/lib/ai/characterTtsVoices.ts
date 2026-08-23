@@ -4,7 +4,7 @@ import {
 	getGeminiTtsVoiceIdsForGender,
 	type GeminiNarrationTtsSettings,
 } from "./geminiTtsVoices";
-import type { StoryStateData } from "../../types/models";
+import type { StoryStateData, StoryStateDataV2 } from "../../types/models";
 
 export type CharacterTtsVoiceMap = Record<string, string>;
 export type CharacterTtsLabelMap = Record<string, string>;
@@ -186,7 +186,7 @@ export function applyCharacterGenderHintForName(
 }
 
 export function buildCharacterGenderHintsFromStoryState(
-	storyStateData: StoryStateData | null | undefined,
+	storyStateData: StoryStateData | StoryStateDataV2 | null | undefined,
 	options?: {
 		playerName?: string | null;
 		playerGender?: string | null;
