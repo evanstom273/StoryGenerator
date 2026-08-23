@@ -1,4 +1,5 @@
 import { isDeniedSpeakerLabel } from "../relationshipIndex";
+import { repairNarratorBlocks } from "./narratorBlockRepair";
 import { repairSpeakerLabelArtifacts } from "./exportCleaner";
 import {
 	normalizeSceneSpeakerLabel,
@@ -10,6 +11,8 @@ export type TranscriptFormatRepairOptions = {
 	playerName?: string | null;
 	playerSceneName?: string | null;
 	latestUserMessage?: string | null;
+	knownTies?: string[] | null;
+	transcriptText?: string | null;
 };
 
 const RESERVED_SPEAKER_LABELS = new Set(["narrator", "director", "time", "system", "assistant"]);
@@ -322,6 +325,10 @@ export function repairMalformedTranscriptFormat(
 	next = repairInlineSpeakerBoundaries(next);
 	next = repairSpeakerLabelEmDash(next);
 	next = repairMalformedNarratorLines(next);
+	next = repairNarratorBlocks(next, {
+		knownTies: options.knownTies,
+		transcriptText: options.transcriptText ?? options.latestUserMessage,
+	});
 	next = repairDeniedPseudoSpeakerPlayerLines(next, options);
 	next = repairMisplacedSpeakerLabelsInDialogue(next);
 	next = repairStrayAsteriskArtifacts(next);

@@ -4,6 +4,39 @@ const PRONOUN_PSEUDO_SPEAKERS = new Set([
 
 const VALID_INNER_LABEL_RE = /^[A-Z][a-zA-Z0-9 ''\-\.]{0,59}$/;
 
+function looksLikeNamedCharacterNarration(content: string) {
+  const trimmed = content.trim();
+  const match = trimmed.match(/^([A-Z][a-zA-Z''-]{1,24})\s+([a-z][a-zA-Z''-]*)/);
+  if (!match?.[1] || !match[2]) {
+    return false;
+  }
+
+  if (PRONOUN_PSEUDO_SPEAKERS.has(match[1])) {
+    return false;
+  }
+
+  const verb = match[2].toLowerCase();
+  return (
+    verb.endsWith("s") ||
+    verb.endsWith("ed") ||
+    verb.endsWith("ing") ||
+    verb.endsWith("es")
+  );
+}
+
+function formatPronounLedNarratorContent(pronoun: string, content: string) {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return `Narrator: *${pronoun}.*`;
+  }
+
+  if (looksLikeNamedCharacterNarration(trimmed)) {
+    return `Narrator: *${ensureEndPunct(trimmed)}*`;
+  }
+
+  return `Narrator: *${ensureEndPunct(`${pronoun} ${trimmed}`)}*`;
+}
+
 function fixEncodingGlitches(text: string): string {
   // Rosa?s → Rosa's (encoding corruption where ' became ?)
   return text.replace(/([a-zA-Z])\?([a-zA-Z])/g, "$1'$2");
@@ -47,17 +80,17 @@ function fixLine(line: string): string {
   if (narratorPronounMatch) {
     const pronoun = narratorPronounMatch[1];
     const content = stripItalicDelimiters(narratorPronounMatch[2].trim());
-    return `Narrator: *${ensureEndPunct(`${pronoun} ${content}`)}*`;
+    return formatPronounLedNarratorContent(pronoun, content);
   }
 
-  // She: *action* → Narrator: *She action.*
+  // She: *action* → Narrator: *She action.* (or Narrator: *Mac bolts...* when naming a character)
   const pronounMatch = trimmed.match(
     /^(She|Her|He|His|Him|They|Their|Them|It|Its):\s*(.*)$/,
   );
   if (pronounMatch) {
     const pronoun = pronounMatch[1];
     const content = stripItalicDelimiters(pronounMatch[2].trim());
-    return `Narrator: *${ensureEndPunct(`${pronoun} ${content}`)}*`;
+    return formatPronounLedNarratorContent(pronoun, content);
   }
 
   // Narrator: Narrator: text → Narrator: text

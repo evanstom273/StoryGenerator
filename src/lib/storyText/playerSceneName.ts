@@ -9,6 +9,7 @@ import { isDeniedSpeakerLabel } from "../relationshipIndex";
 import { extractSpeakerPrefix } from "./extractSpeakerPrefix";
 import { splitDialogueQuoteRegions } from "./dialogueQuoteRegions";
 import { findSpeakerColonIndex, looksLikeClockTimeFragment } from "./clockTimeInProse";
+import { isSubjectPronounPseudoSpeaker } from "./narratorBlockRepair";
 import { normalizeSceneSpeakerLabel } from "./speakerLabels";
 
 const RESERVED_SPEAKER_LABELS = new Set(["narrator", "director", "time", "system", "assistant"]);
@@ -592,6 +593,9 @@ function shouldSkipActionBeatSpeaker(label: string) {
 		return true;
 	}
 	if (/^(?:He|She|They)\s+narrator$/i.test(trimmed)) {
+		return true;
+	}
+	if (isSubjectPronounPseudoSpeaker(trimmed)) {
 		return true;
 	}
 	return false;

@@ -76,6 +76,19 @@ export function normalizeEmbeddedNicknameMentions(text: string) {
 const FULL_NAME_IN_PROSE =
 	/\b([A-Z][a-zA-Z''-]*)\s+([A-Z][a-zA-Z''-]*)\b/g;
 
+const PRONOUN_FIRST_WORDS = new Set([
+	"He",
+	"She",
+	"They",
+	"Him",
+	"Her",
+	"Them",
+	"His",
+	"Their",
+	"It",
+	"Its",
+]);
+
 const NOT_A_NAME_SECOND_WORD = new Set([
 	"Room",
 	"Street",
@@ -125,6 +138,9 @@ const NOT_A_NAME_SECOND_WORD = new Set([
 /** Collapse simple two-word full names in prose to first name only. */
 export function normalizeFullNameMentions(text: string) {
 	return text.replace(FULL_NAME_IN_PROSE, (match, first, second) => {
+		if (PRONOUN_FIRST_WORDS.has(first) || PRONOUN_FIRST_WORDS.has(second)) {
+			return match;
+		}
 		if (NOT_A_NAME_SECOND_WORD.has(second)) {
 			return match;
 		}
