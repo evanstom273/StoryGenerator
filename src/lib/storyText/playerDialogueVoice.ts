@@ -154,8 +154,33 @@ export function dialogueLooksAddressedToPlayer(dialogue: string, playerName: str
 	);
 }
 
-export function dialogueLooksLikePlayerVoice(dialogue: string, _playerName?: string) {
-	return dialogueHasFirstPersonVoice(dialogue);
+const MISATTRIBUTED_DIALOGUE_SUBJECT_STOPWORDS = new Set([
+	"where",
+	"what",
+	"how",
+	"why",
+	"when",
+	"who",
+	"which",
+	"there",
+	"here",
+	"it",
+	"this",
+	"that",
+]);
+
+export function dialogueMentionsAnotherNamedSubject(dialogue: string, playerVariants: Set<string>) {
+	const properSubject = dialogue.match(/\b([A-Z][a-zA-Z''-]+)\s+(?:is|was|are|were)\b/);
+	if (!properSubject?.[1]) {
+		return false;
+	}
+
+	const subject = normalizeSceneSpeakerLabel(properSubject[1]).toLowerCase();
+	if (MISATTRIBUTED_DIALOGUE_SUBJECT_STOPWORDS.has(subject)) {
+		return false;
+	}
+
+	return !playerVariants.has(subject);
 }
 
 export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName: string) {
@@ -193,12 +218,8 @@ export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName
 	}
 
 	if (!dialogueHasFirstPersonVoice(dialogue)) {
-		const properSubject = dialogue.match(/\b([A-Z][a-zA-Z''-]+)\s+(?:is|was|are|were)\b/);
-		if (properSubject?.[1]) {
-			const subject = normalizeSceneSpeakerLabel(properSubject[1]).toLowerCase();
-			if (!playerVariants.has(subject)) {
-				return true;
-			}
+		if (dialogueMentionsAnotherNamedSubject(dialogue, playerVariants)) {
+			return true;
 		}
 	}
 
