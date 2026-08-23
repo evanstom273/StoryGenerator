@@ -35,6 +35,27 @@ interface GeminiGenerateContentResponse {
   promptFeedback?: unknown;
 }
 
+export function extractGeminiResponseText(
+  parts: Array<{ text?: string; thought?: boolean }> | undefined,
+): string {
+  const safeParts = parts ?? [];
+  const visible = safeParts
+    .filter((part) => !part.thought)
+    .map((part) => part.text ?? "")
+    .join("");
+  if (visible.trim()) {
+    return visible;
+  }
+
+  // Gemini 3.x may return the full answer only in thought-tagged parts when
+  // thinkingConfig is omitted. Prefer visible parts, but do not discard the scene.
+  return safeParts
+    .filter((part) => part.thought)
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
+}
+
 function buildGeminiRequest(
   messages: AIChatMessage[],
   opts?: {
@@ -208,10 +229,7 @@ async function callGenerateContent(
               if (!raw || raw === "[DONE]") continue;
               try {
                 const json = JSON.parse(raw) as GeminiGenerateContentResponse;
-                const text = (json.candidates?.[0]?.content?.parts ?? [])
-                  .filter((part) => !part.thought)
-                  .map((part) => part.text ?? "")
-                  .join("");
+                const text = extractGeminiResponseText(json.candidates?.[0]?.content?.parts);
                 if (text) {
                   opts.onChunk(text);
                   streamAccumulated += text;
@@ -227,10 +245,7 @@ async function callGenerateContent(
             if (raw && raw !== "[DONE]") {
               try {
                 const json = JSON.parse(raw) as GeminiGenerateContentResponse;
-                const text = (json.candidates?.[0]?.content?.parts ?? [])
-                  .filter((part) => !part.thought)
-                  .map((part) => part.text ?? "")
-                  .join("");
+                const text = extractGeminiResponseText(json.candidates?.[0]?.content?.parts);
                 if (text) {
                   opts.onChunk(text);
                   streamAccumulated += text;
@@ -269,11 +284,7 @@ async function callGenerateContent(
     }
 
     const json = (await response.json()) as GeminiGenerateContentResponse;
-    const content = (json.candidates?.[0]?.content?.parts ?? [])
-      .filter((part) => !part.thought)
-      .map((part) => part.text ?? "")
-      .join("") ?? "";
-    return content.trim();
+    return extractGeminiResponseText(json.candidates?.[0]?.content?.parts);
   } catch (error) {
     throw normalizeAIError(error, { userCancelled: opts?.signal?.aborted });
   } finally {

@@ -1278,7 +1278,7 @@ export function validateAssistantTranscriptForSave(args: {
 		return {
 			valid: false,
 			stage: "insubstantial",
-			diagnostic: `rewrite_stage=insubstantial; length=${preparedText.trim().length}`,
+			diagnostic: `rewrite_stage=insubstantial; length=${preparedText.trim().length}; rawLength=${args.text.trim().length}`,
 			formatIssues: [],
 			text: preparedText,
 		};
