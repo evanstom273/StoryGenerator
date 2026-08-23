@@ -623,7 +623,6 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 
 	if (/^(her|his|their)\s+/i.test(inner)) {
 		const [determiner, ...restWords] = inner.split(/\s+/);
-		const rest = restWords.join(" ");
 		const firstRest = restWords[0] ?? "";
 		if (/^(eyes|gaze|hands?|fingers?|breath|voice)\b/i.test(firstRest)) {
 			const tail = restWords.slice(1).join(" ");
