@@ -180,6 +180,45 @@ export function formatAntiCanonSprawlGuidance(hasKnownTies: boolean): string {
 	].join("\n");
 }
 
+/** True when the label is just the full legal name or one of its name tokens (e.g. James from James Peralta). */
+export function isLegalNameOnlyFragment(sceneName: string, legalName: string): boolean {
+	const scene = sceneName.trim().toLowerCase();
+	const legal = legalName.trim().toLowerCase();
+	if (!scene || !legal) {
+		return false;
+	}
+	if (scene === legal) {
+		return true;
+	}
+	return legalName
+		.trim()
+		.split(/\s+/)
+		.some((token) => token.toLowerCase() === scene);
+}
+
+/** Story-state displayName overrides the sheet only for genuine in-story renames (e.g. Lyra), not legal-name tokens. */
+export function isStoryLocalDisplayNameOverride(
+	displayName: string,
+	legalName: string,
+	sheetPreferred: string,
+): boolean {
+	const trimmed = displayName.trim();
+	if (!trimmed || !isValidPlayerSceneName(trimmed)) {
+		return false;
+	}
+	const displayLower = trimmed.toLowerCase();
+	if (displayLower === legalName.trim().toLowerCase()) {
+		return false;
+	}
+	if (displayLower === sheetPreferred.trim().toLowerCase()) {
+		return false;
+	}
+	if (isLegalNameOnlyFragment(trimmed, legalName)) {
+		return false;
+	}
+	return true;
+}
+
 export function resolvePlayerCharacterPreferredSceneName(
 	character: Pick<PlayerCharacter, "name" | "aliases">,
 ): string {
@@ -214,8 +253,7 @@ export function resolvePlayerCharacterSceneName(
 	const storyDisplayName = storyEntry?.displayName?.trim();
 	if (
 		storyDisplayName &&
-		isValidPlayerSceneName(storyDisplayName) &&
-		storyDisplayName.toLowerCase() !== legalName.toLowerCase()
+		isStoryLocalDisplayNameOverride(storyDisplayName, legalName, sheetPreferred)
 	) {
 		return storyDisplayName;
 	}
@@ -244,7 +282,14 @@ export function resolvePlayerCharacterSceneName(
 	const inferredFromMessages = opts?.recentMessages?.length
 		? inferPlayerSceneNameFromMessages(opts.recentMessages, legalName)
 		: null;
-	if (inferredFromMessages && isValidPlayerSceneName(inferredFromMessages)) {
+	if (
+		inferredFromMessages &&
+		isValidPlayerSceneName(inferredFromMessages) &&
+		!(
+			isLegalNameOnlyFragment(inferredFromMessages, legalName) &&
+			inferredFromMessages.toLowerCase() !== sheetPreferred.toLowerCase()
+		)
+	) {
 		return inferredFromMessages;
 	}
 
@@ -351,8 +396,11 @@ export function resolveEffectivePlayerIdentity(
 		!!pronouns &&
 		pronouns.toLowerCase() !== character.pronouns.trim().toLowerCase();
 	const hasStoryStateIdentity =
-		(!!storyEntry?.displayName?.trim() && isValidPlayerSceneName(storyEntry.displayName)) ||
-		!!storyEntry?.pronouns?.trim();
+		isStoryLocalDisplayNameOverride(
+			storyEntry?.displayName ?? "",
+			legalName,
+			sheetPreferred,
+		) || !!storyEntry?.pronouns?.trim();
 
 	return {
 		sceneName,

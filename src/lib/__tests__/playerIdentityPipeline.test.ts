@@ -69,10 +69,47 @@ describe("player identity pipeline", () => {
 		it("repairs corrupted displayName from persisted story state", () => {
 			const { state, changed } = repairCorruptedPlayerIdentityInStoryState(
 				corruptedState,
-				"James Peralta",
+				jamieCharacter,
 			);
 			expect(changed).toBe(true);
 			expect(state?.characters?.["James Peralta"]?.displayName).toBeUndefined();
+		});
+
+		it("repairs legal-name-token displayName when the sheet alias is Jamie", () => {
+			const { state, changed } = repairCorruptedPlayerIdentityInStoryState(
+				{
+					updatedAt: "2026-08-22T00:00:00.000Z",
+					characters: {
+						"James Peralta": {
+							displayName: "James",
+							pronouns: "he/him",
+						},
+					},
+					worldFacts: [],
+					unresolvedThreads: [],
+				},
+				jamieCharacter,
+			);
+			expect(changed).toBe(true);
+			expect(state?.characters?.["James Peralta"]?.displayName).toBeUndefined();
+		});
+
+		it("prefers Jamie over story-state displayName James for James Peralta", () => {
+			expect(
+				resolvePlayerCharacterSceneName(jamieCharacter, {
+					storyState: {
+						updatedAt: "2026-08-22T00:00:00.000Z",
+						characters: {
+							"James Peralta": {
+								displayName: "James",
+								pronouns: "he/him",
+							},
+						},
+						worldFacts: [],
+						unresolvedThreads: [],
+					},
+				}),
+			).toBe("Jamie");
 		});
 
 		it("does not persist invalid scene names back into story state", () => {

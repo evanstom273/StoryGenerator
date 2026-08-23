@@ -1188,7 +1188,7 @@ function resolveStoryPlayerIdentityForGeneration(args: {
 	if (parsedStoryState) {
 		const repaired = repairCorruptedPlayerIdentityInStoryState(
 			parsedStoryState,
-			args.playerCharacter.name,
+			args.playerCharacter,
 		);
 		if (repaired.changed && repaired.state) {
 			parsedStoryState = repaired.state;
