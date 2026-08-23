@@ -10,6 +10,25 @@ export interface GeminiThinkingSettings {
  * Gemini 2.5 Pro cannot disable thinking (minimum budget 128).
  * Gemini 3.x models use thinkingLevel; budget 0 is invalid on Pro.
  */
+export function resolveGeminiStoryThinkingSettings(model: string): GeminiThinkingSettings | undefined {
+	const normalized = model.trim().toLowerCase();
+
+	if (normalized.startsWith("gemini-3.")) {
+		if (normalized.includes("pro")) {
+			return { thinkingLevel: "low" };
+		}
+
+		if (normalized.includes("flash")) {
+			// Story beats need visible output; minimal can yield zero non-thought tokens.
+			return { thinkingLevel: "low" };
+		}
+
+		return { thinkingLevel: "low" };
+	}
+
+	return resolveGeminiMinimalThinkingSettings(model);
+}
+
 export function resolveGeminiMinimalThinkingSettings(model: string): GeminiThinkingSettings | undefined {
 	const normalized = model.trim().toLowerCase();
 

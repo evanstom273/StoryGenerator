@@ -25,7 +25,7 @@ import {
 } from "../../lib/dates";
 import { createEntityId } from "../../lib/ids";
 import { createAIProvider } from "../../lib/ai/providerFactory";
-import { resolveGeminiMinimalThinkingSettings } from "../../lib/ai/geminiThinking";
+import { resolveGeminiMinimalThinkingSettings, resolveGeminiStoryThinkingSettings } from "../../lib/ai/geminiThinking";
 import {
   buildStoryChatContext,
   buildStorySummaryContext,
@@ -890,7 +890,11 @@ async function generateResponseWithRetry(params: {
   const indexingConfig = !isStreaming ? getIndexingRequestConfig(params.model) : null;
   const thinking =
     params.thinking ??
-    (params.providerType === "gemini" ? resolveGeminiMinimalThinkingSettings(params.model) : undefined);
+    (params.providerType === "gemini"
+      ? isStreaming
+        ? resolveGeminiStoryThinkingSettings(params.model)
+        : resolveGeminiMinimalThinkingSettings(params.model)
+      : undefined);
   const maxAttempts =
     streamConfig?.maxAttempts ?? params.maxAttempts ?? indexingConfig?.maxAttempts ?? AI_MAX_ATTEMPTS;
   const requestTimeoutMs =
@@ -938,6 +942,16 @@ async function generateResponseWithRetry(params: {
         idleTimeoutMs: params.idleTimeoutMs ?? streamConfig?.idleTimeoutMs,
         onChunk: params.onChunk,
       });
+      if (!result.content?.trim()) {
+        throw createAIGenerationError("provider", "The model returned an empty response.", {
+          retryable: true,
+          diagnostic: [
+            "empty_provider_response",
+            `stage=${params.debugTrace?.stage ?? "unknown"}`,
+            `attempt=${attempt}`,
+          ].join("; "),
+        });
+      }
       // #region debug-point A:provider-response
       reportGenerationAudit({
         hypothesisId: "A",

@@ -32,8 +32,16 @@ interface GeminiGenerateContentResponse {
       parts?: Array<{ text?: string; thought?: boolean }>;
     };
   }>;
-  promptFeedback?: unknown;
+  promptFeedback?: {
+    blockReason?: string;
+  };
 }
+
+export type GeminiResponseExtraction = {
+  text: string;
+  finishReason?: string;
+  blockReason?: string;
+};
 
 export function extractGeminiResponseText(
   parts: Array<{ text?: string; thought?: boolean }> | undefined,
@@ -54,6 +62,55 @@ export function extractGeminiResponseText(
     .map((part) => part.text ?? "")
     .join("")
     .trim();
+}
+
+export function extractGeminiGenerateContentResponse(
+  json: GeminiGenerateContentResponse | undefined,
+): GeminiResponseExtraction {
+  const candidate = json?.candidates?.[0];
+  return {
+    text: extractGeminiResponseText(candidate?.content?.parts),
+    finishReason: candidate?.finishReason,
+    blockReason: json?.promptFeedback?.blockReason,
+  };
+}
+
+function isRetryableGeminiEmptyResponse(meta: GeminiResponseExtraction): boolean {
+  const finishReason = meta.finishReason?.trim().toUpperCase();
+  if (finishReason === "SAFETY" || finishReason === "RECITATION" || finishReason === "BLOCKLIST") {
+    return false;
+  }
+  if (meta.blockReason?.trim()) {
+    return false;
+  }
+  return true;
+}
+
+function buildGeminiEmptyResponseDiagnostic(meta: GeminiResponseExtraction): string {
+  return [
+    "empty_provider_response",
+    meta.finishReason ? `finishReason=${meta.finishReason}` : null,
+    meta.blockReason ? `blockReason=${meta.blockReason}` : null,
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function assertGeminiResponseHasText(meta: GeminiResponseExtraction): string {
+  if (meta.text.trim()) {
+    return meta.text;
+  }
+
+  throw new AIError(
+    "generation_failed",
+    "Gemini returned an empty response.",
+    undefined,
+    {
+      diagnostic: buildGeminiEmptyResponseDiagnostic(meta),
+      retryable: isRetryableGeminiEmptyResponse(meta),
+      kind: isRetryableGeminiEmptyResponse(meta) ? "provider" : "safety",
+    },
+  );
 }
 
 function buildGeminiRequest(
@@ -208,6 +265,7 @@ async function callGenerateContent(
         const decoder = new TextDecoder();
         let buffer = "";
         let idleTimer: number | null = null;
+        let lastResponseMeta: GeminiResponseExtraction = { text: "" };
 
         const resetIdleTimer = () => {
           if (idleTimer !== null) window.clearTimeout(idleTimer);
@@ -229,7 +287,9 @@ async function callGenerateContent(
               if (!raw || raw === "[DONE]") continue;
               try {
                 const json = JSON.parse(raw) as GeminiGenerateContentResponse;
-                const text = extractGeminiResponseText(json.candidates?.[0]?.content?.parts);
+                const responseMeta = extractGeminiGenerateContentResponse(json);
+                lastResponseMeta = responseMeta;
+                const text = responseMeta.text;
                 if (text) {
                   opts.onChunk(text);
                   streamAccumulated += text;
@@ -245,7 +305,9 @@ async function callGenerateContent(
             if (raw && raw !== "[DONE]") {
               try {
                 const json = JSON.parse(raw) as GeminiGenerateContentResponse;
-                const text = extractGeminiResponseText(json.candidates?.[0]?.content?.parts);
+                const responseMeta = extractGeminiGenerateContentResponse(json);
+                lastResponseMeta = responseMeta;
+                const text = responseMeta.text;
                 if (text) {
                   opts.onChunk(text);
                   streamAccumulated += text;
@@ -260,7 +322,11 @@ async function callGenerateContent(
           reader.releaseLock();
         }
 
-        return streamAccumulated.trim();
+        return assertGeminiResponseHasText({
+          text: streamAccumulated.trim(),
+          finishReason: lastResponseMeta.finishReason,
+          blockReason: lastResponseMeta.blockReason,
+        });
       } catch (streamErr) {
         if (streamAccumulated !== "") throw streamErr;
         // No chunks delivered — fall through to non-streaming path
@@ -284,7 +350,7 @@ async function callGenerateContent(
     }
 
     const json = (await response.json()) as GeminiGenerateContentResponse;
-    return extractGeminiResponseText(json.candidates?.[0]?.content?.parts);
+    return assertGeminiResponseHasText(extractGeminiGenerateContentResponse(json));
   } catch (error) {
     throw normalizeAIError(error, { userCancelled: opts?.signal?.aborted });
   } finally {

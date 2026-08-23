@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveGeminiMinimalThinkingSettings } from "../ai/geminiThinking";
+import { resolveGeminiMinimalThinkingSettings, resolveGeminiStoryThinkingSettings } from "../ai/geminiThinking";
 
 describe("resolveGeminiMinimalThinkingSettings", () => {
 	it("uses thinkingLevel low for Gemini 3.1 Pro", () => {
@@ -11,6 +11,12 @@ describe("resolveGeminiMinimalThinkingSettings", () => {
 	it("uses thinkingLevel minimal for Gemini 3.6 Flash", () => {
 		expect(resolveGeminiMinimalThinkingSettings("gemini-3.6-flash")).toEqual({
 			thinkingLevel: "minimal",
+		});
+	});
+
+	it("uses thinkingLevel low for Gemini 3.6 Flash story generation", () => {
+		expect(resolveGeminiStoryThinkingSettings("gemini-3.6-flash")).toEqual({
+			thinkingLevel: "low",
 		});
 	});
 

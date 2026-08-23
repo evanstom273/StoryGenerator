@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { extractGeminiResponseText } from "../ai/geminiProvider";
+import {
+	extractGeminiGenerateContentResponse,
+	extractGeminiResponseText,
+} from "../ai/geminiProvider";
 
 describe("extractGeminiResponseText", () => {
 	it("prefers non-thought parts", () => {
@@ -17,5 +20,27 @@ describe("extractGeminiResponseText", () => {
 				{ text: "Narrator: *The room is quiet.*", thought: true },
 			]),
 		).toBe("Narrator: *The room is quiet.*");
+	});
+});
+
+describe("extractGeminiGenerateContentResponse", () => {
+	it("captures finishReason and blockReason metadata", () => {
+		expect(
+			extractGeminiGenerateContentResponse({
+				candidates: [
+					{
+						finishReason: "STOP",
+						content: {
+							parts: [{ text: "Narrator: *The room is quiet.*" }],
+						},
+					},
+				],
+				promptFeedback: { blockReason: "SAFETY" },
+			}),
+		).toEqual({
+			text: "Narrator: *The room is quiet.*",
+			finishReason: "STOP",
+			blockReason: "SAFETY",
+		});
 	});
 });
