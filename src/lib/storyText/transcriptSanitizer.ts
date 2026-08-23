@@ -651,9 +651,56 @@ function fixBareNameHeaders(text: string): string {
   return result.join("\n");
 }
 
-// Casual speech-transition colons → em dash, and colon-before-action → em dash
+// Casual speech-transition colons → em dash (quoted dialogue only)
 const FILLER_COLON_RE =
   /\b(like|well|look|listen|see|right|okay|i mean|you know|and like|but like|so like|i guess|anyway|honestly|seriously|genuinely|basically|literally):\s+/gi;
+
+const EM_DASH_SEPARATOR = " — ";
+
+function restrainEmDashUsageInLine(line: string): string {
+	let rebuilt = "";
+
+	for (const region of splitDialogueQuoteRegions(line)) {
+		if (region.kind === "quoted") {
+			let dialogue = region.text;
+			const sentences = dialogue.split(/(?<=[.!?…])\s+/);
+			const normalizedSentences = sentences.map((sentence) => {
+				let dashCount = 0;
+				return sentence.replace(/\s—\s/g, () => {
+					dashCount += 1;
+					return dashCount === 1 ? EM_DASH_SEPARATOR : ", ";
+				});
+			});
+			rebuilt += `"${normalizedSentences.join(" ")}"`;
+			continue;
+		}
+
+		rebuilt += region.text;
+	}
+
+	return rebuilt || line;
+}
+
+export function restrainEmDashUsageInTranscript(text: string): string {
+	const lines = normalizeNewlines(text).split("\n");
+	return lines.map((line) => restrainEmDashUsageInLine(line)).join("\n");
+}
+
+function applyFillerColonToEmDashInQuotedDialogue(line: string): string {
+	let rebuilt = "";
+
+	for (const region of splitDialogueQuoteRegions(line)) {
+		if (region.kind === "quoted") {
+			const normalized = region.text.replace(FILLER_COLON_RE, (_, word: string) => `${word} — `);
+			rebuilt += `"${normalized}"`;
+			continue;
+		}
+
+		rebuilt += region.text;
+	}
+
+	return rebuilt || line;
+}
 
 function isSpeakerLabelActionLine(trimmed: string) {
   return /^[^\n:]{1,48}:\s*\*/.test(trimmed);
@@ -676,8 +723,8 @@ function fixDialogueColons(text: string): string {
       result = result.replace(/:\s*(\*[^*\n]+\*)/g, " — $1");
     }
 
-    // Casual filler words using colon as a transition
-    result = result.replace(FILLER_COLON_RE, (_, word: string) => `${word} — `);
+    result = applyFillerColonToEmDashInQuotedDialogue(result);
+    result = restrainEmDashUsageInLine(result);
 
     return result;
   }).join("\n");
@@ -831,7 +878,8 @@ export function sanitizeAssistantTranscript(args: {
   const markdownStripped = stripMarkdownArtifacts(narratorStripped.text);
   const bareNamesFixed = fixBareNameHeaders(markdownStripped.text);
   const dialogueColonsFixed = fixDialogueColons(bareNamesFixed);
-  const quotedDialogueRepaired = repairQuotedDialogueMarkers(dialogueColonsFixed);
+  const emDashRestrained = restrainEmDashUsageInTranscript(dialogueColonsFixed);
+  const quotedDialogueRepaired = repairQuotedDialogueMarkers(emDashRestrained);
   const actionPeriodsFixed = ensureActionPeriods(quotedDialogueRepaired);
   const normalizedActions = normalizeThirdPersonActions(actionPeriodsFixed, args.playerName);
   const emphasisStripped = stripInlineAsteriskEmphasis(normalizedActions);
@@ -906,12 +954,14 @@ export function applyStoryLocalIdentityToAssistantTranscript(
 		normalized = applyPlayerSceneNameToTranscript(normalized, legalName, sceneName);
 	}
 
-	return normalizeCharacterActionBeatsInTranscript(normalized, {
+	normalized = normalizeCharacterActionBeatsInTranscript(normalized, {
 		playerSceneName: sceneName,
 		playerLegalName: legalName,
 		playerPronouns: args.pronouns,
 		characterGenders: args.characterGenders,
 	});
+
+	return restrainEmDashUsageInTranscript(normalized);
 }
 
 export function sanitizeMessageForDisplay(args: {
