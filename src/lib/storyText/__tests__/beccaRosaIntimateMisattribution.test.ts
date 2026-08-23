@@ -1,55 +1,87 @@
 import { describe, expect, it } from "vitest";
 import { speakerLineLooksLikeMisattributedPlayer } from "../playerDialogueVoice";
+import { normalizeCharacterActionBeatsInTranscript } from "../playerSceneName";
 import { validateAssistantTranscriptForSave } from "../transcriptSanitizer";
 
 const HIDDEN_DIALOGUE_PATTERN =
 	/\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
 
-const MISATTRIBUTED_INTIMATE_SCENE = `Narrator: *The living room cushions are cool against bare skin as the last of their clothes drop in a soft pile on the hardwood floor beside the coffee table.*
+const USER_REPORTED_SCENE = `Narrator: *Chapter.*
 
-Rebecca: *She steps into the leather straps, pulling them up over her thighs and hipbones with practiced ease.* *She reaches down to seat the internal bulb comfortably against herself, adjusting the fit until the base rests snug and secure.*
+Narrator: *The living room rug becomes a temporary landing pad for discarded denim, cotton, and leather as both of them strip down without a second thought. Rosa sprawls back against the cushions, her dark hair scattered over the armrest, her breathing still quick and uneven as she waits, her gaze fixed entirely on Rebecca.*
 
-Rebecca: *She shifts her hips slightly on the leather sofa, watching every movement with a dark, steady focus.* "You take your time on purpose. Just to make me wait."
+Rebecca: *She steps into the leather straps, pulling them taut over her hips and adjusting the back until the fit is snug and familiar.*
 
-Rebecca: *She fastens the side buckle, testing the tension against her skin before looking up.* "I like making sure everything is aligned properly. Precision is important, Detective."
+Narrator: *Rebecca secures the harness around her waist, taking a moment to position the attached dildo so the inner contoured bulb settles firmly inside her, pressing directly against her clit with every movement.*
 
-Rebecca: *She lets out a low, rough laugh, her knees parting wider as she reaches out to trace her fingers up Rebecca's outer thigh.* "Precision my ass. Get over here before I drag you down."`;
+Rebecca: *She hers eyes trace the strap-on against Rebecca's hips, her throat shifting as she swallows.* "You look entirely too pleased with yourself right now."
+
+Rebecca: *She steps over the low coffee table, placing a knee on the edge of the cushion right between Rosa's open thighs.* "That's because I know exactly how much you're going to like this."
+
+Rebecca: *She reaches out, her hands coming up to grip Rebecca's hips, her fingers digging into the leather straps.* "Then stop standing there looking pretty and bring it here."`;
 
 describe("Becca/Rosa intimate speaker misattribution", () => {
-	it("flags Rosa dialogue and action beats mislabeled as Rebecca", () => {
+	it("flags Rosa lines that reference Rebecca in third person on a Rebecca label", () => {
 		expect(
 			speakerLineLooksLikeMisattributedPlayer(
-				'Rebecca: *She shifts her hips slightly on the leather sofa, watching every movement with a dark, steady focus.* "You take your time on purpose. Just to make me wait."',
+				'Rebecca: *She hers eyes trace the strap-on against Rebecca\'s hips, her throat shifting as she swallows.* "You look entirely too pleased with yourself right now."',
 				'Rebecca "Becca" Alvarez',
 			),
 		).toBe(true);
 		expect(
 			speakerLineLooksLikeMisattributedPlayer(
-				'Rebecca: *She lets out a low, rough laugh, her knees parting wider as she reaches out to trace her fingers up Rebecca\'s outer thigh.* "Precision my ass. Get over here before I drag you down."',
+				'Rebecca: *She reaches out, her hands coming up to grip Rebecca\'s hips, her fingers digging into the leather straps.* "Then stop standing there looking pretty and bring it here."',
 				'Rebecca "Becca" Alvarez',
 			),
 		).toBe(true);
+	});
+
+	it("keeps Rebecca lines that use first-person voice toward Rosa", () => {
 		expect(
 			speakerLineLooksLikeMisattributedPlayer(
-				'Rebecca: *She fastens the side buckle, testing the tension against her skin before looking up.* "I like making sure everything is aligned properly. Precision is important, Detective."',
+				'Rebecca: *She steps over the low coffee table, placing a knee on the edge of the cushion right between Rosa\'s open thighs.* "That\'s because I know exactly how much you\'re going to like this."',
 				'Rebecca "Becca" Alvarez',
 			),
 		).toBe(false);
 	});
 
-	it("requires speaker-attribution rewrite for the misattributed intimate scene", () => {
+	it("requires speaker-attribution rewrite for the user-reported scene", () => {
 		const result = validateAssistantTranscriptForSave({
-			text: MISATTRIBUTED_INTIMATE_SCENE,
+			text: USER_REPORTED_SCENE,
 			playerName: 'Rebecca "Becca" Alvarez',
 			playerSceneName: "Becca",
 			playerPronouns: "she/her",
+			characterGenders: {
+				rebecca: "female",
+				becca: "female",
+				rosa: "female",
+			},
 			allowDirectedPlayerControl: true,
 			latestUserMessage:
-				"Director: *A moment later and there's a pile of clothes on the floor as both Rosa and Becca have stripped off. Rosa is lying there, waiting, while Becca puts the strap on, adjusting the dildo so the bulb of it sits comfortably inside her clit.*",
+				"Director: *Both Rosa and Becca strip down. Rosa waits on the couch while Becca puts on the strap-on.*",
 			hiddenDialoguePattern: HIDDEN_DIALOGUE_PATTERN,
 		});
 
 		expect(result.valid).toBe(false);
 		expect(result.stage).toBe("speaker_attribution");
+	});
+
+	it("repairs Hers eyes corruption from possessive determiner normalization", () => {
+		const normalized = normalizeCharacterActionBeatsInTranscript(
+			"Rebecca: *Her eyes trace the strap-on against Rebecca's hips.*",
+			{
+				playerSceneName: "Becca",
+				playerLegalName: 'Rebecca "Becca" Alvarez',
+				playerPronouns: "she/her",
+				characterGenders: {
+					rebecca: "female",
+					becca: "female",
+					rosa: "female",
+				},
+			},
+		);
+
+		expect(normalized).toContain("*She lets her eyes trace");
+		expect(normalized).not.toMatch(/\bhers eyes\b/i);
 	});
 });
