@@ -19,6 +19,7 @@ interface StoryMessageBubbleProps {
   playerLegalName?: string;
   playerSceneName?: string;
   playerPronouns?: string;
+  playerAliases?: string[];
   characterGenders?: CharacterTtsGenderMap;
   onEdit: (message: StoryMessage) => void;
   onQuickEdit?: (message: StoryMessage) => void;
@@ -164,6 +165,7 @@ export function StoryMessageBubble({
   playerLegalName,
   playerSceneName,
   playerPronouns,
+  playerAliases,
   characterGenders,
   onEdit,
   onQuickEdit,
@@ -224,6 +226,7 @@ export function StoryMessageBubble({
           playerName: effectiveLegalName,
           playerSceneName: effectiveSceneName,
           playerPronouns,
+          playerAliases,
           characterGenders,
         })
       : message.content;
