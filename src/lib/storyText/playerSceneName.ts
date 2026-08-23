@@ -595,6 +595,9 @@ function shouldSkipActionBeatSpeaker(label: string) {
 	if (/^(?:He|She|They)\s+narrator$/i.test(trimmed)) {
 		return true;
 	}
+	if (/\bnarrator\b/i.test(trimmed.replace(/^\*+|\*+$/g, ""))) {
+		return true;
+	}
 	if (isSubjectPronounPseudoSpeaker(trimmed)) {
 		return true;
 	}

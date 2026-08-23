@@ -979,6 +979,15 @@ export function applyStoryLocalIdentityToAssistantTranscript(
 	return restrainEmDashUsageInTranscript(normalized);
 }
 
+export function repairAssistantMessageContent(text: string): string {
+	let normalized = normalizeTranscriptForDisplay(text);
+	normalized = repairSpeakerLabelArtifacts(normalized);
+	normalized = repairNarratorBlocks(normalized, {
+		transcriptText: normalized,
+	});
+	return normalized;
+}
+
 export function sanitizeMessageForDisplay(args: {
   message: StoryMessage;
   latestUserMessage?: string | null;
@@ -996,6 +1005,11 @@ export function sanitizeMessageForDisplay(args: {
   const legalName = args.playerName?.trim();
   const sceneName = args.playerSceneName?.trim() || legalName;
 
+  text = repairSpeakerLabelArtifacts(text);
+  text = repairNarratorBlocks(text, {
+    transcriptText: text,
+  });
+
   if (legalName && sceneName && legalName.toLowerCase() !== sceneName.toLowerCase()) {
     text = applyPlayerSceneNameToTranscript(text, legalName, sceneName);
   }
@@ -1008,6 +1022,10 @@ export function sanitizeMessageForDisplay(args: {
       characterGenders: args.characterGenders,
     });
   }
+
+  text = repairNarratorBlocks(text, {
+    transcriptText: text,
+  });
 
   return text;
 }

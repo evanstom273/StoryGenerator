@@ -12,6 +12,7 @@ import { normalizeSpeakerNamesInTranscript } from "../speakerLabels";
 import {
 	applyStoryLocalIdentityToAssistantTranscript,
 	prevalidateAssistantTranscript,
+	sanitizeMessageForDisplay,
 } from "../transcriptSanitizer";
 
 const MAC_SPRINTS_NARRATION =
@@ -93,6 +94,20 @@ describe("narratorBlockRepair", () => {
 		expect(sanitizeNarratorInnerContent(`He narrator: ${MAC_SPRINTS_NARRATION}`)).toBe(
 			MAC_SPRINTS_NARRATION,
 		);
+	});
+
+	it("does not corrupt unrepaired He narrator blocks during display sanitization", () => {
+		const raw =
+			"*He narrator: Back at the apartment, the quiet in the living room is suffocating. Amy paces back and forth along the rug.*";
+		const display = sanitizeMessageForDisplay({
+			message: { role: "assistant", content: raw },
+		});
+
+		expect(display).toBe(
+			"Narrator: *Back at the apartment, the quiet in the living room is suffocating. Amy paces back and forth along the rug.*",
+		);
+		expect(display).not.toContain("They back");
+		expect(display).not.toContain("He narrator");
 	});
 
 	it("does not run action-beat pronoun normalization on pronoun pseudo-speakers", () => {
