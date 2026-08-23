@@ -70,6 +70,13 @@ import type {
 import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "../../lib/ai/json";
 import { buildMatureFictionPolicyBlock } from "../../lib/ai/matureFictionPolicy";
 import {
+  adultContentModeToLegacyMatureFictionMode,
+  resolveAdultContentMode,
+  resolveNewStoryAdultContentMode,
+} from "../../lib/ai/adultContentMode";
+import { getAdultContentProviderCapability } from "../../lib/ai/providerCapabilities";
+import { applyOptionalValidatedRewrite } from "../../lib/ai/validatedOptionalRewrite";
+import {
   analyzeStoryInputSafety,
   formatLikelyFictionalSafetyRefusalMessage,
 } from "../../lib/ai/storyInputSafety";
@@ -81,7 +88,6 @@ import {
   isGenerationFailureError,
   withTransmitSafeDiagnostics,
 } from "../../lib/ai/errors";
-import { repairMisattributedPlayerSpeakerLabels } from "../../lib/storyText/speakerAttributionRepair";
 import { buildMatureFictionTransmitSafeSystemNote, buildTransmitSafeSystemNote, makeTransmitSafe } from "../../lib/ai/transmitSafe";
 import type {
   AIChatMessage,
@@ -136,10 +142,19 @@ import {
   applyStoryLocalIdentityToAssistantTranscript,
   repairAssistantMessageContent,
   validateAssistantTranscriptForSave,
-  shouldAcceptStreamDespiteSpeakerAttributionFlags,
   type AssistantTranscriptValidationStage,
 } from "../../lib/storyText/transcriptSanitizer";
 import { buildPlayerTranscriptIdentityFromStoryContext } from "../../lib/storyText/playerTranscriptIdentity";
+import {
+	buildActiveSceneSpeakerRegistry,
+	formatSceneSpeakerRegistryPrompt,
+	injectSceneSpeakerRegistry,
+	type ActiveSceneSpeakerRegistry,
+} from "../../lib/ai/sceneSpeakerRegistry";
+import {
+	resolveSemanticSpeakerAttribution,
+	type SemanticSpeakerResolutionChange,
+} from "../../lib/storyText/semanticSpeakerResolver";
 import { repairClockTimeColonCorruption } from "../../lib/storyText/clockTimeInProse";
 import { STREAM_VALIDATION_MAX_ATTEMPTS } from "../../lib/storyText/streamValidationPolicy";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
@@ -273,6 +288,7 @@ import type {
   StoryMetaMessage,
   StoryMessage,
   StoryMessageDraft,
+  StorySpeakerAttributionAudit,
   StoryState,
   StoryStateData,
   StoryStateDataV2,
@@ -705,7 +721,67 @@ function clipGenerationAuditText(value: string | null | undefined, max = 400) {
   return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
 }
 
-function summarizeGenerationAuditMessages(messages: AIChatMessage[]) {
+function fingerprintGenerationAuditText(value: string | null | undefined) {
+  const text = value ?? "";
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function formatGenerationAuditText(
+  value: string | null | undefined,
+  redactContent: boolean,
+  max = 400,
+) {
+  if (!redactContent) return clipGenerationAuditText(value, max);
+  const text = value ?? "";
+  return `[redacted length=${text.length} fingerprint=fnv1a:${fingerprintGenerationAuditText(text)}]`;
+}
+
+const GENERATION_AUDIT_SENSITIVE_FIELDS = new Set([
+  "diagnostic",
+  "firstsystempreview",
+  "lastuserpreview",
+  "lastusertext",
+  "originaltext",
+  "originalusertext",
+  "promptsummary",
+  "postprocessedresponse",
+  "rawgeminiresponse",
+  "rawoutput",
+  "savedoutput",
+  "summarymessage",
+  "finalstoredresponse",
+  "transmittedtext",
+]);
+
+function sanitizeGenerationAuditData(value: unknown, key = ""): unknown {
+  if (typeof value === "string") {
+    if (!GENERATION_AUDIT_SENSITIVE_FIELDS.has(key.toLowerCase())) return value;
+    if (value.startsWith("[redacted length=")) return value;
+    return formatGenerationAuditText(value, true, 1200);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeGenerationAuditData(item, key));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([entryKey, entryValue]) => [
+        entryKey,
+        sanitizeGenerationAuditData(entryValue, entryKey),
+      ]),
+    );
+  }
+  return value;
+}
+
+function summarizeGenerationAuditMessages(
+  messages: AIChatMessage[],
+  redactContent = false,
+) {
   const systemMessages = messages.filter((message) => message.role === "system");
   const assistantMessages = messages.filter((message) => message.role === "assistant");
   const userMessages = messages.filter((message) => message.role === "user");
@@ -714,8 +790,14 @@ function summarizeGenerationAuditMessages(messages: AIChatMessage[]) {
     systemCount: systemMessages.length,
     assistantCount: assistantMessages.length,
     userCount: userMessages.length,
-    firstSystemPreview: clipGenerationAuditText(systemMessages[0]?.content),
-    lastUserPreview: clipGenerationAuditText(userMessages[userMessages.length - 1]?.content),
+    firstSystemPreview: formatGenerationAuditText(
+      systemMessages[0]?.content,
+      redactContent,
+    ),
+    lastUserPreview: formatGenerationAuditText(
+      userMessages[userMessages.length - 1]?.content,
+      redactContent,
+    ),
   };
 }
 
@@ -840,7 +922,7 @@ function reportGenerationAudit(args: {
       traceId: args.traceId,
       location: args.location,
       msg: `[DEBUG] ${args.msg}`,
-      data: args.data,
+      data: sanitizeGenerationAuditData(args.data),
       ts: Date.now(),
     }),
   }).catch(() => {});
@@ -885,6 +967,7 @@ async function generateResponseWithRetry(params: {
     storyId?: string;
     stage: string;
     lastUserText?: string;
+    redactContent?: boolean;
   };
 }) {
   const isStreaming = !!params.onChunk;
@@ -925,8 +1008,14 @@ async function generateResponseWithRetry(params: {
         attempt,
         maxAttempts,
         streaming: isStreaming,
-        lastUserPreview: clipGenerationAuditText(params.debugTrace?.lastUserText),
-        messageSummary: summarizeGenerationAuditMessages(params.messages),
+        lastUserPreview: formatGenerationAuditText(
+          params.debugTrace?.lastUserText,
+          params.debugTrace?.redactContent ?? false,
+        ),
+        messageSummary: summarizeGenerationAuditMessages(
+          params.messages,
+          params.debugTrace?.redactContent,
+        ),
       },
     });
     // #endregion
@@ -968,7 +1057,11 @@ async function generateResponseWithRetry(params: {
           model: params.model,
           attempt,
           contentLength: result.content?.length ?? 0,
-          rawOutput: result.content ?? "",
+          rawOutput: formatGenerationAuditText(
+            result.content,
+            params.debugTrace?.redactContent ?? false,
+            1200,
+          ),
         },
       });
       // #endregion
@@ -991,7 +1084,11 @@ async function generateResponseWithRetry(params: {
           maxAttempts,
           classifiedKind: classified.kind,
           retryable: classified.retryable,
-          diagnostic: classified.diagnostic,
+          diagnostic: formatGenerationAuditText(
+            classified.diagnostic,
+            params.debugTrace?.redactContent ?? false,
+            1200,
+          ),
         },
       });
       // #endregion
@@ -1027,6 +1124,37 @@ type StreamedTranscriptRewritePrompts = {
 	sceneState: string;
 };
 
+function buildLightSceneRewritePrompt(args: {
+	target: { minWords: number; maxWords: number };
+	speakerRegistry: ActiveSceneSpeakerRegistry;
+	allowDirectedPlayerControl: boolean;
+}) {
+	return [
+		"Rewrite the following already-validated story scene to match a light interaction.",
+		`Target length: ${args.target.minWords}-${args.target.maxWords} words.`,
+		"Keep character voice and only the essential beats.",
+		"Do not reintroduce unchanged environments or participants.",
+		"Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
+		"Not every character needs to speak; keep participation natural.",
+		"Never speak for the player character. Do not generate suggested player lines or options.",
+		"Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
+		"Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
+		"Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
+		"Formatting rules:",
+		"- Every character line must start with 'Name:'.",
+		"- Actions must be wrapped as *...* (asterisks only for actions).",
+		'- Dialogue must be wrapped in double quotes like "..."',
+		'- If a character acts and speaks, keep both on the same line: Name: *action* "dialogue"',
+		"- Narration must use the format: Narrator: *prose text.*",
+		formatSceneSpeakerRegistryPrompt(
+			args.speakerRegistry,
+			args.allowDirectedPlayerControl,
+		),
+		"Mystery rule:",
+		"- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
+	].join("\n");
+}
+
 const STREAM_VALIDATION_MAX_REWRITES = STREAM_VALIDATION_MAX_ATTEMPTS;
 
 function reportStreamGenerationAttempt(
@@ -1047,8 +1175,12 @@ async function resolveStreamedAssistantTranscript(args: {
 	characterGenders?: ReturnType<typeof buildCharacterGenderHintsFromStoryState>;
 	allowDirectedPlayerControl: boolean;
 	skipSceneStateCheck?: boolean;
+	normalizeCandidate?: (text: string) => string;
+	speakerRegistry: ActiveSceneSpeakerRegistry;
 	hiddenDialoguePattern: RegExp;
 	rewritePrompts: StreamedTranscriptRewritePrompts;
+	allowProviderRewrites?: boolean;
+	redactContent?: boolean;
 	providerType: string;
 	provider: AIProvider;
 	apiKey: string;
@@ -1063,9 +1195,19 @@ async function resolveStreamedAssistantTranscript(args: {
 	geminiMatureFictionMode?: boolean;
 	knownTies?: string[];
 	transcriptText?: string;
-}): Promise<{ text: string; diagnostic: string }> {
+}): Promise<{
+	text: string;
+	diagnostic: string;
+	speakerResolutionChanges: SemanticSpeakerResolutionChange[];
+}> {
 	let candidateAssistantText = args.initialText;
 	let lastValidationDiagnostic = "";
+	const speakerResolutionChanges: SemanticSpeakerResolutionChange[] = [];
+	const speakerRegistryPrompt = formatSceneSpeakerRegistryPrompt(
+		args.speakerRegistry,
+		args.allowDirectedPlayerControl,
+	);
+	const withSpeakerRegistry = (prompt: string) => `${prompt}\n\n${speakerRegistryPrompt}`;
 
 	if (!candidateAssistantText.trim()) {
 		throw new GenerationFailureError(
@@ -1093,14 +1235,41 @@ async function resolveStreamedAssistantTranscript(args: {
 		Exclude<AssistantTranscriptValidationStage, "insubstantial">,
 		string
 	> = {
-		speaker_attribution: args.rewritePrompts.format,
-		format: args.rewritePrompts.format,
-		ownership: args.rewritePrompts.ownership,
-		hidden_dialogue: args.rewritePrompts.hiddenDialogue,
-		scene_state: args.rewritePrompts.sceneState,
+		speaker_attribution: withSpeakerRegistry(args.rewritePrompts.format),
+		format: withSpeakerRegistry(args.rewritePrompts.format),
+		ownership: withSpeakerRegistry(args.rewritePrompts.ownership),
+		hidden_dialogue: withSpeakerRegistry(args.rewritePrompts.hiddenDialogue),
+		scene_state: withSpeakerRegistry(args.rewritePrompts.sceneState),
 	};
 
 	for (let attempt = 0; attempt <= STREAM_VALIDATION_MAX_REWRITES; attempt += 1) {
+		candidateAssistantText = args.normalizeCandidate?.(candidateAssistantText) ?? candidateAssistantText;
+		const semanticResolution = resolveSemanticSpeakerAttribution({
+			text: candidateAssistantText,
+			player: {
+				name: args.speakerRegistry.player.canonicalName,
+				aliases: args.speakerRegistry.player.aliases,
+			},
+			eligibleSpeakers: args.speakerRegistry.eligibleNonPlayerSpeakers.map((speaker) => ({
+				name: speaker.canonicalName,
+				aliases: speaker.aliases,
+			})),
+		});
+		candidateAssistantText = semanticResolution.text;
+		if (semanticResolution.changed) {
+			speakerResolutionChanges.push(...semanticResolution.changes);
+			lastValidationDiagnostic = [
+				lastValidationDiagnostic,
+				...semanticResolution.changes.map(
+					(change) =>
+						`local_speaker_repair=line:${change.lineNumber},${change.originalSpeakerLabel}->${change.replacementSpeakerLabel}`,
+				),
+			]
+				.filter(Boolean)
+				.join("; ");
+			args.onChunkReset?.();
+			args.onChunk?.(candidateAssistantText);
+		}
 		const validation = validateAssistantTranscriptForSave({
 			text: candidateAssistantText,
 			latestUserMessage: args.latestUserMessage,
@@ -1114,32 +1283,14 @@ async function resolveStreamedAssistantTranscript(args: {
 			hiddenDialoguePattern: args.hiddenDialoguePattern,
 			knownTies: args.knownTies,
 			transcriptText: args.transcriptText ?? args.latestUserMessage,
+			repairSpeakerAttribution: false,
 		});
 
 		if (validation.valid) {
 			return {
 				text: normalizeTranscriptForDisplay(validation.text),
 				diagnostic: lastValidationDiagnostic,
-			};
-		}
-
-		if (
-			attempt === 0 &&
-			candidateAssistantText === args.initialText &&
-			validation.stage === "speaker_attribution" &&
-			shouldAcceptStreamDespiteSpeakerAttributionFlags({
-				text: candidateAssistantText,
-				playerName: args.playerName,
-			})
-		) {
-			return {
-				text: normalizeTranscriptForDisplay(validation.text),
-				diagnostic: [
-					lastValidationDiagnostic,
-					"accepted_stream_with_speaker_attribution_flags",
-				]
-					.filter(Boolean)
-					.join("; "),
+				speakerResolutionChanges,
 			};
 		}
 
@@ -1153,26 +1304,12 @@ async function resolveStreamedAssistantTranscript(args: {
 
 		const stage = validation.stage;
 
-		if (stage === "speaker_attribution") {
-			const localSpeakerRepair = repairMisattributedPlayerSpeakerLabels(
-				candidateAssistantText,
-				{
-					playerName: args.playerName,
-					knownTies: args.knownTies,
-					transcriptText: args.transcriptText ?? args.latestUserMessage,
-				},
-			);
-			if (localSpeakerRepair.repaired) {
-				candidateAssistantText = localSpeakerRepair.text;
-				lastValidationDiagnostic = [
-					lastValidationDiagnostic,
-					`local_speaker_repair=${localSpeakerRepair.repairedCount}`,
-				].join("; ");
-				continue;
-			}
-		}
-
-		if (!stage || stage === "insubstantial" || attempt >= STREAM_VALIDATION_MAX_REWRITES) {
+		if (
+			!stage ||
+			stage === "insubstantial" ||
+			attempt >= STREAM_VALIDATION_MAX_REWRITES ||
+			args.allowProviderRewrites === false
+		) {
 			break;
 		}
 
@@ -1200,6 +1337,7 @@ async function resolveStreamedAssistantTranscript(args: {
 					storyId: args.storyId,
 					stage: `${validation.stage}-rewrite`,
 					lastUserText: candidateAssistantText,
+					redactContent: args.redactContent,
 				},
 			})
 		).content;
@@ -1209,12 +1347,18 @@ async function resolveStreamedAssistantTranscript(args: {
 		createGenerationFailure(
 			createAIGenerationError(
 				"validation",
-				"The streamed response could not be validated. Rewrite attempts were exhausted.",
+				args.allowProviderRewrites === false
+					? "The response still needs a manual transcript correction. No provider rewrite was attempted, and the invalid draft was not saved."
+					: "The streamed response could not be validated. Rewrite attempts were exhausted.",
 				{
 					retryable: false,
 					diagnostic:
 						lastValidationDiagnostic ||
-						`rewrite_stage=unknown; raw=${clipGenerationAuditText(candidateAssistantText, 1200)}`,
+						`rewrite_stage=unknown; raw=${formatGenerationAuditText(
+							candidateAssistantText,
+							args.redactContent ?? false,
+							1200,
+						)}`,
 				},
 			),
 			{
@@ -1233,6 +1377,32 @@ function buildTranscriptRepairContext(messages: StoryMessage[]): string {
 		.filter((message) => message.role === "assistant" || message.role === "user")
 		.map((message) => message.content)
 		.join("\n\n");
+}
+
+function formatUnsupportedExplicitProviderMessage(providerType: AIProviderType) {
+  return `${providerType} is not enabled for explicit consensual-adult fiction in Story Engine. Choose Gemini (best effort) or switch this story to mature non-graphic mode.`;
+}
+
+function formatExplicitProviderRefusalMessage(providerType: AIProviderType) {
+  const providerName = providerType === "gemini" ? "Gemini" : providerType;
+  return `${providerName} filtered this explicit consensual-adult fiction request. Provider safeguards cannot be overridden. Your Director/player turn is still saved, and no invalid assistant scene was saved. You can retry, switch to mature non-graphic mode, edit/continue manually, or choose another supported provider.`;
+}
+
+function buildSpeakerAttributionAudit(
+	changes: SemanticSpeakerResolutionChange[],
+): StorySpeakerAttributionAudit | undefined {
+	if (!changes.length) return undefined;
+
+	return {
+		version: 1,
+		repairedAt: new Date().toISOString(),
+		repairs: changes.map((change) => ({
+			lineNumber: change.lineNumber,
+			from: change.originalSpeakerLabel,
+			to: change.replacementSpeakerLabel,
+			evidence: change.evidence.map((item) => item.kind),
+		})),
+	};
 }
 
 function applyStoryLocalIdentityToSavedAssistantText(args: {
@@ -1263,6 +1433,7 @@ function applyStoryLocalIdentityToSavedAssistantText(args: {
 		knownTies: identity.knownTies,
 		aliases: identity.aliases,
 		transcriptText: args.transcriptText,
+		repairSpeakerAttribution: false,
 	});
 }
 
@@ -1404,6 +1575,7 @@ async function generateSummaryWithRetry(params: {
     traceId: string;
     storyId?: string;
     stage: string;
+    redactContent?: boolean;
   };
 }) {
   const maxAttempts = params.maxAttempts ?? AI_MAX_ATTEMPTS;
@@ -1427,7 +1599,10 @@ async function generateSummaryWithRetry(params: {
         attempt,
         maxAttempts,
         storyTitle: params.storyTitle,
-        messageSummary: summarizeGenerationAuditMessages(params.messages),
+        messageSummary: summarizeGenerationAuditMessages(
+          params.messages,
+          params.debugTrace?.redactContent,
+        ),
       },
     });
     // #endregion
@@ -1452,7 +1627,11 @@ async function generateSummaryWithRetry(params: {
           model: params.model,
           attempt,
           summaryLength: typeof result === "string" ? result.length : 0,
-          rawOutput: typeof result === "string" ? result : "",
+          rawOutput: formatGenerationAuditText(
+            typeof result === "string" ? result : "",
+            params.debugTrace?.redactContent ?? false,
+            1200,
+          ),
         },
       });
       // #endregion
@@ -5920,6 +6099,7 @@ export function StoryEngineProvider({
       },
       async createStory(draft) {
         const now = new Date().toISOString();
+        const adultContentMode = resolveNewStoryAdultContentMode(draft);
         const universeIds = normalizeUniverseIds(
           draft.universeIds?.length ? draft.universeIds : [draft.universeId],
         );
@@ -5951,7 +6131,8 @@ export function StoryEngineProvider({
           isArchived: draft.isArchived,
           readOnlyReason: undefined,
           readOnlyLockedAt: undefined,
-          matureFictionMode: draft.matureFictionMode ?? true,
+          adultContentMode,
+          matureFictionMode: adultContentModeToLegacyMatureFictionMode(adultContentMode),
           rpMode,
           rpConfig: draft.rpConfig ?? (rpMode ? DEFAULT_RP_CONFIG : undefined),
           autoIndexMode: draft.autoIndexMode ?? "chapter",
@@ -6052,6 +6233,7 @@ export function StoryEngineProvider({
           now,
         });
         const universePackSnapshot = universePackSnapshots[0];
+        const adultContentMode = resolveAdultContentMode(sourceStory);
         const nextStory: Story = {
           id: storyId,
           title: input.title.trim(),
@@ -6067,7 +6249,8 @@ export function StoryEngineProvider({
           universePackSnapshots:
             universePackSnapshots.length > 1 ? universePackSnapshots : undefined,
           isArchived: false,
-          matureFictionMode: sourceStory.matureFictionMode,
+          adultContentMode,
+          matureFictionMode: adultContentModeToLegacyMatureFictionMode(adultContentMode),
           rpMode: sourceStory.rpMode,
           rpConfig: sourceStory.rpConfig,
           autoIndexMode: sourceStory.autoIndexMode,
@@ -6146,6 +6329,7 @@ export function StoryEngineProvider({
         ]);
 
         const storyId = createEntityId("story");
+        const adultContentMode = resolveAdultContentMode(sourceStory);
         const nextStory: Story = {
           ...sourceStory,
           id: storyId,
@@ -6158,6 +6342,8 @@ export function StoryEngineProvider({
           universePackSnapshot: buildUniversePackSnapshot(universePack),
           readOnlyReason: undefined,
           readOnlyLockedAt: undefined,
+          adultContentMode,
+          matureFictionMode: adultContentModeToLegacyMatureFictionMode(adultContentMode),
           createdAt: now,
           updatedAt: now,
         };
@@ -6243,6 +6429,10 @@ export function StoryEngineProvider({
           return null;
         }
 
+        const adultContentMode = patch.adultContentMode
+          ?? (typeof patch.matureFictionMode === "boolean"
+            ? (patch.matureFictionMode ? "mature_non_graphic" : "standard")
+            : resolveAdultContentMode(currentStory));
         const nextStory: Story = {
           ...currentStory,
           title: patch.title?.trim() ?? currentStory.title,
@@ -6251,7 +6441,8 @@ export function StoryEngineProvider({
           playerCharacterId:
             patch.playerCharacterId ?? currentStory.playerCharacterId,
           isArchived: patch.isArchived ?? currentStory.isArchived,
-          matureFictionMode: patch.matureFictionMode ?? currentStory.matureFictionMode,
+          adultContentMode,
+          matureFictionMode: adultContentModeToLegacyMatureFictionMode(adultContentMode),
           rpMode: patch.rpMode ?? currentStory.rpMode,
           rpConfig: patch.rpConfig ?? currentStory.rpConfig,
           autoIndexMode: patch.autoIndexMode ?? currentStory.autoIndexMode,
@@ -6428,6 +6619,11 @@ export function StoryEngineProvider({
           ...currentMessage,
           role: draft.role,
           content: (prefix?.strippedContent ?? draft.content).trim(),
+          speakerAttribution:
+            draft.role === "assistant" &&
+            (prefix?.strippedContent ?? draft.content).trim() === currentMessage.content
+              ? currentMessage.speakerAttribution
+              : undefined,
           speakerName: resolvedUserSpeakerName,
           speakerType: resolvedUserSpeakerType,
           directorIntent:
@@ -6507,6 +6703,7 @@ export function StoryEngineProvider({
         const nextMessage: StoryMessage = {
           ...currentMessage,
           content: repairedContent,
+          speakerAttribution: undefined,
           editedAt: new Date().toISOString(),
           revision: (currentMessage.revision ?? 0) + 1,
         };
@@ -6563,6 +6760,15 @@ export function StoryEngineProvider({
         const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
         const provider = createAIProvider(providerType);
         const traceId = makeGenerationAuditTraceId("story");
+        const adultContentMode = resolveAdultContentMode(story);
+        const redactSensitiveContent = adultContentMode === "explicit_consensual_adults";
+        const adultContentProviderCapability = getAdultContentProviderCapability(
+          providerType,
+          adultContentMode,
+        );
+        if (adultContentProviderCapability === "unsupported") {
+          throw new Error(formatUnsupportedExplicitProviderMessage(providerType));
+        }
 
         const playerNameForValidation = buildPlayerNameForValidation(
           playerCharacter,
@@ -6605,21 +6811,41 @@ export function StoryEngineProvider({
           repository,
         });
 
-        const context = buildStoryChatContext({
-          universe: effectiveUniverse,
-          story,
-          playerCharacter,
-          imports: effectiveImports,
-          summaries,
-          storyState,
+        const speakerRegistry = buildActiveSceneSpeakerRegistry({
+          player: {
+            canonicalName: playerIdentity.sceneName,
+            aliases: [
+              playerCharacter.name,
+              ...(playerCharacter.aliases ?? []),
+              playerIdentity.legalName,
+              playerIdentity.sceneName,
+            ],
+          },
+          storyState: parsedStoryStateForIdentity,
+          importedCharacters: importedStoryCharacters,
           recentMessages: sanitizedHistoryMessages,
           latestUserMessage: previousMessage.content,
-          latestUserMessageSpeakerType: previousMessage.speakerType,
-          allowDirectedPlayerControl,
-          directorIntent: previousMessage.directorIntent ?? null,
-          importedStoryCharacters,
-          playerIdentity,
         });
+        const context = injectSceneSpeakerRegistry(
+          buildStoryChatContext({
+            universe: effectiveUniverse,
+            story,
+            providerType,
+            playerCharacter,
+            imports: effectiveImports,
+            summaries,
+            storyState,
+            recentMessages: sanitizedHistoryMessages,
+            latestUserMessage: previousMessage.content,
+            latestUserMessageSpeakerType: previousMessage.speakerType,
+            allowDirectedPlayerControl,
+            directorIntent: previousMessage.directorIntent ?? null,
+            importedStoryCharacters,
+            playerIdentity,
+          }),
+          speakerRegistry,
+          allowDirectedPlayerControl,
+        );
 
         const streamAttempt = { current: 0 };
         const reportStreamAttempt = () => {
@@ -6627,70 +6853,44 @@ export function StoryEngineProvider({
         };
         reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt);
 
-        const assistantContent = await generateResponseWithRetry({
-          providerType,
-          provider,
-          apiKey,
-          model,
-          messages: context,
-          signal: opts?.signal,
-          idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
-          onChunk: opts?.onChunk,
-          onChunkReset: opts?.onChunkReset,
-        });
+        let assistantContent: GenerateResponseResult;
+        try {
+          assistantContent = await generateResponseWithRetry({
+            providerType,
+            provider,
+            apiKey,
+            model,
+            messages: context,
+            signal: opts?.signal,
+            idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
+            onChunk: opts?.onChunk,
+            onChunkReset: opts?.onChunkReset,
+            debugTrace: {
+              traceId,
+              mode: "story",
+              storyId,
+              stage: "regenerate-initial",
+              lastUserText: previousMessage.content,
+              redactContent: redactSensitiveContent,
+            },
+          });
+        } catch (error) {
+          if (
+            redactSensitiveContent &&
+            isGenerationFailureError(error) &&
+            error.failure.kind === "provider_refusal"
+          ) {
+            throw new GenerationFailureError({
+              ...error.failure,
+              summaryMessage: formatExplicitProviderRefusalMessage(providerType),
+              diagnostic: formatGenerationAuditText(error.failure.diagnostic, true, 1200),
+            });
+          }
+          throw error;
+        }
 
         const sceneDepth = inferSceneDepth(previousMessage.content);
         const target = getSceneWordTarget(sceneDepth);
-        const wordCount = assistantContent.content.split(/\s+/).filter(Boolean).length;
-        const shouldRewriteForSize = sceneDepth === "light" && wordCount > target.maxWords * 2;
-        const finalAssistantText = shouldRewriteForSize
-          ? (
-              await (async () => {
-                opts?.onChunkReset?.();
-                return generateResponseWithRetry({
-                  providerType,
-                  provider,
-                  apiKey,
-                  model,
-                  messages: [
-                    {
-                      role: "system",
-                      content: [
-                        "Rewrite the following story scene to match a light interaction.",
-                        `Target length: ${target.minWords}-${target.maxWords} words.`,
-                        formatHumanNovelistProseGuidance(),
-                        "Keep character voice and only the essential beats.",
-                        "Do not reintroduce unchanged environments or participants.",
-                        "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
-                        "Not every character needs to speak; keep participation natural.",
-                        "Never speak for the player character. Do not generate suggested player lines or options.",
-                        "Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
-                        "Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
-                        "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
-                        "Formatting rules:",
-                        "- Every character line must start with 'Name:'.",
-                        "- Actions must be wrapped as *...* (asterisks only for actions).",
-                        '- Dialogue must be wrapped in double quotes like \"...\"',
-                        "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-                        "- Narration must use the format: Narrator: *prose text.*",
-                        "Mystery rule:",
-                        "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
-                      ].join("\n"),
-                    },
-                    {
-                      role: "user",
-                      content: assistantContent.content,
-                    },
-                  ],
-                  signal: opts?.signal,
-                  onChunk: opts?.onChunk,
-                  onChunkReset: opts?.onChunkReset,
-                  idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
-                });
-              })()
-            ).content
-          : assistantContent.content;
-
         const formatRewritePrompt = [
           "Rewrite the following story scene into the required Story Engine transcript grammar.",
           "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
@@ -6841,48 +7041,121 @@ export function StoryEngineProvider({
           playerPronouns: playerIdentity.pronouns,
         });
 
-        const { text: finalStreamText } = await resolveStreamedAssistantTranscript({
-          initialText: finalAssistantText,
-          latestUserMessage: previousMessage.content,
-          playerName: playerNameForValidation,
-          playerSceneName: playerIdentity.sceneName,
-          playerPronouns: playerIdentity.pronouns,
-          playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
-          characterGenders: streamCharacterGenders,
-          allowDirectedPlayerControl,
-          hiddenDialoguePattern: hiddenDialogueInferencePattern,
-          knownTies: normalizePlayerCharacterKnownTies(playerCharacter.knownTies),
-          transcriptText: transcriptRepairContext,
-          rewritePrompts: {
-            format: formatRewritePrompt,
-            ownership: ownershipRewritePrompt,
-            hiddenDialogue: hiddenDialogueRewritePrompt,
-            sceneState: sceneStateRewritePrompt,
-          },
-          providerType,
-          provider,
-          apiKey,
-          model,
-          signal: opts?.signal,
-          onChunk: opts?.onChunk,
-          onChunkReset: opts?.onChunkReset,
-          reportStreamAttempt,
-          streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
-          traceId,
-          storyId,
-        });
+        const validateCandidate = (initialText: string) =>
+          resolveStreamedAssistantTranscript({
+            initialText,
+            latestUserMessage: previousMessage.content,
+            playerName: playerNameForValidation,
+            playerSceneName: playerIdentity.sceneName,
+            playerPronouns: playerIdentity.pronouns,
+            playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
+            characterGenders: streamCharacterGenders,
+            allowDirectedPlayerControl,
+            speakerRegistry,
+            normalizeCandidate: (text) =>
+              applyStoryLocalIdentityToSavedAssistantText({
+                text,
+                playerCharacter,
+                playerIdentity,
+                storyStateData: parsedStoryStateForIdentity,
+                transcriptText: `${transcriptRepairContext}\n\n${text}`,
+              }),
+            hiddenDialoguePattern: hiddenDialogueInferencePattern,
+            knownTies: normalizePlayerCharacterKnownTies(playerCharacter.knownTies),
+            transcriptText: transcriptRepairContext,
+            rewritePrompts: {
+              format: formatRewritePrompt,
+              ownership: ownershipRewritePrompt,
+              hiddenDialogue: hiddenDialogueRewritePrompt,
+              sceneState: sceneStateRewritePrompt,
+            },
+            allowProviderRewrites: !redactSensitiveContent,
+            redactContent: redactSensitiveContent,
+            providerType,
+            provider,
+            apiKey,
+            model,
+            signal: opts?.signal,
+            onChunk: opts?.onChunk,
+            onChunkReset: opts?.onChunkReset,
+            reportStreamAttempt,
+            streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
+            traceId,
+            storyId,
+            geminiMatureFictionMode: adultContentMode !== "standard",
+          });
 
-        const normalizedStreamText = applyStoryLocalIdentityToSavedAssistantText({
-          text: finalStreamText,
-          playerCharacter,
-          playerIdentity,
-          storyStateData: parsedStoryStateForIdentity,
-          transcriptText: `${transcriptRepairContext}\n\n${finalStreamText}`,
+        const validatedScene = await applyOptionalValidatedRewrite({
+          initialText: assistantContent.content,
+          validate: validateCandidate,
+          shouldRewrite: (validated) => {
+            if (redactSensitiveContent || sceneDepth !== "light") return false;
+            const wordCount = validated.text.split(/\s+/).filter(Boolean).length;
+            return wordCount > target.maxWords * 2;
+          },
+          rewrite: async (validatedText) => {
+            opts?.onChunkReset?.();
+            return (
+              await generateResponseWithRetry({
+                providerType,
+                provider,
+                apiKey,
+                model,
+                messages: [
+                  {
+                    role: "system",
+                    content: buildLightSceneRewritePrompt({
+                      target,
+                      speakerRegistry,
+                      allowDirectedPlayerControl,
+                    }),
+                  },
+                  { role: "user", content: validatedText },
+                ],
+                signal: opts?.signal,
+                onChunk: opts?.onChunk,
+                onChunkReset: opts?.onChunkReset,
+                idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
+                debugTrace: {
+                  traceId,
+                  mode: "story",
+                  storyId,
+                  stage: "regenerate-size-rewrite",
+                  lastUserText: validatedText,
+                  redactContent: redactSensitiveContent,
+                },
+              })
+            ).content;
+          },
+          signal: opts?.signal,
+          onFallback: (validated, error) => {
+            opts?.onChunkReset?.();
+            opts?.onChunk?.(validated.text);
+            const classified = classifyAIGenerationError(error);
+            reportGenerationAudit({
+              hypothesisId: "optional-rewrite-fallback",
+              traceId,
+              location: "StoryEngineProvider.tsx:regenerateLastAssistantMessage:size-fallback",
+              msg: "optional size rewrite failed; retaining validated original",
+              runId: "post-fix",
+              data: {
+                storyId,
+                providerType,
+                classifiedKind: classified.kind,
+                validatedLength: validated.text.length,
+              },
+            });
+          },
         });
+        const {
+          text: finalStreamText,
+          speakerResolutionChanges,
+        } = validatedScene.result;
 
         const nextAssistantMessage: StoryMessage = {
           ...lastMessage,
-          content: normalizedStreamText,
+          content: finalStreamText,
+          speakerAttribution: buildSpeakerAttributionAudit(speakerResolutionChanges),
           regeneratedAt: new Date().toISOString(),
           revision: (lastMessage.revision ?? 0) + 1,
         };
@@ -7855,6 +8128,9 @@ export function StoryEngineProvider({
         }
 
         const traceId = makeGenerationAuditTraceId("story");
+        const story = await assertStoryWritable(storyId);
+        const adultContentMode = resolveAdultContentMode(story);
+        const redactSensitiveContent = adultContentMode === "explicit_consensual_adults";
         // #region debug-point A:story-start
         reportGenerationAudit({
           hypothesisId: "A",
@@ -7863,12 +8139,14 @@ export function StoryEngineProvider({
           msg: "story generation started",
           data: {
             storyId,
-            originalUserText: trimmed,
+            originalUserText: formatGenerationAuditText(
+              trimmed,
+              redactSensitiveContent,
+              1200,
+            ),
           },
         });
         // #endregion
-
-        const story = await assertStoryWritable(storyId);
 
         const [universeContext, playerCharacter] = await Promise.all([
           resolveStoryUniverseContext({
@@ -8070,6 +8348,10 @@ export function StoryEngineProvider({
         const providerType = storyConfig?.providerType ?? settings.activeProviderType;
         const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
         const provider = createAIProvider(providerType);
+        const adultContentProviderCapability = getAdultContentProviderCapability(
+          providerType,
+          adultContentMode,
+        );
 
         const playerNameForValidation = buildPlayerNameForValidation(
           playerCharacter,
@@ -8140,6 +8422,9 @@ export function StoryEngineProvider({
         let updatedMessages: StoryMessage[] = [];
 
         if (!shouldSkipAssistantReply) {
+          if (adultContentProviderCapability === "unsupported") {
+            throw new Error(formatUnsupportedExplicitProviderMessage(providerType));
+          }
           const currentRpStats = (() => {
             if (!storyState?.stateJson) return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
             const v2 = safeParseStoryStateData(storyState.stateJson);
@@ -8170,26 +8455,20 @@ export function StoryEngineProvider({
             repository,
           });
 
-          const context = buildStoryChatContext({
-            universe: effectiveUniverse,
-            story,
-            playerCharacter,
-            imports: effectiveImports,
-            summaries,
-            storyState,
+          const speakerRegistry = buildActiveSceneSpeakerRegistry({
+            player: {
+              canonicalName: playerIdentity.sceneName,
+              aliases: [
+                playerCharacter.name,
+                ...(playerCharacter.aliases ?? []),
+                playerIdentity.legalName,
+                playerIdentity.sceneName,
+              ],
+            },
+            storyState: parsedStoryStateForIdentity,
+            importedCharacters: importedStoryCharacters,
             recentMessages: sanitizedHistoryMessages,
             latestUserMessage: userMessage.content,
-            latestUserMessageSpeakerType: userMessage.speakerType,
-            allowDirectedPlayerControl,
-            directorIntent: userMessage.directorIntent ?? null,
-            directorStagingNote: opts?.directorStagingNote,
-            guidedDirectedScene: opts?.guidedDirectedScene ?? false,
-            guidedChapterContext: opts?.guidedChapterContext,
-            rpStats: currentRpStats,
-            rpConfig: story.rpConfig ?? null,
-            playerStateHintOverride: opts?.zeroHpConsequence ?? null,
-            importedStoryCharacters,
-            playerIdentity,
           });
           reportPlayerIdentityBeforeGeneration({
             traceId,
@@ -8199,6 +8478,32 @@ export function StoryEngineProvider({
             parsedStoryState: parsedStoryStateForIdentity,
             establishedFromTranscript,
           });
+          const context = injectSceneSpeakerRegistry(
+            buildStoryChatContext({
+              universe: effectiveUniverse,
+              story,
+              providerType,
+              playerCharacter,
+              imports: effectiveImports,
+              summaries,
+              storyState,
+              recentMessages: sanitizedHistoryMessages,
+              latestUserMessage: userMessage.content,
+              latestUserMessageSpeakerType: userMessage.speakerType,
+              allowDirectedPlayerControl,
+              directorIntent: userMessage.directorIntent ?? null,
+              directorStagingNote: opts?.directorStagingNote,
+              guidedDirectedScene: opts?.guidedDirectedScene ?? false,
+              guidedChapterContext: opts?.guidedChapterContext,
+              rpStats: currentRpStats,
+              rpConfig: story.rpConfig ?? null,
+              playerStateHintOverride: opts?.zeroHpConsequence ?? null,
+              importedStoryCharacters,
+              playerIdentity,
+            }),
+            speakerRegistry,
+            allowDirectedPlayerControl,
+          );
           // #region debug-point A:story-request-shape
           reportGenerationAudit({
             hypothesisId: "A",
@@ -8209,12 +8514,16 @@ export function StoryEngineProvider({
               storyId,
               providerType,
               model,
-              messageSummary: summarizeGenerationAuditMessages(context),
-              promptSummary: clipGenerationAuditText(
+              messageSummary: summarizeGenerationAuditMessages(
+                context,
+                redactSensitiveContent,
+              ),
+              promptSummary: formatGenerationAuditText(
                 context
                   .filter((message) => message.role === "system")
                   .map((message) => message.content)
                   .join("\n\n"),
+                redactSensitiveContent,
                 900,
               ),
             },
@@ -8247,6 +8556,7 @@ export function StoryEngineProvider({
                 storyId,
                 stage: "initial",
                 lastUserText: userMessage.content,
+                redactContent: redactSensitiveContent,
               },
             });
           } catch (error) {
@@ -8264,43 +8574,74 @@ export function StoryEngineProvider({
                 model,
                 failureKind: baseFailure?.kind ?? null,
                 failureStage: baseFailure?.stage ?? null,
-                summaryMessage: baseFailure?.summaryMessage ?? (error instanceof Error ? error.message : "unknown"),
-                diagnostic: baseFailure?.diagnostic ?? null,
+                summaryMessage: formatGenerationAuditText(
+                  baseFailure?.summaryMessage ?? (error instanceof Error ? error.message : "unknown"),
+                  redactSensitiveContent,
+                  1200,
+                ),
+                diagnostic: formatGenerationAuditText(
+                  baseFailure?.diagnostic ?? null,
+                  redactSensitiveContent,
+                  1200,
+                ),
               },
             });
             // #endregion
 
+            if (redactSensitiveContent && isProviderRefusal) {
+              if (baseFailure) {
+                throw new GenerationFailureError({
+                  ...baseFailure,
+                  summaryMessage: formatExplicitProviderRefusalMessage(providerType),
+                  diagnostic: formatGenerationAuditText(baseFailure.diagnostic, true, 1200),
+                });
+              }
+              throw new Error(formatExplicitProviderRefusalMessage(providerType));
+            }
+
             if (providerType === "gemini" && isProviderRefusal) {
               const transmitSafe = makeTransmitSafe(userMessage.content, {
-                allowPainSoftening: Boolean(story.matureFictionMode),
-                allowIntimacySoftening: Boolean(story.matureFictionMode),
+                allowPainSoftening: adultContentMode !== "standard",
+                allowIntimacySoftening: adultContentMode !== "standard",
               });
               const hasProhibitedContent = /PROHIBITED_CONTENT/i.test(baseFailure?.diagnostic ?? "");
               const shouldRetryTransmitSafe =
                 transmitSafe.wasModified ||
-                (Boolean(story.matureFictionMode) && hasProhibitedContent);
+                (adultContentMode === "mature_non_graphic" && hasProhibitedContent);
 
               if (shouldRetryTransmitSafe) {
-                const safeContext = buildStoryChatContext({
-                  universe: effectiveUniverse,
-                  story,
-                  playerCharacter,
-                  imports: effectiveImports,
-                  summaries,
-                  storyState,
-                  recentMessages: sanitizedHistoryMessages,
-                  latestUserMessage: transmitSafe.wasModified
-                    ? transmitSafe.transmitText
-                    : userMessage.content,
-                  latestUserMessageSpeakerType: userMessage.speakerType,
+                const safeContext = injectSceneSpeakerRegistry(
+                  buildStoryChatContext({
+                    universe: effectiveUniverse,
+                    story,
+                    providerType,
+                    playerCharacter,
+                    imports: effectiveImports,
+                    summaries,
+                    storyState,
+                    recentMessages: sanitizedHistoryMessages,
+                    latestUserMessage: transmitSafe.wasModified
+                      ? transmitSafe.transmitText
+                      : userMessage.content,
+                    latestUserMessageSpeakerType: userMessage.speakerType,
+                    allowDirectedPlayerControl,
+                    directorIntent: userMessage.directorIntent ?? null,
+                    directorStagingNote: opts?.directorStagingNote,
+                    guidedDirectedScene: opts?.guidedDirectedScene ?? false,
+                    guidedChapterContext: opts?.guidedChapterContext,
+                    rpStats: currentRpStats,
+                    rpConfig: story.rpConfig ?? null,
+                    playerStateHintOverride: opts?.zeroHpConsequence ?? null,
+                    importedStoryCharacters,
+                    playerIdentity,
+                  }),
+                  speakerRegistry,
                   allowDirectedPlayerControl,
-                  directorIntent: userMessage.directorIntent ?? null,
-                  playerIdentity,
-                  importedStoryCharacters,
-                });
-                const note = story.matureFictionMode
-                  ? buildMatureFictionTransmitSafeSystemNote(transmitSafe, userMessage.content)
-                  : buildTransmitSafeSystemNote(transmitSafe);
+                );
+                const note =
+                  adultContentMode === "mature_non_graphic"
+                    ? buildMatureFictionTransmitSafeSystemNote(transmitSafe, userMessage.content)
+                    : buildTransmitSafeSystemNote(transmitSafe);
                 const lastUserIndex = (() => {
                   for (let index = safeContext.length - 1; index >= 0; index -= 1) {
                     if (safeContext[index]?.role === "user") return index;
@@ -8319,13 +8660,14 @@ export function StoryEngineProvider({
                     model,
                     messages: safeContext,
                     maxAttempts: 1,
-                    geminiMatureFictionMode: Boolean(story.matureFictionMode),
+                    geminiMatureFictionMode: adultContentMode !== "standard",
                     debugTrace: {
                       traceId,
                       mode: "story",
                       storyId,
                       stage: "transmit-safe-retry",
                       lastUserText: transmitSafe.transmitText,
+                      redactContent: redactSensitiveContent,
                     },
                   });
                 } catch (secondError) {
@@ -8362,62 +8704,6 @@ export function StoryEngineProvider({
 
           const sceneDepth = inferSceneDepth(userMessage.content);
           const target = getSceneWordTarget(sceneDepth);
-          const wordCount = assistantContent.content.split(/\s+/).filter(Boolean).length;
-          const shouldRewriteForSize = sceneDepth === "light" && wordCount > target.maxWords * 2;
-          const finalAssistantText = shouldRewriteForSize
-            ? (
-                await (async () => {
-                  opts?.onChunkReset?.();
-                  return generateResponseWithRetry({
-                    providerType,
-                    provider,
-                    apiKey,
-                    model,
-                    messages: [
-                      {
-                        role: "system",
-                        content: [
-                          "Rewrite the following story scene to match a light interaction.",
-                          `Target length: ${target.minWords}-${target.maxWords} words.`,
-                          "Keep character voice and only the essential beats.",
-                          "Do not reintroduce unchanged environments or participants.",
-                          "Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
-                          "Not every character needs to speak; keep participation natural.",
-                          "Never speak for the player character. Do not generate suggested player lines or options.",
-                          "Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
-                          "Only determine success or failure when the player leaves the outcome unresolved as an attempt.",
-                          "Asterisks are reserved exclusively for actions; never use asterisks for emphasis.",
-                          "Formatting rules:",
-                          "- Every character line must start with 'Name:'.",
-                          "- Actions must be wrapped as *...* (asterisks only for actions).",
-                          '- Dialogue must be wrapped in double quotes like "..."',
-                          "- If a character acts and speaks, keep both on the same line: Name: *action* \"dialogue\"",
-                          "- Narration must use the format: Narrator: *prose text.*",
-                          "Mystery rule:",
-                          "- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
-                        ].join("\n"),
-                      },
-                      {
-                        role: "user",
-                        content: assistantContent.content,
-                      },
-                    ],
-                    signal: opts?.signal,
-                    onChunk: opts?.onChunk,
-                    onChunkReset: opts?.onChunkReset,
-                    idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
-                    debugTrace: {
-                      traceId,
-                      mode: "story",
-                      storyId,
-                      stage: "size-rewrite",
-                      lastUserText: assistantContent.content,
-                    },
-                  });
-                })()
-              ).content
-            : assistantContent.content;
-
           const formatRewritePrompt = [
             "Rewrite the following story scene into the required Story Engine transcript grammar.",
             "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
@@ -8579,46 +8865,118 @@ export function StoryEngineProvider({
             playerPronouns: playerIdentity.pronouns,
           });
 
-          const { text: finalStreamText } = await resolveStreamedAssistantTranscript({
-            initialText: finalAssistantText,
-            latestUserMessage: userMessage.content,
-            playerName: playerNameForValidation,
-            playerSceneName: playerIdentity.sceneName,
-            playerPronouns: playerIdentity.pronouns,
-            playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
-            characterGenders: streamCharacterGenders,
-            allowDirectedPlayerControl,
-            skipSceneStateCheck: opts?.guidedGenerationInternal,
-            hiddenDialoguePattern: hiddenDialogueInferencePattern,
-            knownTies: normalizePlayerCharacterKnownTies(playerCharacter.knownTies),
-            transcriptText: transcriptRepairContext,
-            rewritePrompts: {
-              format: formatRewritePrompt,
-              ownership: ownershipRewritePrompt,
-              hiddenDialogue: hiddenDialogueRewritePrompt,
-              sceneState: sceneStateRewritePrompt,
-            },
-            providerType,
-            provider,
-            apiKey,
-            model,
-            signal: opts?.signal,
-            onChunk: opts?.onChunk,
-            onChunkReset: opts?.onChunkReset,
-            reportStreamAttempt,
-            streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
-            traceId,
-            storyId,
-            geminiMatureFictionMode: Boolean(story.matureFictionMode),
-          });
+          const validateCandidate = (initialText: string) =>
+            resolveStreamedAssistantTranscript({
+              initialText,
+              latestUserMessage: userMessage.content,
+              playerName: playerNameForValidation,
+              playerSceneName: playerIdentity.sceneName,
+              playerPronouns: playerIdentity.pronouns,
+              playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
+              characterGenders: streamCharacterGenders,
+              allowDirectedPlayerControl,
+              speakerRegistry,
+              skipSceneStateCheck: opts?.guidedGenerationInternal,
+              normalizeCandidate: (text) =>
+                applyStoryLocalIdentityToSavedAssistantText({
+                  text,
+                  playerCharacter,
+                  playerIdentity,
+                  storyStateData: parsedStoryStateForIdentity,
+                  transcriptText: `${transcriptRepairContext}\n\n${text}`,
+                }),
+              hiddenDialoguePattern: hiddenDialogueInferencePattern,
+              knownTies: normalizePlayerCharacterKnownTies(playerCharacter.knownTies),
+              transcriptText: transcriptRepairContext,
+              rewritePrompts: {
+                format: formatRewritePrompt,
+                ownership: ownershipRewritePrompt,
+                hiddenDialogue: hiddenDialogueRewritePrompt,
+                sceneState: sceneStateRewritePrompt,
+              },
+              allowProviderRewrites: !redactSensitiveContent,
+              redactContent: redactSensitiveContent,
+              providerType,
+              provider,
+              apiKey,
+              model,
+              signal: opts?.signal,
+              onChunk: opts?.onChunk,
+              onChunkReset: opts?.onChunkReset,
+              reportStreamAttempt,
+              streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
+              traceId,
+              storyId,
+              geminiMatureFictionMode: adultContentMode !== "standard",
+            });
 
-          const normalizedStreamText = applyStoryLocalIdentityToSavedAssistantText({
-            text: finalStreamText,
-            playerCharacter,
-            playerIdentity,
-            storyStateData: parsedStoryStateForIdentity,
-            transcriptText: `${transcriptRepairContext}\n\n${finalStreamText}`,
+          const validatedScene = await applyOptionalValidatedRewrite({
+            initialText: assistantContent.content,
+            validate: validateCandidate,
+            shouldRewrite: (validated) => {
+              if (redactSensitiveContent || sceneDepth !== "light") return false;
+              const wordCount = validated.text.split(/\s+/).filter(Boolean).length;
+              return wordCount > target.maxWords * 2;
+            },
+            rewrite: async (validatedText) => {
+              opts?.onChunkReset?.();
+              return (
+                await generateResponseWithRetry({
+                  providerType,
+                  provider,
+                  apiKey,
+                  model,
+                  messages: [
+                    {
+                      role: "system",
+                      content: buildLightSceneRewritePrompt({
+                        target,
+                        speakerRegistry,
+                        allowDirectedPlayerControl,
+                      }),
+                    },
+                    { role: "user", content: validatedText },
+                  ],
+                  signal: opts?.signal,
+                  onChunk: opts?.onChunk,
+                  onChunkReset: opts?.onChunkReset,
+                  idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
+                  geminiMatureFictionMode: adultContentMode !== "standard",
+                  debugTrace: {
+                    traceId,
+                    mode: "story",
+                    storyId,
+                    stage: "size-rewrite",
+                    lastUserText: validatedText,
+                    redactContent: redactSensitiveContent,
+                  },
+                })
+              ).content;
+            },
+            signal: opts?.signal,
+            onFallback: (validated, error) => {
+              opts?.onChunkReset?.();
+              opts?.onChunk?.(validated.text);
+              const classified = classifyAIGenerationError(error);
+              reportGenerationAudit({
+                hypothesisId: "optional-rewrite-fallback",
+                traceId,
+                location: "StoryEngineProvider.tsx:sendChatMessage:size-fallback",
+                msg: "optional size rewrite failed; retaining validated original",
+                runId: "post-fix",
+                data: {
+                  storyId,
+                  providerType,
+                  classifiedKind: classified.kind,
+                  validatedLength: validated.text.length,
+                },
+              });
+            },
           });
+          const {
+            text: finalStreamText,
+            speakerResolutionChanges,
+          } = validatedScene.result;
 
           // #region debug-point B:transcript-stages
           reportGenerationAudit({
@@ -8631,7 +8989,7 @@ export function StoryEngineProvider({
               playerSceneName: playerIdentity.sceneName,
               rawGeminiResponse: assistantContent.content,
               postProcessedResponse: finalStreamText,
-              finalStoredResponse: normalizedStreamText,
+              finalStoredResponse: finalStreamText,
             },
           });
           // #endregion
@@ -8640,9 +8998,10 @@ export function StoryEngineProvider({
             id: createEntityId("story-message"),
             storyId,
             role: "assistant",
-            content: normalizedStreamText,
+            content: finalStreamText,
             timestamp: new Date().toISOString(),
             speakerType: "narrator",
+            speakerAttribution: buildSpeakerAttributionAudit(speakerResolutionChanges),
             ...(currentRpStats?.timeState ? { storyTime: currentRpStats.timeState } : {}),
           };
 
@@ -8662,7 +9021,11 @@ export function StoryEngineProvider({
             msg: "story assistant response saved",
             data: {
               storyId,
-              savedOutput: assistantMessage.content,
+              savedOutput: formatGenerationAuditText(
+                assistantMessage.content,
+                redactSensitiveContent,
+                1200,
+              ),
               savedLength: assistantMessage.content?.length ?? 0,
             },
           });
@@ -8865,33 +9228,50 @@ export function StoryEngineProvider({
             messages: updatedMessages,
           });
 
-          const summaryText = await generateSummaryWithRetry({
-            providerType,
-            provider,
-            apiKey,
-            model,
-            storyTitle: story.title,
-            messages: summaryContext,
-            existingSummary: story.currentSummary,
-            debugTrace: {
-              traceId,
+          try {
+            const summaryText = await generateSummaryWithRetry({
+              providerType,
+              provider,
+              apiKey,
+              model,
+              storyTitle: story.title,
+              messages: summaryContext,
+              existingSummary: story.currentSummary,
+              debugTrace: {
+                traceId,
+                storyId,
+                stage: "summary-refresh",
+                redactContent: redactSensitiveContent,
+              },
+            });
+
+            await repository.saveStorySummary({
+              id: createEntityId("story-summary"),
               storyId,
-              stage: "summary-refresh",
-            },
-          });
+              summary: summaryText,
+              generatedAt: new Date().toISOString(),
+            });
 
-          await repository.saveStorySummary({
-            id: createEntityId("story-summary"),
-            storyId,
-            summary: summaryText,
-            generatedAt: new Date().toISOString(),
-          });
-
-          await repository.saveStory({
-            ...story,
-            currentSummary: summaryText,
-            updatedAt: new Date().toISOString(),
-          });
+            await repository.saveStory({
+              ...story,
+              currentSummary: summaryText,
+              updatedAt: new Date().toISOString(),
+            });
+          } catch (error) {
+            const classified = classifyAIGenerationError(error);
+            reportGenerationAudit({
+              hypothesisId: "summary-refresh-fallback",
+              traceId,
+              location: "StoryEngineProvider.tsx:sendChatMessage:summary-fallback",
+              msg: "post-save summary refresh failed; retained saved scene and prior summary",
+              runId: "post-fix",
+              data: {
+                storyId,
+                providerType,
+                classifiedKind: classified.kind,
+              },
+            });
+          }
         }
 
         await touchStory(storyId);

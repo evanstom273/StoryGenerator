@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
 	isSubstantialTranscriptText,
-	shouldAcceptStreamDespiteSpeakerAttributionFlags,
 	validateAssistantTranscriptForSave,
 } from "../transcriptSanitizer";
 
@@ -56,12 +55,21 @@ describe("validateAssistantTranscriptForSave", () => {
 		expect(result.stage).toBe("insubstantial");
 	});
 
-	it("accepts well-formatted streams even when speaker attribution is flagged", () => {
-		expect(
-			shouldAcceptStreamDespiteSpeakerAttributionFlags({
-				text: VALID_BULLPEN,
-				playerName: "Rebecca",
-			}),
-		).toBe(true);
+	it("preserves attribution failures when scene-aware repair owns relabelling", () => {
+		const result = validateAssistantTranscriptForSave({
+			text:
+				'Rebecca: *Her hands close around Rebecca\'s hips while she watches Rebecca cross the room.* "You should come closer and stop keeping me waiting."',
+			playerName: "Rebecca Alvarez",
+			playerSceneName: "Rebecca",
+			latestUserMessage: "Rosa waits for Rebecca by the couch.",
+			knownTies: ["Rosa"],
+			repairSpeakerAttribution: false,
+			hiddenDialoguePattern: HIDDEN_DIALOGUE_PATTERN,
+		});
+
+		expect(result.valid).toBe(false);
+		expect(result.stage).toBe("speaker_attribution");
+		expect(result.text).toContain("Rebecca:");
 	});
+
 });

@@ -8,7 +8,10 @@ import { Button, buttonClasses } from "../components/ui/Button";
 import { SparklesIcon } from "../components/icons";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
-import type { AIProviderType, PlayerCharacterDraft } from "../types/models";
+import type {
+  AIProviderType,
+  PlayerCharacterDraft,
+} from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
 import { ImportedCharactersPicker } from "../components/story/ImportedCharactersPicker";
@@ -21,6 +24,12 @@ import {
 	resolveVisibleProvider,
 	shouldShowProviderPicker,
 } from "../lib/ai/providerConfig";
+import {
+  adultContentModeToLegacyMatureFictionMode,
+  isAdultContentMode,
+  resolveNewStoryAdultContentMode,
+} from "../lib/ai/adultContentMode";
+import { getAdultContentProviderProfile } from "../lib/ai/providerCapabilities";
 
 const initialFormState = {
   title: "",
@@ -29,7 +38,7 @@ const initialFormState = {
   playerCharacterId: "",
   currentSummary: "",
   importedCharacterIds: [] as string[],
-  matureFictionMode: true,
+  adultContentMode: resolveNewStoryAdultContentMode(),
   rpMode: true,
 };
 
@@ -330,7 +339,11 @@ export function StoryCreatePage() {
             playerCharacterId: resolvedPlayerCharacterId,
             currentSummary: formState.currentSummary.trim(),
             importedCharacterIds: normalizeStoryImportedCharacterIds(formState.importedCharacterIds),
-            matureFictionMode: formState.matureFictionMode,
+            adultContentMode: formState.adultContentMode,
+            // Keep older readers in sync while adultContentMode rolls out.
+            matureFictionMode: adultContentModeToLegacyMatureFictionMode(
+              formState.adultContentMode,
+            ),
             rpMode: formState.rpMode,
             guidedStoryHistory:
               storyHistoryEnabled && storyHistoryPlan
@@ -1028,22 +1041,36 @@ export function StoryCreatePage() {
             {!isDerivedMode ? (
               <div className="grid gap-6 md:grid-cols-2">
                 <Field
-                  label="Mature fiction"
-                  hint="Defaults to on for new stories"
-                  help="Allows serious adult fiction: trauma, violence aftermath, grief, recovery, and consensual adult intimacy between fictional adults."
+                  label="Adult content mode"
+                  hint="Defaults to mature, non-graphic fiction"
+                  help="Choose the intended content boundary. Explicit mode is only for fictional, confirmed adults whose participation is consensual; providers may still filter individual requests."
                 >
                   <SelectInput
-                    value={formState.matureFictionMode ? "on" : "off"}
-                    onChange={(event) =>
+                    value={formState.adultContentMode}
+                    onChange={(event) => {
+                      const mode = event.target.value;
+                      if (!isAdultContentMode(mode)) {
+                        return;
+                      }
                       setFormState((currentState) => ({
                         ...currentState,
-                        matureFictionMode: event.target.value === "on",
-                      }))
-                    }
+                        adultContentMode: mode,
+                      }));
+                    }}
                   >
-                    <option value="on">On</option>
-                    <option value="off">Off</option>
+                    <option value="standard">Standard</option>
+                    <option value="mature_non_graphic">Mature fiction (non-graphic)</option>
+                    <option value="explicit_consensual_adults">
+                      Explicit fiction (consenting adults)
+                    </option>
                   </SelectInput>
+                  <p className="mt-2 text-xs leading-5 text-ink-muted">
+                    {formState.adultContentMode === "explicit_consensual_adults"
+                      ? getAdultContentProviderProfile(storyProviderType).explanation
+                      : formState.adultContentMode === "mature_non_graphic"
+                        ? "Allows serious adult themes and non-graphic intimacy without enabling explicit sexual detail."
+                        : "Uses the standard story boundary without mature-fiction prompt guidance."}
+                  </p>
                 </Field>
                 <Field
                   label="RP mode"

@@ -542,7 +542,7 @@ function looksLikeQuotaLimit(message: string) {
 }
 
 export function looksLikeSafetyRefusal(message: string) {
-  return /\b(safety|policy|disallowed|not allowed|not permitted|refus|unsafe|harmful content|content violation|violates?.*policy|sexual content involving minors|self-harm instructions)\b/i.test(
+  return /(?:^|[^a-z0-9])(?:safety|policy|disallowed|not allowed|not permitted|refus\w*|unsafe|harmful content|content violation|prohibited[\s_-]*content|block[\s_-]*list|recitation|spii|content[\s_-]*blocked|violates?.*policy|sexual content involving minors|self-harm instructions)\b/i.test(
     message,
   );
 }

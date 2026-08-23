@@ -1,4 +1,5 @@
 import { getUniverseIds } from "./universeIds";
+import { resolveAdultContentMode } from "./ai/adultContentMode";
 import type { EntityId, PlayerCharacter, Story, StoryChapter, Universe } from "../types/models";
 
 export type LibrarySearchContentType = "all" | "story" | "universe" | "character";
@@ -274,9 +275,9 @@ function storyMatchesFeatures(story: Story, storyFeatures: LibrarySearchStoryFea
 		case "non-rp":
 			return !story.rpMode;
 		case "mature":
-			return Boolean(story.matureFictionMode);
+			return resolveAdultContentMode(story) !== "standard";
 		case "non-mature":
-			return !story.matureFictionMode;
+			return resolveAdultContentMode(story) === "standard";
 		case "has-summary":
 			return Boolean(story.currentSummary?.trim());
 		case "no-summary":
@@ -368,7 +369,10 @@ function searchStories(
 			if (story.rpMode) {
 				badges.push("RP");
 			}
-			if (story.matureFictionMode) {
+			const adultContentMode = resolveAdultContentMode(story);
+			if (adultContentMode === "explicit_consensual_adults") {
+				badges.push("Explicit adults");
+			} else if (adultContentMode === "mature_non_graphic") {
 				badges.push("Mature");
 			}
 			if (story.readOnlyReason === "sequel_prequel") {

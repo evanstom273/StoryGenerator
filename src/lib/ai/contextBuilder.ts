@@ -1,4 +1,5 @@
 import type {
+  AIProviderType,
   DirectorIntent,
   PlayerCharacter,
   RpConfig,
@@ -19,7 +20,9 @@ import {
   formatStorySceneStateForPrompt,
 } from "./storyStateExtractor";
 import { safeParseStoryStateData } from "../storyStateV2";
-import { buildMatureFictionModeNote, buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
+import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
+import { resolveAdultContentMode } from "./adultContentMode";
+import { getAdultContentProviderCapability } from "./providerCapabilities";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
@@ -35,6 +38,7 @@ import {
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
 import { formatDirectorNoteInterpretationGuidance } from "../storyText/directorSyntax";
+import { parseSceneBlocks } from "../storyText/parseSceneBlocks";
 import type { SceneDepth } from "./sceneSizing";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
@@ -46,6 +50,10 @@ function normalizeWhitespace(value: string) {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function containsSpeakerLabeledTranscript(content: string) {
+  return parseSceneBlocks(content).some((block) => Boolean(block.speakerLabel));
 }
 
 function formatTimelineMessage(
@@ -95,9 +103,12 @@ function formatTimelineMessage(
   }
 
   if (message.speakerType === "narrator") {
+    const content = normalizeWhitespace(message.content);
     return {
       role: "assistant",
-      content: normalizeWhitespace(`Narrator: ${message.content}`),
+      content: containsSpeakerLabeledTranscript(content)
+        ? content
+        : normalizeWhitespace(`Narrator: ${content}`),
     };
   }
 
@@ -134,6 +145,8 @@ export interface BuildStoryChatContextInput {
   importedStoryCharacters?: PlayerCharacter[];
   /** When set, used for prompt identity instead of re-resolving from recentMessages alone. */
   playerIdentity?: EffectivePlayerIdentity;
+  /** Used to describe explicit-mode compatibility without changing provider safeguards. */
+  providerType?: AIProviderType;
 }
 
 export function buildStoryChatContext({
@@ -156,6 +169,7 @@ export function buildStoryChatContext({
   playerStateHintOverride,
   importedStoryCharacters = [],
   playerIdentity: playerIdentityOverride,
+  providerType,
 }: BuildStoryChatContextInput): AIChatMessage[] {
   const parsedStoryState = storyState?.stateJson?.trim()
     ? safeParseStoryStateData(storyState.stateJson)
@@ -400,20 +414,20 @@ export function buildStoryChatContext({
     );
   })();
 
-  const matureFictionPolicy = story.matureFictionMode
-    ? buildMatureFictionPolicyBlock({
-        includeParity: true,
-        includeAdultIntimacy: true,
-      })
-    : "";
-  const matureFictionModeNote = buildMatureFictionModeNote(Boolean(story.matureFictionMode));
+  const adultContentMode = resolveAdultContentMode(story);
+  const matureFictionPolicy = buildMatureFictionPolicyBlock({
+    mode: adultContentMode,
+    providerCapability: providerType
+      ? getAdultContentProviderCapability(providerType, adultContentMode)
+      : undefined,
+    includeParity: true,
+  });
 
   const sceneGuidance = normalizeWhitespace(
     [
       "CRITICAL: Output only story content. Do not write your reasoning, planning notes, analysis, context summaries, grammar rule lists, bullet-point breakdowns, or any preamble. Do not explain what you are about to do. Start writing the scene directly.",
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
       matureFictionPolicy,
-      matureFictionModeNote,
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
       "Continue notes may appear in the transcript as out-of-character instructions to keep the current scene moving without requiring a fresh player action. They are visible in the transcript but are not themselves spoken dialogue or canon events.",
       "Director notes may appear in the transcript as out-of-character production guidance. They are visible in the transcript but are not themselves spoken dialogue or automatic canon facts. Canon comes from what actually happens in the generated scene that follows.",
@@ -511,9 +525,9 @@ export function buildStoryChatContext({
       latestMessageIsDirectorNote || guidedDirectedContinue
         ? "Speaker attribution rule (strict): assign each character only their own dialogue and action beats. Never put another character's lines or actions under the player character's speaker label. In two-character intimate scenes, alternate Rosa: and the player character's label correctly."
         : "",
-      "Asterisks are reserved exclusively for actions. Never use asterisks for emphasis, sarcasm, or formatting.",
+      "Asterisks are structural delimiters: in a named character block they mark that character's physical action; in a Narrator block they wrap narrator prose. Never use them for emphasis or sarcasm.",
       "Actions should read like prose, not stage directions. Avoid repetitive filler actions (nods/looks/shrugs) unless truly warranted.",
-      "Interpret any *...* text in the conversation as an action and react to it naturally.",
+      "Interpret *...* inside a named character block as that character's action. Interpret *...* after 'Narrator:' as narrator prose.",
       "When an unknown person is required, generate a new NPC instead of pulling a canon character by default.",
       "Canon characters should appear only if already present, introduced by the player, or logically located in the scene.",
       importedStoryCharacters.length
@@ -521,39 +535,36 @@ export function buildStoryChatContext({
         : "",
       "Do not introduce major characters into a scene unless their presence has been established, their arrival is logically explained by the narrative, or the player has explicitly invited, contacted, or sought them out. Do not introduce characters solely to solve problems or remove consequences.",
       "Output format guidance:",
-      "- Use speaker headers like 'Morgan:' and 'Alex:' on their own line when switching speakers. The colon after the name is REQUIRED — never write 'Morgan' alone on a line. Always write 'Morgan:'. Without the colon the parser cannot identify the speaker and the text will be misattributed.",
+      "- Write each character block on one line, beginning with the character name and a required colon, followed by any action and dialogue. Example: Morgan: *She leans back in her chair.* \"Do you think she knows?\"",
+      "- Never write a name-only header such as 'Morgan:' with the action or dialogue on following lines. Keep the label and all content for that block together on the same line.",
       "- Ensemble scenes may switch speakers multiple times in sequence when several characters react to the same beat. That is valid as long as each turn stays distinct and relationship-aware.",
       "- In dialogue, use an em dash (—) sparingly for a single mid-sentence interruption or cutoff only. Prefer commas and periods for normal pacing. Never chain multiple em dashes in one sentence.",
       "- Do not use em dashes as a default pause between clauses. Write: \"I ran as fast as I could, Dad. I tried to catch them, but she's gone.\" NOT: \"I ran — I tried — she's gone —\".",
       "- Casual filler words (like, well, look) should flow with commas or an occasional single em dash — never a colon mid-sentence: \"Like, I've been watching him his whole life.\" or \"Like — I've been watching him.\" NOT \"Like: I've been watching him.\"",
-      "- EVERY line of prose narration must start with 'Narrator:'. Never write prose narration as orphaned/unattributed text between character blocks — it will be incorrectly attributed to the previous speaker. If you need to describe the environment, atmosphere, or ambient action between two character lines, start a new 'Narrator:' block.",
-      "- Use 'Narrator:' for scene-setting, ambient sounds, atmosphere, time passing, and any prose that is not a character speaking or acting.",
+      "- Write every prose narration block on one line in exactly this form: Narrator: *The refrigerator hums. Neither of them reaches for their coffee.* Never emit plain or unattributed narration.",
+      "- Use 'Narrator: *prose*' for scene-setting, ambient sounds, atmosphere, time passing, and any prose that is not a character speaking or acting.",
       "- In Narrator blocks, refer to known characters by name (e.g. Captain Reyes, Alex, Morgan, Ellie), not by age labels like \"four year old\" or \"the child\" when the character's name is already established in the story.",
+      "- In Narrator blocks, prefer known character names over titles or ranks (Captain, Sergeant, Detective) unless the scene is explicitly formal.",
       "- Never prefix Narrator blocks with pronoun pseudo-speakers (He:, She:, They:, He narrator:). Use 'Narrator:' only.",
       "- In Narrator blocks, describe characters by name: 'Mac bolts to the entryway' not 'They Mac bolts' or 'They: Mac bolts'.",
-      "- Asterisks (*...*) are ONLY for brief physical actions — a gesture, a movement, an expression. Examples: *leans back*, *sets down her mug*, *glances toward the door*. They must be short, physical, and contain no colons or complex punctuation.",
+      "- In character blocks, asterisks (*...*) are ONLY for brief physical actions — a gesture, a movement, an expression. Examples: *She leans back.*, *She sets down her mug.*, *He glances toward the door.* They must be short, physical, and contain no colons or complex punctuation.",
       "- Character action beats inside *...* should use a subject pronoun (He/She/They) matching the character's pronouns, end with a full stop, and omit the character's name inside the beat. Example: Morgan: *She leans back in her chair.* \"Dialogue.\"",
       "- Action beats inside a named character block must describe ONLY that character's own physical movement or gesture. The moment prose describes what another character is doing — even in the same sentence — it becomes narrator prose and must go in a Narrator: block, not an asterisk beat inside a character block.",
-      "- NEVER use 'As [Name]:' as a speaker prefix. 'As Riley:' is not a valid format. If you want to describe what Riley is doing from a narrator perspective, write 'Narrator:' then describe the action in third person: *Riley flicks the dial…*",
-      "- NEVER use *...* for internal thoughts, emotional asides, or extended narration. Do not write *and the probably is not worry, not exactly: it's just the honest version of yes* — that is a narrative aside, not a physical action. Put that kind of content in the Narrator block instead.",
+      "- NEVER use 'As [Name]:' as a speaker prefix. 'As Riley:' is not a valid format. If you want to describe what Riley is doing from a narrator perspective, write the inline block: Narrator: *Riley flicks the dial…*",
+      "- In character blocks, NEVER use *...* for internal thoughts, emotional asides, or extended narration. Put that kind of prose in its own 'Narrator: *...*' block instead.",
       "- NEVER use *...* inside a quoted speech line. Do not write: 'He didn't even: *aside*' or 'It gets me — *thought*'. Asterisks must never appear inside quote marks.",
       "- NEVER place a colon immediately before *...* action text. Do not write 'He said: *smiles*' or 'She paused: *looks away*'.",
-      "- If a character acts between sentences of dialogue, close the quotes, put the ONE-PHRASE physical action on its own line, then reopen dialogue on the next line.",
-      "- If an action interrupts dialogue mid-sentence, close with an em dash — never a colon. Write: '\"He didn't even —\"' on its own line, then the action on the next line, then continue dialogue. Never write: '\"He didn't even: *action*\"'.",
+      "- If a character acts between sentences of dialogue, keep the complete turn in one labeled block: Morgan: \"First sentence.\" *She sets down her mug.* \"Second sentence.\"",
+      "- If an action interrupts dialogue mid-sentence, close with an em dash — never a colon — then place the action between the two quoted fragments in the same labeled block.",
       "- Each character block must be substantial. A character's turn should contain multiple sentences of dialogue before switching speakers. Here is the correct format:",
       "",
-      "Morgan:",
-      "*leans back in her chair*",
-      "\"Do you think she knows? That we talk about her like this? Because I keep thinking about the way she looked at us last Tuesday — like she was doing math in her head and we were the variables.\"",
+      "Morgan: *She leans back in her chair.* \"Do you think she knows? That we talk about her like this? Because I keep thinking about the way she looked at us last Tuesday — like she was doing math in her head and we were the variables.\"",
       "",
-      "Alex:",
-      "*sets down her mug carefully*",
-      "\"I think she suspects there's a conversation. I don't think she has full intelligence on the scope of it. Which is probably good, for everyone involved.\"",
+      "Alex: *She sets down her mug carefully.* \"I think she suspects there's a conversation. I don't think she has full intelligence on the scope of it. Which is probably good, for everyone involved.\"",
       "",
-      "Narrator:",
-      "The refrigerator hums. Neither of them reaches for their coffee.",
+      "Narrator: *The refrigerator hums. Neither of them reaches for their coffee.*",
       "",
-      "- That is the correct format. No colons before or inside action beats. No asterisks inside quotes. No single-line character turns.",
+      "- That is the correct format. Every block is a single labeled line; narration is wrapped in asterisks; action beats stay outside quotes.",
     ].join("\n"),
   );
 
@@ -592,9 +603,9 @@ export function buildStoryChatContext({
       "- Never start a reply with an ellipsis (...) to continue a prior message. Each scene is self-contained.",
       "- Prefer first names in dialogue headers when familiarity is established (Morgan, Alex, Riley, Casey, Elena).",
       "- Never put quoted nicknames inside speaker labels (wrong: Elena \"Leni\" Reyes:; right: Elena:). Use the first name only in speaker headers.",
-      "- Every physical action line must appear under a speaker header. Never output a lone *action* line without 'Name:' on the line above it.",
-      "- If Casey speaks then acts, write 'Casey:' (or 'Casey Reyes:') before '*nods slowly…*'. Orphan action lines are invalid.",
-      "- Environmental prose between speakers must use 'Narrator:' — never leave orphaned narration between character blocks.",
+      "- Every physical action must appear in the same inline block as its speaker label. Never output a lone *action* line.",
+      "- If Casey speaks then acts, write the whole block inline: Casey: \"Dialogue.\" *She nods slowly.* Orphan action lines and name-only headers are invalid.",
+      "- Environmental prose between speakers must use the inline form 'Narrator: *prose*' — never leave orphaned or plain narration between character blocks.",
       "- Finish each speaker block completely. Do not cut off mid-sentence or mid-thought.",
       guidedChapterContext?.sceneCount === 1 || guidedChapterContext?.scenesPerChapter === 1
         ? "This chapter is ONE scene only. Deliver the full chapter beat in this single assistant reply — do not stop early or save material for a follow-up turn."
