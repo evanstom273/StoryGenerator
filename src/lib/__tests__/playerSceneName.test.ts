@@ -44,6 +44,26 @@ describe("resolvePlayerCharacterSceneName", () => {
 			),
 		).toBe("Mark Owen");
 	});
+
+	it("ignores corrupted displayName tokens persisted from prose inference", () => {
+		expect(
+			resolvePlayerCharacterSceneName(
+				{ name: "James Peralta", aliases: ["Jamie"] },
+				{
+					storyState: {
+						updatedAt: "2026-08-22T00:00:00.000Z",
+						characters: {
+							"James Peralta": {
+								displayName: "The",
+							},
+						},
+						worldFacts: [],
+						unresolvedThreads: [],
+					},
+				},
+			),
+		).toBe("Jamie");
+	});
 });
 
 describe("resolveEffectivePlayerIdentity with director notes", () => {
@@ -118,14 +138,13 @@ describe("applyStoryLocalIdentityToAssistantTranscript", () => {
 });
 
 describe("inferPlayerSceneNameFromDirectorNotes", () => {
-	it("reads a new scene name from the latest director note when the protagonist acts under that name", () => {
+	it("reads a new scene name only from explicit rename dialogue in director notes", () => {
 		const messages: StoryMessage[] = [
 			{
 				id: "30",
 				storyId: "story-1",
 				role: "user",
-				content:
-					'*A few moments go by. Lyra finally pulls back from her parents, wiping her eyes on her sleeve ("Mac. Come here...")*',
+				content: '*Jamie takes a breath.* "Call me Lyra."',
 				speakerType: "director",
 				timestamp: "2026-08-21T00:08:00.000Z",
 			},

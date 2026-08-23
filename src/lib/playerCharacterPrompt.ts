@@ -5,10 +5,75 @@ import {
 	findPlayerStoryStateEntry,
 	inferPlayerPronounsFromDirectorNotes,
 	inferPlayerPronounsFromMessages,
-	inferPlayerSceneNameFromDirectorNotes,
 	inferPlayerSceneNameFromMessages,
 	detectEstablishedPlayerIdentityFromMessages,
 } from "./storyText/playerSceneName";
+
+/** Scene names must be real character labels, never narration tokens or pseudo-speakers. */
+export function isValidPlayerSceneName(name: string | null | undefined): boolean {
+	const trimmed = name?.trim() ?? "";
+	if (!trimmed || trimmed.length < 2) {
+		return false;
+	}
+	if (!/^[A-Z]/.test(trimmed)) {
+		return false;
+	}
+	return !isDeniedSpeakerLabel(trimmed);
+}
+
+function resolveExplicitPlayerSceneRenameFromMessages(
+	messages: StoryMessage[],
+	legalName: string,
+	sheetPreferred: string,
+): string | null {
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		const content = message.content.replace(/\r\n/g, "\n");
+		const chosenName = extractChosenNameCandidateFromContent(
+			content,
+			legalName,
+			sheetPreferred,
+		);
+		if (chosenName) {
+			return chosenName;
+		}
+	}
+	return null;
+}
+
+function extractChosenNameCandidateFromContent(
+	content: string,
+	legalName: string,
+	sheetPreferredName: string,
+): string | null {
+	const patterns = [
+		/"([A-Z][a-z]+)\.{0,3}\s*that['']?s my\.{0,3}\s*name/i,
+		/\bmy name is\s+"?([A-Z][a-z]+)"?/i,
+		/\bcall me\s+"?([A-Z][a-z]+)"?/i,
+		/\bIt suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
+		/\bIt'?s beautiful\.?\s*It suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
+	];
+
+	for (const pattern of patterns) {
+		const match = content.match(pattern);
+		const candidate = match?.[1]?.trim();
+		if (!candidate) {
+			continue;
+		}
+		if (candidate.toLowerCase() === legalName.trim().toLowerCase()) {
+			continue;
+		}
+		if (candidate.toLowerCase() === sheetPreferredName.trim().toLowerCase()) {
+			continue;
+		}
+		if (!isValidPlayerSceneName(candidate)) {
+			continue;
+		}
+		return candidate;
+	}
+
+	return null;
+}
 
 export function normalizePlayerCharacterAliases(value: unknown): string[] {
 	if (!Array.isArray(value)) {
@@ -147,7 +212,11 @@ export function resolvePlayerCharacterSceneName(
 
 	const storyEntry = findPlayerStoryStateEntry(opts?.storyState, legalName);
 	const storyDisplayName = storyEntry?.displayName?.trim();
-	if (storyDisplayName && storyDisplayName.toLowerCase() !== legalName.toLowerCase()) {
+	if (
+		storyDisplayName &&
+		isValidPlayerSceneName(storyDisplayName) &&
+		storyDisplayName.toLowerCase() !== legalName.toLowerCase()
+	) {
 		return storyDisplayName;
 	}
 
@@ -155,13 +224,27 @@ export function resolvePlayerCharacterSceneName(
 		(alias) => alias.toLowerCase() !== legalName.toLowerCase(),
 	);
 	if (storyAliases.length) {
-		return storyAliases[0];
+		const firstValidAlias = storyAliases.find((alias) => isValidPlayerSceneName(alias));
+		if (firstValidAlias) {
+			return firstValidAlias;
+		}
+	}
+
+	if (opts?.recentMessages?.length) {
+		const explicitRename = resolveExplicitPlayerSceneRenameFromMessages(
+			opts.recentMessages,
+			legalName,
+			sheetPreferred,
+		);
+		if (explicitRename) {
+			return explicitRename;
+		}
 	}
 
 	const inferredFromMessages = opts?.recentMessages?.length
 		? inferPlayerSceneNameFromMessages(opts.recentMessages, legalName)
 		: null;
-	if (inferredFromMessages) {
+	if (inferredFromMessages && isValidPlayerSceneName(inferredFromMessages)) {
 		return inferredFromMessages;
 	}
 
@@ -249,15 +332,11 @@ export function resolveEffectivePlayerIdentity(
 				sheetPreferred,
 			)
 		: null;
-	if (establishedIdentity?.sceneName?.trim()) {
+	if (
+		establishedIdentity?.sceneName?.trim() &&
+		isValidPlayerSceneName(establishedIdentity.sceneName)
+	) {
 		sceneName = establishedIdentity.sceneName.trim();
-	}
-
-	const fromDirectorNotes = opts?.recentMessages?.length
-		? inferPlayerSceneNameFromDirectorNotes(opts.recentMessages, legalName, sheetPreferred)
-		: null;
-	if (fromDirectorNotes && !isDeniedSpeakerLabel(fromDirectorNotes)) {
-		sceneName = fromDirectorNotes;
 	}
 
 	const pronouns = resolveEffectivePlayerPronouns(character, {
@@ -272,9 +351,8 @@ export function resolveEffectivePlayerIdentity(
 		!!pronouns &&
 		pronouns.toLowerCase() !== character.pronouns.trim().toLowerCase();
 	const hasStoryStateIdentity =
-		!!storyEntry?.displayName?.trim() ||
-		!!storyEntry?.pronouns?.trim() ||
-		!!fromDirectorNotes;
+		(!!storyEntry?.displayName?.trim() && isValidPlayerSceneName(storyEntry.displayName)) ||
+		!!storyEntry?.pronouns?.trim();
 
 	return {
 		sceneName,

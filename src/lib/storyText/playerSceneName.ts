@@ -75,49 +75,6 @@ export function findPlayerStoryStateEntry(
 	return null;
 }
 
-const DIRECTOR_NOTE_NAME_STOPWORDS = new Set([
-	"director",
-	"narrator",
-	"continue",
-	"chapter",
-	"system",
-	"assistant",
-	"morning",
-	"afternoon",
-	"evening",
-	"before",
-	"after",
-	"while",
-	"when",
-	"then",
-	"they",
-	"their",
-]);
-
-const DIRECTOR_PROTAGONIST_VERBS =
-	"(?:pulls|steps|turns|walks|sprints|stumbles|runs|rushes|enters|moves|looks|glances|sits|stands|reaches|leans|nods|shakes|smiles|wipes|bursts|collapses|gasps|freezes|spins|waves|hugs|cries|laughs|speaks|whispers|shouts|yells|screams|continues|stops|waits|pauses|breathes|sighs|sobs)";
-
-function directorNoteUsesNameAsProtagonist(content: string, name: string) {
-	const escaped = escapeRegex(name);
-	return new RegExp(
-		`\\b${escaped}\\b(?:\\s+\\w+){0,5}\\s+${DIRECTOR_PROTAGONIST_VERBS}\\b`,
-		"i",
-	).test(content);
-}
-
-function directorNoteReferencesKnownPlayerName(content: string, names: string[]) {
-	for (const name of names) {
-		const trimmed = name.trim();
-		if (!trimmed) {
-			continue;
-		}
-		if (new RegExp(`\\b${escapeRegex(trimmed)}\\b`, "i").test(content)) {
-			return true;
-		}
-	}
-	return false;
-}
-
 function extractChosenNameCandidate(
 	content: string,
 	legalName: string,
@@ -152,76 +109,52 @@ function extractChosenNameCandidate(
 	return null;
 }
 
-export function inferPlayerSceneNameFromDirectorNotes(
+function isValidPlayerSceneNameForRename(name: string): boolean {
+	const trimmed = name.trim();
+	if (!trimmed || trimmed.length < 2) {
+		return false;
+	}
+	if (!/^[A-Z]/.test(trimmed)) {
+		return false;
+	}
+	return !isDeniedSpeakerLabel(trimmed);
+}
+
+export function inferExplicitPlayerSceneRenameFromDirectorNotes(
 	messages: StoryMessage[],
 	legalName: string,
 	sheetPreferredName?: string,
 ): string | null {
-	const legalLower = legalName.trim().toLowerCase();
-	const preferredLower = sheetPreferredName?.trim().toLowerCase() ?? "";
-	if (!legalLower) {
-		return null;
-	}
-
-	const legalTokens = new Set(nameTokens(legalName).map((token) => token.toLowerCase()));
-	const knownPlayerNames = new Set<string>();
-	if (preferredLower) {
-		knownPlayerNames.add(preferredLower);
-	}
-	for (const token of legalTokens) {
-		knownPlayerNames.add(token);
-	}
-
 	for (let index = messages.length - 1; index >= 0; index -= 1) {
 		const message = messages[index];
 		if (message.role !== "user" || !isDirectorMessage(message)) {
 			continue;
 		}
 
-		const content = message.content.replace(/\r\n/g, "\n");
 		const chosenName = extractChosenNameCandidate(
-			content,
+			message.content.replace(/\r\n/g, "\n"),
 			legalName,
 			sheetPreferredName ?? "",
 		);
 		if (chosenName) {
 			return chosenName;
 		}
-
-		if (directorNoteReferencesKnownPlayerName(content, Array.from(knownPlayerNames))) {
-			continue;
-		}
-
-		const candidates = content.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g) ?? [];
-		for (const candidate of candidates) {
-			const trimmed = candidate.trim();
-			const lower = trimmed.toLowerCase();
-			const firstToken = nameTokens(trimmed)[0] ?? trimmed;
-			const firstTokenLower = firstToken.toLowerCase();
-			if (
-				!trimmed ||
-				DIRECTOR_NOTE_NAME_STOPWORDS.has(lower) ||
-				DIRECTOR_NOTE_NAME_STOPWORDS.has(firstTokenLower)
-			) {
-				continue;
-			}
-			if (isDeniedSpeakerLabel(firstToken)) {
-				continue;
-			}
-			if (legalTokens.has(lower) || legalTokens.has(firstTokenLower)) {
-				continue;
-			}
-			if (preferredLower && (lower === preferredLower || firstTokenLower === preferredLower)) {
-				continue;
-			}
-			if (!directorNoteUsesNameAsProtagonist(content, firstToken)) {
-				continue;
-			}
-			return firstToken;
-		}
 	}
 
 	return null;
+}
+
+/** @deprecated Use inferExplicitPlayerSceneRenameFromDirectorNotes. Prose scanning removed. */
+export function inferPlayerSceneNameFromDirectorNotes(
+	messages: StoryMessage[],
+	legalName: string,
+	sheetPreferredName?: string,
+): string | null {
+	return inferExplicitPlayerSceneRenameFromDirectorNotes(
+		messages,
+		legalName,
+		sheetPreferredName,
+	);
 }
 
 export function inferPlayerPronounsFromMessages(
@@ -360,18 +293,9 @@ export function detectEstablishedPlayerIdentityFromMessages(
 		}
 
 		const chosenName = extractChosenNameCandidate(content, legalName, sheetPreferredName);
-		if (chosenName) {
+		if (chosenName && isValidPlayerSceneNameForRename(chosenName)) {
 			sceneName = chosenName;
 		}
-	}
-
-	const latestDirectorSceneName = inferPlayerSceneNameFromDirectorNotes(
-		messages,
-		legalName,
-		sheetPreferredName,
-	);
-	if (latestDirectorSceneName) {
-		sceneName = latestDirectorSceneName;
 	}
 
 	const latestDirectorPronouns = inferPlayerPronounsFromDirectorNotes(messages);
