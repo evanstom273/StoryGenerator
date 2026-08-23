@@ -13,10 +13,9 @@ import {
 	repairPlayerOrphanActionLines,
 	repairStrayAsteriskArtifacts,
 } from "./transcriptFormatRepair";
-import {
-	applyPlayerSceneNameToTranscript,
-	normalizeCharacterActionBeatsInTranscript,
-} from "./playerSceneName";
+import { buildPlayerTranscriptIdentityFromArgs } from "./playerTranscriptIdentity";
+import type { PlayerTranscriptIdentity } from "./playerTranscriptIdentity";
+import { repairAssistantTranscript } from "./transcriptRepairPipeline";
 import { getPlayerCharacterAuthorshipViolation } from "./playerProtection";
 import type { StoryFormatIssue } from "./storyStandardizer";
 import { repairClockTimeColonCorruption } from "./clockTimeInProse";
@@ -939,6 +938,31 @@ export function normalizeTranscriptForDisplay(text: string): string {
 	);
 }
 
+function buildSanitizerPlayerIdentity(args: {
+	legalName?: string | null;
+	sceneName?: string | null;
+	pronouns?: string | null;
+	characterGenders?: CharacterTtsGenderMap | null;
+	knownTies?: string[] | null;
+	aliases?: string[] | null;
+	transcriptText?: string | null;
+}): PlayerTranscriptIdentity | null {
+	const legalName = args.legalName?.trim() ?? "";
+	if (!legalName) {
+		return null;
+	}
+
+	return buildPlayerTranscriptIdentityFromArgs({
+		playerName: legalName,
+		playerSceneName: args.sceneName,
+		playerPronouns: args.pronouns,
+		characterGenders: args.characterGenders,
+		aliases: args.aliases,
+		knownTies: args.knownTies,
+		transcriptText: args.transcriptText,
+	});
+}
+
 export function applyStoryLocalIdentityToAssistantTranscript(
 	text: string,
 	args: {
@@ -948,38 +972,45 @@ export function applyStoryLocalIdentityToAssistantTranscript(
 		characterGenders?: CharacterTtsGenderMap | null;
 		knownTies?: string[] | null;
 		transcriptText?: string | null;
+		aliases?: string[] | null;
+		latestUserMessage?: string | null;
 	},
 ): string {
-	const legalName = args.legalName.trim();
-	const sceneName = args.sceneName.trim();
-	let normalized = normalizeTranscriptForDisplay(text);
-
-	normalized = repairSpeakerLabelArtifacts(normalized);
-	normalized = repairNarratorBlocks(normalized, {
+	const identity = buildSanitizerPlayerIdentity({
+		legalName: args.legalName,
+		sceneName: args.sceneName,
+		pronouns: args.pronouns,
+		characterGenders: args.characterGenders,
 		knownTies: args.knownTies,
-		transcriptText: args.transcriptText ?? normalized,
+		aliases: args.aliases,
+		transcriptText: args.transcriptText ?? text,
 	});
-
-	if (legalName && sceneName && legalName.toLowerCase() !== sceneName.toLowerCase()) {
-		normalized = applyPlayerSceneNameToTranscript(normalized, legalName, sceneName);
+	if (!identity) {
+		return restrainEmDashUsageInTranscript(normalizeTranscriptForDisplay(text));
 	}
 
-	normalized = normalizeCharacterActionBeatsInTranscript(normalized, {
-		playerSceneName: sceneName,
-		playerLegalName: legalName,
-		playerPronouns: args.pronouns,
-		characterGenders: args.characterGenders,
+	const normalized = repairAssistantTranscript(text, {
+		identity,
+		latestUserMessage: args.latestUserMessage,
 	});
-
-	normalized = repairNarratorBlocks(normalized, {
-		knownTies: args.knownTies,
-		transcriptText: args.transcriptText ?? normalized,
-	});
-
 	return restrainEmDashUsageInTranscript(normalized);
 }
 
-export function repairAssistantMessageContent(text: string): string {
+export function repairAssistantMessageContent(
+	text: string,
+	options?: {
+		identity?: PlayerTranscriptIdentity | null;
+		latestUserMessage?: string | null;
+	},
+): string {
+	if (options?.identity) {
+		const normalized = repairAssistantTranscript(text, {
+			identity: options.identity,
+			latestUserMessage: options.latestUserMessage,
+		});
+		return restrainEmDashUsageInTranscript(normalized);
+	}
+
 	let normalized = normalizeTranscriptForDisplay(text);
 	normalized = repairSpeakerLabelArtifacts(normalized);
 	normalized = repairNarratorBlocks(normalized, {
@@ -994,6 +1025,8 @@ export function sanitizeMessageForDisplay(args: {
   playerName?: string | null;
   playerSceneName?: string | null;
   playerPronouns?: string | null;
+  playerAliases?: string[] | null;
+  knownTies?: string[] | null;
   characterGenders?: CharacterTtsGenderMap | null;
   applyActionBeatFormatting?: boolean;
 }) {
@@ -1001,34 +1034,30 @@ export function sanitizeMessageForDisplay(args: {
     return args.message.content;
   }
 
-  let text = repairClockTimeColonCorruption(args.message.content);
-  text = normalizeTranscriptForDisplay(text);
-  const legalName = args.playerName?.trim();
-  const sceneName = args.playerSceneName?.trim() || legalName;
-
-  text = repairSpeakerLabelArtifacts(text);
-  text = repairNarratorBlocks(text, {
-    transcriptText: text,
+  const identity = buildSanitizerPlayerIdentity({
+    legalName: args.playerName,
+    sceneName: args.playerSceneName,
+    pronouns: args.playerPronouns,
+    characterGenders: args.characterGenders,
+    aliases: args.playerAliases,
+    knownTies: args.knownTies,
+    transcriptText: args.message.content,
   });
-
-  if (legalName && sceneName && legalName.toLowerCase() !== sceneName.toLowerCase()) {
-    text = applyPlayerSceneNameToTranscript(text, legalName, sceneName);
-  }
-
-  if (args.applyActionBeatFormatting !== false) {
-    text = normalizeCharacterActionBeatsInTranscript(text, {
-      playerSceneName: sceneName,
-      playerLegalName: legalName,
-      playerPronouns: args.playerPronouns,
-      characterGenders: args.characterGenders,
+  if (!identity) {
+    let text = repairClockTimeColonCorruption(args.message.content);
+    text = normalizeTranscriptForDisplay(text);
+    text = repairSpeakerLabelArtifacts(text);
+    text = repairNarratorBlocks(text, {
+      transcriptText: text,
     });
+    return text;
   }
 
-  text = repairNarratorBlocks(text, {
-    transcriptText: text,
+  return repairAssistantTranscript(args.message.content, {
+    identity,
+    latestUserMessage: args.latestUserMessage,
+    applyActionBeatFormatting: args.applyActionBeatFormatting,
   });
-
-  return text;
 }
 
 function capitalizeFirstLetter(text: string): string {
@@ -1184,33 +1213,37 @@ export function prevalidateAssistantTranscript(args: {
 	latestUserMessage?: string | null;
 	knownTies?: string[] | null;
 	transcriptText?: string | null;
+	playerAliases?: string[] | null;
 }) {
-	const legalName = args.playerName?.trim() ?? "";
-	const sceneName = args.playerSceneName?.trim() || legalName;
-	const clockRepaired = repairClockTimeColonCorruption(args.text);
 	const transcriptText = args.transcriptText ?? args.latestUserMessage ?? args.text;
-	let prepared = normalizeSpeakerNamesInTranscript(
-		repairMalformedTranscriptFormat(clockRepaired, {
-			playerName: args.playerName,
-			playerSceneName: args.playerSceneName,
-			latestUserMessage: args.latestUserMessage,
-			knownTies: args.knownTies,
-			transcriptText,
-		}),
-	);
+	const identity = buildSanitizerPlayerIdentity({
+		legalName: args.playerName,
+		sceneName: args.playerSceneName,
+		pronouns: args.playerPronouns,
+		characterGenders: args.characterGenders,
+		knownTies: args.knownTies,
+		aliases: args.playerAliases,
+		transcriptText,
+	});
 
-	if (legalName) {
-		prepared = applyStoryLocalIdentityToAssistantTranscript(prepared, {
-			legalName,
-			sceneName,
-			pronouns: args.playerPronouns,
-			characterGenders: args.characterGenders,
-			knownTies: args.knownTies,
-			transcriptText,
-		});
+	if (!identity) {
+		const clockRepaired = repairClockTimeColonCorruption(args.text);
+		return normalizeSpeakerNamesInTranscript(
+			repairMalformedTranscriptFormat(clockRepaired, {
+				playerName: args.playerName,
+				playerSceneName: args.playerSceneName,
+				latestUserMessage: args.latestUserMessage,
+				knownTies: args.knownTies,
+				transcriptText,
+			}),
+		);
 	}
 
-	return prepared;
+	const prepared = repairAssistantTranscript(args.text, {
+		identity,
+		latestUserMessage: args.latestUserMessage,
+	});
+	return restrainEmDashUsageInTranscript(prepared);
 }
 
 export function validateAssistantTranscriptForSave(args: {
@@ -1219,6 +1252,7 @@ export function validateAssistantTranscriptForSave(args: {
 	playerName?: string | null;
 	playerSceneName?: string | null;
 	playerPronouns?: string | null;
+	playerAliases?: string[] | null;
 	characterGenders?: CharacterTtsGenderMap | null;
 	allowDirectedPlayerControl?: boolean;
 	skipSceneStateCheck?: boolean;
@@ -1233,6 +1267,7 @@ export function validateAssistantTranscriptForSave(args: {
 		playerName,
 		playerSceneName: args.playerSceneName,
 		playerPronouns: args.playerPronouns,
+		playerAliases: args.playerAliases,
 		characterGenders: args.characterGenders,
 		latestUserMessage,
 		knownTies: args.knownTies,

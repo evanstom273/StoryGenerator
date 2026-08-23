@@ -1706,6 +1706,7 @@ export function StoryWorkspacePage() {
                       playerLegalName={activePlayerCharacter.name}
                       playerSceneName={playerSceneName}
                       playerPronouns={playerEffectivePronouns}
+                      playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter.aliases)}
                       characterGenders={characterGenders}
                       onEdit={populateComposerFromMessage}
                       onQuickEdit={isReadOnly ? undefined : handleOpenAssistantEdit}
@@ -1727,6 +1728,7 @@ export function StoryWorkspacePage() {
               playerLegalName={activePlayerCharacter.name}
               playerSceneName={playerSceneName}
               playerPronouns={playerEffectivePronouns}
+              playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter.aliases)}
               characterGenders={characterGenders}
               storyTitle={activeStory.title}
               chapters={storyChapters}

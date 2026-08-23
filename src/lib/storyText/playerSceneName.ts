@@ -11,6 +11,8 @@ import { splitDialogueQuoteRegions } from "./dialogueQuoteRegions";
 import { findSpeakerColonIndex, looksLikeClockTimeFragment } from "./clockTimeInProse";
 import { isSubjectPronounPseudoSpeaker } from "./narratorBlockRepair";
 import { normalizeSceneSpeakerLabel } from "./speakerLabels";
+import type { PlayerTranscriptIdentity } from "./playerTranscriptIdentity";
+import { speakerLabelRefersToPlayer } from "./playerTranscriptIdentity";
 
 const RESERVED_SPEAKER_LABELS = new Set(["narrator", "director", "time", "system", "assistant"]);
 
@@ -437,13 +439,19 @@ export function applyPlayerSceneNameToTranscript(
 	legalName: string,
 	sceneName: string,
 ) {
-	const trimmedLegal = legalName.trim();
-	const trimmedScene = sceneName.trim();
-	if (!trimmedLegal || !trimmedScene) {
-		return text;
-	}
+	return applyPlayerSpeakerLabelsToTranscript(text, {
+		legalName,
+		sceneName,
+		aliases: [legalName, sceneName],
+	});
+}
 
-	if (trimmedLegal.toLowerCase() === trimmedScene.toLowerCase()) {
+export function applyPlayerSpeakerLabelsToTranscript(
+	text: string,
+	identity: PlayerTranscriptIdentity,
+) {
+	const trimmedScene = identity.sceneName.trim();
+	if (!trimmedScene) {
 		return text;
 	}
 
@@ -453,19 +461,20 @@ export function applyPlayerSceneNameToTranscript(
 	return lines
 		.map((line) => {
 			const match = line.match(/^([^\n:]{1,64})(:|\s[-—])\s*(.*)$/);
-			if (match?.[1]) {
-				const label = match[1].trim();
-				if (isLegalNameReference(label, trimmedLegal)) {
-					return `${sceneLabel}${match[2]} ${match[3] ?? ""}`;
-				}
+			if (match?.[1] && speakerLabelRefersToPlayer(match[1], identity)) {
+				return `${sceneLabel}${match[2]} ${match[3] ?? ""}`;
 			}
 
 			const narratorMatch = line.match(/^Narrator:\s*(.*)$/i);
 			if (narratorMatch) {
-				return `Narrator: ${replacePlayerNameInUnquotedProse(narratorMatch[1] ?? "", trimmedLegal, trimmedScene)}`;
+				return `Narrator: ${replacePlayerNameInUnquotedProse(
+					narratorMatch[1] ?? "",
+					identity.legalName,
+					trimmedScene,
+				)}`;
 			}
 
-			return replacePlayerNameInUnquotedProse(line, trimmedLegal, trimmedScene);
+			return replacePlayerNameInUnquotedProse(line, identity.legalName, trimmedScene);
 		})
 		.join("\n");
 }
@@ -682,6 +691,17 @@ function lookupCharacterSubjectPronoun(
 	return null;
 }
 
+function lookupPlayerSubjectPronoun(identity: PlayerTranscriptIdentity): "He" | "She" | "They" | null {
+	const candidates = [identity.sceneName, identity.legalName, ...identity.aliases];
+	for (const candidate of candidates) {
+		const resolved = lookupCharacterSubjectPronoun(candidate, identity.characterGenders);
+		if (resolved) {
+			return resolved;
+		}
+	}
+	return null;
+}
+
 function resolveSpeakerActionPronoun(
 	beatText: string,
 	speakerLabel: string,
@@ -690,8 +710,21 @@ function resolveSpeakerActionPronoun(
 		playerLegalName?: string | null;
 		playerPronouns?: string | null;
 		characterGenders?: CharacterTtsGenderMap | null;
+		playerIdentity?: PlayerTranscriptIdentity | null;
+		forcePlayerPronouns?: boolean;
 	},
 ): "He" | "She" | "They" {
+	const identity = opts?.playerIdentity;
+	if (identity && speakerLabelRefersToPlayer(speakerLabel, identity)) {
+		if (identity.pronouns?.trim()) {
+			return resolveSubjectPronoun(identity.pronouns);
+		}
+		const fromPlayerGender = lookupPlayerSubjectPronoun(identity);
+		if (fromPlayerGender) {
+			return fromPlayerGender;
+		}
+	}
+
 	const playerSceneLabel = opts?.playerSceneName?.trim()
 		? normalizeSceneSpeakerLabel(opts.playerSceneName)
 		: "";
@@ -700,13 +733,20 @@ function resolveSpeakerActionPronoun(
 		: "";
 	const normalizedSpeaker = normalizeSceneSpeakerLabel(speakerLabel);
 	const legalFirstName = playerLegalLabel.split(/\s+/)[0] ?? "";
+	const legacyPlayerLabels = identity ? collectLegacyPlayerSpeakerLabels(identity) : new Set<string>();
 	const isPlayerSpeaker =
+		(identity && speakerLabelRefersToPlayer(speakerLabel, identity)) ||
 		(playerSceneLabel && normalizedSpeaker === playerSceneLabel) ||
 		(playerLegalLabel && normalizedSpeaker === playerLegalLabel) ||
-		(legalFirstName.length >= 2 && normalizedSpeaker === legalFirstName);
+		(legalFirstName.length >= 2 && normalizedSpeaker === legalFirstName) ||
+		legacyPlayerLabels.has(normalizedSpeaker.toLowerCase());
 
 	if (isPlayerSpeaker && opts?.playerPronouns?.trim()) {
 		return resolveSubjectPronoun(opts.playerPronouns);
+	}
+
+	if (isPlayerSpeaker && identity?.pronouns?.trim()) {
+		return resolveSubjectPronoun(identity.pronouns);
 	}
 
 	const fromStoryState = lookupCharacterSubjectPronoun(speakerLabel, opts?.characterGenders);
@@ -714,8 +754,30 @@ function resolveSpeakerActionPronoun(
 		return fromStoryState;
 	}
 
+	if (isPlayerSpeaker || opts?.forcePlayerPronouns) {
+		if (identity?.pronouns?.trim()) {
+			return resolveSubjectPronoun(identity.pronouns);
+		}
+		const fromPlayerGender = identity ? lookupPlayerSubjectPronoun(identity) : null;
+		if (fromPlayerGender) {
+			return fromPlayerGender;
+		}
+	}
+
+	if (opts?.forcePlayerPronouns) {
+		return "They";
+	}
+
 	const inferred = resolveSubjectPronounFromActionBeat(beatText);
 	return inferred ?? "They";
+}
+
+function collectLegacyPlayerSpeakerLabels(identity: PlayerTranscriptIdentity): Set<string> {
+	return new Set(
+		[identity.legalName, identity.sceneName, ...identity.aliases].map((label) =>
+			normalizeSceneSpeakerLabel(label).toLowerCase(),
+		),
+	);
 }
 
 function parseSpeakerLineForActionBeats(line: string): {
@@ -760,11 +822,34 @@ function normalizeSpeakerRemainderActionBeats(
 		playerLegalName?: string | null;
 		playerPronouns?: string | null;
 		characterGenders?: CharacterTtsGenderMap | null;
+		playerIdentity?: PlayerTranscriptIdentity | null;
+		forcePlayerPronouns?: boolean;
 	},
 ) {
 	return normalizeActionBeatsInSpeakerRemainder(remainder, (beatText) =>
 		resolveSpeakerActionPronoun(beatText, speakerLabel, opts),
 	);
+}
+
+function resolveActionBeatOptions(opts?: {
+	playerSceneName?: string | null;
+	playerLegalName?: string | null;
+	playerPronouns?: string | null;
+	characterGenders?: CharacterTtsGenderMap | null;
+	playerIdentity?: PlayerTranscriptIdentity | null;
+	forcePlayerPronouns?: boolean;
+}) {
+	if (!opts?.playerIdentity) {
+		return opts;
+	}
+
+	return {
+		...opts,
+		playerSceneName: opts.playerSceneName ?? opts.playerIdentity.sceneName,
+		playerLegalName: opts.playerLegalName ?? opts.playerIdentity.legalName,
+		playerPronouns: opts.playerPronouns ?? opts.playerIdentity.pronouns,
+		characterGenders: opts.characterGenders ?? opts.playerIdentity.characterGenders,
+	};
 }
 
 export function normalizeCharacterActionBeatsInTranscript(
@@ -774,8 +859,11 @@ export function normalizeCharacterActionBeatsInTranscript(
 		playerLegalName?: string | null;
 		playerPronouns?: string | null;
 		characterGenders?: CharacterTtsGenderMap | null;
+		playerIdentity?: PlayerTranscriptIdentity | null;
+		forcePlayerPronouns?: boolean;
 	},
 ) {
+	const beatOpts = resolveActionBeatOptions(opts);
 	const lines = text.replace(/\r\n/g, "\n").split("\n");
 	const output: string[] = [];
 	let pendingSpeaker: string | null = null;
@@ -794,7 +882,7 @@ export function normalizeCharacterActionBeatsInTranscript(
 			.filter(Boolean)
 			.join(" ");
 		if (remainder.trim()) {
-			const normalized = normalizeSpeakerRemainderActionBeats(remainder, pendingSpeaker, opts);
+			const normalized = normalizeSpeakerRemainderActionBeats(remainder, pendingSpeaker, beatOpts);
 			output.push(`${pendingSpeaker}${pendingSeparator} ${normalized}`);
 		} else {
 			output.push(`${pendingSpeaker}${pendingSeparator}`);
@@ -820,7 +908,7 @@ export function normalizeCharacterActionBeatsInTranscript(
 			const normalized = normalizeSpeakerRemainderActionBeats(
 				parsed.remainder,
 				parsed.speakerLabel,
-				opts,
+				beatOpts,
 			);
 			output.push(`${parsed.speakerLabel}${parsed.separator} ${normalized}`);
 			continue;

@@ -19,6 +19,7 @@ type StoryTranscriptViewProps = {
   playerLegalName?: string;
   playerSceneName?: string;
   playerPronouns?: string;
+  playerAliases?: string[];
   characterGenders?: CharacterTtsGenderMap;
   storyTitle?: string;
   chapters?: StoryChapter[];
@@ -284,6 +285,7 @@ export function StoryTranscriptView({
   playerLegalName,
   playerSceneName,
   playerPronouns,
+  playerAliases,
   characterGenders,
   storyTitle = "Story",
   chapters,
@@ -467,6 +469,7 @@ export function StoryTranscriptView({
           playerName: effectiveLegalName,
           playerSceneName: effectiveSceneName,
           playerPronouns,
+          playerAliases,
           characterGenders,
         });
         const blocks = parseSceneBlocks(sanitized);

@@ -138,6 +138,7 @@ import {
   shouldAcceptStreamDespiteSpeakerAttributionFlags,
   type AssistantTranscriptValidationStage,
 } from "../../lib/storyText/transcriptSanitizer";
+import { buildPlayerTranscriptIdentityFromStoryContext } from "../../lib/storyText/playerTranscriptIdentity";
 import { repairClockTimeColonCorruption } from "../../lib/storyText/clockTimeInProse";
 import { STREAM_VALIDATION_MAX_ATTEMPTS } from "../../lib/storyText/streamValidationPolicy";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
@@ -1022,6 +1023,7 @@ async function resolveStreamedAssistantTranscript(args: {
 	playerName: string;
 	playerSceneName: string;
 	playerPronouns?: string | null;
+	playerAliases?: string[];
 	characterGenders?: ReturnType<typeof buildCharacterGenderHintsFromStoryState>;
 	allowDirectedPlayerControl: boolean;
 	skipSceneStateCheck?: boolean;
@@ -1062,6 +1064,7 @@ async function resolveStreamedAssistantTranscript(args: {
 			playerName: args.playerName,
 			playerSceneName: args.playerSceneName,
 			playerPronouns: args.playerPronouns,
+			playerAliases: args.playerAliases,
 			characterGenders: args.characterGenders,
 			allowDirectedPlayerControl: args.allowDirectedPlayerControl,
 			skipSceneStateCheck: args.skipSceneStateCheck,
@@ -1181,13 +1184,21 @@ function applyStoryLocalIdentityToSavedAssistantText(args: {
 		playerGender: args.playerCharacter.gender,
 		playerPronouns: args.playerIdentity.pronouns,
 	});
+	const identity = buildPlayerTranscriptIdentityFromStoryContext({
+		character: args.playerCharacter,
+		playerIdentity: args.playerIdentity,
+		storyState: args.storyStateData,
+		characterGenders,
+		transcriptText: args.transcriptText,
+	});
 
 	return applyStoryLocalIdentityToAssistantTranscript(args.text, {
-		legalName: args.playerIdentity.legalName,
-		sceneName: args.playerIdentity.sceneName,
-		pronouns: args.playerIdentity.pronouns,
-		characterGenders,
-		knownTies: normalizePlayerCharacterKnownTies(args.playerCharacter.knownTies),
+		legalName: identity.legalName,
+		sceneName: identity.sceneName,
+		pronouns: identity.pronouns,
+		characterGenders: identity.characterGenders,
+		knownTies: identity.knownTies,
+		aliases: identity.aliases,
 		transcriptText: args.transcriptText,
 	});
 }
@@ -6393,9 +6404,46 @@ export function StoryEngineProvider({
 
         await assertStoryWritable(currentMessage.storyId);
 
+        const [story, storyMessages, storyState] = await Promise.all([
+          repository.getStory(currentMessage.storyId),
+          repository.listStoryMessages(currentMessage.storyId),
+          repository.getStoryState(currentMessage.storyId),
+        ]);
+        const playerCharacter = story?.playerCharacterId
+          ? await repository.getPlayerCharacter(story.playerCharacterId)
+          : null;
+        const messageIndex = storyMessages.findIndex((entry) => entry.id === messageId);
+        const recentMessages =
+          messageIndex >= 0 ? storyMessages.slice(0, messageIndex + 1) : storyMessages;
+        const { parsedStoryState, playerIdentity } = playerCharacter
+          ? resolveStoryPlayerIdentityForGeneration({
+              playerCharacter,
+              storyState,
+              recentMessages,
+            })
+          : {
+              parsedStoryState: null,
+              playerIdentity: null,
+            };
+        const repairedContent = playerCharacter && playerIdentity
+          ? repairAssistantMessageContent(content, {
+              identity: buildPlayerTranscriptIdentityFromStoryContext({
+                character: playerCharacter,
+                playerIdentity,
+                storyState: parsedStoryState,
+                characterGenders: buildCharacterGenderHintsFromStoryState(parsedStoryState, {
+                  playerName: playerCharacter.name,
+                  playerGender: playerCharacter.gender,
+                  playerPronouns: playerIdentity.pronouns,
+                }),
+                transcriptText: content,
+              }),
+            })
+          : repairAssistantMessageContent(content);
+
         const nextMessage: StoryMessage = {
           ...currentMessage,
-          content: repairAssistantMessageContent(content),
+          content: repairedContent,
           editedAt: new Date().toISOString(),
           revision: (currentMessage.revision ?? 0) + 1,
         };
@@ -6736,6 +6784,7 @@ export function StoryEngineProvider({
           playerName: playerNameForValidation,
           playerSceneName: playerIdentity.sceneName,
           playerPronouns: playerIdentity.pronouns,
+          playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
           characterGenders: streamCharacterGenders,
           allowDirectedPlayerControl,
           hiddenDialoguePattern: hiddenDialogueInferencePattern,
@@ -8462,6 +8511,7 @@ export function StoryEngineProvider({
             playerName: playerNameForValidation,
             playerSceneName: playerIdentity.sceneName,
             playerPronouns: playerIdentity.pronouns,
+            playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
             characterGenders: streamCharacterGenders,
             allowDirectedPlayerControl,
             skipSceneStateCheck: opts?.guidedGenerationInternal,
