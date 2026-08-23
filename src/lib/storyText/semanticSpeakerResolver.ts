@@ -476,19 +476,45 @@ function collectSpeakerContradictionEvidence(
 	const evidence: SemanticSpeakerEvidence[] = actionTargetMatch
 		? [{ kind: "named-player-action-target", match: actionTargetMatch }, ...dialogueEvidence]
 		: dialogueEvidence;
+	const firstPersonVoice =
+		/\b(?:i|me|my|mine|myself)\b|\bi['\u2019](?:m|ve|d|ll)\b/i;
+	const hasConflictingFirstPersonEvidence = [actionText, ...dialogueRegions].some((region) =>
+		firstPersonVoice.test(region),
+	);
 
 	return {
 		evidence,
+		hasDirectPlayerTargetEvidence: Boolean(actionTargetMatch),
 		hasIndependentEvidence: Boolean(actionTargetMatch) && dialogueEvidence.length > 0,
+		hasConflictingFirstPersonEvidence,
 	};
+}
+
+function evidenceSupportsReassignment(
+	evidence: ReturnType<typeof collectSpeakerContradictionEvidence>,
+	alternativeSpeakerCount: number,
+	hasUnregisteredSpeakerHeader: boolean,
+) {
+	if (evidence.hasIndependentEvidence) {
+		return true;
+	}
+
+	return (
+		alternativeSpeakerCount === 1 &&
+		!hasUnregisteredSpeakerHeader &&
+		evidence.hasDirectPlayerTargetEvidence &&
+		!evidence.hasConflictingFirstPersonEvidence
+	);
 }
 
 /**
  * Repair a player-labelled block, or an unlabelled block immediately after a
- * genuine player block, only when its action explicitly targets the player,
- * its dialogue independently addresses the player, and one non-player speaker
- * is the sole eligible owner. Existing labels are replaced in place; orphan
- * repairs insert only the missing label and leave all other bytes untouched.
+ * genuine player block, when its action explicitly targets the player and one
+ * non-player speaker is the sole eligible owner. Independent dialogue-address
+ * evidence is normally required; a direct named-player target can stand alone
+ * only in a single-NPC scene without conflicting first-person voice. Existing
+ * labels are replaced in place; orphan repairs insert only the missing label
+ * and leave all other bytes untouched.
  */
 export function resolveSemanticSpeakerAttribution({
 	text,
@@ -510,6 +536,15 @@ export function resolveSemanticSpeakerAttribution({
 
 	const headers = parseSpeakerHeaders(text, knownLabels);
 	const lines = parseTextLines(text);
+	const registeredSpeakerAliases = new Set<string>(["narrator", "director", ...playerAliases]);
+	for (const speaker of alternativeSpeakers) {
+		for (const alias of identityAliases(speaker)) {
+			registeredSpeakerAliases.add(alias);
+		}
+	}
+	const hasUnregisteredSpeakerHeader = headers.some(
+		(header) => !registeredSpeakerAliases.has(normalizeIdentityValue(header.label)),
+	);
 	const diagnostics: SemanticSpeakerResolutionDiagnostic[] = [];
 	const changes: SemanticSpeakerResolutionChange[] = [];
 	const reassignedPlayerHeaderStarts = new Set<number>();
@@ -522,9 +557,15 @@ export function resolveSemanticSpeakerAttribution({
 		}
 
 		const contentRange = findHeaderContentRange(text, header, headers, lines);
-		const { evidence, hasIndependentEvidence } = collectSpeakerContradictionEvidence(
+		const contradiction = collectSpeakerContradictionEvidence(
 			contentRange ? text.slice(contentRange.start, contentRange.end) : "",
 			playerAliases,
+		);
+		const { evidence, hasIndependentEvidence } = contradiction;
+		const supportsReassignment = evidenceSupportsReassignment(
+			contradiction,
+			alternativeSpeakers.length,
+			hasUnregisteredSpeakerHeader,
 		);
 
 		let reason: SemanticSpeakerResolutionReason = "insufficient-semantic-evidence";
@@ -532,7 +573,7 @@ export function resolveSemanticSpeakerAttribution({
 			reason = "no-eligible-speaker";
 		} else if (hasIndependentEvidence && alternativeSpeakers.length > 1) {
 			reason = "ambiguous-eligible-speakers";
-		} else if (hasIndependentEvidence && alternativeSpeakers.length === 1) {
+		} else if (supportsReassignment) {
 			const replacementSpeakerLabel = alternativeSpeakers[0]!.name.trim();
 			reason = "reassigned-single-eligible-speaker";
 			changes.push({
@@ -593,9 +634,15 @@ export function resolveSemanticSpeakerAttribution({
 			continue;
 		}
 
-		const { evidence, hasIndependentEvidence } = collectSpeakerContradictionEvidence(
+		const contradiction = collectSpeakerContradictionEvidence(
 			text.slice(orphanBlock.start, orphanBlock.end),
 			playerAliases,
+		);
+		const { evidence, hasIndependentEvidence } = contradiction;
+		const supportsReassignment = evidenceSupportsReassignment(
+			contradiction,
+			alternativeSpeakers.length,
+			hasUnregisteredSpeakerHeader,
 		);
 		let reason: SemanticSpeakerResolutionReason = "insufficient-semantic-evidence";
 
@@ -603,7 +650,7 @@ export function resolveSemanticSpeakerAttribution({
 			reason = "no-eligible-speaker";
 		} else if (hasIndependentEvidence && alternativeSpeakers.length > 1) {
 			reason = "ambiguous-eligible-speakers";
-		} else if (hasIndependentEvidence && alternativeSpeakers.length === 1) {
+		} else if (supportsReassignment) {
 			const replacementSpeakerLabel = alternativeSpeakers[0]!.name.trim();
 			reason = "reassigned-single-eligible-speaker";
 			changes.push({

@@ -718,15 +718,30 @@ Director: *beat description* ("approximate dialogue gist")
 | Stage | Code | Trigger |
 |-------|------|---------|
 | Insubstantial | `insubstantial` | Text too short (< 80 chars) |
-| Speaker attribution | `speaker_attribution` | Unattributed dialogue |
+| Speaker attribution | `speaker_attribution` | Misattributed player-labelled content or repeated unlabelled dialogue |
 | Format | `format` | `storyStandardizer` failures |
 | Ownership | `ownership` | Player authorship violation |
 | Hidden dialogue | `hidden_dialogue` | Dialogue without quotes |
 | Scene state | `scene_state` | Re-narration of user's scene |
 
+Speaker-attribution failures expose content-free structured metadata (`kind`, line,
+block, current speaker, evidence, confidence, and reason). The two issue kinds are
+`misattributed_player` and `unlabelled_dialogue`; diagnostics report their counts
+and locations without copying transcript prose.
+
 ### 14.2 Rewrite loop
 
-On validation failure, `StoryEngineProvider` issues targeted rewrite prompts per stage. Up to 10 attempts with visible streaming.
+Each provider response first runs deterministic normalization, semantic speaker
+repair, and validation to a local fixed point. Local passes do not consume a
+provider attempt, and repeated or unchanged candidates terminate the loop.
+
+For rewriteable failures in standard and mature non-graphic modes,
+`StoryEngineProvider` issues a stage-specific correction prompt. The budget is 10
+total provider generations: the initial response plus at most 9 validation
+rewrites. The streaming UI displays the live attempt and actual limit. Explicit
+consensual-adult mode never sends generated prose back for a provider rewrite, so
+its validation budget is shown and reported as 1/1; an unresolved draft is kept
+available for recovery but is not saved into the story.
 
 ### 14.3 Ingestion sanitization
 

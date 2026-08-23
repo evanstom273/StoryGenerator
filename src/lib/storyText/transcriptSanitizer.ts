@@ -8,10 +8,13 @@ import {
 } from "./dialogueQuoteRegions";
 import { normalizeSpeakerNamesInTranscript } from "./speakerLabels";
 import {
+	analyzeSpeakerAttributionIssues,
 	needsSpeakerAttributionRewrite,
 	repairMalformedTranscriptFormat,
 	repairPlayerOrphanActionLines,
 	repairStrayAsteriskArtifacts,
+	type SpeakerAttributionAnalysis,
+	type SpeakerAttributionIssue,
 } from "./transcriptFormatRepair";
 import { buildPlayerTranscriptIdentityFromArgs } from "./playerTranscriptIdentity";
 import type { PlayerTranscriptIdentity } from "./playerTranscriptIdentity";
@@ -1228,8 +1231,27 @@ export type AssistantTranscriptValidationResult = {
 	stage: AssistantTranscriptValidationStage | null;
 	diagnostic: string;
 	formatIssues: StoryFormatIssue[];
+	speakerAttributionIssues: SpeakerAttributionIssue[];
 	text: string;
 };
+
+function formatSpeakerAttributionDiagnostic(analysis: SpeakerAttributionAnalysis) {
+	const kinds = Array.from(new Set(analysis.issues.map((issue) => issue.kind)));
+	const lines = Array.from(new Set(analysis.issues.map((issue) => issue.line)));
+	const blocks = Array.from(new Set(analysis.issues.map((issue) => issue.block)));
+	const evidence = Array.from(new Set(analysis.issues.map((issue) => issue.evidence)));
+
+	return [
+		"rewrite_stage=speaker_attribution",
+		`issue_kind=${kinds.join(",") || "unknown"}`,
+		`issue_count=${analysis.counts.total}`,
+		`misattributed_player_count=${analysis.counts.misattributed_player}`,
+		`unlabelled_dialogue_count=${analysis.counts.unlabelled_dialogue}`,
+		`lines=${lines.join(",") || "unknown"}`,
+		`blocks=${blocks.join(",") || "unknown"}`,
+		`evidence=${evidence.join(",") || "unknown"}`,
+	].join("; ");
+}
 
 export function prevalidateAssistantTranscript(args: {
 	text: string;
@@ -1299,6 +1321,7 @@ export function validateAssistantTranscriptForSave(args: {
 			stage: "insubstantial",
 			diagnostic: `rewrite_stage=insubstantial; length=${args.text.trim().length}`,
 			formatIssues: [],
+			speakerAttributionIssues: [],
 			text: args.text,
 		};
 	}
@@ -1315,15 +1338,14 @@ export function validateAssistantTranscriptForSave(args: {
 
 	// Without scene identity evidence, generic repair can infer owners from the
 	// broken output itself. Preserve the raw attribution failure instead.
-	if (
-		needsSpeakerAttributionRewrite(args.text, playerName) &&
-		!hasContextualSpeakerRepairEvidence
-	) {
+	const rawSpeakerAttribution = analyzeSpeakerAttributionIssues(args.text, playerName);
+	if (rawSpeakerAttribution.needsRewrite && !hasContextualSpeakerRepairEvidence) {
 		return {
 			valid: false,
 			stage: "speaker_attribution",
-			diagnostic: "rewrite_stage=speaker_attribution",
+			diagnostic: formatSpeakerAttributionDiagnostic(rawSpeakerAttribution),
 			formatIssues: [],
+			speakerAttributionIssues: rawSpeakerAttribution.issues,
 			text: args.text,
 		};
 	}
@@ -1347,16 +1369,19 @@ export function validateAssistantTranscriptForSave(args: {
 			stage: "insubstantial",
 			diagnostic: `rewrite_stage=insubstantial; length=${preparedText.trim().length}; rawLength=${args.text.trim().length}`,
 			formatIssues: [],
+			speakerAttributionIssues: [],
 			text: preparedText,
 		};
 	}
 
-	if (needsSpeakerAttributionRewrite(preparedText, playerName)) {
+	const preparedSpeakerAttribution = analyzeSpeakerAttributionIssues(preparedText, playerName);
+	if (preparedSpeakerAttribution.needsRewrite) {
 		return {
 			valid: false,
 			stage: "speaker_attribution",
-			diagnostic: "rewrite_stage=speaker_attribution",
+			diagnostic: formatSpeakerAttributionDiagnostic(preparedSpeakerAttribution),
 			formatIssues: [],
+			speakerAttributionIssues: preparedSpeakerAttribution.issues,
 			text: preparedText,
 		};
 	}
@@ -1375,6 +1400,7 @@ export function validateAssistantTranscriptForSave(args: {
 				`issues=${standardized.issues.map((issue) => issue.code).join(",") || "unknown"}`,
 			].join("; "),
 			formatIssues: standardized.issues,
+			speakerAttributionIssues: [],
 			text: candidateText,
 		};
 	}
@@ -1395,6 +1421,7 @@ export function validateAssistantTranscriptForSave(args: {
 					`line=${violation.line ?? ""}`,
 				].join("; "),
 				formatIssues: [],
+				speakerAttributionIssues: [],
 				text: candidateText,
 			};
 		}
@@ -1406,6 +1433,7 @@ export function validateAssistantTranscriptForSave(args: {
 			stage: "hidden_dialogue",
 			diagnostic: "rewrite_stage=hidden_dialogue",
 			formatIssues: [],
+			speakerAttributionIssues: [],
 			text: candidateText,
 		};
 	}
@@ -1425,6 +1453,7 @@ export function validateAssistantTranscriptForSave(args: {
 					`snippet=${sceneDup.snippet}`,
 				].join("; "),
 				formatIssues: [],
+				speakerAttributionIssues: [],
 				text: candidateText,
 			};
 		}
@@ -1435,6 +1464,7 @@ export function validateAssistantTranscriptForSave(args: {
 		stage: null,
 		diagnostic: "",
 		formatIssues: [],
+		speakerAttributionIssues: [],
 		text: candidateText,
 	};
 }

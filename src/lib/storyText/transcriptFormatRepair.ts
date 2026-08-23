@@ -5,7 +5,10 @@ import {
 	normalizeSceneSpeakerLabel,
 	resolvePlayerSceneLabelForRepairs,
 } from "./speakerLabels";
-import { countMisattributedPlayerSpeakerLines } from "./playerDialogueVoice";
+import {
+	analyzeMisattributedPlayerSpeakerLine,
+	type PlayerSpeakerMisattributionEvidence,
+} from "./playerDialogueVoice";
 
 export type TranscriptFormatRepairOptions = {
 	playerName?: string | null;
@@ -208,24 +211,111 @@ export function repairPlayerOrphanActionLines(
 	return output.join("\n");
 }
 
+export type SpeakerAttributionIssueKind =
+	| "misattributed_player"
+	| "unlabelled_dialogue";
+
+export type SpeakerAttributionIssueEvidence =
+	| PlayerSpeakerMisattributionEvidence
+	| "unlabelled_quoted_dialogue";
+
+export type SpeakerAttributionIssue = {
+	kind: SpeakerAttributionIssueKind;
+	line: number;
+	block: number;
+	currentSpeaker: string | null;
+	evidence: SpeakerAttributionIssueEvidence;
+	confidence: "high" | "medium";
+	reason: string;
+};
+
+export type SpeakerAttributionAnalysis = {
+	issues: SpeakerAttributionIssue[];
+	counts: Record<SpeakerAttributionIssueKind, number> & { total: number };
+	needsRewrite: boolean;
+};
+
+/**
+ * Return structured, content-free evidence for every suspicious attribution.
+ * Line and block numbers are one-based so diagnostics map directly to a
+ * transcript without exposing its prose.
+ */
+export function analyzeSpeakerAttributionIssues(
+	text: string,
+	playerName?: string | null,
+): SpeakerAttributionAnalysis {
+	const issues: SpeakerAttributionIssue[] = [];
+	const lines = normalizeNewlines(text).split("\n");
+	let block = 0;
+	let nextNonEmptyStartsBlock = true;
+
+	for (const [lineIndex, line] of lines.entries()) {
+		const trimmed = line.trim();
+		if (!trimmed) {
+			nextNonEmptyStartsBlock = true;
+			continue;
+		}
+
+		if (nextNonEmptyStartsBlock) {
+			block += 1;
+			nextNonEmptyStartsBlock = false;
+		}
+
+		const lineNumber = lineIndex + 1;
+		if (/"[^"]+"/.test(trimmed) && !/^[^\n:]{1,64}:\s/.test(trimmed)) {
+			issues.push({
+				kind: "unlabelled_dialogue",
+				line: lineNumber,
+				block,
+				currentSpeaker: null,
+				evidence: "unlabelled_quoted_dialogue",
+				confidence: "high",
+				reason: "quoted dialogue is missing a speaker label",
+			});
+		}
+
+		if (playerName?.trim()) {
+			const misattribution = analyzeMisattributedPlayerSpeakerLine(line, playerName);
+			if (misattribution) {
+				issues.push({
+					kind: "misattributed_player",
+					line: lineNumber,
+					block,
+					currentSpeaker: misattribution.currentSpeaker,
+					evidence: misattribution.evidence,
+					confidence: misattribution.confidence,
+					reason: misattribution.reason,
+				});
+			}
+		}
+	}
+
+	const misattributedPlayer = issues.filter(
+		(issue) => issue.kind === "misattributed_player",
+	).length;
+	const unlabelledDialogue = issues.filter(
+		(issue) => issue.kind === "unlabelled_dialogue",
+	).length;
+	return {
+		issues,
+		counts: {
+			misattributed_player: misattributedPlayer,
+			unlabelled_dialogue: unlabelledDialogue,
+			total: issues.length,
+		},
+		needsRewrite: misattributedPlayer > 0 || unlabelledDialogue >= 2,
+	};
+}
+
 export function countUnlabeledCharacterDialogueLines(text: string) {
-	return normalizeNewlines(text)
-		.split("\n")
-		.filter((line) => {
-			const trimmed = line.trim();
-			return trimmed && /"[^"]+"/.test(trimmed) && !/^[^\n:]{1,64}:\s/.test(trimmed);
-		}).length;
+	return analyzeSpeakerAttributionIssues(text).counts.unlabelled_dialogue;
 }
 
 export function needsSpeakerAttributionRewrite(
 	text: string,
 	playerName?: string | null,
 ) {
-	if (countUnlabeledCharacterDialogueLines(text) >= 2) {
-		return true;
-	}
-
-	return countMisattributedPlayerSpeakerLines(text, playerName) > 0;
+	return analyzeSpeakerAttributionIssues(text, playerName).needsRewrite;
 }
 
 /** Normalize "Name — *action*" back to "Name: *action*" when em dash was used as separator. */

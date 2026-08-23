@@ -142,6 +142,7 @@ import {
   applyStoryLocalIdentityToAssistantTranscript,
   repairAssistantMessageContent,
   validateAssistantTranscriptForSave,
+  type AssistantTranscriptValidationResult,
   type AssistantTranscriptValidationStage,
 } from "../../lib/storyText/transcriptSanitizer";
 import { buildPlayerTranscriptIdentityFromStoryContext } from "../../lib/storyText/playerTranscriptIdentity";
@@ -155,8 +156,11 @@ import {
 	resolveSemanticSpeakerAttribution,
 	type SemanticSpeakerResolutionChange,
 } from "../../lib/storyText/semanticSpeakerResolver";
+import { resolveStreamTranscript } from "../../lib/ai/streamTranscriptResolution";
 import { repairClockTimeColonCorruption } from "../../lib/storyText/clockTimeInProse";
-import { STREAM_VALIDATION_MAX_ATTEMPTS } from "../../lib/storyText/streamValidationPolicy";
+import {
+	getStreamValidationAttemptLimit,
+} from "../../lib/storyText/streamValidationPolicy";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
 import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
 import {
@@ -1155,14 +1159,13 @@ function buildLightSceneRewritePrompt(args: {
 	].join("\n");
 }
 
-const STREAM_VALIDATION_MAX_REWRITES = STREAM_VALIDATION_MAX_ATTEMPTS;
-
 function reportStreamGenerationAttempt(
 	onGenerationAttempt: ((attempt: number, maxAttempts: number) => void) | undefined,
-	streamAttempt: { current: number },
+	streamAttempt: { current: number; max: number },
+	attempt = streamAttempt.current + 1,
 ) {
-	streamAttempt.current = Math.min(streamAttempt.current + 1, STREAM_VALIDATION_MAX_ATTEMPTS);
-	onGenerationAttempt?.(streamAttempt.current, STREAM_VALIDATION_MAX_ATTEMPTS);
+	streamAttempt.current = Math.min(attempt, streamAttempt.max);
+	onGenerationAttempt?.(streamAttempt.current, streamAttempt.max);
 }
 
 async function resolveStreamedAssistantTranscript(args: {
@@ -1188,7 +1191,8 @@ async function resolveStreamedAssistantTranscript(args: {
 	signal?: AbortSignal;
 	onChunk?: (chunk: string) => void;
 	onChunkReset?: () => void;
-	reportStreamAttempt?: () => void;
+	initialProviderAttemptsUsed?: number;
+	reportStreamAttempt?: (attempt: number, maxAttempts: number) => void;
 	streamIdleTimeoutMs: number;
 	traceId: string;
 	storyId: string;
@@ -1200,16 +1204,20 @@ async function resolveStreamedAssistantTranscript(args: {
 	diagnostic: string;
 	speakerResolutionChanges: SemanticSpeakerResolutionChange[];
 }> {
-	let candidateAssistantText = args.initialText;
-	let lastValidationDiagnostic = "";
-	const speakerResolutionChanges: SemanticSpeakerResolutionChange[] = [];
+	const initialProviderAttemptsUsed = args.initialProviderAttemptsUsed ?? 1;
+	const maxProviderAttempts = getStreamValidationAttemptLimit({
+		allowProviderRewrites: args.allowProviderRewrites,
+	});
+	const validationDiagnostics: string[] = [];
+	const repairDiagnostics: string[] = [];
+	const repairsByProviderAttempt = new Map<number, SemanticSpeakerResolutionChange[]>();
 	const speakerRegistryPrompt = formatSceneSpeakerRegistryPrompt(
 		args.speakerRegistry,
 		args.allowDirectedPlayerControl,
 	);
 	const withSpeakerRegistry = (prompt: string) => `${prompt}\n\n${speakerRegistryPrompt}`;
 
-	if (!candidateAssistantText.trim()) {
+	if (!args.initialText.trim()) {
 		throw new GenerationFailureError(
 			createGenerationFailure(
 				createAIGenerationError(
@@ -1223,8 +1231,8 @@ async function resolveStreamedAssistantTranscript(args: {
 				{
 					providerName: args.providerType,
 					model: args.model,
-					attempts: 1,
-					maxAttempts: STREAM_VALIDATION_MAX_REWRITES,
+					attempts: initialProviderAttemptsUsed,
+					maxAttempts: maxProviderAttempts,
 					stage: "validation",
 				},
 			),
@@ -1242,134 +1250,177 @@ async function resolveStreamedAssistantTranscript(args: {
 		scene_state: withSpeakerRegistry(args.rewritePrompts.sceneState),
 	};
 
-	for (let attempt = 0; attempt <= STREAM_VALIDATION_MAX_REWRITES; attempt += 1) {
-		candidateAssistantText = args.normalizeCandidate?.(candidateAssistantText) ?? candidateAssistantText;
-		const semanticResolution = resolveSemanticSpeakerAttribution({
-			text: candidateAssistantText,
-			player: {
-				name: args.speakerRegistry.player.canonicalName,
-				aliases: args.speakerRegistry.player.aliases,
-			},
-			eligibleSpeakers: args.speakerRegistry.eligibleNonPlayerSpeakers.map((speaker) => ({
-				name: speaker.canonicalName,
-				aliases: speaker.aliases,
-			})),
-		});
-		candidateAssistantText = semanticResolution.text;
-		if (semanticResolution.changed) {
-			speakerResolutionChanges.push(...semanticResolution.changes);
-			lastValidationDiagnostic = [
-				lastValidationDiagnostic,
-				...semanticResolution.changes.map(
-					(change) =>
-						`local_speaker_repair=line:${change.lineNumber},${change.originalSpeakerLabel}->${change.replacementSpeakerLabel}`,
-				),
-			]
-				.filter(Boolean)
-				.join("; ");
-			args.onChunkReset?.();
-			args.onChunk?.(candidateAssistantText);
-		}
-		const validation = validateAssistantTranscriptForSave({
-			text: candidateAssistantText,
-			latestUserMessage: args.latestUserMessage,
-			playerName: args.playerName,
-			playerSceneName: args.playerSceneName,
-			playerPronouns: args.playerPronouns,
-			playerAliases: args.playerAliases,
-			characterGenders: args.characterGenders,
-			allowDirectedPlayerControl: args.allowDirectedPlayerControl,
-			skipSceneStateCheck: args.skipSceneStateCheck,
-			hiddenDialoguePattern: args.hiddenDialoguePattern,
-			knownTies: args.knownTies,
-			transcriptText: args.transcriptText ?? args.latestUserMessage,
-			repairSpeakerAttribution: false,
-		});
-
-		if (validation.valid) {
-			return {
-				text: normalizeTranscriptForDisplay(validation.text),
-				diagnostic: lastValidationDiagnostic,
-				speakerResolutionChanges,
-			};
-		}
-
-		lastValidationDiagnostic = [
-			lastValidationDiagnostic,
-			`attempt=${attempt + 1}`,
-			validation.diagnostic,
-		]
-			.filter(Boolean)
-			.join("; ");
-
-		const stage = validation.stage;
-
-		if (
-			!stage ||
-			stage === "insubstantial" ||
-			attempt >= STREAM_VALIDATION_MAX_REWRITES ||
-			args.allowProviderRewrites === false
-		) {
-			break;
-		}
-
-		const rewritePrompt = rewriteStageToPrompt[stage];
-		args.reportStreamAttempt?.();
-		args.onChunkReset?.();
-		candidateAssistantText = (
-			await generateResponseWithRetry({
-				providerType: args.providerType,
-				provider: args.provider,
-				apiKey: args.apiKey,
-				model: args.model,
-				messages: [
-					{ role: "system", content: rewritePrompt },
-					{ role: "user", content: candidateAssistantText },
-				],
-				signal: args.signal,
-				onChunk: args.onChunk,
-				onChunkReset: args.onChunkReset,
-				idleTimeoutMs: args.streamIdleTimeoutMs,
-				geminiMatureFictionMode: args.geminiMatureFictionMode,
-				debugTrace: {
-					traceId: args.traceId,
-					mode: "story",
-					storyId: args.storyId,
-					stage: `${validation.stage}-rewrite`,
-					lastUserText: candidateAssistantText,
-					redactContent: args.redactContent,
+	const resolution = await resolveStreamTranscript<
+		AssistantTranscriptValidationResult,
+		SemanticSpeakerResolutionChange
+	>({
+		initialText: args.initialText,
+		initialProviderAttemptsUsed,
+		allowProviderRewrites: args.allowProviderRewrites,
+		repairCandidate: (text, context) => {
+			const normalized = args.normalizeCandidate?.(text) ?? text;
+			const semanticResolution = resolveSemanticSpeakerAttribution({
+				text: normalized,
+				player: {
+					name: args.speakerRegistry.player.canonicalName,
+					aliases: args.speakerRegistry.player.aliases,
 				},
-			})
-		).content;
+				eligibleSpeakers: args.speakerRegistry.eligibleNonPlayerSpeakers.map(
+					(speaker) => ({
+						name: speaker.canonicalName,
+						aliases: speaker.aliases,
+					}),
+				),
+			});
+			if (semanticResolution.changes.length) {
+				const attemptRepairs = repairsByProviderAttempt.get(context.providerAttempt) ?? [];
+				attemptRepairs.push(...semanticResolution.changes);
+				repairsByProviderAttempt.set(context.providerAttempt, attemptRepairs);
+			}
+			return {
+				text: semanticResolution.text,
+				events: semanticResolution.changes,
+			};
+		},
+		validateCandidate: (text, context) => {
+			const validation = validateAssistantTranscriptForSave({
+				text,
+				latestUserMessage: args.latestUserMessage,
+				playerName: args.playerName,
+				playerSceneName: args.playerSceneName,
+				playerPronouns: args.playerPronouns,
+				playerAliases: args.playerAliases,
+				characterGenders: args.characterGenders,
+				allowDirectedPlayerControl: args.allowDirectedPlayerControl,
+				skipSceneStateCheck: args.skipSceneStateCheck,
+				hiddenDialoguePattern: args.hiddenDialoguePattern,
+				knownTies: args.knownTies,
+				transcriptText: args.transcriptText ?? args.latestUserMessage,
+				repairSpeakerAttribution: false,
+			});
+			if (!validation.valid) {
+				validationDiagnostics.push(
+					[
+						`attempt=${context.providerAttempt}`,
+						`local_pass=${context.localPass}`,
+						validation.diagnostic,
+					]
+						.filter(Boolean)
+						.join("; "),
+				);
+			}
+			if (validation.text !== text) {
+				args.onChunkReset?.();
+				args.onChunk?.(validation.text);
+			}
+			return validation;
+		},
+		shouldRewrite: (validation) =>
+			Boolean(validation.stage && validation.stage !== "insubstantial"),
+		rewriteCandidate: async ({ text, validation }) => {
+			const stage = validation.stage;
+			if (!stage || stage === "insubstantial") {
+				throw new Error("Transcript rewrite requested without a rewriteable validation stage.");
+			}
+			args.onChunkReset?.();
+			return (
+				await generateResponseWithRetry({
+					providerType: args.providerType,
+					provider: args.provider,
+					apiKey: args.apiKey,
+					model: args.model,
+					messages: [
+						{ role: "system", content: rewriteStageToPrompt[stage] },
+						{ role: "user", content: text },
+					],
+					signal: args.signal,
+					onChunk: args.onChunk,
+					onChunkReset: args.onChunkReset,
+					idleTimeoutMs: args.streamIdleTimeoutMs,
+					geminiMatureFictionMode: args.geminiMatureFictionMode,
+					debugTrace: {
+						traceId: args.traceId,
+						mode: "story",
+						storyId: args.storyId,
+						stage: `${stage}-rewrite`,
+						lastUserText: text,
+						redactContent: args.redactContent,
+					},
+				})
+			).content;
+		},
+		onLocalRepair: ({ repairedText, events }) => {
+			for (const change of events) {
+				repairDiagnostics.push(
+					`local_speaker_repair=line:${change.lineNumber},${change.originalSpeakerLabel}->${change.replacementSpeakerLabel}`,
+				);
+			}
+			args.onChunkReset?.();
+			args.onChunk?.(repairedText);
+		},
+		onProviderAttempt: ({ attempt, maxAttempts }) => {
+			args.reportStreamAttempt?.(attempt, maxAttempts);
+		},
+	});
+
+	const finalSpeakerResolutionChanges = Array.from(
+		new Map(
+			(repairsByProviderAttempt.get(resolution.attemptsUsed) ?? []).map((change) => [
+				`${change.lineNumber}:${change.originalSpeakerLabel}:${change.replacementSpeakerLabel}`,
+				change,
+			]),
+		).values(),
+	);
+	const diagnostic = [...repairDiagnostics, ...validationDiagnostics].join("; ");
+
+	if (resolution.ok) {
+		return {
+			text: normalizeTranscriptForDisplay(resolution.text),
+			diagnostic,
+			speakerResolutionChanges: finalSpeakerResolutionChanges,
+		};
 	}
 
-	throw new GenerationFailureError(
-		createGenerationFailure(
-			createAIGenerationError(
-				"validation",
-				args.allowProviderRewrites === false
-					? "The response still needs a manual transcript correction. No provider rewrite was attempted, and the invalid draft was not saved."
-					: "The streamed response could not be validated. Rewrite attempts were exhausted.",
-				{
-					retryable: false,
-					diagnostic:
-						lastValidationDiagnostic ||
-						`rewrite_stage=unknown; raw=${formatGenerationAuditText(
-							candidateAssistantText,
-							args.redactContent ?? false,
-							1200,
-						)}`,
-				},
-			),
-			{
-				providerName: args.providerType,
-				model: args.model,
-				attempts: STREAM_VALIDATION_MAX_REWRITES,
-				maxAttempts: STREAM_VALIDATION_MAX_REWRITES,
-				stage: "validation",
-			},
-		),
+	const terminalMessage = (() => {
+		switch (resolution.reason) {
+			case "provider_rewrites_disabled":
+				return "The generated scene still has an unresolved transcript issue. In explicit mode, the generated draft was not sent back to the provider for correction, and the invalid draft was not saved.";
+			case "provider_attempts_exhausted":
+				return `The response remained invalid after ${resolution.attemptsUsed} provider generations. The invalid draft was not saved.`;
+			case "provider_candidate_unchanged":
+			case "provider_candidate_repeated":
+				return "The provider repeated an invalid transcript during correction. The invalid draft was not saved.";
+			default:
+				return "The response could not be validated, and no safe automatic correction remained. The invalid draft was not saved.";
+		}
+	})();
+	const terminalDiagnostic = [
+		diagnostic,
+		`resolution_reason=${resolution.reason}`,
+		`provider_rewrites=${args.allowProviderRewrites === false ? "disabled" : "enabled"}`,
+		`actual_attempts=${resolution.attemptsUsed}/${resolution.maxAttempts}`,
+		`local_passes=${resolution.localPasses}`,
+		`local_stop=${resolution.localStopReason}`,
+	]
+		.filter(Boolean)
+		.join("; ");
+	const failure = createGenerationFailure(
+		createAIGenerationError("validation", terminalMessage, {
+			retryable: false,
+			diagnostic:
+				terminalDiagnostic ||
+				`rewrite_stage=unknown; candidate_length=${resolution.text.length}; candidate_fingerprint=fnv1a:${fingerprintGenerationAuditText(resolution.text)}`,
+		}),
+		{
+			providerName: args.providerType,
+			model: args.model,
+			attempts: resolution.attemptsUsed,
+			maxAttempts: resolution.maxAttempts,
+			stage: "validation",
+			rawDraft: resolution.text,
+		},
 	);
+	throw new GenerationFailureError({ ...failure, summaryMessage: terminalMessage });
 }
 
 function buildTranscriptRepairContext(messages: StoryMessage[]): string {
@@ -6847,11 +6898,20 @@ export function StoryEngineProvider({
           allowDirectedPlayerControl,
         );
 
-        const streamAttempt = { current: 0 };
-        const reportStreamAttempt = () => {
-          reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt);
+        const allowProviderRewrites = !redactSensitiveContent;
+        const streamAttempt = {
+          current: 0,
+          max: getStreamValidationAttemptLimit({ allowProviderRewrites }),
         };
-        reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt);
+        const reportStreamAttempt = (attempt: number, maxAttempts: number) => {
+          streamAttempt.max = maxAttempts;
+          reportStreamGenerationAttempt(
+            opts?.onGenerationAttempt,
+            streamAttempt,
+            attempt,
+          );
+        };
+        reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt, 1);
 
         let assistantContent: GenerateResponseResult;
         try {
@@ -7069,7 +7129,7 @@ export function StoryEngineProvider({
               hiddenDialogue: hiddenDialogueRewritePrompt,
               sceneState: sceneStateRewritePrompt,
             },
-            allowProviderRewrites: !redactSensitiveContent,
+            allowProviderRewrites,
             redactContent: redactSensitiveContent,
             providerType,
             provider,
@@ -7078,6 +7138,7 @@ export function StoryEngineProvider({
             signal: opts?.signal,
             onChunk: opts?.onChunk,
             onChunkReset: opts?.onChunkReset,
+            initialProviderAttemptsUsed: streamAttempt.current,
             reportStreamAttempt,
             streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
             traceId,
@@ -8530,11 +8591,20 @@ export function StoryEngineProvider({
           });
           // #endregion
 
-          const streamAttempt = { current: 0 };
-          const reportStreamAttempt = () => {
-            reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt);
+          const allowProviderRewrites = !redactSensitiveContent;
+          const streamAttempt = {
+            current: 0,
+            max: getStreamValidationAttemptLimit({ allowProviderRewrites }),
           };
-          reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt);
+          const reportStreamAttempt = (attempt: number, maxAttempts: number) => {
+            streamAttempt.max = maxAttempts;
+            reportStreamGenerationAttempt(
+              opts?.onGenerationAttempt,
+              streamAttempt,
+              attempt,
+            );
+          };
+          reportStreamGenerationAttempt(opts?.onGenerationAttempt, streamAttempt, 1);
 
           let assistantContent: GenerateResponseResult;
           try {
@@ -8894,7 +8964,7 @@ export function StoryEngineProvider({
                 hiddenDialogue: hiddenDialogueRewritePrompt,
                 sceneState: sceneStateRewritePrompt,
               },
-              allowProviderRewrites: !redactSensitiveContent,
+              allowProviderRewrites,
               redactContent: redactSensitiveContent,
               providerType,
               provider,
@@ -8903,6 +8973,7 @@ export function StoryEngineProvider({
               signal: opts?.signal,
               onChunk: opts?.onChunk,
               onChunkReset: opts?.onChunkReset,
+              initialProviderAttemptsUsed: streamAttempt.current,
               reportStreamAttempt,
               streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
               traceId,
