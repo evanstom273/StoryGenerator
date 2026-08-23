@@ -1,6 +1,7 @@
 import { parseActionSegments, type StoryTextSegment } from "./parseActionSegments";
 import { isDeniedSpeakerLabel, isPossessiveSpeakerLabel } from "../relationshipIndex";
 import { findSpeakerColonIndex, looksLikeClockTimeFragment, repairClockTimeColonCorruption } from "./clockTimeInProse";
+import { sanitizeNarratorInnerContent } from "./narratorBlockRepair";
 
 export interface SceneBlock {
   speakerLabel?: string;
@@ -162,7 +163,7 @@ export function stripNarratorDisplayArtifacts(line: string): string {
 		result = fullyWrapped[1].trim();
 	}
 
-	result = result.replace(/^(?:He|She|They)\s+narrator:\s*/i, "");
+	result = sanitizeNarratorInnerContent(result);
 	result = result.replace(/\*+/g, "");
 	return result.trim();
 }

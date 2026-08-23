@@ -73,6 +73,13 @@ function fixLine(line: string): string {
   const trimmed = line.trim();
   if (!trimmed) return line;
 
+  // He narrator: prose → Narrator: *prose.*
+  const pronounNarratorMatch = trimmed.match(/^(He|She|They)\s+narrator\s*:\s*(.*)$/i);
+  if (pronounNarratorMatch) {
+    const content = stripItalicDelimiters(pronounNarratorMatch[2].trim());
+    return content ? `Narrator: *${ensureEndPunct(content)}*` : "Narrator:";
+  }
+
   // Narrator: She: *action* → Narrator: *She action.*
   const narratorPronounMatch = trimmed.match(
     /^Narrator:\s*(She|Her|He|His|Him|They|Their|Them|It|Its):\s*(.*)$/,

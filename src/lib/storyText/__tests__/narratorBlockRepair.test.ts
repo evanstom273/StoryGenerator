@@ -4,12 +4,18 @@ import { normalizeCharacterActionBeatsInTranscript } from "../playerSceneName";
 import {
 	repairGenericAgeDescriptorsInNarratorBlocks,
 	repairNarratorPronounPseudoLabels,
+	repairNarratorWrappedInnerContent,
+	sanitizeNarratorInnerContent,
 } from "../narratorBlockRepair";
+import { formatNarratorBlockForDisplay } from "../parseSceneBlocks";
 import { normalizeSpeakerNamesInTranscript } from "../speakerLabels";
 import {
 	applyStoryLocalIdentityToAssistantTranscript,
 	prevalidateAssistantTranscript,
 } from "../transcriptSanitizer";
+
+const MAC_SPRINTS_NARRATION =
+	"Outside, three blocks away, Mac sprints down the pavement, checking between parked cars and scanning every front stoop. His breath comes in sharp, heavy gasps as he checks the storefronts near the corner, his eyes darting frantically across the busy sidewalk.";
 
 describe("narratorBlockRepair", () => {
 	it("preserves They Mac in prose during speaker-name normalization", () => {
@@ -51,6 +57,42 @@ describe("narratorBlockRepair", () => {
 		expect(
 			repairNarratorPronounPseudoLabels("They narrator: Mac bolts to the entryway."),
 		).toBe("Narrator: Mac bolts to the entryway.");
+	});
+
+	it("strips He outside from wrapped narrator blocks", () => {
+		const input = `Narrator: *He outside, three blocks away, Mac sprints down the pavement, checking between parked cars and scanning every front stoop. His breath comes in sharp, heavy gasps as he checks the storefronts near the corner, his eyes darting frantically across the busy sidewalk.*`;
+		const repaired = repairNarratorWrappedInnerContent(input);
+
+		expect(repaired).toBe(`Narrator: *${MAC_SPRINTS_NARRATION}*`);
+		expect(repaired).not.toContain("*He outside");
+	});
+
+	it("strips He narrator: from inside wrapped narrator blocks", () => {
+		const input = `Narrator: *He narrator: ${MAC_SPRINTS_NARRATION}*`;
+		const repaired = repairNarratorWrappedInnerContent(input);
+
+		expect(repaired).toBe(`Narrator: *${MAC_SPRINTS_NARRATION}*`);
+	});
+
+	it("repairs wrapped narrator content during save normalization", () => {
+		const normalized = applyStoryLocalIdentityToAssistantTranscript(
+			`Narrator: *He outside, three blocks away, Mac sprints down the pavement, checking between parked cars and scanning every front stoop. His breath comes in sharp, heavy gasps as he checks the storefronts near the corner, his eyes darting frantically across the busy sidewalk.*`,
+			{
+				legalName: "James Peralta",
+				sceneName: "Jamie",
+				pronouns: "he/him",
+			},
+		);
+
+		expect(normalized).toBe(`Narrator: *${MAC_SPRINTS_NARRATION}*`);
+	});
+
+	it("repairs He narrator display artifacts in narrator prose", () => {
+		const input = `Narrator: *He narrator: ${MAC_SPRINTS_NARRATION}*`;
+		expect(formatNarratorBlockForDisplay(input)).toBe(MAC_SPRINTS_NARRATION);
+		expect(sanitizeNarratorInnerContent(`He narrator: ${MAC_SPRINTS_NARRATION}`)).toBe(
+			MAC_SPRINTS_NARRATION,
+		);
 	});
 
 	it("does not run action-beat pronoun normalization on pronoun pseudo-speakers", () => {
