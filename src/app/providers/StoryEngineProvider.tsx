@@ -8146,20 +8146,6 @@ export function StoryEngineProvider({
             repository,
           });
 
-          const providerTransmitSafe =
-            providerType === "gemini" &&
-            Boolean(story.matureFictionMode) &&
-            (isDirectorMessage(userMessage) || userMessage.speakerType === "director")
-              ? makeTransmitSafe(userMessage.content, {
-                  allowPainSoftening: true,
-                  allowIntimacySoftening: true,
-                })
-              : null;
-          const providerUserMessage =
-            providerTransmitSafe?.wasModified && providerTransmitSafe.transmitText.trim()
-              ? providerTransmitSafe.transmitText
-              : userMessage.content;
-
           const context = buildStoryChatContext({
             universe: effectiveUniverse,
             story,
@@ -8168,7 +8154,7 @@ export function StoryEngineProvider({
             summaries,
             storyState,
             recentMessages: sanitizedHistoryMessages,
-            latestUserMessage: providerUserMessage,
+            latestUserMessage: userMessage.content,
             latestUserMessageSpeakerType: userMessage.speakerType,
             allowDirectedPlayerControl,
             directorIntent: userMessage.directorIntent ?? null,
@@ -8181,20 +8167,6 @@ export function StoryEngineProvider({
             importedStoryCharacters,
             playerIdentity,
           });
-          if (providerTransmitSafe?.wasModified) {
-            const transmitSafeNote = buildTransmitSafeSystemNote(providerTransmitSafe);
-            if (transmitSafeNote) {
-              const lastUserIndex = (() => {
-                for (let index = context.length - 1; index >= 0; index -= 1) {
-                  if (context[index]?.role === "user") return index;
-                }
-                return -1;
-              })();
-              if (lastUserIndex >= 0) {
-                context.splice(lastUserIndex, 0, { role: "system", content: transmitSafeNote });
-              }
-            }
-          }
           reportPlayerIdentityBeforeGeneration({
             traceId,
             storyId,
@@ -8276,7 +8248,6 @@ export function StoryEngineProvider({
             if (providerType === "gemini" && isProviderRefusal) {
               const transmitSafe = makeTransmitSafe(userMessage.content, {
                 allowPainSoftening: Boolean(story.matureFictionMode),
-                allowIntimacySoftening: Boolean(story.matureFictionMode),
               });
 
               if (transmitSafe.wasModified) {

@@ -26,7 +26,8 @@ const ADULT_INTIMACY_SUPPORT = [
 	"Mature Fiction mode is enabled for this story.",
 	"Treat consensual adult intimacy as legitimate narrative material between fictional adults.",
 	"When the player or a Director note stages romantic tension, desire, nudity, foreplay, sex, or aftermath, realize it in-scene with emotional continuity and character voice.",
-	"Explicit anatomical detail, arousal, orgasm, toys, strap-ons, and queer intimacy between consenting adults are allowed when canon or staging calls for them.",
+	"Explicit anatomical detail, arousal, orgasm, toys, strap-ons, dildos, and queer intimacy between consenting adults are allowed when canon or staging calls for them.",
+	"Match the explicitness of the Director note and prior chapters. Use the same anatomical terms the player staged (for example clit, dildo, strap-on, nipples) instead of euphemisms like internal bulb, toy, harness, or sensitive spot.",
 	"Do not refuse, sanitize, fade-to-black, or substitute euphemisms unless the player explicitly asks for restraint.",
 	"Keep sex scenes character-driven: consent, relationship truth, vulnerability, and consequence matter more than mechanical description for its own sake.",
 ].join("\n");
