@@ -1,5 +1,6 @@
 import type { AIProvider, AIChatMessage } from "./types";
 import type { GeminiThinkingSettings } from "./geminiThinking";
+import { resolveGeminiMatureFictionSafetySettings, type GeminiSafetySetting } from "./geminiSafety";
 import { normalizeAIError, AIError, looksLikeSafetyRefusal } from "./errors";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 
@@ -22,6 +23,7 @@ interface GeminiGenerateContentRequest {
       thinkingLevel?: string;
     };
   };
+  safetySettings?: GeminiSafetySetting[];
 }
 
 interface GeminiGenerateContentResponse {
@@ -120,6 +122,8 @@ function buildGeminiRequest(
     temperature?: number;
     jsonMode?: boolean;
     thinking?: GeminiThinkingSettings;
+    matureFictionMode?: boolean;
+    model?: string;
   },
 ): GeminiGenerateContentRequest {
   const systemText = messages
@@ -154,6 +158,9 @@ function buildGeminiRequest(
     contents,
     systemInstruction: systemText ? { parts: [{ text: systemText }] } : undefined,
     ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
+    ...(opts?.matureFictionMode && opts.model
+      ? { safetySettings: resolveGeminiMatureFictionSafetySettings(opts.model) }
+      : {}),
   };
 }
 
@@ -216,6 +223,7 @@ async function callGenerateContent(
     temperature?: number;
     jsonMode?: boolean;
     thinking?: GeminiThinkingSettings;
+    matureFictionMode?: boolean;
     onChunk?: (chunk: string) => void;
   },
 ) {
@@ -238,6 +246,8 @@ async function callGenerateContent(
       temperature: opts?.temperature,
       jsonMode: opts?.jsonMode,
       thinking: opts?.thinking,
+      matureFictionMode: opts?.matureFictionMode,
+      model,
     }),
   );
 
@@ -374,7 +384,7 @@ export function createGeminiProvider(): AIProvider {
         throw new Error("Gemini validation returned an empty response.");
       }
     },
-    async generateResponse({ apiKey, model, messages, maxTokens, temperature, jsonMode, thinking, timeoutMs, idleTimeoutMs, signal, onChunk }) {
+    async generateResponse({ apiKey, model, messages, maxTokens, temperature, jsonMode, thinking, geminiMatureFictionMode, timeoutMs, idleTimeoutMs, signal, onChunk }) {
       const content = await callGenerateContent(apiKey, model, messages, {
         timeoutMs,
         idleTimeoutMs,
@@ -383,6 +393,7 @@ export function createGeminiProvider(): AIProvider {
         temperature,
         jsonMode,
         thinking,
+        matureFictionMode: geminiMatureFictionMode,
         onChunk,
       });
       return { content };

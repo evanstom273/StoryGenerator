@@ -18,6 +18,8 @@ export interface GenerateResponseRequest {
   jsonMode?: boolean;
   /** Gemini only. Use resolveGeminiMinimalThinkingSettings for short outputs. */
   thinking?: GeminiThinkingSettings;
+  /** Gemini only. Relax sexually-explicit safety filtering for Mature Fiction stories. */
+  geminiMatureFictionMode?: boolean;
   timeoutMs?: number;
   idleTimeoutMs?: number;
   signal?: AbortSignal;

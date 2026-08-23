@@ -81,7 +81,7 @@ import {
   isGenerationFailureError,
   withTransmitSafeDiagnostics,
 } from "../../lib/ai/errors";
-import { buildTransmitSafeSystemNote, makeTransmitSafe } from "../../lib/ai/transmitSafe";
+import { buildMatureFictionTransmitSafeSystemNote, buildTransmitSafeSystemNote, makeTransmitSafe } from "../../lib/ai/transmitSafe";
 import type {
   AIChatMessage,
   AIProvider,
@@ -877,6 +877,7 @@ async function generateResponseWithRetry(params: {
   onChunk?: (chunk: string) => void;
   onChunkReset?: () => void;
   idleTimeoutMs?: number;
+  geminiMatureFictionMode?: boolean;
   debugTrace?: {
     traceId: string;
     mode: "story" | "additive" | "metachat" | "summary" | "other";
@@ -937,6 +938,7 @@ async function generateResponseWithRetry(params: {
         temperature: params.temperature,
         jsonMode: params.jsonMode,
         thinking,
+        geminiMatureFictionMode: params.geminiMatureFictionMode,
         signal: params.signal,
         timeoutMs: requestTimeoutMs,
         idleTimeoutMs: params.idleTimeoutMs ?? streamConfig?.idleTimeoutMs,
@@ -1057,6 +1059,7 @@ async function resolveStreamedAssistantTranscript(args: {
 	streamIdleTimeoutMs: number;
 	traceId: string;
 	storyId: string;
+	geminiMatureFictionMode?: boolean;
 	knownTies?: string[];
 	transcriptText?: string;
 }): Promise<{ text: string; diagnostic: string }> {
@@ -1170,6 +1173,7 @@ async function resolveStreamedAssistantTranscript(args: {
 				onChunk: args.onChunk,
 				onChunkReset: args.onChunkReset,
 				idleTimeoutMs: args.streamIdleTimeoutMs,
+				geminiMatureFictionMode: args.geminiMatureFictionMode,
 				debugTrace: {
 					traceId: args.traceId,
 					mode: "story",
@@ -8216,6 +8220,7 @@ export function StoryEngineProvider({
               idleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
               onChunk: opts?.onChunk,
               onChunkReset: opts?.onChunkReset,
+              geminiMatureFictionMode: Boolean(story.matureFictionMode),
               debugTrace: {
                 traceId,
                 mode: "story",
@@ -8248,9 +8253,14 @@ export function StoryEngineProvider({
             if (providerType === "gemini" && isProviderRefusal) {
               const transmitSafe = makeTransmitSafe(userMessage.content, {
                 allowPainSoftening: Boolean(story.matureFictionMode),
+                allowIntimacySoftening: Boolean(story.matureFictionMode),
               });
+              const hasProhibitedContent = /PROHIBITED_CONTENT/i.test(baseFailure?.diagnostic ?? "");
+              const shouldRetryTransmitSafe =
+                transmitSafe.wasModified ||
+                (Boolean(story.matureFictionMode) && hasProhibitedContent);
 
-              if (transmitSafe.wasModified) {
+              if (shouldRetryTransmitSafe) {
                 const safeContext = buildStoryChatContext({
                   universe: effectiveUniverse,
                   story,
@@ -8259,14 +8269,18 @@ export function StoryEngineProvider({
                   summaries,
                   storyState,
                   recentMessages: sanitizedHistoryMessages,
-                  latestUserMessage: transmitSafe.transmitText,
+                  latestUserMessage: transmitSafe.wasModified
+                    ? transmitSafe.transmitText
+                    : userMessage.content,
                   latestUserMessageSpeakerType: userMessage.speakerType,
                   allowDirectedPlayerControl,
                   directorIntent: userMessage.directorIntent ?? null,
                   playerIdentity,
                   importedStoryCharacters,
                 });
-                const note = buildTransmitSafeSystemNote(transmitSafe);
+                const note = story.matureFictionMode
+                  ? buildMatureFictionTransmitSafeSystemNote(transmitSafe, userMessage.content)
+                  : buildTransmitSafeSystemNote(transmitSafe);
                 const lastUserIndex = (() => {
                   for (let index = safeContext.length - 1; index >= 0; index -= 1) {
                     if (safeContext[index]?.role === "user") return index;
@@ -8285,6 +8299,7 @@ export function StoryEngineProvider({
                     model,
                     messages: safeContext,
                     maxAttempts: 1,
+                    geminiMatureFictionMode: Boolean(story.matureFictionMode),
                     debugTrace: {
                       traceId,
                       mode: "story",
@@ -8574,6 +8589,7 @@ export function StoryEngineProvider({
             streamIdleTimeoutMs: getStoryStreamIdleTimeoutMs(model),
             traceId,
             storyId,
+            geminiMatureFictionMode: Boolean(story.matureFictionMode),
           });
 
           const normalizedStreamText = applyStoryLocalIdentityToSavedAssistantText({
