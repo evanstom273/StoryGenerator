@@ -114,6 +114,7 @@ export function sanitizeNarratorInnerContent(content: string) {
 	}
 
 	result = result.replace(/^(?:He|She|They)\s+narrator:\s*/i, "");
+	result = result.replace(/^(?:He|She|They)\s+(?:[a-z](?:,\s*|\s+))(?=[A-Z"'*])/i, "");
 
 	const leadingPronoun = result.match(/^(He|She|They)\s+(\S+)/i);
 	if (!leadingPronoun?.[1] || !leadingPronoun[2]) {

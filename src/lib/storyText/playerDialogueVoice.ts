@@ -183,6 +183,10 @@ export function dialogueMentionsAnotherNamedSubject(dialogue: string, playerVari
 	return !playerVariants.has(subject);
 }
 
+export function dialogueLooksLikePlayerVoice(dialogue: string, _playerName?: string) {
+	return dialogueHasFirstPersonVoice(dialogue);
+}
+
 export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName: string) {
 	const trimmed = line.trim();
 	const speakerMatch = trimmed.match(/^([^\n:]{1,64}):\s*(.*)$/);
