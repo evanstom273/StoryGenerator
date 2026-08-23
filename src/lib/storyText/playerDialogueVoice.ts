@@ -195,8 +195,32 @@ export function dialogueMentionsAnotherNamedSubject(dialogue: string, playerVari
 	return !playerVariants.has(subject);
 }
 
-export function dialogueLooksLikePlayerVoice(dialogue: string, _playerName?: string) {
-	return dialogueHasFirstPersonVoice(dialogue);
+export function dialogueAddressesAddresseeWithoutSpeakerFirstPerson(dialogue: string) {
+	const trimmed = dialogue.trim();
+	if (!trimmed || dialogueHasFirstPersonVoice(trimmed)) {
+		return false;
+	}
+
+	if (/^you\b/i.test(trimmed)) {
+		return true;
+	}
+
+	if (/\byou(?:'re|\s+are|\s+were|\s+look|\s+seem|\s+appear)\b/i.test(trimmed)) {
+		return true;
+	}
+
+	if (/\b(?:stop|bring|get|come|wait)\b/i.test(trimmed)) {
+		return true;
+	}
+
+	return false;
+}
+
+export function speakerContentReferencesPlayerNamePossessive(content: string, playerName: string) {
+	const variants = getPlayerNameVariants(playerName);
+	return variants.some((variant) =>
+		new RegExp(`\\b${escapeRegex(variant)}'s\\b`, "i").test(content),
+	);
 }
 
 export function speakerActionLooksLikeMisattributedPlayer(content: string, playerName: string) {
@@ -220,7 +244,7 @@ export function speakerActionLooksLikeMisattributedPlayer(content: string, playe
 	}
 
 	const touchesPlayerBody = new RegExp(
-		`\\b(?:reach(?:es)?|trace(?:s)?|touch(?:es)?|slide(?:s)?|run(?:s)?|brush(?:es)?|grab(?:s)?|cup(?:s)?|pinch(?:es)?|fingers?)\\b[\\s\\S]{0,80}\\b(?:${possessivePattern})\\b`,
+		`\\b(?:reach(?:es)?|trace(?:s)?|touch(?:es)?|slide(?:s)?|run(?:s)?|brush(?:es)?|grab(?:s)?|grip(?:s)?|cup(?:s)?|pinch(?:es)?|come(?:s)?|place(?:s)?|step(?:s)?|fingers?)\\b[\\s\\S]{0,96}\\b(?:${possessivePattern})\\b`,
 		"i",
 	).test(action);
 	if (!touchesPlayerBody) {
@@ -248,6 +272,10 @@ export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName
 	}
 
 	const content = speakerMatch[2];
+	if (speakerContentReferencesPlayerNamePossessive(content, playerName)) {
+		return true;
+	}
+
 	if (speakerActionLooksLikeMisattributedPlayer(content, playerName)) {
 		return true;
 	}
@@ -255,6 +283,10 @@ export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName
 	const dialogue = extractQuotedDialogue(content);
 	if (!dialogue) {
 		return false;
+	}
+
+	if (dialogueAddressesAddresseeWithoutSpeakerFirstPerson(dialogue)) {
+		return true;
 	}
 
 	if (dialogueReferencesPlayerInThirdPerson(dialogue, playerName)) {

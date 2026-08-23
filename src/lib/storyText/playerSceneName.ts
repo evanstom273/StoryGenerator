@@ -555,6 +555,9 @@ function conjugateThirdPersonSingular(verb: string) {
 	if (!lower || /^(is|was|are|were|has|have|had|does|do|did)$/.test(lower)) {
 		return lower;
 	}
+	if (/^(he|she|they|her|his|their|him|hers|its)$/i.test(lower)) {
+		return lower;
+	}
 	if (/^[a-z]+ly$/.test(lower)) {
 		return lower;
 	}
@@ -588,7 +591,22 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 		return pronoun ? `*${pronoun}.*` : "*.*";
 	}
 
+	inner = inner.replace(
+		/^(She|He|They)\s+(hers|his|theirs)\s+/i,
+		(_, subject, possessive: string) => {
+			const normalized = possessive.toLowerCase();
+			if (normalized === "hers") {
+				return `${subject} lets her `;
+			}
+			if (normalized === "his") {
+				return `${subject} lets his `;
+			}
+			return `${subject} lets their `;
+		},
+	);
+
 	inner = inner.replace(/^(He|She|They)\s+/i, "").trim();
+	inner = inner.replace(/^(Her|His|Their)\s+/i, (match) => `${match.trim().toLowerCase()} `).trim();
 	inner = inner.replace(/\bgentlies\s+(\w+)\b/gi, (_, verb: string) => `gently ${conjugateThirdPersonSingular(verb)}`);
 	inner = inner.replace(/\bgentlies\b/gi, "gently");
 	inner = inner.replace(/^(\w+),s\b/, "$1s");
@@ -601,6 +619,17 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 
 	if (!pronoun) {
 		return `*${inner}*`;
+	}
+
+	if (/^(her|his|their)\s+/i.test(inner)) {
+		const [determiner, ...restWords] = inner.split(/\s+/);
+		const rest = restWords.join(" ");
+		const firstRest = restWords[0] ?? "";
+		if (/^(eyes|gaze|hands?|fingers?|breath|voice)\b/i.test(firstRest)) {
+			const tail = restWords.slice(1).join(" ");
+			const normalizedRest = tail ? `${firstRest} ${tail}` : firstRest;
+			return `*${pronoun} lets ${determiner?.toLowerCase() ?? "her"} ${normalizedRest}*`;
+		}
 	}
 
 	const [firstWord, ...restWords] = inner.split(/\s+/);
