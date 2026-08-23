@@ -20,6 +20,8 @@ import {
 import { getPlayerCharacterAuthorshipViolation } from "./playerProtection";
 import type { StoryFormatIssue } from "./storyStandardizer";
 import { repairClockTimeColonCorruption } from "./clockTimeInProse";
+import { repairSpeakerLabelArtifacts } from "./exportCleaner";
+import { repairNarratorBlocks } from "./narratorBlockRepair";
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -944,11 +946,19 @@ export function applyStoryLocalIdentityToAssistantTranscript(
 		sceneName: string;
 		pronouns?: string | null;
 		characterGenders?: CharacterTtsGenderMap | null;
+		knownTies?: string[] | null;
+		transcriptText?: string | null;
 	},
 ): string {
 	const legalName = args.legalName.trim();
 	const sceneName = args.sceneName.trim();
 	let normalized = normalizeTranscriptForDisplay(text);
+
+	normalized = repairSpeakerLabelArtifacts(normalized);
+	normalized = repairNarratorBlocks(normalized, {
+		knownTies: args.knownTies,
+		transcriptText: args.transcriptText ?? normalized,
+	});
 
 	if (legalName && sceneName && legalName.toLowerCase() !== sceneName.toLowerCase()) {
 		normalized = applyPlayerSceneNameToTranscript(normalized, legalName, sceneName);
@@ -959,6 +969,11 @@ export function applyStoryLocalIdentityToAssistantTranscript(
 		playerLegalName: legalName,
 		playerPronouns: args.pronouns,
 		characterGenders: args.characterGenders,
+	});
+
+	normalized = repairNarratorBlocks(normalized, {
+		knownTies: args.knownTies,
+		transcriptText: args.transcriptText ?? normalized,
 	});
 
 	return restrainEmDashUsageInTranscript(normalized);
@@ -1146,6 +1161,8 @@ export function prevalidateAssistantTranscript(args: {
 	playerName?: string | null;
 	playerSceneName?: string | null;
 	latestUserMessage?: string | null;
+	knownTies?: string[] | null;
+	transcriptText?: string | null;
 }) {
 	const clockRepaired = repairClockTimeColonCorruption(args.text);
 	return normalizeSpeakerNamesInTranscript(
@@ -1153,6 +1170,8 @@ export function prevalidateAssistantTranscript(args: {
 			playerName: args.playerName,
 			playerSceneName: args.playerSceneName,
 			latestUserMessage: args.latestUserMessage,
+			knownTies: args.knownTies,
+			transcriptText: args.transcriptText ?? args.latestUserMessage ?? args.text,
 		}),
 	);
 }
@@ -1165,6 +1184,8 @@ export function validateAssistantTranscriptForSave(args: {
 	allowDirectedPlayerControl?: boolean;
 	skipSceneStateCheck?: boolean;
 	hiddenDialoguePattern: RegExp;
+	knownTies?: string[] | null;
+	transcriptText?: string | null;
 }): AssistantTranscriptValidationResult {
 	const playerName = args.playerName ?? null;
 	const latestUserMessage = args.latestUserMessage ?? "";
@@ -1173,6 +1194,8 @@ export function validateAssistantTranscriptForSave(args: {
 		playerName,
 		playerSceneName: args.playerSceneName,
 		latestUserMessage,
+		knownTies: args.knownTies,
+		transcriptText: args.transcriptText ?? latestUserMessage,
 	});
 
 	if (!isSubstantialTranscriptText(preparedText)) {

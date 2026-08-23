@@ -1035,6 +1035,8 @@ async function resolveStreamedAssistantTranscript(args: {
 	streamIdleTimeoutMs: number;
 	traceId: string;
 	storyId: string;
+	knownTies?: string[];
+	transcriptText?: string;
 }): Promise<{ text: string; diagnostic: string }> {
 	let candidateAssistantText = args.initialText;
 	let lastValidationDiagnostic = "";
@@ -1059,6 +1061,8 @@ async function resolveStreamedAssistantTranscript(args: {
 			allowDirectedPlayerControl: args.allowDirectedPlayerControl,
 			skipSceneStateCheck: args.skipSceneStateCheck,
 			hiddenDialoguePattern: args.hiddenDialoguePattern,
+			knownTies: args.knownTies,
+			transcriptText: args.transcriptText ?? args.latestUserMessage,
 		});
 
 		if (validation.valid) {
@@ -1153,11 +1157,19 @@ async function resolveStreamedAssistantTranscript(args: {
 	);
 }
 
+function buildTranscriptRepairContext(messages: StoryMessage[]): string {
+	return messages
+		.filter((message) => message.role === "assistant" || message.role === "user")
+		.map((message) => message.content)
+		.join("\n\n");
+}
+
 function applyStoryLocalIdentityToSavedAssistantText(args: {
 	text: string;
 	playerCharacter: PlayerCharacter;
 	playerIdentity: EffectivePlayerIdentity;
 	storyStateData: StoryStateData | StoryStateDataV2 | null;
+	transcriptText?: string | null;
 }): string {
 	const characterGenders = buildCharacterGenderHintsFromStoryState(args.storyStateData, {
 		playerName: args.playerCharacter.name,
@@ -1170,6 +1182,8 @@ function applyStoryLocalIdentityToSavedAssistantText(args: {
 		sceneName: args.playerIdentity.sceneName,
 		pronouns: args.playerIdentity.pronouns,
 		characterGenders,
+		knownTies: normalizePlayerCharacterKnownTies(args.playerCharacter.knownTies),
+		transcriptText: args.transcriptText,
 	});
 }
 
@@ -6700,6 +6714,11 @@ export function StoryEngineProvider({
           ),
         ].join("\n");
 
+        const transcriptRepairContext = buildTranscriptRepairContext([
+          ...sanitizedHistoryMessages,
+          previousMessage,
+        ]);
+
         const { text: finalStreamText } = await resolveStreamedAssistantTranscript({
           initialText: finalAssistantText,
           latestUserMessage: previousMessage.content,
@@ -6707,6 +6726,8 @@ export function StoryEngineProvider({
           playerSceneName: playerIdentity.sceneName,
           allowDirectedPlayerControl,
           hiddenDialoguePattern: hiddenDialogueInferencePattern,
+          knownTies: normalizePlayerCharacterKnownTies(playerCharacter.knownTies),
+          transcriptText: transcriptRepairContext,
           rewritePrompts: {
             format: formatRewritePrompt,
             ownership: ownershipRewritePrompt,
@@ -6731,6 +6752,7 @@ export function StoryEngineProvider({
           playerCharacter,
           playerIdentity,
           storyStateData: parsedStoryStateForIdentity,
+          transcriptText: `${transcriptRepairContext}\n\n${finalStreamText}`,
         });
 
         const nextAssistantMessage: StoryMessage = {
@@ -8410,6 +8432,11 @@ export function StoryEngineProvider({
           ),
           ].join("\n");
 
+          const transcriptRepairContext = buildTranscriptRepairContext([
+            ...sanitizedHistoryMessages,
+            userMessage,
+          ]);
+
           const { text: finalStreamText } = await resolveStreamedAssistantTranscript({
             initialText: finalAssistantText,
             latestUserMessage: userMessage.content,
@@ -8418,6 +8445,8 @@ export function StoryEngineProvider({
             allowDirectedPlayerControl,
             skipSceneStateCheck: opts?.guidedGenerationInternal,
             hiddenDialoguePattern: hiddenDialogueInferencePattern,
+            knownTies: normalizePlayerCharacterKnownTies(playerCharacter.knownTies),
+            transcriptText: transcriptRepairContext,
             rewritePrompts: {
               format: formatRewritePrompt,
               ownership: ownershipRewritePrompt,
@@ -8442,6 +8471,7 @@ export function StoryEngineProvider({
             playerCharacter,
             playerIdentity,
             storyStateData: parsedStoryStateForIdentity,
+            transcriptText: `${transcriptRepairContext}\n\n${finalStreamText}`,
           });
 
           // #region debug-point B:transcript-stages
