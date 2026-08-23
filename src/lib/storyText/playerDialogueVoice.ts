@@ -277,11 +277,37 @@ export function speakerActionLooksLikeMisattributedPlayer(content: string, playe
 	return /\b(?:she|he|they)\b/i.test(action);
 }
 
-export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName: string) {
+export type PlayerSpeakerMisattributionEvidence =
+	| "action_player_name_possessive"
+	| "action_player_name_object"
+	| "action_targets_player_body"
+	| "dialogue_player_third_person_reference"
+	| "dialogue_player_name_address"
+	| "dialogue_player_second_person_address"
+	| "dialogue_speaker_voice_conflict"
+	| "dialogue_other_named_subject";
+
+export type PlayerSpeakerMisattributionAnalysis = {
+	currentSpeaker: string;
+	evidence: PlayerSpeakerMisattributionEvidence;
+	confidence: "high" | "medium";
+	reason: string;
+};
+
+/**
+ * Explain why a player-labelled line appears to belong to another speaker.
+ *
+ * The returned metadata deliberately contains no dialogue or action excerpts so
+ * callers can surface it in privacy-safe validation diagnostics.
+ */
+export function analyzeMisattributedPlayerSpeakerLine(
+	line: string,
+	playerName: string,
+): PlayerSpeakerMisattributionAnalysis | null {
 	const trimmed = line.trim();
 	const speakerMatch = trimmed.match(/^([^\n:]{1,64}):\s*(.*)$/);
 	if (!speakerMatch?.[1] || !speakerMatch[2]) {
-		return false;
+		return null;
 	}
 
 	const speaker = normalizeSceneSpeakerLabel(speakerMatch[1].trim());
@@ -291,54 +317,94 @@ export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName
 		),
 	);
 	if (!playerVariants.has(speaker.toLowerCase())) {
-		return false;
+		return null;
 	}
 
 	const content = speakerMatch[2];
 	if (speakerContentReferencesPlayerNamePossessive(content, playerName)) {
-		return true;
+		return {
+			currentSpeaker: speaker,
+			evidence: "action_player_name_possessive",
+			confidence: "high",
+			reason: "player-labelled action refers to the player by possessive name",
+		};
 	}
 
 	if (speakerContentReferencesPlayerNameAsObject(content, playerName)) {
-		return true;
+		return {
+			currentSpeaker: speaker,
+			evidence: "action_player_name_object",
+			confidence: "high",
+			reason: "player-labelled action targets the player by name",
+		};
 	}
 
 	if (speakerActionLooksLikeMisattributedPlayer(content, playerName)) {
-		return true;
+		return {
+			currentSpeaker: speaker,
+			evidence: "action_targets_player_body",
+			confidence: "high",
+			reason: "player-labelled action targets the player's body",
+		};
 	}
 
 	const dialogue = extractQuotedDialogue(content);
 	if (!dialogue) {
-		return false;
-	}
-
-	if (dialogueAddressesAddresseeWithoutSpeakerFirstPerson(dialogue)) {
-		return true;
+		return null;
 	}
 
 	if (dialogueReferencesPlayerInThirdPerson(dialogue, playerName)) {
-		return true;
+		return {
+			currentSpeaker: speaker,
+			evidence: "dialogue_player_third_person_reference",
+			confidence: "high",
+			reason: "player-labelled dialogue refers to the player in third person",
+		};
 	}
 
 	if (dialogueAddressesPlayerByName(dialogue, playerName)) {
-		return true;
+		return {
+			currentSpeaker: speaker,
+			evidence: "dialogue_player_name_address",
+			confidence: "high",
+			reason: "player-labelled dialogue addresses the player by name",
+		};
 	}
 
 	if (dialogueAddressesPlayerBySecondPerson(dialogue)) {
-		return true;
+		return {
+			currentSpeaker: speaker,
+			evidence: "dialogue_player_second_person_address",
+			confidence: "medium",
+			reason: "player-labelled dialogue contains a player-directed second-person pattern",
+		};
 	}
 
 	if (/\b(?:precision|detective)\b.*\bmy ass\b/i.test(dialogue)) {
-		return true;
+		return {
+			currentSpeaker: speaker,
+			evidence: "dialogue_speaker_voice_conflict",
+			confidence: "medium",
+			reason: "player-labelled dialogue conflicts with the player's speaker voice",
+		};
 	}
 
 	if (!dialogueHasFirstPersonVoice(dialogue)) {
 		if (dialogueMentionsAnotherNamedSubject(dialogue, playerVariants)) {
-			return true;
+			return {
+				currentSpeaker: speaker,
+				evidence: "dialogue_other_named_subject",
+				confidence: "medium",
+				reason: "player-labelled dialogue identifies another named subject",
+			};
 		}
 	}
 
-	return false;
+	return null;
+}
+
+export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName: string) {
+	return analyzeMisattributedPlayerSpeakerLine(line, playerName) !== null;
 }
 
 export function stripMisattributedPlayerSpeakerLabel(line: string, playerName: string) {

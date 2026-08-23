@@ -295,7 +295,11 @@ export function StoryWorkspacePage() {
   const [dismissedSequelPromptMessageId, setDismissedSequelPromptMessageId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationAttempt, setGenerationAttempt] = useState<number | null>(null);
+  const [generationMaxAttempts, setGenerationMaxAttempts] = useState(
+    STREAM_VALIDATION_MAX_ATTEMPTS,
+  );
   const [streamingDraft, setStreamingDraft] = useState<string | null>(null);
+  const streamingDraftRef = useRef<string | null>(null);
   const guidedStreamingDraft =
     story && guidedGenerationStatus?.storyId === story.id
       ? guidedGenerationStatus.streamingDraft
@@ -311,7 +315,7 @@ export function StoryWorkspacePage() {
   function formatStreamingStatusLabel() {
     const attemptSuffix =
       generationAttempt !== null
-        ? ` Attempt ${generationAttempt}/${STREAM_VALIDATION_MAX_ATTEMPTS}`
+        ? ` Attempt ${generationAttempt}/${generationMaxAttempts}`
         : "";
 
     if (variantSession) {
@@ -324,9 +328,20 @@ export function StoryWorkspacePage() {
   }
 
   const storyStreamingCallbacks = {
-    onChunk: (chunk: string) => setStreamingDraft((prev) => (prev ?? "") + chunk),
-    onChunkReset: () => setStreamingDraft(""),
-    onGenerationAttempt: (attempt: number) => setGenerationAttempt(attempt),
+    onChunk: (chunk: string) =>
+      setStreamingDraft((prev) => {
+        const next = (prev ?? "") + chunk;
+        streamingDraftRef.current = next;
+        return next;
+      }),
+    onChunkReset: () => {
+      streamingDraftRef.current = "";
+      setStreamingDraft("");
+    },
+    onGenerationAttempt: (attempt: number, maxAttempts: number) => {
+      setGenerationAttempt(attempt);
+      setGenerationMaxAttempts(maxAttempts);
+    },
   };
   const streamingAbortRef = useRef<AbortController | null>(null);
   const [lastChatContent, setLastChatContent] = useState<string | null>(null);
@@ -734,6 +749,7 @@ export function StoryWorkspacePage() {
 
     setIsGenerating(true);
     setGenerationAttempt(1);
+    streamingDraftRef.current = "";
     setStreamingDraft("");
     setChatError(null);
     setLastChatContent(content);
@@ -781,7 +797,8 @@ export function StoryWorkspacePage() {
         setShowSequelPrompt(true);
       }
     } catch (error) {
-      const capturedDraft = streamingDraft && streamingDraft.trim() ? streamingDraft : undefined;
+      const currentDraft = streamingDraftRef.current;
+      const capturedDraft = currentDraft && currentDraft.trim() ? currentDraft : undefined;
       reportWorkspaceUiAudit({
         msg: "Story workspace displayed generation error",
         data: {
@@ -809,6 +826,8 @@ export function StoryWorkspacePage() {
     } finally {
       setIsGenerating(false);
       setGenerationAttempt(null);
+      setGenerationMaxAttempts(STREAM_VALIDATION_MAX_ATTEMPTS);
+      streamingDraftRef.current = null;
       setStreamingDraft(null);
       streamingAbortRef.current = null;
     }
@@ -996,6 +1015,7 @@ export function StoryWorkspacePage() {
 
     setIsGenerating(true);
     setGenerationAttempt(1);
+    streamingDraftRef.current = "";
     setStreamingDraft("");
     setChatError(null);
 
@@ -1029,7 +1049,8 @@ export function StoryWorkspacePage() {
         return prev;
       });
       if (isGenerationFailureError(error)) {
-        const capturedDraft = streamingDraft && streamingDraft.trim() ? streamingDraft : undefined;
+        const currentDraft = streamingDraftRef.current;
+        const capturedDraft = currentDraft && currentDraft.trim() ? currentDraft : undefined;
         const failure = capturedDraft ? { ...error.failure, rawDraft: capturedDraft } : error.failure;
         const isCancelledWithNoDraft = failure.kind === "cancelled" && !failure.rawDraft;
         if (!isCancelledWithNoDraft) {
@@ -1045,6 +1066,8 @@ export function StoryWorkspacePage() {
     } finally {
       setIsGenerating(false);
       setGenerationAttempt(null);
+      setGenerationMaxAttempts(STREAM_VALIDATION_MAX_ATTEMPTS);
+      streamingDraftRef.current = null;
       setStreamingDraft(null);
     }
   }

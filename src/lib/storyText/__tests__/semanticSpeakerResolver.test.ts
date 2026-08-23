@@ -47,6 +47,59 @@ describe("resolveSemanticSpeakerAttribution", () => {
 		});
 	});
 
+	it("reassigns every qualifying Rebecca block in one deterministic pass", () => {
+		const source = [
+			'Rebecca: *Her eyes trace the buckle against Rebecca\'s hips.* "You look entirely too pleased with yourself."',
+			"",
+			'Rebecca: *Her hands close around Rebecca\'s wrists.* "Come closer."',
+		].join("\r\n");
+
+		const result = resolve(source);
+
+		expect(result.text).toBe(
+			[
+				'Rosa: *Her eyes trace the buckle against Rebecca\'s hips.* "You look entirely too pleased with yourself."',
+				"",
+				'Rosa: *Her hands close around Rebecca\'s wrists.* "Come closer."',
+			].join("\r\n"),
+		);
+		expect(result.changes).toHaveLength(2);
+		expect(result.changes.map((change) => change.lineNumber)).toEqual([1, 3]);
+		expect(result.changes.map((change) => change.replacementSpeakerLabel)).toEqual([
+			"Rosa",
+			"Rosa",
+		]);
+	});
+
+	it("repairs Rosa blocks while preserving a legitimate first-person Rebecca block", () => {
+		const legitimateRebecca =
+			'Rebecca: *She reaches for Rosa\'s hand and smiles.* "I know you can trust me."';
+		const source = [
+			'Rebecca: *Her fingers trace Rebecca\'s jaw.* "You are impossible."',
+			legitimateRebecca,
+			'Rebecca: *Her hand grips Rebecca\'s wrist.* "Stay right there."',
+		].join("\n");
+
+		const result = resolve(source);
+
+		expect(result.text).toBe(
+			[
+				'Rosa: *Her fingers trace Rebecca\'s jaw.* "You are impossible."',
+				legitimateRebecca,
+				'Rosa: *Her hand grips Rebecca\'s wrist.* "Stay right there."',
+			].join("\n"),
+		);
+		expect(result.changes).toHaveLength(2);
+		expect(result.diagnostics).toContainEqual(
+			expect.objectContaining({
+				lineNumber: 2,
+				originalSpeakerLabel: "Rebecca",
+				decision: "unchanged",
+				reason: "insufficient-semantic-evidence",
+			}),
+		);
+	});
+
 	it("reassigns a header-only Rebecca block when contact and an imperative independently target Rebecca", () => {
 		const source =
 			'Rebecca:\r\n*She reaches out, her hands gripping Rebecca\'s hips with sudden confidence.* "Then stop standing there looking pretty and bring it here."';
@@ -105,6 +158,35 @@ describe("resolveSemanticSpeakerAttribution", () => {
 		]);
 	});
 
+	it("uses a direct named-player action target alone when Rosa is the sole eligible NPC", () => {
+		const source =
+			'Rebecca: *Her gaze studies Rebecca\'s expression before her fingers touch Rebecca\'s wrist.*';
+
+		const result = resolve(source);
+
+		expect(result.text).toBe(
+			'Rosa: *Her gaze studies Rebecca\'s expression before her fingers touch Rebecca\'s wrist.*',
+		);
+		expect(result.changes).toHaveLength(1);
+		expect(result.changes[0]?.evidence).toEqual([
+			expect.objectContaining({ kind: "named-player-action-target" }),
+		]);
+	});
+
+	it("does not use the direct-target-only tier when first-person voice supports Rebecca", () => {
+		const source =
+			'Rebecca: *I study Rebecca\'s reflection in the mirror and straighten my collar.*';
+
+		const result = resolve(source);
+
+		expect(result.text).toBe(source);
+		expect(result.changed).toBe(false);
+		expect(result.diagnostics[0]).toMatchObject({
+			decision: "unchanged",
+			reason: "insufficient-semantic-evidence",
+		});
+	});
+
 	it("does not combine evidence across an unregistered but plausible speaker header", () => {
 		const source = [
 			"Rebecca: *Her eyes trace the buckle against Rebecca's hips.*",
@@ -139,6 +221,22 @@ describe("resolveSemanticSpeakerAttribution", () => {
 		expect(result.diagnostics[0]).toMatchObject({
 			decision: "unchanged",
 			reason: "ambiguous-eligible-speakers",
+			eligibleAlternativeSpeakers: ["Rosa", "Amy"],
+		});
+	});
+
+	it("does not use the direct-target-only tier when multiple NPCs are eligible", () => {
+		const source = 'Rebecca: *Her hand closes around Rebecca\'s wrist.*';
+		const amy = { id: "amy", name: "Amy" } as const;
+
+		const result = resolve(source, [PLAYER, ROSA, amy]);
+
+		expect(result.text).toBe(source);
+		expect(result.changed).toBe(false);
+		expect(result.changes).toEqual([]);
+		expect(result.diagnostics[0]).toMatchObject({
+			decision: "unchanged",
+			reason: "insufficient-semantic-evidence",
 			eligibleAlternativeSpeakers: ["Rosa", "Amy"],
 		});
 	});
