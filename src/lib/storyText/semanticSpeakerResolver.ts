@@ -495,13 +495,18 @@ function evidenceSupportsReassignment(
 	alternativeSpeakerCount: number,
 	hasUnregisteredSpeakerHeader: boolean,
 ) {
+	// Once another plausible, unregistered header is present, this block is no
+	// longer a bounded single-owner scene. Do not let evidence collected inside
+	// one block accidentally pull ownership from a different speaker block.
+	if (hasUnregisteredSpeakerHeader || alternativeSpeakerCount !== 1) {
+		return false;
+	}
+
 	if (evidence.hasIndependentEvidence) {
 		return true;
 	}
 
 	return (
-		alternativeSpeakerCount === 1 &&
-		!hasUnregisteredSpeakerHeader &&
 		evidence.hasDirectPlayerTargetEvidence &&
 		!evidence.hasConflictingFirstPersonEvidence
 	);
@@ -575,6 +580,18 @@ export function resolveSemanticSpeakerAttribution({
 			reason = "ambiguous-eligible-speakers";
 		} else if (supportsReassignment) {
 			const replacementSpeakerLabel = alternativeSpeakers[0]!.name.trim();
+			if (normalizeIdentityValue(replacementSpeakerLabel) === normalizeIdentityValue(header.label)) {
+				diagnostics.push({
+					blockIndex: header.blockIndex,
+					lineNumber: header.lineNumber,
+					originalSpeakerLabel: header.label,
+					decision: "unchanged",
+					reason: "insufficient-semantic-evidence",
+					eligibleAlternativeSpeakers,
+					evidence,
+				});
+				continue;
+			}
 			reason = "reassigned-single-eligible-speaker";
 			changes.push({
 				blockIndex: header.blockIndex,

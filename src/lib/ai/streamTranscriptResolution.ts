@@ -44,6 +44,7 @@ export interface StreamTranscriptLocalRepairEvent<TRepairEvent> {
 export type StreamTranscriptLocalStopReason =
 	| "unchanged"
 	| "repeated_candidate"
+	| "repair_validation_oscillation"
 	| "pass_limit";
 
 export type StreamTranscriptFailureReason =
@@ -190,7 +191,12 @@ export async function resolveStreamTranscript<
 				});
 			}
 
-			validation = await args.validateCandidate(repair.text, context);
+			// Keep the repair result as the source of truth for this handoff. In
+			// particular, do not validate `candidate` here: validators are allowed
+			// to return a normalized text value, but that value is not the text that
+			// the local repair just produced.
+			const repairedCandidate = repair.text;
+			validation = await args.validateCandidate(repairedCandidate, context);
 			candidate = validation.text;
 			if (validation.valid) {
 				return {
@@ -205,8 +211,14 @@ export async function resolveStreamTranscript<
 				};
 			}
 
+			const beforeFingerprint = fingerprint(beforeText);
+			const repairedFingerprint = fingerprint(repairedCandidate);
 			const candidateFingerprint = fingerprint(candidate);
-			if (candidateFingerprint === fingerprint(beforeText)) {
+			if (candidateFingerprint === beforeFingerprint) {
+				if (repairedFingerprint !== beforeFingerprint) {
+					localStopReason = "repair_validation_oscillation";
+					break;
+				}
 				localStopReason = "unchanged";
 				break;
 			}
