@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { repairAssistantTranscript } from "../transcriptRepairPipeline";
-import { buildPlayerTranscriptIdentityFromArgs } from "../playerTranscriptIdentity";
+import {
+	buildPlayerTranscriptIdentityFromArgs,
+	buildPlayerTranscriptIdentityFromStoryContext,
+} from "../playerTranscriptIdentity";
+import { resolveEffectivePlayerIdentity } from "../../playerCharacterPrompt";
 import {
 	applyStoryLocalIdentityToAssistantTranscript,
 	prevalidateAssistantTranscript,
@@ -45,6 +49,48 @@ function assistantMessage(content: string): StoryMessage {
 }
 
 describe("transcriptRepairPipeline", () => {
+	it("keeps an in-story renamed identity stable when legacy aliases appear in speaker labels", () => {
+		const character = {
+			name: "James Peralta",
+			aliases: ["Jamie"],
+			knownTies: ["Rosa"],
+			pronouns: "he/him",
+			gender: "male",
+			species: "human",
+			age: "15",
+		};
+		const storyState = {
+			updatedAt: "2026-08-24T00:00:00.000Z",
+			characters: {
+				"James Peralta": {
+					displayName: "Lyra",
+					pronouns: "she/her",
+				},
+			},
+			worldFacts: [],
+			unresolvedThreads: [],
+		};
+		const effectiveIdentity = resolveEffectivePlayerIdentity(character, { storyState });
+		const identity = buildPlayerTranscriptIdentityFromStoryContext({
+			character,
+			playerIdentity: effectiveIdentity,
+			storyState,
+		});
+		const source = `Jamie: *Her fingers close around Lyra's wrist.* "Come closer."\n\nRosa: "I am right here."`;
+
+		const repaired = repairAssistantTranscript(source, { identity });
+		const repairedAgain = repairAssistantTranscript(repaired, { identity });
+
+		expect(effectiveIdentity).toMatchObject({
+			sceneName: "Lyra",
+			pronouns: "she/her",
+			hasInStoryTransition: true,
+		});
+		expect(repaired).toContain('Lyra: *She lets her fingers close around Lyra\'s wrist.* "Come closer."');
+		expect(repaired).not.toMatch(/^Jamie:/m);
+		expect(repairedAgain).toBe(repaired);
+	});
+
 	it("repairs Rebecca speaker label when legal and scene name are both Becca", () => {
 		const repaired = repairAssistantTranscript(
 			'Rebecca: *They gently runs a hand down her arm.*',

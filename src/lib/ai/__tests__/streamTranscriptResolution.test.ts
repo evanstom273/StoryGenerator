@@ -123,6 +123,56 @@ describe("resolveStreamTranscript", () => {
 		expect(rewriteCandidate).not.toHaveBeenCalled();
 	});
 
+	it("validates the exact candidate returned by local repair", async () => {
+		const validatedInputs: string[] = [];
+		const result = await resolveStreamTranscript({
+			initialText: "raw-speaker-label",
+			repairCandidate: (text) => ({
+				text: text === "raw-speaker-label" ? "Rosa: repaired line" : text,
+				events: text === "raw-speaker-label" ? ["Rebecca->Rosa"] : [],
+			}),
+			validateCandidate: (text): TestValidation => {
+				validatedInputs.push(text);
+				return {
+					valid: text === "Rosa: repaired line",
+					text,
+					diagnostic: text === "Rosa: repaired line" ? "" : "still_invalid",
+				};
+			},
+			rewriteCandidate: async () => "unused",
+		});
+
+		expect(result).toMatchObject({ ok: true, text: "Rosa: repaired line" });
+		expect(validatedInputs).toEqual(["Rosa: repaired line"]);
+	});
+
+	it("distinguishes a repair/validation oscillation from an unchanged candidate", async () => {
+		const repairCandidate = vi.fn((text: string) => ({
+			text: text === "a" ? "b" : "a",
+		}));
+		const result = await resolveStreamTranscript({
+			initialText: "a",
+			allowProviderRewrites: false,
+			repairCandidate,
+			validateCandidate: (text, context): TestValidation => ({
+				valid: false,
+				// The validator hands the pre-repair candidate back, which would
+				// otherwise be reported as a generic unchanged candidate.
+				text: context.localPass === 1 ? "a" : text,
+				diagnostic: "speaker_attribution",
+			}),
+			rewriteCandidate: async () => "unused",
+		});
+
+		expect(result).toMatchObject({
+			ok: false,
+			reason: "provider_rewrites_disabled",
+			localStopReason: "repair_validation_oscillation",
+			localPasses: 1,
+		});
+		expect(repairCandidate).toHaveBeenCalledTimes(1);
+	});
+
 	it("stops when a provider returns an unchanged invalid candidate", async () => {
 		const result = await resolveStreamTranscript({
 			initialText: "invalid",

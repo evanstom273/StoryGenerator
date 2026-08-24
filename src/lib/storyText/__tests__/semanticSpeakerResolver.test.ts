@@ -130,6 +130,38 @@ describe("resolveSemanticSpeakerAttribution", () => {
 		expect(result.changes[0]?.originalSpeakerLabel).toBe("Becca");
 	});
 
+	it("treats a pre-transition alias as the player and stays stable after reassignment", () => {
+		const player = {
+			id: "player-james",
+			name: "Lyra",
+			aliases: ["Jamie", "James Peralta"],
+		} as const;
+		const source = 'Jamie: *Her hand closes around Lyra\'s wrist.* "Come closer."';
+		const eligibleSpeakers = [player, ROSA] as const;
+
+		const result = resolveSemanticSpeakerAttribution({
+			text: source,
+			player,
+			eligibleSpeakers,
+		});
+		const rerun = resolveSemanticSpeakerAttribution({
+			text: result.text,
+			player,
+			eligibleSpeakers,
+		});
+
+		expect(result.text).toBe('Rosa: *Her hand closes around Lyra\'s wrist.* "Come closer."');
+		expect(result.changes[0]).toMatchObject({
+			originalSpeakerLabel: "Jamie",
+			replacementSpeakerLabel: "Rosa",
+		});
+		expect(rerun).toMatchObject({
+			text: result.text,
+			changed: false,
+			changes: [],
+		});
+	});
+
 	it("leaves legitimate directed player action and dialogue unchanged", () => {
 		const source =
 			'Rebecca: *She reaches for Rosa\'s hand and smiles.* "You look beautiful from here."';
@@ -225,6 +257,37 @@ describe("resolveSemanticSpeakerAttribution", () => {
 		});
 	});
 
+	it("does not relabel a Rebecca block when another plausible speaker block makes ownership unbounded", () => {
+		const source = [
+			'Rebecca: *Her hands settle against Rebecca\'s hips.* "You should come closer."',
+			'Rosa: "I am already here."',
+			'Amy: "You look surprised."',
+		].join("\n");
+		const result = resolve(source, [PLAYER, ROSA]);
+
+		expect(result.text).toBe(source);
+		expect(result.changed).toBe(false);
+		expect(result.diagnostics[0]).toMatchObject({
+			decision: "unchanged",
+			reason: "insufficient-semantic-evidence",
+		});
+	});
+
+	it("is idempotent after repairing the reported two-person Rebecca-to-Rosa scene", () => {
+		const source = [
+			'Rebecca: *Her eyes trace the strap against Rebecca\'s hips.* "You look entirely too pleased with yourself."',
+			'Rosa: "You are enjoying this."',
+		].join("\n");
+		const first = resolve(source);
+		const second = resolve(first.text);
+
+		expect(first.text).toContain('Rosa: *Her eyes trace the strap against Rebecca\'s hips.*');
+		expect(first.changed).toBe(true);
+		expect(second.text).toBe(first.text);
+		expect(second.changed).toBe(false);
+		expect(second.changes).toEqual([]);
+	});
+
 	it("does not use the direct-target-only tier when multiple NPCs are eligible", () => {
 		const source = 'Rebecca: *Her hand closes around Rebecca\'s wrist.*';
 		const amy = { id: "amy", name: "Amy" } as const;
@@ -237,6 +300,23 @@ describe("resolveSemanticSpeakerAttribution", () => {
 		expect(result.diagnostics[0]).toMatchObject({
 			decision: "unchanged",
 			reason: "insufficient-semantic-evidence",
+			eligibleAlternativeSpeakers: ["Rosa", "Amy"],
+		});
+	});
+
+	it("keeps independently addressed dialogue unchanged when two NPCs could own the block", () => {
+		const source =
+			'Rebecca: *Her hand closes around Rebecca\'s wrist.* "You should come closer."';
+		const amy = { id: "amy", name: "Amy" } as const;
+
+		const result = resolve(source, [PLAYER, ROSA, amy]);
+
+		expect(result.text).toBe(source);
+		expect(result.changed).toBe(false);
+		expect(result.changes).toEqual([]);
+		expect(result.diagnostics[0]).toMatchObject({
+			decision: "unchanged",
+			reason: "ambiguous-eligible-speakers",
 			eligibleAlternativeSpeakers: ["Rosa", "Amy"],
 		});
 	});
