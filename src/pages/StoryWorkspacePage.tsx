@@ -171,6 +171,7 @@ export function StoryWorkspacePage() {
     guidedGenerationStatus,
     backgroundJobs,
     editAssistantMessage,
+    selectAssistantMessageCandidate,
     generatePlayerAssistMessage,
     regenerateLastAssistantMessage,
     repairStoryTranscriptClockTimes,
@@ -362,6 +363,7 @@ export function StoryWorkspacePage() {
     id: string;
     content: string;
     createdAt: string;
+    speakerAttribution?: StoryMessage["speakerAttribution"];
   }
   interface VariantSession {
     messageId: string;
@@ -1000,13 +1002,19 @@ export function StoryWorkspacePage() {
     // Snapshot current content and message ID before anything starts
     const snapshotContent = latestAssistantMessage.content;
     const snapshotMessageId = latestAssistantMessage.id;
+    const snapshotSpeakerAttribution = latestAssistantMessage.speakerAttribution;
 
     // Seed the variant session immediately so the streaming label shows "Generating candidate…"
     setVariantSession((prev) => {
       if (!prev || prev.messageId !== snapshotMessageId) {
         return {
           messageId: snapshotMessageId,
-          candidates: [{ id: `c-0-${snapshotMessageId}`, content: snapshotContent, createdAt: new Date().toISOString() }],
+          candidates: [{
+            id: `c-0-${snapshotMessageId}`,
+            content: snapshotContent,
+            createdAt: new Date().toISOString(),
+            speakerAttribution: snapshotSpeakerAttribution,
+          }],
           selectedIndex: 0,
         };
       }
@@ -1026,13 +1034,19 @@ export function StoryWorkspacePage() {
       setVariantSession((prev) => {
         const base = prev && prev.messageId === snapshotMessageId ? prev : {
           messageId: snapshotMessageId,
-          candidates: [{ id: `c-0-${snapshotMessageId}`, content: snapshotContent, createdAt: new Date().toISOString() }],
+          candidates: [{
+            id: `c-0-${snapshotMessageId}`,
+            content: snapshotContent,
+            createdAt: new Date().toISOString(),
+            speakerAttribution: snapshotSpeakerAttribution,
+          }],
           selectedIndex: 0,
         };
         const newCandidate: VariantCandidate = {
           id: `c-${base.candidates.length}-${Date.now()}`,
           content: newMessage.content,
           createdAt: new Date().toISOString(),
+          speakerAttribution: newMessage.speakerAttribution,
         };
         return {
           ...base,
@@ -1087,7 +1101,11 @@ export function StoryWorkspacePage() {
     // Write selected candidate to DB so transcript-is-truth invariant holds
     setIsSwitchingVariant(true);
     try {
-      await editAssistantMessage(latestAssistantMessage.id, candidate.content);
+      await selectAssistantMessageCandidate(
+        latestAssistantMessage.id,
+        candidate.content,
+        candidate.speakerAttribution,
+      );
     } catch {
       // Revert on failure
       setVariantSession((prev) => prev ? { ...prev, selectedIndex: variantSession.selectedIndex } : null);

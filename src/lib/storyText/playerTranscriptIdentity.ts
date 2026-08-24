@@ -136,7 +136,40 @@ export function buildPlayerTranscriptIdentityFromStoryContext(args: {
 	});
 
 	if (args.storyState?.characters) {
-		for (const [key, entry] of Object.entries(args.storyState.characters)) {
+		const entries = Object.entries(args.storyState.characters);
+		const normalize = (value?: string | null) => value?.trim().toLowerCase() ?? "";
+		const legalName = normalize(identity.legalName);
+		const playerNames = new Set(
+			[identity.legalName, identity.sceneName, ...identity.aliases]
+				.map((value) => normalize(value))
+				.filter(Boolean),
+		);
+
+		// Prefer explicit legal-name ownership. Older indexed stories are sometimes keyed by a
+		// preferred name, so fall back to a unique match against the player's known names. A
+		// unique match is required so an NPC with a colliding alias cannot contaminate the
+		// player's transcript identity.
+		const legalNameMatches = entries.filter(([key, entry]) => {
+			return (
+				normalize(key) === legalName ||
+				normalize(entry?.canonicalName) === legalName ||
+				(entry?.aliases ?? []).some((alias) => normalize(alias) === legalName)
+			);
+		});
+		const knownNameMatches = entries.filter(([key, entry]) => {
+			return [key, entry?.canonicalName, entry?.displayName, ...(entry?.aliases ?? [])].some(
+				(value) => playerNames.has(normalize(value)),
+			);
+		});
+		const playerEntry =
+			legalNameMatches.length === 1
+				? legalNameMatches[0]
+				: legalNameMatches.length === 0 && knownNameMatches.length === 1
+					? knownNameMatches[0]
+					: null;
+
+		if (playerEntry) {
+			const [key, entry] = playerEntry;
 			if (key.trim()) {
 				identity.aliases.push(key.trim());
 			}
@@ -148,8 +181,8 @@ export function buildPlayerTranscriptIdentityFromStoryContext(args: {
 					identity.aliases.push(alias.trim());
 				}
 			}
+			identity.aliases = Array.from(new Set(identity.aliases));
 		}
-		identity.aliases = Array.from(new Set(identity.aliases));
 	}
 
 	return identity;

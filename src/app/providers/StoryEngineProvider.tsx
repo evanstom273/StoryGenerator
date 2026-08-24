@@ -149,9 +149,12 @@ import {
 } from "../../lib/metaChatReferences";
 import { isGlobalMetaChatScope } from "../../lib/metaChatScope";
 import {
+  buildAssistantCandidateSelection,
+  buildManualAssistantEdit,
+} from "../../lib/storyText/assistantMessagePersistence";
+import {
   normalizeTranscriptForDisplay,
   applyStoryLocalIdentityToAssistantTranscript,
-  repairAssistantMessageContent,
   validateAssistantTranscriptForSave,
   type AssistantTranscriptValidationResult,
   type AssistantTranscriptValidationStage,
@@ -653,6 +656,11 @@ interface StoryEngineContextValue {
   ) => Promise<string>;
   sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string; previousChapterContext?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void; onGenerationAttempt?: (attempt: number, maxAttempts: number) => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
+  selectAssistantMessageCandidate: (
+    messageId: string,
+    content: string,
+    speakerAttribution?: StorySpeakerAttributionAudit,
+  ) => Promise<StoryMessage | null>;
   regenerateLastAssistantMessage: (storyId: string, opts?: { onChunk?: (chunk: string) => void; onChunkReset?: () => void; onGenerationAttempt?: (attempt: number, maxAttempts: number) => void; signal?: AbortSignal }) => Promise<StoryMessage>;
 }
 
@@ -6803,50 +6811,36 @@ export function StoryEngineProvider({
 
         await assertStoryWritable(currentMessage.storyId);
 
-        const [story, storyMessages, storyState] = await Promise.all([
-          repository.getStory(currentMessage.storyId),
-          repository.listStoryMessages(currentMessage.storyId),
-          repository.getStoryState(currentMessage.storyId),
-        ]);
-        const playerCharacter = story?.playerCharacterId
-          ? await repository.getPlayerCharacter(story.playerCharacterId)
-          : null;
-        const messageIndex = storyMessages.findIndex((entry) => entry.id === messageId);
-        const recentMessages =
-          messageIndex >= 0 ? storyMessages.slice(0, messageIndex + 1) : storyMessages;
-        const { parsedStoryState, playerIdentity } = playerCharacter
-          ? resolveStoryPlayerIdentityForGeneration({
-              playerCharacter,
-              storyState,
-              recentMessages,
-            })
-          : {
-              parsedStoryState: null,
-              playerIdentity: null,
-            };
-        const repairedContent = playerCharacter && playerIdentity
-          ? repairAssistantMessageContent(content, {
-              identity: buildPlayerTranscriptIdentityFromStoryContext({
-                character: playerCharacter,
-                playerIdentity,
-                storyState: parsedStoryState,
-                characterGenders: buildCharacterGenderHintsFromStoryState(parsedStoryState, {
-                  playerName: playerCharacter.name,
-                  playerGender: playerCharacter.gender,
-                  playerPronouns: playerIdentity.pronouns,
-                }),
-                transcriptText: content,
-              }),
-            })
-          : repairAssistantMessageContent(content);
+        const nextMessage = buildManualAssistantEdit(
+          currentMessage,
+          content,
+          new Date().toISOString(),
+        );
 
-        const nextMessage: StoryMessage = {
-          ...currentMessage,
-          content: repairedContent,
-          speakerAttribution: undefined,
-          editedAt: new Date().toISOString(),
-          revision: (currentMessage.revision ?? 0) + 1,
-        };
+        await repository.saveStoryMessage(nextMessage);
+        await touchStory(currentMessage.storyId);
+        await hydrate(false);
+
+        return nextMessage;
+      },
+      async selectAssistantMessageCandidate(messageId, content, speakerAttribution) {
+        const currentMessage = await repository.getStoryMessage(messageId);
+
+        if (!currentMessage) {
+          return null;
+        }
+
+        if (currentMessage.role !== "assistant") {
+          throw new Error("Only assistant messages can select response candidates.");
+        }
+
+        await assertStoryWritable(currentMessage.storyId);
+
+        const nextMessage = buildAssistantCandidateSelection(
+          currentMessage,
+          content,
+          speakerAttribution,
+        );
 
         await repository.saveStoryMessage(nextMessage);
         await touchStory(currentMessage.storyId);

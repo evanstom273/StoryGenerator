@@ -3,6 +3,7 @@ import { repairAssistantTranscript } from "../transcriptRepairPipeline";
 import {
 	buildPlayerTranscriptIdentityFromArgs,
 	buildPlayerTranscriptIdentityFromStoryContext,
+	collectPlayerSpeakerLabels,
 } from "../playerTranscriptIdentity";
 import { resolveEffectivePlayerIdentity } from "../../playerCharacterPrompt";
 import {
@@ -49,6 +50,47 @@ function assistantMessage(content: string): StoryMessage {
 }
 
 describe("transcriptRepairPipeline", () => {
+	it("keeps Rebecca's aliases separate from Rosa, Jake, and Amy", () => {
+		const character = {
+			name: "Rebecca",
+			aliases: ["Becca"],
+			knownTies: ["Rosa", "Jake", "Amy"],
+		};
+		const storyState = {
+			updatedAt: "2026-08-24T00:00:00.000Z",
+			characters: {
+				Rebecca: { canonicalName: "Rebecca", aliases: ["Becca"] },
+				Rosa: { canonicalName: "Rosa", aliases: [] },
+				Jake: { canonicalName: "Jake", aliases: [] },
+				Amy: { canonicalName: "Amy", aliases: [] },
+			},
+			worldFacts: [],
+			unresolvedThreads: [],
+		};
+		const identity = buildPlayerTranscriptIdentityFromStoryContext({
+			character,
+			playerIdentity: {
+				legalName: "Rebecca",
+				sceneName: "Becca",
+				pronouns: "she/her",
+				hasInStoryTransition: false,
+			},
+			storyState,
+		});
+		const source = [
+			"Rosa: *She takes a breath.*",
+			"Jake: *He looks toward the door.*",
+			"Amy: *She checks her notes.*",
+			"Rebecca: *She sits beside them.*",
+		].join("\n\n");
+
+		expect(identity.aliases).toEqual(["Rebecca", "Becca"]);
+		expect(Array.from(collectPlayerSpeakerLabels(identity))).toEqual(["rebecca", "becca"]);
+
+		const repaired = repairAssistantTranscript(source, { identity });
+		expect(repaired.match(/^[^:\n]+:/gm)).toEqual(["Rosa:", "Jake:", "Amy:", "Becca:"]);
+	});
+
 	it("keeps an in-story renamed identity stable when legacy aliases appear in speaker labels", () => {
 		const character = {
 			name: "James Peralta",
