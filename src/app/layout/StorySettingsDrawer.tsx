@@ -36,6 +36,7 @@ import {
 	synthesizeCharacterStatusBullets,
 } from "../../lib/characterStatus";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
+import { getArchiveIndexStatus } from "../../lib/archiveIndexing";
 import {
 	applyTranscriptPresenceGate,
 	listPresentIndexedCharacterNames,
@@ -55,6 +56,7 @@ import type {
 	AutoIndexMode,
 	ExportFormat,
 	RelationshipIndexEntry,
+	StoryState,
 } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { isAudiobookExportBackgroundJob } from "../../lib/backgroundTasks";
@@ -253,6 +255,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [storyStateData, setStoryStateData] = useState<ReturnType<typeof normalizeStoryStateToV2> | null>(
     null,
   );
+  const [storyStateRecord, setStoryStateRecord] = useState<StoryState | null>(null);
   const [indexRelationships, setIndexRelationships] = useState<RelationshipIndexEntry[]>([]);
   const [expandedEvidenceKeys, setExpandedEvidenceKeys] = useState<Record<string, boolean>>({});
 
@@ -356,6 +359,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   useEffect(() => {
     if (!storySettingsOpen || !story) {
       setStoryStateData(null);
+      setStoryStateRecord(null);
       return;
     }
 
@@ -366,12 +370,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           return;
         }
         const parsed = record?.stateJson ? safeParseStoryStateData(record.stateJson) : null;
+        setStoryStateRecord(record ?? null);
         setStoryStateData(normalizeStoryStateToV2(parsed));
       })
       .catch(() => {
         if (cancelled) {
           return;
         }
+        setStoryStateRecord(null);
         setStoryStateData(null);
       });
 
@@ -825,6 +831,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       await clearStoryIndex(story.id);
       const record = await fetchStoryState(story.id);
       const parsed = record?.stateJson ? safeParseStoryStateData(record.stateJson) : null;
+      setStoryStateRecord(record ?? null);
       setStoryStateData(normalizeStoryStateToV2(parsed));
       setIndexRelationships([]);
       setPageNotice("Index cleared. Run Full reindex to rebuild from the transcript.");
@@ -1605,11 +1612,28 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
 
                     const totalMessages = getMessagesForStory(story.id).length;
                     const archiveStoryState = gatedStoryStateData ?? storyStateData;
-                    const indexedMessageCount =
-                      archiveStoryState.indexes?.messageCount ??
-                      archiveStoryState.lastIndexedMessageCount ??
-                      0;
+                    const indexStatus = getArchiveIndexStatus(storyStateRecord, {
+                      currentMessageCount: totalMessages,
+                    });
+                    const indexedMessageCount = indexStatus.indexedMessageCount;
                     const staleBy = Math.max(0, totalMessages - indexedMessageCount);
+                    const failedIndexing = rebuildInfo?.phase === "error";
+                    const statusLabel = failedIndexing
+                      ? "Failed"
+                      : indexStatus.reason === "partial"
+                        ? "Partial"
+                        : indexStatus.reason === "missing"
+                          ? "Not indexed"
+                          : indexStatus.reason === "message_count_mismatch"
+                            ? "Out of sync"
+                            : indexStatus.reason === "new_messages"
+                              ? `Stale (+${staleBy})`
+                              : "Up to date";
+                    const statusTone = failedIndexing
+                      ? "text-rose-300"
+                      : indexStatus.needsRefresh
+                        ? "text-amber-200"
+                        : "text-ink-soft";
                     const worldFacts = archiveStoryState.indexes?.worldFacts ?? [];
                     const openThreads = archiveStoryState.indexes?.openThreads ?? [];
                     const characters = archiveStoryState.indexes?.characters
@@ -1661,14 +1685,22 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                       <div className="space-y-4 rounded-[9px] border border-divider/[0.4] bg-panel-muted/30 px-4 py-4 text-sm">
                         <div className="space-y-2 text-ink-muted">
                           <div className="flex items-center justify-between gap-3">
-                            <div>Message count</div>
-                            <div className="text-ink-soft">{indexedMessageCount || "—"}</div>
+                            <div>Transcript messages</div>
+                            <div className="text-ink-soft">{totalMessages}</div>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <div>Status</div>
-                            <div className={cn("text-ink-soft", staleBy ? "text-amber-200" : "")}>
-                              {staleBy ? `Stale (+${staleBy})` : "Up to date"}
+                            <div>Deep indexed through</div>
+                            <div className="text-ink-soft">{indexedMessageCount}</div>
+                          </div>
+                          {indexStatus.attemptedMessageCount > indexedMessageCount ? (
+                            <div className="flex items-center justify-between gap-3">
+                              <div>Last attempted</div>
+                              <div className="text-ink-soft">{indexStatus.attemptedMessageCount}</div>
                             </div>
+                          ) : null}
+                          <div className="flex items-center justify-between gap-3">
+                            <div>Status</div>
+                            <div className={statusTone}>{statusLabel}</div>
                           </div>
                           <div className="flex items-center justify-between gap-3">
                             <div>Indexed</div>
@@ -1703,6 +1735,44 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                             </div>
                           </div>
                         </div>
+
+                        {indexStatus.indexingGaps.length ? (
+                          <div className="rounded-[8px] border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-sm text-amber-100">
+                            <div className="font-medium">
+                              {indexStatus.indexingGaps.length === 1
+                                ? `Message #${indexStatus.indexingGaps[0].messageNumber} was not indexed.`
+                                : `Messages ${indexStatus.indexingGaps
+                                    .map((gap) => `#${gap.messageNumber}`)
+                                    .join(", ")} were not indexed.`}
+                            </div>
+                            <div className="mt-1 text-xs text-amber-100/75">
+                              {Array.from(
+                                new Set(
+                                  indexStatus.indexingGaps.map((gap) =>
+                                    [gap.provider, gap.model].filter(Boolean).join(" / "),
+                                  ),
+                                ),
+                              )
+                                .filter(Boolean)
+                                .join(", ") || "The configured provider"}
+                              {" blocked the indexing request. "}
+                              Run Full reindex to retry, or switch providers first.
+                            </div>
+                            {indexStatus.indexingGaps.map((gap) =>
+                              gap.reason || gap.diagnosticFingerprint ? (
+                                <div
+                                  key={`${gap.messageNumber}-${gap.occurredAt}`}
+                                  className="mt-1 text-[11px] text-amber-100/60"
+                                >
+                                  #{gap.messageNumber}
+                                  {gap.stage && gap.stage !== "unknown" ? ` · ${gap.stage}` : ""}
+                                  {gap.reason ? ` · ${gap.reason}` : ""}
+                                  {gap.diagnosticFingerprint ? ` · ${gap.diagnosticFingerprint}` : ""}
+                                </div>
+                              ) : null,
+                            )}
+                          </div>
+                        ) : null}
 
                         <div className="rounded-[8px] border border-divider/[0.4] bg-panel-muted/40 px-3 py-3 text-sm text-ink-muted">
                           {autoIndexMode === "disabled"

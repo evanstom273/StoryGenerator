@@ -2165,6 +2165,9 @@ async function rebuildChapterArchiveSummaries(params: {
     const parsed = safeParseStoryStateData(json);
     return normalizeStoryStateToV2(parsed);
   })();
+  const blockedMessageNumbers = new Set(
+    (normalizedState?.indexingGaps ?? []).map((gap) => gap.messageNumber),
+  );
 
   for (let chapterIndex = 0; chapterIndex < chaptersToRebuild.length; chapterIndex += 1) {
     if (params.signal?.aborted) {
@@ -2179,6 +2182,18 @@ async function rebuildChapterArchiveSummaries(params: {
     const slice = params.messages.slice(Math.max(0, startIndex - 1), Math.max(0, endIndex));
 
     if (!slice.length) {
+      continue;
+    }
+
+    const containsIndexingGap = Array.from(blockedMessageNumbers).some(
+      (messageNumber) => messageNumber >= startIndex && messageNumber <= endIndex,
+    );
+    if (containsIndexingGap) {
+      params.onProgress?.({
+        processed: chapterIndex + 1,
+        total: chaptersToRebuild.length,
+        label: `${chapter.label} (skipped: partial index)`,
+      });
       continue;
     }
 
@@ -3781,6 +3796,24 @@ export function StoryEngineProvider({
               );
             }
             const withAuthorDirectives = applyAuthorDirectivesToStoryState(parsed, allMessages);
+            const indexingGaps = parsed.indexingGaps ?? [];
+            const deepIndexCompletedMessageCount = Math.max(
+              0,
+              Math.min(
+                allMessages.length,
+                parsed.lastDeepIndexedMessageCount ??
+                  (indexingGaps.length
+                    ? Math.min(...indexingGaps.map((gap) => gap.messageNumber)) - 1
+                    : allMessages.length),
+              ),
+            );
+            const deepIndexAttemptedMessageCount = Math.max(
+              deepIndexCompletedMessageCount,
+              Math.min(
+                allMessages.length,
+                parsed.lastDeepIndexAttemptedMessageCount ?? allMessages.length,
+              ),
+            );
             return finalizeStoryStateForSave({
               parsedState: withAuthorDirectives as StoryStateData,
               previousStateJson: existingStoryState?.stateJson,
@@ -3796,6 +3829,11 @@ export function StoryEngineProvider({
               },
               messages: allMessages,
               universeImportedCharacters: getStoryImportedCharacterContext(story).universeImportedCharacters,
+              deepIndexProgress: {
+                completedMessageCount: deepIndexCompletedMessageCount,
+                attemptedMessageCount: deepIndexAttemptedMessageCount,
+                gaps: indexingGaps,
+              },
             });
           } catch {
             return JSON.stringify(
@@ -3951,8 +3989,14 @@ export function StoryEngineProvider({
           try {
             const parsed = JSON.parse(nextStateJson) as any;
             const indexes = parsed?.indexes;
+            const indexingGaps = Array.isArray(parsed?.indexingGaps)
+              ? parsed.indexingGaps
+              : [];
+            const completionPrefix = indexingGaps.length
+              ? `Re-index partial. ${indexingGaps.length} message${indexingGaps.length === 1 ? "" : "s"} could not be indexed.`
+              : "Re-index complete.";
             if (!indexes || typeof indexes !== "object") {
-              return "Re-index complete.";
+              return completionPrefix;
             }
             const characterCount =
               indexes.characters && typeof indexes.characters === "object"
@@ -3975,8 +4019,8 @@ export function StoryEngineProvider({
               threadCount ? `${threadCount} thread${threadCount === 1 ? "" : "s"}` : null,
             ].filter(Boolean);
             return parts.length
-              ? `Re-index complete. Indexed: ${parts.join(", ")}.`
-              : "Re-index complete.";
+              ? `${completionPrefix} Indexed: ${parts.join(", ")}.`
+              : completionPrefix;
           } catch {
             return "Re-index complete.";
           }

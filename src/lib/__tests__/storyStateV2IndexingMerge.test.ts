@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	coercePartialStoryState,
+	finalizeStoryStateForSave,
 	mergeStoryIndexesIncremental,
 	mergeStoryStateForIndexing,
 	parseStoryStateJson,
@@ -100,5 +101,92 @@ describe("storyStateV2 indexing merge", () => {
 		expect(merged.characters?.["Charles Boyle"]?.statusBullets).toEqual([
 			"Transfigured into a plump brown hen by Jamie's Pullus spell",
 		]);
+	});
+
+	it("preserves indexing attempt metadata while merging an incremental extraction", () => {
+		const gap = {
+			messageNumber: 9,
+			code: "provider_refusal" as const,
+			occurredAt: "2026-08-03T12:00:00.000Z",
+		};
+		const previous = {
+			updatedAt: "2026-08-03T12:00:00.000Z",
+			characters: {},
+			worldFacts: [],
+			unresolvedThreads: [],
+			lastDeepIndexedMessageCount: 8,
+			lastDeepIndexAttemptedMessageCount: 9,
+			indexingGaps: [gap],
+		};
+		const incoming = {
+			updatedAt: "2026-08-03T12:01:00.000Z",
+			characters: {},
+			worldFacts: [],
+			unresolvedThreads: [],
+		};
+
+		const merged = mergeStoryStateForIndexing(previous, incoming, undefined);
+
+		expect(merged.lastDeepIndexAttemptedMessageCount).toBe(9);
+		expect(merged.indexingGaps).toEqual([gap]);
+	});
+
+	it("stamps partial deep-index progress without claiming full completion", () => {
+		const finalized = JSON.parse(
+			finalizeStoryStateForSave({
+				parsedState: {
+					updatedAt: "2026-08-03T12:00:00.000Z",
+					characters: {},
+					worldFacts: [],
+					unresolvedThreads: [],
+				},
+				totalMessages: 16,
+				now: "2026-08-03T12:00:00.000Z",
+				mode: "deep",
+				deepIndexTrigger: "auto",
+				deepIndexProgress: {
+					completedMessageCount: 8,
+					attemptedMessageCount: 16,
+					gaps: [
+						{
+							messageNumber: 9,
+							code: "provider_refusal",
+							provider: "gemini",
+							occurredAt: "2026-08-03T12:00:00.000Z",
+						},
+					],
+				},
+			}),
+		);
+
+		expect(finalized.lastDeepIndexedMessageCount).toBe(8);
+		expect(finalized.lastIndexedMessageCount).toBe(8);
+		expect(finalized.lastDeepIndexAttemptedMessageCount).toBe(16);
+		expect(finalized.lastAutoDeepIndexedMessageCount).toBe(8);
+		expect(finalized.messagesSinceDeepIndexUpdate).toBe(8);
+		expect(finalized.indexingGaps).toEqual([
+			expect.objectContaining({ messageNumber: 9, code: "provider_refusal" }),
+		]);
+	});
+
+	it("keeps full deep-index finalization backward compatible when progress is omitted", () => {
+		const finalized = JSON.parse(
+			finalizeStoryStateForSave({
+				parsedState: {
+					updatedAt: "2026-08-03T12:00:00.000Z",
+					characters: {},
+					worldFacts: [],
+					unresolvedThreads: [],
+				},
+				totalMessages: 16,
+				now: "2026-08-03T12:00:00.000Z",
+				mode: "deep",
+			}),
+		);
+
+		expect(finalized.lastDeepIndexedMessageCount).toBe(16);
+		expect(finalized.lastDeepIndexAttemptedMessageCount).toBe(16);
+		expect(finalized.indexingGaps).toEqual([]);
+		expect(finalized.messagesSinceDeepIndexUpdate).toBe(0);
 	});
 });

@@ -1,4 +1,5 @@
 import type {
+  IndexingGap,
   MemoryArchitectureVersion,
   PlayerCharacter,
   StoryIndexesV2,
@@ -463,6 +464,8 @@ export function mergeStoryStateForIndexing(
     lastAutoDeepIndexedAt: previous.lastAutoDeepIndexedAt,
     lastIndexedMessageCount: previous.lastIndexedMessageCount,
     lastDeepIndexedMessageCount: previous.lastDeepIndexedMessageCount,
+    lastDeepIndexAttemptedMessageCount: previous.lastDeepIndexAttemptedMessageCount,
+    indexingGaps: previous.indexingGaps,
     lastAutoDeepIndexedMessageCount: previous.lastAutoDeepIndexedMessageCount,
     messagesSinceDeepIndexUpdate: previous.messagesSinceDeepIndexUpdate,
   };
@@ -748,6 +751,11 @@ export function finalizeStoryStateForSave(params: {
   playerCharacter?: Pick<PlayerCharacter, "name" | "aliases">;
   messages?: StoryMessage[];
   universeImportedCharacters?: string[];
+  deepIndexProgress?: {
+    completedMessageCount: number;
+    attemptedMessageCount: number;
+    gaps: IndexingGap[];
+  };
 }): string {
   const previous = (() => {
     const json = params.previousStateJson?.trim() ?? "";
@@ -786,6 +794,24 @@ export function finalizeStoryStateForSave(params: {
     indexes: reconciledIndexes,
   };
 
+  const deepIndexProgress = params.deepIndexProgress
+    ? {
+        completedMessageCount: Math.max(
+          0,
+          Math.min(params.totalMessages, Math.trunc(params.deepIndexProgress.completedMessageCount)),
+        ),
+        attemptedMessageCount: Math.max(
+          0,
+          Math.min(params.totalMessages, Math.trunc(params.deepIndexProgress.attemptedMessageCount)),
+        ),
+        gaps: params.deepIndexProgress.gaps,
+      }
+    : {
+        completedMessageCount: params.totalMessages,
+        attemptedMessageCount: params.totalMessages,
+        gaps: [] as IndexingGap[],
+      };
+
   const stamped =
     params.mode === "deep"
       ? withIndexedMetadata({
@@ -795,12 +821,20 @@ export function finalizeStoryStateForSave(params: {
           ...(params.deepIndexTrigger === "auto"
             ? {
                 lastAutoDeepIndexedAt: params.now,
-                lastAutoDeepIndexedMessageCount: params.totalMessages,
+                lastAutoDeepIndexedMessageCount: deepIndexProgress.completedMessageCount,
               }
             : {}),
-          lastIndexedMessageCount: params.totalMessages,
-          lastDeepIndexedMessageCount: params.totalMessages,
-          messagesSinceDeepIndexUpdate: 0,
+          lastIndexedMessageCount: deepIndexProgress.completedMessageCount,
+          lastDeepIndexedMessageCount: deepIndexProgress.completedMessageCount,
+          lastDeepIndexAttemptedMessageCount: Math.max(
+            deepIndexProgress.completedMessageCount,
+            deepIndexProgress.attemptedMessageCount,
+          ),
+          indexingGaps: deepIndexProgress.gaps,
+          messagesSinceDeepIndexUpdate: Math.max(
+            0,
+            params.totalMessages - deepIndexProgress.completedMessageCount,
+          ),
         }, { indexedAt: params.now, memoryArchitectureVersion: "2.0" })
       : withIndexedMetadata({
           ...base,

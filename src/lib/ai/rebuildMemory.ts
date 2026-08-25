@@ -1,6 +1,6 @@
 import type { StoryEngineRepository } from "../repository";
 import type { AIProvider, AIChatMessage } from "./types";
-import type { StoryMessage, StoryStateDataV2 } from "../../types/models";
+import type { IndexingGap, StoryMessage, StoryStateDataV2 } from "../../types/models";
 import { sortByTimestampAsc } from "../dates";
 import { buildStoryStateExtractionPrompt, parseStoryStateData } from "./storyStateExtractor";
 import {
@@ -19,9 +19,10 @@ import { applyTranscriptPresenceGate } from "../transcriptPresence";
 import { normalizePlayerCharacterAliases } from "../playerCharacterPrompt";
 import { loadStoryImportedCharacters, mergeImportedCharacterAllowlist } from "../storyImportedCharacters";
 import { ensureIndexedCharacterStatus } from "../characterStatus";
-import { AIError } from "./errors";
+import { AIError, formatProviderRefusalDiagnostic } from "./errors";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
 import { getIndexingRequestConfig } from "./models";
+import { isDeterministicIndexingNoop } from "./indexingMessageClassification";
 
 const INDEXING_CHUNK_SIZE = 1;
 
@@ -86,6 +87,45 @@ function sanitizeIndexingMessageContent(content: string, playerName: string) {
 	});
 }
 
+function resolveRefusalStage(error: AIError): IndexingGap["stage"] {
+	const diagnostic = error.diagnostic ?? "";
+	if (/(?:^|;\s*)stage=response(?:;|$)/i.test(diagnostic)) return "response";
+	if (/(?:^|;\s*)stage=(?:prompt|request)(?:;|$)/i.test(diagnostic)) return "prompt";
+	return "unknown";
+}
+
+function buildProviderRefusalGap(params: {
+	messageNumber: number;
+	model: string;
+	error: AIError;
+}): IndexingGap {
+	const safeDiagnostic = formatProviderRefusalDiagnostic(
+		params.error.diagnostic ?? params.error.message,
+	);
+	const diagnosticFingerprint = safeDiagnostic?.match(/fingerprint=(fnv1a:[0-9a-f]{8})/i)?.[1];
+	return {
+		messageNumber: params.messageNumber,
+		code: "provider_refusal",
+		model: params.model,
+		stage: resolveRefusalStage(params.error),
+		reason: "Provider declined both indexing prompts under its safeguards.",
+		...(diagnosticFingerprint ? { diagnosticFingerprint } : {}),
+		occurredAt: new Date().toISOString(),
+	};
+}
+
+function withoutGapAtMessage(gaps: IndexingGap[] | undefined, messageNumber: number) {
+	return (gaps ?? []).filter((gap) => gap.messageNumber !== messageNumber);
+}
+
+function resolveContiguousIndexedMessageCount(attempted: number, gaps: IndexingGap[] | undefined) {
+	const firstGap = (gaps ?? [])
+		.map((gap) => gap.messageNumber)
+		.filter((messageNumber) => messageNumber >= 1 && messageNumber <= attempted)
+		.sort((left, right) => left - right)[0];
+	return firstGap ? firstGap - 1 : attempted;
+}
+
 export async function rebuildStoryMemoryAndIndexes(params: {
   storyId: string;
   repository: StoryEngineRepository;
@@ -125,20 +165,64 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
   const baseParsed = storyState?.stateJson ? safeParseStoryStateData(storyState.stateJson) : null;
   let currentState: StoryStateDataV2 = normalizeStoryStateToV2(baseParsed);
-  currentState = { ...currentState, memoryArchitectureVersion: "2.0" };
+  currentState = {
+    ...currentState,
+    updatedAt: currentState.updatedAt ?? new Date().toISOString(),
+    characters: currentState.characters ?? {},
+    worldFacts: currentState.worldFacts ?? [],
+    unresolvedThreads: currentState.unresolvedThreads ?? [],
+    memoryArchitectureVersion: "2.0",
+    ...(!incremental
+      ? {
+          lastDeepIndexedMessageCount: 0,
+          lastDeepIndexAttemptedMessageCount: 0,
+          indexingGaps: [],
+        }
+      : {}),
+  };
+
+  const persistCheckpoint = async () => {
+    const now = new Date().toISOString();
+    currentState = {
+      ...currentState,
+      updatedAt: now,
+      characters: currentState.characters ?? {},
+      worldFacts: currentState.worldFacts ?? [],
+      unresolvedThreads: currentState.unresolvedThreads ?? [],
+    };
+    await repository.saveStoryState({
+      id: storyState?.id ?? `story-state:${storyId}`,
+      storyId,
+      stateJson: JSON.stringify(currentState),
+      updatedAt: now,
+    });
+  };
 
   // In incremental mode, only process messages added since the last AI deep-index run.
   // indexes.messageCount is bumped by the lightweight counter sync after every AI turn
   // and must NOT be used here — it would make every incremental run see 0 new messages.
-  // lastDeepIndexedMessageCount is the correct checkpoint: it is only set when an actual
-  // AI-powered deep index finishes.
+  // The attempted cursor is the resume point even when a provider refusal left a typed gap.
+  // The contiguous deep-index cursor remains behind the first gap for freshness reporting.
   const lastIndexedCount = incremental
-    ? (baseParsed?.lastDeepIndexedMessageCount ?? baseParsed?.lastIndexedMessageCount ?? 0)
+    ? (baseParsed?.lastDeepIndexAttemptedMessageCount ??
+      baseParsed?.lastDeepIndexedMessageCount ??
+      baseParsed?.lastIndexedMessageCount ??
+      0)
     : 0;
   const newMessages = messages.slice(lastIndexedCount);
 
   if (incremental && newMessages.length === 0) {
-    onProgress?.({ processed: total, total, message: "Index is already up to date." });
+    const gapCount = baseParsed?.indexingGaps?.length ?? 0;
+    onProgress?.({
+      processed: total,
+      total,
+      message: gapCount
+        ? `All messages have been attempted; ${gapCount} indexing gap${gapCount === 1 ? " remains" : "s remain"}.`
+        : "Index is already up to date.",
+      warning: gapCount
+        ? `${gapCount} message${gapCount === 1 ? " was" : "s were"} declined by provider safeguards. Run a Full reindex to retry.`
+        : undefined,
+    });
     return {
       stateJson: storyState?.stateJson ?? JSON.stringify(currentState),
       summaryText: currentState.summaries?.worldSummary?.trim() || undefined,
@@ -185,6 +269,31 @@ export async function rebuildStoryMemoryAndIndexes(params: {
           }
         : message,
     );
+
+    // Classify persisted structural messages before assistant transcript repair can
+    // add formatting that makes a pure chapter marker look like story prose.
+    if (chunk.every(isDeterministicIndexingNoop)) {
+      const indexedAt = new Date().toISOString();
+      const nextGaps = withoutGapAtMessage(currentState.indexingGaps, chunkEnd);
+      currentState = {
+        ...currentState,
+        indexedAt,
+        lastIndexedAt: indexedAt,
+        lastDeepIndexedAt: indexedAt,
+        lastIndexedMessageCount: chunkEnd,
+        lastDeepIndexedMessageCount: resolveContiguousIndexedMessageCount(chunkEnd, nextGaps),
+        lastDeepIndexAttemptedMessageCount: chunkEnd,
+        indexingGaps: nextGaps,
+      };
+      processed += chunk.length;
+      await persistCheckpoint();
+      onProgress?.({
+        processed,
+        total,
+        message: `Message ${chunkEnd}/${total} contained no indexable story event`,
+      });
+      continue;
+    }
 
     const fullStateForPrompt = (() => {
       try {
@@ -235,17 +344,83 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     });
 
     const indexingStartedAtMs = Date.now();
-    let responseContent = await generateWithRetry(provider, generateParams);
+    let responseContent: string;
+    let activeGenerateParams = generateParams;
+    let activeExtractionContext = extractionContext;
+    let usedSafetyFallback = false;
+    try {
+      responseContent = await generateWithRetry(provider, generateParams);
+    } catch (error) {
+      if (!(error instanceof AIError) || error.code !== "safety_refusal") {
+        throw error;
+      }
+
+      onProgress?.({
+        processed,
+        total,
+        message: `Retrying message ${chunkEnd}/${total} with minimum context…`,
+        warning: `Message ${chunkEnd}: the provider declined the full indexing context; retrying without the character sheet or continuity snapshot.`,
+      });
+      const minimizedExtractionContext = buildStoryStateExtractionPrompt({
+        playerName: playerCharacter.name,
+        playerCharacter: null,
+        recentMessages: sanitizedChunk,
+        messageNumberStart: processed + 1,
+        messageNumberTotal: total,
+        perMessageIndexing: chunk.length === 1,
+      });
+      const minimizedGenerateParams = {
+        ...generateParams,
+        messages: minimizedExtractionContext,
+        maxAttempts: 1,
+      };
+      usedSafetyFallback = true;
+      activeGenerateParams = minimizedGenerateParams;
+      activeExtractionContext = minimizedExtractionContext;
+
+      try {
+        responseContent = await generateWithRetry(provider, minimizedGenerateParams);
+      } catch (fallbackError) {
+        if (!(fallbackError instanceof AIError) || fallbackError.code !== "safety_refusal") {
+          throw fallbackError;
+        }
+
+        const gap = buildProviderRefusalGap({
+          messageNumber: chunkEnd,
+          model,
+          error: fallbackError,
+        });
+        const nextGaps = [
+          ...withoutGapAtMessage(currentState.indexingGaps, chunkEnd),
+          gap,
+        ].sort((left, right) => left.messageNumber - right.messageNumber);
+        currentState = {
+          ...currentState,
+          lastDeepIndexedMessageCount: resolveContiguousIndexedMessageCount(chunkEnd, nextGaps),
+          lastDeepIndexAttemptedMessageCount: chunkEnd,
+          indexingGaps: nextGaps,
+        };
+        processed += chunk.length;
+        await persistCheckpoint();
+        onProgress?.({
+          processed,
+          total,
+          message: `Message ${chunkEnd}/${total} could not be indexed; continuing`,
+          warning: `Message ${chunkEnd}: provider safeguards declined both indexing prompts. The message was recorded as an indexing gap.`,
+        });
+        continue;
+      }
+    }
     logIndexingCallDiagnostics({
       storyId,
       messageNumber: chunkEnd,
       totalMessages: total,
       model,
-      promptCharacters: extractionContext.reduce((sum, message) => sum + (message.content?.length ?? 0), 0),
-      estimatedInputTokens: estimatePromptTokens(extractionContext),
+      promptCharacters: activeExtractionContext.reduce((sum, message) => sum + (message.content?.length ?? 0), 0),
+      estimatedInputTokens: estimatePromptTokens(activeExtractionContext),
       estimatedOutputTokens: estimateTokensFromText(responseContent),
       durationMs: Date.now() - indexingStartedAtMs,
-      continuitySnapshotCharacters: continuitySnapshotJson.length,
+      continuitySnapshotCharacters: usedSafetyFallback ? 0 : continuitySnapshotJson.length,
       fullStateCharacters: fullStateForPrompt.length,
     });
 
@@ -261,7 +436,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
     let parsed = parseStoryStateData(responseContent);
 
-    if (!parsed) {
+    if (!parsed && !usedSafetyFallback) {
       // Parse failed — retry the AI call once before giving up
       onProgress?.({
         processed,
@@ -270,7 +445,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       });
       await sleep(1000, signal);
       if (signal?.aborted) throw new Error("Rebuild aborted.");
-      responseContent = await generateWithRetry(provider, generateParams);
+      responseContent = await generateWithRetry(provider, activeGenerateParams);
       parsed = parseStoryStateData(responseContent);
       if (!parsed) {
         const head = responseContent.slice(0, 200).replace(/\n/g, " ");
@@ -280,6 +455,15 @@ export async function rebuildStoryMemoryAndIndexes(params: {
           `Story state extraction returned invalid JSON (${len} chars). Head: ${head || "(empty)"} … Tail: ${tail || "(empty)"}`,
         );
       }
+    }
+
+    if (!parsed) {
+      const head = responseContent.slice(0, 200).replace(/\n/g, " ");
+      const tail = responseContent.slice(-200).replace(/\n/g, " ");
+      const len = responseContent.length;
+      throw new Error(
+        `Story state extraction returned invalid JSON (${len} chars). Head: ${head || "(empty)"} … Tail: ${tail || "(empty)"}`,
+      );
     }
 
     // Check if truncation repair was silently used (direct parse fails but parseStoryStateData succeeded via repair)
@@ -310,6 +494,19 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     );
 
     processed += chunk.length;
+    const indexedAt = new Date().toISOString();
+    const nextGaps = withoutGapAtMessage(currentState.indexingGaps, chunkEnd);
+    currentState = {
+      ...currentState,
+      indexedAt,
+      lastIndexedAt: indexedAt,
+      lastDeepIndexedAt: indexedAt,
+      lastIndexedMessageCount: chunkEnd,
+      lastDeepIndexedMessageCount: resolveContiguousIndexedMessageCount(chunkEnd, nextGaps),
+      lastDeepIndexAttemptedMessageCount: chunkEnd,
+      indexingGaps: nextGaps,
+    };
+    await persistCheckpoint();
     onProgress?.({
       processed,
       total,

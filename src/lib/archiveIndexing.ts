@@ -1,4 +1,4 @@
-import type { StoryState, StoryStateData } from "../types/models";
+import type { IndexingGap, StoryState, StoryStateData } from "../types/models";
 import { safeParseStoryStateData } from "./storyStateV2";
 
 function toTimestampMs(value: string | null | undefined) {
@@ -15,15 +15,39 @@ function resolveIndexedMessageCount(parsed: ReturnType<typeof safeParseStoryStat
 		return 0;
 	}
 
-	const fromIndexes =
-		typeof parsed.indexes?.messageCount === "number" && Number.isFinite(parsed.indexes.messageCount)
-			? Math.trunc(parsed.indexes.messageCount)
-			: null;
+	// indexes.messageCount is transcript/index cardinality. It is updated by the
+	// lightweight counter sync and is therefore not proof that deep indexing ran.
+	const count = parsed.lastDeepIndexedMessageCount ?? parsed.lastIndexedMessageCount ?? 0;
+	return typeof count === "number" && Number.isFinite(count)
+		? Math.max(0, Math.trunc(count))
+		: 0;
+}
 
-	return Math.max(
-		parsed.lastDeepIndexedMessageCount ?? 0,
-		parsed.lastIndexedMessageCount ?? 0,
-		fromIndexes ?? 0,
+function resolveAttemptedMessageCount(
+	parsed: ReturnType<typeof safeParseStoryStateData>,
+	indexedMessageCount: number,
+) {
+	const attempted = parsed?.lastDeepIndexAttemptedMessageCount;
+	return typeof attempted === "number" && Number.isFinite(attempted)
+		? Math.max(indexedMessageCount, Math.max(0, Math.trunc(attempted)))
+		: indexedMessageCount;
+}
+
+function resolveIndexingGaps(parsed: ReturnType<typeof safeParseStoryStateData>): IndexingGap[] {
+	if (!Array.isArray(parsed?.indexingGaps)) {
+		return [];
+	}
+
+	return parsed.indexingGaps.filter(
+		(gap): gap is IndexingGap =>
+			Boolean(gap) &&
+			typeof gap === "object" &&
+			typeof gap.messageNumber === "number" &&
+			Number.isFinite(gap.messageNumber) &&
+			gap.messageNumber > 0 &&
+			gap.code === "provider_refusal" &&
+			typeof gap.occurredAt === "string" &&
+			gap.occurredAt.trim().length > 0,
 	);
 }
 
@@ -60,15 +84,33 @@ export function getArchiveIndexStatus(
 
 	const indexedAtMs = toTimestampMs(indexedAt);
 	const indexedMessageCount = resolveIndexedMessageCount(parsed);
+	const attemptedMessageCount = resolveAttemptedMessageCount(parsed, indexedMessageCount);
+	const indexingGaps = resolveIndexingGaps(parsed);
 	const currentMessageCount =
 		typeof opts?.currentMessageCount === "number" && Number.isFinite(opts.currentMessageCount)
 			? Math.max(0, Math.trunc(opts.currentMessageCount))
 			: indexedMessageCount;
 
+	if (indexingGaps.length > 0) {
+		return {
+			indexedAt,
+			indexedMessageCount,
+			attemptedMessageCount,
+			indexingGaps,
+			currentMessageCount,
+			ageMs: indexedAtMs == null ? null : Math.max(0, Date.now() - indexedAtMs),
+			isFresh: false,
+			needsRefresh: true,
+			reason: "partial" as const,
+		};
+	}
+
 	if (indexedAtMs == null || (indexedMessageCount === 0 && currentMessageCount > 0)) {
 		return {
 			indexedAt,
 			indexedMessageCount,
+			attemptedMessageCount,
+			indexingGaps,
 			currentMessageCount,
 			ageMs: null,
 			isFresh: false,
@@ -81,6 +123,8 @@ export function getArchiveIndexStatus(
 		return {
 			indexedAt,
 			indexedMessageCount,
+			attemptedMessageCount,
+			indexingGaps,
 			currentMessageCount,
 			ageMs: Math.max(0, Date.now() - indexedAtMs),
 			isFresh: false,
@@ -97,6 +141,8 @@ export function getArchiveIndexStatus(
 	return {
 		indexedAt,
 		indexedMessageCount,
+		attemptedMessageCount,
+		indexingGaps,
 		currentMessageCount,
 		ageMs,
 		isFresh: true,

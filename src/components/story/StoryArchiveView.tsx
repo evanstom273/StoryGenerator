@@ -10,8 +10,7 @@ import {
 	applyTranscriptPresenceGate,
 	listPresentIndexedCharacterNames,
 } from "../../lib/transcriptPresence";
-import type { RelationshipIndexEntry } from "../../types/models";
-import { cn } from "../../utils/cn";
+import type { RelationshipIndexEntry, StoryState } from "../../types/models";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
 import { IndexingProgressPanel } from "./IndexingProgressPanel";
@@ -23,6 +22,7 @@ import {
 	buildNarrativeIdentityRegistry,
 	resolveNarrativeDisplayName,
 } from "../../lib/narrativeIdentity";
+import { getArchiveIndexStatus } from "../../lib/archiveIndexing";
 
 function trimStringList(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) {
@@ -48,7 +48,7 @@ export function StoryArchiveView({
 }) {
   const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, queueStoryIndexJob, loadStoryRelationships, cancelStoryIndexing, clearStoryIndex } =
     useStoryEngine();
-  const [storyStateJson, setStoryStateJson] = useState<string>("");
+  const [storyStateRecord, setStoryStateRecord] = useState<StoryState | null>(null);
   const [archiveRelationships, setArchiveRelationships] = useState<RelationshipIndexEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -59,6 +59,7 @@ export function StoryArchiveView({
   const storyMessages = useMemo(() => getMessagesForStory(storyId), [getMessagesForStory, storyId]);
 
   const storyStateData = useMemo(() => {
+    const storyStateJson = storyStateRecord?.stateJson ?? "";
     if (!storyStateJson.trim()) {
       return null;
     }
@@ -67,7 +68,7 @@ export function StoryArchiveView({
       return null;
     }
     return normalizeStoryStateToV2(parsed);
-  }, [storyStateJson]);
+  }, [storyStateRecord]);
 
   const gatedStoryStateData = useMemo(() => {
     if (!storyStateData) {
@@ -120,7 +121,7 @@ export function StoryArchiveView({
     void fetchStoryState(storyId)
       .then((record) => {
         if (cancelled) return;
-        setStoryStateJson(record?.stateJson ?? "");
+        setStoryStateRecord(record ?? null);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -160,7 +161,7 @@ export function StoryArchiveView({
     try {
       await clearStoryIndex(storyId);
       const record = await fetchStoryState(storyId);
-      setStoryStateJson(record?.stateJson ?? "");
+      setStoryStateRecord(record ?? null);
       setArchiveRelationships([]);
       setSuccessMessage("Index cleared. Run Full reindex to rebuild from the transcript.");
     } catch (error) {
@@ -279,9 +280,28 @@ export function StoryArchiveView({
 
   const story = getStoryById(storyId);
   const totalMessages = getMessagesForStory(storyId).length;
-  const indexedMessageCount =
-    archiveState.indexes?.messageCount ?? archiveState.lastIndexedMessageCount ?? 0;
+  const indexStatus = getArchiveIndexStatus(storyStateRecord, {
+    currentMessageCount: totalMessages,
+  });
+  const indexedMessageCount = indexStatus.indexedMessageCount;
   const staleBy = Math.max(0, totalMessages - indexedMessageCount);
+  const failedIndexing = rebuildInfo?.phase === "error";
+  const statusLabel = failedIndexing
+    ? "Failed"
+    : indexStatus.reason === "partial"
+      ? "Partial"
+      : indexStatus.reason === "missing"
+        ? "Not indexed"
+        : indexStatus.reason === "message_count_mismatch"
+          ? "Out of sync"
+          : indexStatus.reason === "new_messages"
+            ? `Stale (+${staleBy})`
+            : "Up to date";
+  const statusTone = failedIndexing
+    ? "text-rose-300"
+    : indexStatus.needsRefresh
+      ? "text-amber-200"
+      : "text-ink-soft";
   const worldFacts = archiveState.indexes?.worldFacts ?? [];
   const openThreads = archiveState.indexes?.openThreads ?? [];
   const characters = archiveState.indexes?.characters ? Object.values(archiveState.indexes.characters) : [];
@@ -369,14 +389,22 @@ export function StoryArchiveView({
 
         <div className="space-y-2 text-sm text-ink-muted">
           <div className="flex items-center justify-between gap-3">
-            <div>Message count</div>
-            <div className="text-ink-soft">{indexedMessageCount || "—"}</div>
+            <div>Transcript messages</div>
+            <div className="text-ink-soft">{totalMessages}</div>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <div>Status</div>
-            <div className={cn("text-ink-soft", staleBy ? "text-amber-200" : "")}>
-              {staleBy ? `Stale (+${staleBy})` : "Up to date"}
+            <div>Deep indexed through</div>
+            <div className="text-ink-soft">{indexedMessageCount}</div>
+          </div>
+          {indexStatus.attemptedMessageCount > indexedMessageCount ? (
+            <div className="flex items-center justify-between gap-3">
+              <div>Last attempted</div>
+              <div className="text-ink-soft">{indexStatus.attemptedMessageCount}</div>
             </div>
+          ) : null}
+          <div className="flex items-center justify-between gap-3">
+            <div>Status</div>
+            <div className={statusTone}>{statusLabel}</div>
           </div>
           <div className="flex items-center justify-between gap-3">
             <div>Auto deep index</div>
@@ -389,6 +417,44 @@ export function StoryArchiveView({
             </div>
           </div>
         </div>
+
+        {indexStatus.indexingGaps.length ? (
+          <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+            <div className="font-medium">
+              {indexStatus.indexingGaps.length === 1
+                ? `Message #${indexStatus.indexingGaps[0].messageNumber} was not indexed.`
+                : `Messages ${indexStatus.indexingGaps
+                    .map((gap) => `#${gap.messageNumber}`)
+                    .join(", ")} were not indexed.`}
+            </div>
+            <div className="mt-1 text-xs text-amber-100/75">
+              {Array.from(
+                new Set(
+                  indexStatus.indexingGaps.map((gap) =>
+                    [gap.provider, gap.model].filter(Boolean).join(" / "),
+                  ),
+                ),
+              )
+                .filter(Boolean)
+                .join(", ") || "The configured provider"}
+              {" blocked the indexing request. "}
+              Run Full reindex to retry, or switch providers first.
+            </div>
+            {indexStatus.indexingGaps.map((gap) =>
+              gap.reason || gap.diagnosticFingerprint ? (
+                <div
+                  key={`${gap.messageNumber}-${gap.occurredAt}`}
+                  className="mt-1 text-[11px] text-amber-100/60"
+                >
+                  #{gap.messageNumber}
+                  {gap.stage && gap.stage !== "unknown" ? ` · ${gap.stage}` : ""}
+                  {gap.reason ? ` · ${gap.reason}` : ""}
+                  {gap.diagnosticFingerprint ? ` · ${gap.diagnosticFingerprint}` : ""}
+                </div>
+              ) : null,
+            )}
+          </div>
+        ) : null}
 
         <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-sm text-ink-muted">
           {autoIndexInterval === "disabled"

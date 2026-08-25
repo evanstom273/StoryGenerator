@@ -604,6 +604,23 @@ export type StoryIndexesV2 = {
   }>;
 };
 
+/**
+ * A transcript message that a deep-index run attempted but could not safely index.
+ *
+ * Diagnostics stored here must remain metadata-only. In particular, callers must
+ * never persist the rejected prompt, transcript content, or a raw provider error.
+ */
+export type IndexingGap = {
+  messageNumber: number;
+  code: "provider_refusal";
+  provider?: string;
+  model?: string;
+  stage?: "prompt" | "response" | "unknown";
+  reason?: string;
+  diagnosticFingerprint?: string;
+  occurredAt: Timestamp;
+};
+
 export type StorySceneSnapshotV2 = {
   currentLocation?: string;
   currentObjective?: string;
@@ -695,6 +712,8 @@ export type StoryStateData = {
   lastAutoDeepIndexedAt?: Timestamp;
   lastIndexedMessageCount?: number;
   lastDeepIndexedMessageCount?: number;
+  lastDeepIndexAttemptedMessageCount?: number;
+  indexingGaps?: IndexingGap[];
   lastAutoDeepIndexedMessageCount?: number;
   messagesSinceDeepIndexUpdate?: number;
   indexes?: StoryIndexesV2;
