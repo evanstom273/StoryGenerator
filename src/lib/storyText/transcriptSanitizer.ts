@@ -23,6 +23,12 @@ import { getPlayerCharacterAuthorshipViolation } from "./playerProtection";
 import type { StoryFormatIssue } from "./storyStandardizer";
 import { repairClockTimeColonCorruption } from "./clockTimeInProse";
 import { repairSpeakerLabelArtifacts } from "./exportCleaner";
+import { parseSceneBlocks } from "./parseSceneBlocks";
+import { parseActionSegments } from "./parseActionSegments";
+import {
+	findResolvedParticipant,
+	type ResolvedSceneParticipant,
+} from "../sceneParticipation";
 import { repairNarratorBlocks } from "./narratorBlockRepair";
 
 function normalizeWhitespace(value: string) {
@@ -1224,7 +1230,8 @@ export type AssistantTranscriptValidationStage =
 	| "format"
 	| "ownership"
 	| "hidden_dialogue"
-	| "scene_state";
+	| "scene_state"
+	| "participation";
 
 export type AssistantTranscriptValidationResult = {
 	valid: boolean;
@@ -1264,6 +1271,7 @@ export function prevalidateAssistantTranscript(args: {
 	transcriptText?: string | null;
 	playerAliases?: string[] | null;
 	repairSpeakerAttribution?: boolean;
+	resolvedParticipants?: readonly ResolvedSceneParticipant[] | null;
 }) {
 	const transcriptText = args.transcriptText ?? args.latestUserMessage ?? args.text;
 	const identity = buildSanitizerPlayerIdentity({
@@ -1293,8 +1301,30 @@ export function prevalidateAssistantTranscript(args: {
 		identity,
 		latestUserMessage: args.latestUserMessage,
 		repairSpeakerAttribution: args.repairSpeakerAttribution,
+		resolvedParticipants: args.resolvedParticipants,
 	});
 	return restrainEmDashUsageInTranscript(prepared);
+}
+
+function detectUnsupportedPhysicalActions(
+	text: string,
+	participants: readonly ResolvedSceneParticipant[],
+): { speaker: string; line: string } | null {
+	for (const block of parseSceneBlocks(text)) {
+		const label = block.speakerLabel?.trim();
+		if (!label || /^narrator$/i.test(label)) {
+			continue;
+		}
+		const participant = findResolvedParticipant(participants, label);
+		if (!participant || participant.capabilities.canPerformPhysicalActions) {
+			continue;
+		}
+		const hasAction = parseActionSegments(block.text).some((segment) => segment.type === "action");
+		if (hasAction) {
+			return { speaker: label, line: block.text.trim().slice(0, 120) };
+		}
+	}
+	return null;
 }
 
 export function validateAssistantTranscriptForSave(args: {
@@ -1311,6 +1341,7 @@ export function validateAssistantTranscriptForSave(args: {
 	knownTies?: string[] | null;
 	transcriptText?: string | null;
 	repairSpeakerAttribution?: boolean;
+	resolvedParticipants?: readonly ResolvedSceneParticipant[] | null;
 }): AssistantTranscriptValidationResult {
 	const playerName = args.playerName ?? null;
 	const latestUserMessage = args.latestUserMessage ?? "";
@@ -1361,6 +1392,7 @@ export function validateAssistantTranscriptForSave(args: {
 		knownTies: args.knownTies,
 		transcriptText: args.transcriptText ?? latestUserMessage,
 		repairSpeakerAttribution: args.repairSpeakerAttribution,
+		resolvedParticipants: args.resolvedParticipants,
 	});
 
 	if (!isSubstantialTranscriptText(preparedText)) {
@@ -1419,6 +1451,27 @@ export function validateAssistantTranscriptForSave(args: {
 					`rule=${violation.rule}`,
 					`match=${violation.match}`,
 					`line=${violation.line ?? ""}`,
+				].join("; "),
+				formatIssues: [],
+				speakerAttributionIssues: [],
+				text: candidateText,
+			};
+		}
+	}
+
+	if (args.resolvedParticipants?.length) {
+		const unsupported = detectUnsupportedPhysicalActions(
+			candidateText,
+			args.resolvedParticipants,
+		);
+		if (unsupported) {
+			return {
+				valid: false,
+				stage: "participation",
+				diagnostic: [
+					"rewrite_stage=participation",
+					`speaker=${unsupported.speaker}`,
+					"unsupported_physical_action",
 				].join("; "),
 				formatIssues: [],
 				speakerAttributionIssues: [],

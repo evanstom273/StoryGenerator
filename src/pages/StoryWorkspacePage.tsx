@@ -34,7 +34,7 @@ import { selectDiceStat } from "../lib/ai/diceStatSelector";
 import { DiceRollModal, type DiceRollResult } from "../components/story/DiceRollModal";
 import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
-import { parseSlashTimeCommand } from "../lib/storyText/directorIntent";
+import { mergeDirectorIntents, parseSlashParticipateCommand, parseSlashTimeCommand } from "../lib/storyText/directorIntent";
 import { normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity } from "../lib/playerCharacterPrompt";
 import { buildStoryImportedCharacterAllowlist } from "../lib/storyImportedCharacters";
 import { buildCharacterGenderHintsFromStoryState } from "../lib/ai/characterTtsVoices";
@@ -46,6 +46,7 @@ import {
 import { canGenerateGuidedChaptersAtWorkspace, isStoryEligibleForGuidedGeneration } from "../lib/guidedChapterGeneration/eligibility";
 import { resolveUpcomingChapterLabels } from "../lib/guidedChapterGeneration/chapterLabels";
 import { safeParseStoryStateData } from "../lib/storyStateV2";
+import { resolveSceneParticipants } from "../lib/sceneParticipation";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
 import type {
@@ -244,6 +245,26 @@ export function StoryWorkspacePage() {
       },
     );
   }, [playerCharacter, storyStateJson]);
+  const resolvedParticipants = useMemo(() => {
+    if (!playerCharacter || !playerIdentity) {
+      return [];
+    }
+    const latestUserMessage = [...messages].reverse().find((message) => message.role === "user")?.content;
+    return resolveSceneParticipants({
+      playerIdentity: {
+        canonicalName: playerIdentity.sceneName,
+        aliases: [
+          playerCharacter.name,
+          ...(playerCharacter.aliases ?? []),
+          playerIdentity.legalName,
+          playerIdentity.sceneName,
+        ],
+      },
+      storyState: storyStateJson ? safeParseStoryStateData(storyStateJson) : null,
+      recentMessages: messages,
+      latestUserMessage,
+    });
+  }, [messages, playerCharacter, playerIdentity, storyStateJson]);
   const storyChapters = useMemo(
     () =>
       story
@@ -743,10 +764,12 @@ export function StoryWorkspacePage() {
       }
     }
 
-    // Parse /time slash command and strip it from the message
+    // Parse explicit Director slash commands and strip them from the message
     const slashTime = parseSlashTimeCommand(chatInput);
-    const content = slashTime ? slashTime.strippedText || "." : chatInput;
-    const directorIntentOverride = slashTime?.intent;
+    const afterTime = slashTime ? slashTime.strippedText || "." : chatInput;
+    const slashParticipate = parseSlashParticipateCommand(afterTime);
+    const content = slashParticipate ? slashParticipate.strippedText || "." : afterTime;
+    const directorIntentOverride = mergeDirectorIntents(slashTime?.intent, slashParticipate?.intent);
     const isStoryEndingMarker = isStoryEndingText(content);
 
     setIsGenerating(true);
@@ -1121,6 +1144,19 @@ export function StoryWorkspacePage() {
     }
     if (intent.sceneCut) {
       parts.push(intent.target?.trim() ? `Scene cut: ${intent.target.trim()}` : "Scene cut");
+    }
+    if (intent.clearParticipantCapabilityOverrides) {
+      parts.push("Clear participation overrides");
+    }
+    if (intent.clearedParticipantKeys?.length) {
+      parts.push(`Clear participation: ${intent.clearedParticipantKeys.join(", ")}`);
+    }
+    if (intent.participantCapabilityOverrides?.length) {
+      parts.push(
+        intent.participantCapabilityOverrides
+          .map((override) => `Participate ${override.participantKey}`)
+          .join(" · "),
+      );
     }
     return parts.length ? parts.join(" · ") : "Director intent";
   }
@@ -1775,6 +1811,7 @@ export function StoryWorkspacePage() {
               chapters={storyChapters}
               highlightedMessageId={highlightedMessageId}
               rpConfig={activeStory.rpMode && activeStory.rpConfig ? activeStory.rpConfig : undefined}
+              resolvedParticipants={resolvedParticipants}
               className={[
                 readerMode ? "pb-8" : "",
                 textSize === "sm"

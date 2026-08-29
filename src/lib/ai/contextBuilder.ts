@@ -40,6 +40,10 @@ import { isDirectorMessage } from "../storyText/directorMode";
 import { formatDirectorNoteInterpretationGuidance } from "../storyText/directorSyntax";
 import { parseSceneBlocks } from "../storyText/parseSceneBlocks";
 import type { SceneDepth } from "./sceneSizing";
+import {
+	formatResolvedParticipationPrompt,
+	type ResolvedSceneParticipant,
+} from "../sceneParticipation";
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
@@ -147,6 +151,7 @@ export interface BuildStoryChatContextInput {
   playerIdentity?: EffectivePlayerIdentity;
   /** Used to describe explicit-mode compatibility without changing provider safeguards. */
   providerType?: AIProviderType;
+  resolvedParticipants?: readonly ResolvedSceneParticipant[];
 }
 
 export function buildStoryChatContext({
@@ -170,6 +175,7 @@ export function buildStoryChatContext({
   importedStoryCharacters = [],
   playerIdentity: playerIdentityOverride,
   providerType,
+  resolvedParticipants,
 }: BuildStoryChatContextInput): AIChatMessage[] {
   const parsedStoryState = storyState?.stateJson?.trim()
     ? safeParseStoryStateData(storyState.stateJson)
@@ -311,6 +317,21 @@ export function buildStoryChatContext({
     }
     if (directorIntent.target?.trim()) {
       parts.push(`target: ${directorIntent.target.trim()}`);
+    }
+    if (directorIntent.clearParticipantCapabilityOverrides) {
+      parts.push("clearParticipantCapabilityOverrides: true");
+    }
+    if (directorIntent.clearedParticipantKeys?.length) {
+      parts.push(`clearedParticipantKeys: ${directorIntent.clearedParticipantKeys.join(", ")}`);
+    }
+    if (directorIntent.participantCapabilityOverrides?.length) {
+      for (const override of directorIntent.participantCapabilityOverrides) {
+        const flags = Object.entries(override.capabilities)
+          .filter(([, value]) => typeof value === "boolean")
+          .map(([key, value]) => `${key}=${value}`)
+          .join(" ");
+        parts.push(`participate ${override.participantKey} ${flags}`.trim());
+      }
     }
     return parts.length ? normalizeWhitespace(parts.join("\n")) : "";
   })();
@@ -525,7 +546,22 @@ export function buildStoryChatContext({
       latestMessageIsDirectorNote || guidedDirectedContinue
         ? "Speaker attribution rule (strict): assign each character only their own dialogue and action beats. Never put another character's lines or actions under the player character's speaker label. In two-character intimate scenes, alternate Rosa: and the player character's label correctly."
         : "",
-      "Asterisks are structural delimiters: in a named character block they mark that character's physical action; in a Narrator block they wrap narrator prose. Never use them for emphasis or sarcasm.",
+      resolvedParticipants?.length
+        ? formatResolvedParticipationPrompt(
+            resolvedParticipants,
+            {
+              canonicalName: playerSceneName,
+              aliases: [
+                playerCharacter.name,
+                ...(playerCharacter.aliases ?? []),
+                playerIdentity.legalName,
+                playerSceneName,
+              ],
+            },
+            allowDirectedPlayerControl || latestMessageIsDirectorNote || guidedDirectedContinue,
+          )
+        : "",
+      "Asterisks are structural delimiters: in a named character block they mark that character's physical action only when that participant is allowed to act physically; in a Narrator block they wrap narrator prose. Never use them for emphasis or sarcasm.",
       "Actions should read like prose, not stage directions. Avoid repetitive filler actions (nods/looks/shrugs) unless truly warranted.",
       "Interpret *...* inside a named character block as that character's action. Interpret *...* after 'Narrator:' as narrator prose.",
       "When an unknown person is required, generate a new NPC instead of pulling a canon character by default.",

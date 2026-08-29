@@ -5,6 +5,10 @@ export interface SemanticSpeakerIdentity {
 	id?: string;
 	name: string;
 	aliases?: readonly string[];
+	capabilities?: {
+		canSpeak?: boolean;
+		canPerformPhysicalActions?: boolean;
+	};
 }
 
 export type SemanticSpeakerEvidenceKind =
@@ -125,6 +129,9 @@ function uniqueNonPlayerSpeakers(
 
 	for (const speaker of eligibleSpeakers) {
 		if (!speaker.name.trim() || identitiesMatch(player, speaker)) {
+			continue;
+		}
+		if (speaker.capabilities?.canSpeak === false) {
 			continue;
 		}
 
@@ -494,6 +501,7 @@ function evidenceSupportsReassignment(
 	evidence: ReturnType<typeof collectSpeakerContradictionEvidence>,
 	alternativeSpeakerCount: number,
 	hasUnregisteredSpeakerHeader: boolean,
+	eligibleCapabilities?: SemanticSpeakerIdentity["capabilities"],
 ) {
 	// Once another plausible, unregistered header is present, this block is no
 	// longer a bounded single-owner scene. Do not let evidence collected inside
@@ -504,6 +512,20 @@ function evidenceSupportsReassignment(
 
 	if (evidence.hasIndependentEvidence) {
 		return true;
+	}
+
+	const canSpeak = eligibleCapabilities?.canSpeak !== false;
+	const canAct = eligibleCapabilities?.canPerformPhysicalActions !== false;
+	const hasDialogueEvidence = evidence.evidence.some(
+		(item) => item.kind !== "named-player-action-target",
+	);
+
+	if (canSpeak && hasDialogueEvidence) {
+		return true;
+	}
+
+	if (!canAct) {
+		return false;
 	}
 
 	return (
@@ -571,6 +593,7 @@ export function resolveSemanticSpeakerAttribution({
 			contradiction,
 			alternativeSpeakers.length,
 			hasUnregisteredSpeakerHeader,
+			alternativeSpeakers[0]?.capabilities,
 		);
 
 		let reason: SemanticSpeakerResolutionReason = "insufficient-semantic-evidence";
@@ -660,6 +683,7 @@ export function resolveSemanticSpeakerAttribution({
 			contradiction,
 			alternativeSpeakers.length,
 			hasUnregisteredSpeakerHeader,
+			alternativeSpeakers[0]?.capabilities,
 		);
 		let reason: SemanticSpeakerResolutionReason = "insufficient-semantic-evidence";
 
