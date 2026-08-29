@@ -520,7 +520,7 @@ function evidenceSupportsReassignment(
 		(item) => item.kind !== "named-player-action-target",
 	);
 
-	if (canSpeak && hasDialogueEvidence) {
+	if (canSpeak && !canAct && hasDialogueEvidence) {
 		return true;
 	}
 

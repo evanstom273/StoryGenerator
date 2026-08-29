@@ -12,6 +12,7 @@ export {
 	normalizeSceneParticipantCapabilityOverride,
 	normalizeSceneParticipantCapabilityOverrides,
 	preserveSceneParticipantCapabilityOverrides,
+	readLegacyActiveParticipantNames,
 	replaceCurrentSceneState,
 	sanitizeCapabilityPartial,
 	stripInventedSceneCapabilityOverrides,

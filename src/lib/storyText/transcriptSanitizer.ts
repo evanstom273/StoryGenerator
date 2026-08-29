@@ -1346,6 +1346,27 @@ export function validateAssistantTranscriptForSave(args: {
 	const playerName = args.playerName ?? null;
 	const latestUserMessage = args.latestUserMessage ?? "";
 
+	if (args.resolvedParticipants?.length) {
+		const rawUnsupported = detectUnsupportedPhysicalActions(
+			args.text,
+			args.resolvedParticipants,
+		);
+		if (rawUnsupported && isSubstantialTranscriptText(args.text)) {
+			return {
+				valid: false,
+				stage: "participation",
+				diagnostic: [
+					"rewrite_stage=participation",
+					`speaker=${rawUnsupported.speaker}`,
+					"unsupported_physical_action",
+				].join("; "),
+				formatIssues: [],
+				speakerAttributionIssues: [],
+				text: args.text,
+			};
+		}
+	}
+
 	if (!isSubstantialTranscriptText(args.text)) {
 		return {
 			valid: false,

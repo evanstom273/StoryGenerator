@@ -5,7 +5,10 @@ import type {
 	StoryStateCharacterState,
 	StoryStateDataV2,
 } from "../../types/models";
-import { resolveSceneParticipants, stripInventedSceneCapabilityOverrides } from "../sceneParticipation";
+import {
+	readLegacyActiveParticipantNames,
+	stripInventedSceneCapabilityOverrides,
+} from "../sceneParticipation";
 
 const ACTIVE_ENTITY_RECENCY_MESSAGES = 50;
 const MAX_OPEN_THREADS = 12;
@@ -155,24 +158,8 @@ function collectActiveCharacterNames(params: BuildIndexingContinuitySnapshotPara
 		}
 	}
 
-	const resolvedParticipants = resolveSceneParticipants({
-		playerIdentity: {
-			canonicalName: params.playerName,
-			aliases: params.playerAliases ?? [],
-		},
-		storyState: state,
-		recentMessages: params.currentChunkMessages,
-	});
-	for (const participant of resolvedParticipants) {
-		if (!participant.active) {
-			continue;
-		}
-		activeNames.add(normalizeNameKey(participant.canonicalName));
-		for (const alias of participant.aliases) {
-			if (alias.trim()) {
-				activeNames.add(normalizeNameKey(alias));
-			}
-		}
+	for (const participant of readLegacyActiveParticipantNames(state)) {
+		activeNames.add(normalizeNameKey(participant));
 	}
 
 	return activeNames;

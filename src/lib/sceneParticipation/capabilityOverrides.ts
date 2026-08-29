@@ -129,6 +129,18 @@ export function normalizeSceneParticipantCapabilityOverrides(
 	return normalized;
 }
 
+/**
+ * Compatibility adapter for the legacy scene.activeParticipants list.
+ * Callers outside the resolver must use this instead of reading the field.
+ */
+export function readLegacyActiveParticipantNames(
+	state: StoryStateData | StoryStateDataV2 | null | undefined,
+): string[] {
+	return (state?.scene?.activeParticipants ?? []).filter(
+		(name): name is string => typeof name === "string" && name.trim().length > 0,
+	);
+}
+
 export function getSceneParticipantCapabilityOverrides(
 	state: StoryStateData | StoryStateDataV2 | null | undefined,
 ): SceneParticipantCapabilityOverride[] {

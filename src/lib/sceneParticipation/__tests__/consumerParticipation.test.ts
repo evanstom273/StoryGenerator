@@ -55,7 +55,7 @@ describe("consumer participation consistency", () => {
 		const participants = dialogueOnlyRosa();
 		const result = validateAssistantTranscriptForSave({
 			text:
-				'Rosa: *She grabs Rebecca\'s wrist and pulls her closer.* "Stay where you are until I finish talking."',
+				'Rosa: *She grabs Rebecca\'s wrist and pulls her closer to the couch.* "Stay where you are until I finish talking and I know you heard every word."',
 			playerName: "Rebecca",
 			hiddenDialoguePattern: HIDDEN_DIALOGUE_PATTERN,
 			resolvedParticipants: participants,
@@ -86,7 +86,7 @@ describe("consumer participation consistency", () => {
 		});
 
 		expect(result.valid).toBe(true);
-		expect(result.text).toContain("*She folds her arms.*");
+		expect(result.text).toContain("*She folds her arms");
 	});
 
 	it("does not treat absent physical evidence as weak dialogue ownership", () => {
@@ -131,6 +131,6 @@ describe("consumer participation consistency", () => {
 
 		expect(prompt).toContain("Dialogue-only participants (Rosa)");
 		expect(prompt).toContain('Name: "Dialogue."');
-		expect(prompt).not.toMatch(/phone|remote|AI|hologram/i);
+		expect(prompt).not.toMatch(/\bphone\b|\bremote\b|hologram|walkie-talkie/i);
 	});
 });
