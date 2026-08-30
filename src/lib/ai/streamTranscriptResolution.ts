@@ -64,6 +64,7 @@ interface StreamTranscriptResolutionBase<
 	maxAttempts: number;
 	localPasses: number;
 	repairEvents: TRepairEvent[];
+	usedRecoveryPath: boolean;
 }
 
 export interface StreamTranscriptResolutionSuccess<
@@ -161,6 +162,29 @@ export async function resolveStreamTranscript<
 	const repairEvents: TRepairEvent[] = [];
 	let localPasses = 0;
 	let candidate = args.initialText;
+	const initialContext: StreamTranscriptResolutionContext = {
+		providerAttempt: attemptsUsed,
+		maxProviderAttempts: maxAttempts,
+		localPass: 0,
+		maxLocalPasses,
+	};
+	const initialValidation = await args.validateCandidate(
+		args.initialText,
+		initialContext,
+	);
+	if (initialValidation.valid) {
+		return {
+			ok: true,
+			reason: "validated",
+			text: args.initialText,
+			validation: { ...initialValidation, text: args.initialText },
+			attemptsUsed,
+			maxAttempts,
+			localPasses,
+			repairEvents,
+			usedRecoveryPath: false,
+		};
+	}
 
 	while (true) {
 		const localCandidateFingerprints = new Set<string>([fingerprint(candidate)]);
@@ -208,6 +232,7 @@ export async function resolveStreamTranscript<
 					maxAttempts,
 					localPasses,
 					repairEvents,
+					usedRecoveryPath: true,
 				};
 			}
 
@@ -248,6 +273,7 @@ export async function resolveStreamTranscript<
 				maxAttempts,
 				localPasses,
 				repairEvents,
+				usedRecoveryPath: true,
 			}) satisfies StreamTranscriptResolutionFailure<TValidation, TRepairEvent>;
 
 		if (args.allowProviderRewrites === false) {

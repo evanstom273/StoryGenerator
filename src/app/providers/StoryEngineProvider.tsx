@@ -1222,6 +1222,7 @@ async function resolveStreamedAssistantTranscript(args: {
 	text: string;
 	diagnostic: string;
 	speakerResolutionChanges: SemanticSpeakerResolutionChange[];
+	usedRecoveryPath: boolean;
 }> {
 	const initialProviderAttemptsUsed = args.initialProviderAttemptsUsed ?? 1;
 	const maxProviderAttempts = getStreamValidationAttemptLimit({
@@ -1316,6 +1317,7 @@ async function resolveStreamedAssistantTranscript(args: {
 				knownTies: args.knownTies,
 				transcriptText: args.transcriptText ?? args.latestUserMessage,
 				repairSpeakerAttribution: false,
+				repairTranscript: context.localPass > 0,
 			});
 			if (!validation.valid) {
 				validationDiagnostics.push(
@@ -1328,7 +1330,7 @@ async function resolveStreamedAssistantTranscript(args: {
 						.join("; "),
 				);
 			}
-			if (validation.text !== text) {
+			if (context.localPass > 0 && validation.text !== text) {
 				args.onChunkReset?.();
 				args.onChunk?.(validation.text);
 			}
@@ -1394,9 +1396,12 @@ async function resolveStreamedAssistantTranscript(args: {
 
 	if (resolution.ok) {
 		return {
-			text: normalizeTranscriptForDisplay(resolution.text),
+			text: resolution.usedRecoveryPath
+				? normalizeTranscriptForDisplay(resolution.text)
+				: resolution.text,
 			diagnostic,
 			speakerResolutionChanges: finalSpeakerResolutionChanges,
+			usedRecoveryPath: resolution.usedRecoveryPath,
 		};
 	}
 
@@ -7299,7 +7304,11 @@ export function StoryEngineProvider({
           initialText: assistantContent.content,
           validate: validateCandidate,
           shouldRewrite: (validated) => {
-            if (redactSensitiveContent || sceneDepth !== "light") return false;
+            if (
+              !validated.usedRecoveryPath ||
+              redactSensitiveContent ||
+              sceneDepth !== "light"
+            ) return false;
             const wordCount = validated.text.split(/\s+/).filter(Boolean).length;
             return wordCount > target.maxWords * 2;
           },
@@ -9152,7 +9161,11 @@ export function StoryEngineProvider({
             initialText: assistantContent.content,
             validate: validateCandidate,
             shouldRewrite: (validated) => {
-              if (redactSensitiveContent || sceneDepth !== "light") return false;
+              if (
+                !validated.usedRecoveryPath ||
+                redactSensitiveContent ||
+                sceneDepth !== "light"
+              ) return false;
               const wordCount = validated.text.split(/\s+/).filter(Boolean).length;
               return wordCount > target.maxWords * 2;
             },

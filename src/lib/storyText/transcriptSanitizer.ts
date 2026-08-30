@@ -1311,6 +1311,7 @@ export function validateAssistantTranscriptForSave(args: {
 	knownTies?: string[] | null;
 	transcriptText?: string | null;
 	repairSpeakerAttribution?: boolean;
+	repairTranscript?: boolean;
 }): AssistantTranscriptValidationResult {
 	const playerName = args.playerName ?? null;
 	const latestUserMessage = args.latestUserMessage ?? "";
@@ -1350,18 +1351,20 @@ export function validateAssistantTranscriptForSave(args: {
 		};
 	}
 
-	const preparedText = prevalidateAssistantTranscript({
-		text: args.text,
-		playerName,
-		playerSceneName: args.playerSceneName,
-		playerPronouns: args.playerPronouns,
-		playerAliases: args.playerAliases,
-		characterGenders: args.characterGenders,
-		latestUserMessage,
-		knownTies: args.knownTies,
-		transcriptText: args.transcriptText ?? latestUserMessage,
-		repairSpeakerAttribution: args.repairSpeakerAttribution,
-	});
+	const preparedText = args.repairTranscript === false
+		? args.text
+		: prevalidateAssistantTranscript({
+				text: args.text,
+				playerName,
+				playerSceneName: args.playerSceneName,
+				playerPronouns: args.playerPronouns,
+				playerAliases: args.playerAliases,
+				characterGenders: args.characterGenders,
+				latestUserMessage,
+				knownTies: args.knownTies,
+				transcriptText: args.transcriptText ?? latestUserMessage,
+				repairSpeakerAttribution: args.repairSpeakerAttribution,
+			});
 
 	if (!isSubstantialTranscriptText(preparedText)) {
 		return {

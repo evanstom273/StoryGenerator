@@ -43,9 +43,36 @@ describe("resolveStreamTranscript", () => {
 			maxAttempts: STREAM_VALIDATION_MAX_ATTEMPTS,
 			localPasses: 1,
 			repairEvents: ["Rebecca->Rosa"],
+			usedRecoveryPath: true,
 		});
 		expect(rewriteCandidate).not.toHaveBeenCalled();
 		expect(onProviderAttempt).not.toHaveBeenCalled();
+	});
+
+	it("returns a valid streamed candidate verbatim without local repair", async () => {
+		const streamedText = "Claude: *The rain taps against the window.*\n";
+		const repairCandidate = vi.fn(() => ({ text: "mutated" }));
+		const validateCandidate = vi.fn((text: string): TestValidation => ({
+			valid: true,
+			text: `${text}normalized`,
+			diagnostic: "",
+		}));
+
+		const result = await resolveStreamTranscript({
+			initialText: streamedText,
+			repairCandidate,
+			validateCandidate,
+			rewriteCandidate: async () => "unused",
+		});
+
+		expect(result).toMatchObject({
+			ok: true,
+			text: streamedText,
+			usedRecoveryPath: false,
+			localPasses: 0,
+		});
+		expect(validateCandidate).toHaveBeenCalledTimes(1);
+		expect(repairCandidate).not.toHaveBeenCalled();
 	});
 
 	it("reports an unresolved rewrite-disabled candidate as one of one", async () => {
@@ -143,7 +170,10 @@ describe("resolveStreamTranscript", () => {
 		});
 
 		expect(result).toMatchObject({ ok: true, text: "Rosa: repaired line" });
-		expect(validatedInputs).toEqual(["Rosa: repaired line"]);
+		expect(validatedInputs).toEqual([
+			"raw-speaker-label",
+			"Rosa: repaired line",
+		]);
 	});
 
 	it("distinguishes a repair/validation oscillation from an unchanged candidate", async () => {
