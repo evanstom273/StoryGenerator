@@ -12,10 +12,7 @@ import { isDirectorMessage, isDirectorSpeakerLabel } from "../../lib/storyText/d
 import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
 import { isStoryHistoryDividerMessage } from "../../lib/guidedChapterGeneration/storyHistoryDivider";
 import { ChapterListenBanner, FullStoryAudiobookControls } from "./StorySpeechControls";
-import {
-	findResolvedParticipant,
-	type ResolvedSceneParticipant,
-} from "../../lib/sceneParticipation";
+import type { ResolvedSceneParticipant } from "../../lib/sceneParticipation";
 
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
@@ -30,6 +27,7 @@ type StoryTranscriptViewProps = {
   className?: string;
   highlightedMessageId?: string | null;
   rpConfig?: RpConfig;
+  /** Retained for callers; assistant speaker styling is never identity-derived. */
   resolvedParticipants?: readonly ResolvedSceneParticipant[];
 };
 
@@ -297,7 +295,6 @@ export function StoryTranscriptView({
   className,
   highlightedMessageId,
   rpConfig,
-  resolvedParticipants,
 }: StoryTranscriptViewProps) {
   const effectiveLegalName = playerLegalName?.trim() || playerCharacterName;
   const effectiveSceneName = playerSceneName?.trim() || playerCharacterName;
@@ -514,20 +511,9 @@ export function StoryTranscriptView({
               {isAssistantTranscript ? blocks.map((block, blockIndex) => {
                 const isNarration = !block.speakerLabel || block.speakerLabel === "Narrator";
                 const lines = block.text.split("\n");
-                const resolved = !isNarration
-                  ? findResolvedParticipant(resolvedParticipants ?? [], block.speakerLabel)
-                  : null;
                 const speakerKind: SpeakerKind = isNarration
                   ? "narrator"
-                  : resolved &&
-                      (resolved.canonicalName === effectiveSceneName ||
-                        resolved.aliases.some(
-                          (alias) =>
-                            alias.trim().toLowerCase() === effectiveSceneName.toLowerCase() ||
-                            alias.trim().toLowerCase() === effectiveLegalName.toLowerCase(),
-                        ))
-                    ? "player"
-                    : "npc";
+                  : "npc";
                 const tag = isNarration
                   ? getSpeakerTag("Narrator", "narrator")
                   : getSpeakerTag(block.speakerLabel?.trim() || "Unknown", speakerKind);
