@@ -594,6 +594,7 @@ const CONFIDENT_BARE_ACTION_VERBS = new Set([
 	"hold",
 	"inhale",
 	"knot",
+	"let",
 	"laugh",
 	"lean",
 	"lift",
@@ -697,34 +698,66 @@ function alignSelfPossessivesForSubject(inner: string, pronoun: "He" | "She" | "
 }
 
 function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" | null) {
-	let inner = beat.replace(/^\*+|\*+$/g, "").trim();
+	const originalInner = beat.replace(/^\*+|\*+$/g, "").trim();
+	let inner = originalInner;
 	if (!inner) {
 		return pronoun ? `*${pronoun}.*` : "*.*";
 	}
 
+	// Only repair a genuinely bare verb opening. Subject-, possessive-, determiner-,
+	// and sentence-led beats are already authored prose and must remain untouched.
+	if (/^(?:He|She|They)\b/i.test(inner)) {
+		const malformedPossessive = inner.match(/^(He|She|They)\s+(hers|his|theirs)\s+(.+)$/i);
+		if (malformedPossessive?.[1] && malformedPossessive[2] && malformedPossessive[3]) {
+			const possessive = malformedPossessive[2].toLowerCase() === "his" ? "his" :
+				malformedPossessive[2].toLowerCase() === "theirs" ? "their" : "her";
+			return `*${malformedPossessive[1]} lets ${possessive} ${malformedPossessive[3]}*`;
+		}
+		const malformedVerb = inner.match(/^(He|She|They)\s+(gentlies|smile,s)\b\s*(.*)$/i);
+		if (malformedVerb?.[1] && malformedVerb[2]) {
+			const subject = pronoun ?? malformedVerb[1];
+			if (malformedVerb[2].toLowerCase() === "gentlies") {
+				const [verb, ...tail] = (malformedVerb[3] ?? "").split(/\s+/).filter(Boolean);
+				const normalizedTail = tail.length ? ` ${tail.join(" ")}` : "";
+				return `*${subject} gently ${verb ? conjugateThirdPersonSingular(verb) : ""}${normalizedTail}*`;
+			}
+			return `*${subject} smiles${malformedVerb[3] ? ` ${malformedVerb[3]}` : ""}*`;
+		}
+		if (pronoun) {
+			const subject = inner.match(/^(He|She|They)\b/i)?.[1];
+			if (subject && subject.toLowerCase() !== pronoun.toLowerCase()) {
+				const corrected = `${pronoun}${inner.slice(subject.length)}`;
+				const correctedMatch = corrected.match(/^(He|She|They)\s+([A-Za-z][A-Za-z'-]*)(\b[\s\S]*)$/i);
+				if (correctedMatch?.[2]) {
+					const verb = conjugateThirdPersonSingular(correctedMatch[2]);
+					return `*${alignSelfPossessivesForSubject(`${pronoun} ${verb}${correctedMatch[3]}`, pronoun)}*`;
+				}
+				return `*${alignSelfPossessivesForSubject(corrected, pronoun)}*`;
+			}
+		}
+		const subjectMatch = inner.match(/^(He|She|They)\s+([A-Za-z][A-Za-z'-]*)(\b[\s\S]*)$/i);
+		if (subjectMatch?.[1] && subjectMatch[2]) {
+			const normalizedVerb = conjugateThirdPersonSingular(subjectMatch[2]);
+			if (normalizedVerb !== subjectMatch[2].toLowerCase()) {
+				return `*${subjectMatch[1]} ${normalizedVerb}${subjectMatch[3]}*`;
+			}
+		}
+		return `*${originalInner}*`;
+	}
+	if (/^(?:His|Her|Their)\b/i.test(inner) || /^(?:A|An|The)\b/i.test(inner)) {
+		const possessiveMatch = inner.match(/^(His|Her|Their)\s+(eyes|gaze|hands?|fingers?|breath|voice)\b\s*(.*)$/i);
+		if (pronoun && possessiveMatch?.[1] && possessiveMatch[2]) {
+			const possessive = pronoun === "She" ? "her" : pronoun === "He" ? "his" : "their";
+			const tail = possessiveMatch[3] ? ` ${possessiveMatch[3]}` : "";
+			return `*${pronoun} lets ${possessive} ${possessiveMatch[2]}${tail}*`;
+		}
+		return `*${originalInner}*`;
+	}
 	if (!isConfidentBareActionVerbOpening(inner)) {
 		return `*${inner}*`;
 	}
 
-	inner = inner.replace(
-		/^(She|He|They)\s+(hers|his|theirs)\s+/i,
-		(_, subject, possessive: string) => {
-			const normalized = possessive.toLowerCase();
-			if (normalized === "hers") {
-				return `${subject} lets her `;
-			}
-			if (normalized === "his") {
-				return `${subject} lets his `;
-			}
-			return `${subject} lets their `;
-		},
-	);
-
-	inner = inner.replace(/^(He|She|They)\s+/i, "").trim();
-	inner = inner.replace(/^(Her|His|Their)\s+/i, (match) => `${match.trim().toLowerCase()} `).trim();
-	inner = inner.replace(/\bgentlies\s+(\w+)\b/gi, (_, verb: string) => `gently ${conjugateThirdPersonSingular(verb)}`);
-	inner = inner.replace(/\bgentlies\b/gi, "gently");
-	inner = inner.replace(/^(\w+),s\b/, "$1s");
+	// Conjugate only the opening verb. Any later verbs belong to the authored tail.
 	if (pronoun) {
 		inner = alignSelfPossessivesForSubject(inner, pronoun);
 	}
@@ -736,28 +769,9 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 		return `*${inner}*`;
 	}
 
-	if (/^(her|his|their)\s+/i.test(inner)) {
-		const [determiner, ...restWords] = inner.split(/\s+/);
-		const firstRest = restWords[0] ?? "";
-		if (/^(eyes|gaze|hands?|fingers?|breath|voice)\b/i.test(firstRest)) {
-			const tail = restWords.slice(1).join(" ");
-			const normalizedRest = tail ? `${firstRest} ${tail}` : firstRest;
-			return `*${pronoun} lets ${determiner?.toLowerCase() ?? "her"} ${normalizedRest}*`;
-		}
-	}
-
 	const [firstWord, ...restWords] = inner.split(/\s+/);
 	const firstToken = firstWord ?? "";
 	const remainder = restWords.join(" ");
-	if (/^[a-z]+ly$/i.test(firstToken) && restWords.length > 0) {
-		const verb = restWords[0] ?? "";
-		const normalizedVerb = conjugateThirdPersonSingular(verb);
-		const tail = restWords.slice(1).join(" ");
-		const normalizedRest = tail
-			? `${firstToken} ${normalizedVerb} ${tail}`
-			: `${firstToken} ${normalizedVerb}`;
-		return `*${pronoun} ${normalizedRest}*`;
-	}
 	const normalizedVerb = conjugateThirdPersonSingular(firstToken);
 	const normalizedRest = remainder ? `${normalizedVerb} ${remainder}` : normalizedVerb;
 	return `*${pronoun} ${normalizedRest}*`;

@@ -419,6 +419,25 @@ describe("normalizeCharacterActionBeatsInTranscript", () => {
 		expect(normalized).toContain("*Quiet and deliberate, the waveform pulses steadily.*");
 	});
 
+	it("does not rewrite possessive-led beats or conjugate verbs in the authored tail", () => {
+		const normalized = normalizeCharacterActionBeatsInTranscript(
+			[
+				"Jamie: *Her face lights up...*",
+				"Jamie: *Lets his voice echo smoothly...*",
+			].join("\n"),
+			{
+				playerSceneName: "Jamie",
+				playerPronouns: "he/him",
+			},
+		);
+
+		expect(normalized).toContain("Jamie: *Her face lights up...*");
+		expect(normalized).toContain("Jamie: *He lets his voice echo smoothly...*");
+		expect(normalized).not.toContain("She her");
+		expect(normalized).not.toContain("He his");
+		expect(normalized).not.toContain("voice echoes");
+	});
+
 	it("does not treat pronoun-led narrator pseudo-labels as character speakers", () => {
 		const normalized = normalizeCharacterActionBeatsInTranscript(
 			[

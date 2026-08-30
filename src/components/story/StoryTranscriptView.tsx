@@ -8,7 +8,7 @@ import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import type { CharacterTtsGenderMap } from "../../lib/ai/characterTtsVoices";
-import { isDirectorMessage } from "../../lib/storyText/directorMode";
+import { isDirectorMessage, isDirectorSpeakerLabel } from "../../lib/storyText/directorMode";
 import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
 import { isStoryHistoryDividerMessage } from "../../lib/guidedChapterGeneration/storyHistoryDivider";
 import { ChapterListenBanner, FullStoryAudiobookControls } from "./StorySpeechControls";
@@ -469,16 +469,22 @@ export function StoryTranscriptView({
           );
         }
 
-        const sanitized = sanitizeMessageForDisplay({
-          message,
-          latestUserMessage,
-          playerName: effectiveLegalName,
-          playerSceneName: effectiveSceneName,
-          playerPronouns,
-          playerAliases,
-          characterGenders,
-        });
-        const blocks = parseSceneBlocks(sanitized);
+        const isAssistantTranscript =
+          message.role === "assistant" &&
+          message.speakerType !== "director" &&
+          !isDirectorSpeakerLabel(message.speakerName);
+        const sanitized = isAssistantTranscript
+          ? sanitizeMessageForDisplay({
+              message,
+              latestUserMessage,
+              playerName: effectiveLegalName,
+              playerSceneName: effectiveSceneName,
+              playerPronouns,
+              playerAliases,
+              characterGenders,
+            })
+          : message.content;
+        const blocks = isAssistantTranscript ? parseSceneBlocks(sanitized) : [];
         const showTimeChip = rpConfig && message.storyTime &&
           (!prevStoryTime || timesDiffer(prevStoryTime, message.storyTime));
         if (message.storyTime) prevStoryTime = message.storyTime;
@@ -505,7 +511,7 @@ export function StoryTranscriptView({
                 highlight && !chapterStartLabel ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
               )}
             >
-              {blocks.map((block, blockIndex) => {
+              {isAssistantTranscript ? blocks.map((block, blockIndex) => {
                 const isNarration = !block.speakerLabel || block.speakerLabel === "Narrator";
                 const lines = block.text.split("\n");
                 const resolved = !isNarration
@@ -550,7 +556,9 @@ export function StoryTranscriptView({
                     </div>
                   </div>
                 );
-              })}
+              }) : (
+                <div className="whitespace-pre-wrap break-words text-ink-soft">{message.content}</div>
+              )}
             </div>
           </Fragment>
         );
