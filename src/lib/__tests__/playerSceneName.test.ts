@@ -391,6 +391,34 @@ describe("normalizeCharacterActionBeatsInTranscript", () => {
 		);
 	});
 
+	it("preserves determiner-led action beats instead of treating their first noun as a verb", () => {
+		const normalized = normalizeCharacterActionBeatsInTranscript(
+			[
+				"Claude: *A soft, pleasant visualizer pulse illuminates the room...*",
+				"Claude: *The blue waveform pulses across the display...*",
+				"Claude: *An alert chime sounds from the console...*",
+			].join("\n"),
+		);
+
+		expect(normalized).toContain("*A soft, pleasant visualizer pulse illuminates the room...*");
+		expect(normalized).toContain("*The blue waveform pulses across the display...*");
+		expect(normalized).toContain("*An alert chime sounds from the console...*");
+		expect(normalized).not.toContain("He as");
+		expect(normalized).not.toContain("They thes");
+	});
+
+	it("preserves adjective- and noun-led complete action sentences", () => {
+		const normalized = normalizeCharacterActionBeatsInTranscript(
+			[
+				"Claude: *Soft blue light fills the display.*",
+				"Claude: *Quiet and deliberate, the waveform pulses steadily.*",
+			].join("\n"),
+		);
+
+		expect(normalized).toContain("*Soft blue light fills the display.*");
+		expect(normalized).toContain("*Quiet and deliberate, the waveform pulses steadily.*");
+	});
+
 	it("does not treat pronoun-led narrator pseudo-labels as character speakers", () => {
 		const normalized = normalizeCharacterActionBeatsInTranscript(
 			[

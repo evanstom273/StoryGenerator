@@ -573,6 +573,117 @@ function conjugateThirdPersonSingular(verb: string) {
 	return `${lower}s`;
 }
 
+const CONFIDENT_BARE_ACTION_VERBS = new Set([
+	"approach",
+	"ask",
+	"breathe",
+	"brush",
+	"clench",
+	"close",
+	"cross",
+	"cry",
+	"enter",
+	"exhale",
+	"fold",
+	"frown",
+	"gaze",
+	"gesture",
+	"glance",
+	"grip",
+	"groan",
+	"hold",
+	"inhale",
+	"knot",
+	"laugh",
+	"lean",
+	"lift",
+	"listen",
+	"look",
+	"lower",
+	"murmur",
+	"nod",
+	"open",
+	"pause",
+	"press",
+	"pull",
+	"raise",
+	"reach",
+	"relax",
+	"reply",
+	"rest",
+	"retreat",
+	"run",
+	"say",
+	"settle",
+	"shake",
+	"shift",
+	"shrug",
+	"sigh",
+	"sit",
+	"smile",
+	"speak",
+	"sprint",
+	"stare",
+	"step",
+	"swallow",
+	"take",
+	"tap",
+	"tense",
+	"touch",
+	"trace",
+	"turn",
+	"tilt",
+	"wait",
+	"walk",
+	"watch",
+	"whisper",
+	"wipe",
+	"wince",
+]);
+
+const ACTION_BEAT_DETERMINERS = new Set(["a", "an", "the"]);
+
+function actionVerbBaseCandidates(token: string) {
+	const lower = token.toLowerCase();
+	const candidates = new Set([lower]);
+
+	if (lower.endsWith("ies") && lower.length > 3) {
+		candidates.add(`${lower.slice(0, -3)}y`);
+	}
+	if (lower.endsWith("es") && lower.length > 2) {
+		candidates.add(lower.slice(0, -2));
+	}
+	if (lower.endsWith("s") && lower.length > 1) {
+		candidates.add(lower.slice(0, -1));
+	}
+	if (lower.endsWith("ed") && lower.length > 2) {
+		candidates.add(lower.slice(0, -2));
+	}
+	if (lower.endsWith("ing") && lower.length > 3) {
+		candidates.add(lower.slice(0, -3));
+	}
+
+	return candidates;
+}
+
+function isConfidentBareActionVerbOpening(inner: string) {
+	const firstToken = inner.match(/^[A-Za-z][A-Za-z'-]*/)?.[0] ?? "";
+	if (!firstToken) {
+		return false;
+	}
+
+	const lower = firstToken.toLowerCase();
+	if (ACTION_BEAT_DETERMINERS.has(lower)) {
+		return false;
+	}
+	if (["he", "she", "they", "her", "his", "their"].includes(lower)) {
+		return true;
+	}
+	return [...actionVerbBaseCandidates(firstToken)].some((candidate) =>
+		CONFIDENT_BARE_ACTION_VERBS.has(candidate),
+	);
+}
+
 function alignSelfPossessivesForSubject(inner: string, pronoun: "He" | "She" | "They") {
 	if (pronoun === "They") {
 		return inner;
@@ -589,6 +700,10 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 	let inner = beat.replace(/^\*+|\*+$/g, "").trim();
 	if (!inner) {
 		return pronoun ? `*${pronoun}.*` : "*.*";
+	}
+
+	if (!isConfidentBareActionVerbOpening(inner)) {
+		return `*${inner}*`;
 	}
 
 	inner = inner.replace(
