@@ -1,4 +1,9 @@
-import type { DirectorIntent } from "../../types/models";
+import type {
+  DirectorIntent,
+  SceneParticipantCapabilities,
+  SceneParticipantCapabilityOverride,
+} from "../../types/models";
+import { isSceneParticipantCapabilityKey } from "../sceneParticipation";
 
 type TimeUnit = NonNullable<DirectorIntent["timeSkip"]>["unit"];
 
@@ -142,6 +147,104 @@ function detectAbsoluteTime(text: string): { hour: number; minute: number } | nu
   return null;
 }
 
+const CAPABILITY_ASSIGNMENT =
+  /\b(canSpeak|canPerformPhysicalActions|canBeAddressed|canBePhysicallyInteractedWith)\s*=\s*(true|false)\b/gi;
+
+function parseQuotedOrBareName(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const quoted = trimmed.match(/^["“](.+?)["”]$/);
+  if (quoted?.[1]?.trim()) {
+    return quoted[1].trim();
+  }
+  if (/\s/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function parseCapabilityAssignments(
+  text: string,
+): Partial<SceneParticipantCapabilities> | null {
+  const capabilities: Partial<SceneParticipantCapabilities> = {};
+  let matched = false;
+  for (const match of text.matchAll(CAPABILITY_ASSIGNMENT)) {
+    const key = match[1];
+    const value = match[2]?.toLowerCase();
+    if (!key || !isSceneParticipantCapabilityKey(key) || (value !== "true" && value !== "false")) {
+      continue;
+    }
+    capabilities[key] = value === "true";
+    matched = true;
+  }
+  return matched ? capabilities : null;
+}
+
+/**
+ * Parse only explicit participation directive syntax.
+ * Ambiguous prose such as "she sounds remote" produces nothing.
+ */
+export function parseParticipantCapabilityDirective(
+  text: string,
+): Pick<
+  DirectorIntent,
+  "participantCapabilityOverrides" | "clearParticipantCapabilityOverrides" | "clearedParticipantKeys"
+> | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const slashNamedClear = trimmed.match(
+    /(?:^|(?<=\s))\/participate\s+("[^"]+"|[^\s]+)\s+clear(?=\s|$)/i,
+  );
+  if (slashNamedClear?.[1] && slashNamedClear[1].toLowerCase() !== "clear") {
+    const participantKey = parseQuotedOrBareName(slashNamedClear[1]);
+    if (!participantKey) return null;
+    return { clearedParticipantKeys: [participantKey] };
+  }
+
+  const slashClearAll = trimmed.match(
+    /(?:^|(?<=\s))\/participate\s+clear(?=\s|$)/i,
+  );
+  if (slashClearAll && !/\bcan(?:Speak|PerformPhysicalActions|BeAddressed|BePhysicallyInteractedWith)\s*=/i.test(trimmed)) {
+    return { clearParticipantCapabilityOverrides: true };
+  }
+
+  const slashAssign = trimmed.match(
+    /(?:^|(?<=\s))\/participate\s+("[^"]+"|[^\s]+)((?:\s+can(?:Speak|PerformPhysicalActions|BeAddressed|BePhysicallyInteractedWith)\s*=\s*(?:true|false))+)\s*$/i,
+  );
+  if (slashAssign?.[1] && slashAssign[2]) {
+    const participantKey = parseQuotedOrBareName(slashAssign[1]);
+    const capabilities = parseCapabilityAssignments(slashAssign[2]);
+    if (!participantKey || !capabilities) return null;
+    const override: SceneParticipantCapabilityOverride = {
+      participantKey,
+      capabilities,
+      source: "director_instruction",
+    };
+    return { participantCapabilityOverrides: [override] };
+  }
+
+  const lineAssign = trimmed.match(
+    /^(?:director:\s*)?participate\s+("[^"]+"|[^\s]+)((?:\s+can(?:Speak|PerformPhysicalActions|BeAddressed|BePhysicallyInteractedWith)\s*=\s*(?:true|false))+)\s*$/i,
+  );
+  if (lineAssign?.[1] && lineAssign[2]) {
+    const participantKey = parseQuotedOrBareName(lineAssign[1]);
+    const capabilities = parseCapabilityAssignments(lineAssign[2]);
+    if (!participantKey || !capabilities) return null;
+    return {
+      participantCapabilityOverrides: [
+        {
+          participantKey,
+          capabilities,
+          source: "director_instruction",
+        },
+      ],
+    };
+  }
+
+  return null;
+}
+
 export function detectDirectorIntent(text: string): DirectorIntent | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -149,13 +252,15 @@ export function detectDirectorIntent(text: string): DirectorIntent | null {
   const timeSkip = parseTimeSkip(trimmed);
   const sceneCut = parseSceneCut(trimmed);
   const absoluteTime = !timeSkip ? detectAbsoluteTime(trimmed) : null;
+  const participation = parseParticipantCapabilityDirective(trimmed);
 
-  if (!timeSkip && !sceneCut && !absoluteTime) return null;
+  if (!timeSkip && !sceneCut && !absoluteTime && !participation) return null;
 
   return {
     ...(timeSkip ? { timeSkip } : {}),
     ...(sceneCut ? { sceneCut: true, ...(sceneCut.target ? { target: sceneCut.target } : {}) } : {}),
     ...(absoluteTime ? { absoluteTime } : {}),
+    ...(participation ?? {}),
   };
 }
 
@@ -202,4 +307,60 @@ export function parseSlashTimeCommand(text: string): { intent: DirectorIntent; s
   };
 
   return { intent, strippedText };
+}
+
+/**
+ * Parse a /participate slash command and strip it from the text.
+ * Supported:
+ *   /participate Rosa canSpeak=true canPerformPhysicalActions=false
+ *   /participate "Rosa Diaz" canBeAddressed=true
+ *   /participate Rosa clear
+ *   /participate clear
+ */
+export function parseSlashParticipateCommand(
+  text: string,
+): { intent: DirectorIntent; strippedText: string } | null {
+  const re =
+    /(?:^|(?<=\s))\/participate\s+(?:clear|("[^"]+"|[^\s]+)(?:\s+clear|(?:\s+can(?:Speak|PerformPhysicalActions|BeAddressed|BePhysicallyInteractedWith)\s*=\s*(?:true|false))+))(?=\s|$)/i;
+  const match = text.match(re);
+  if (!match) return null;
+
+  const parsed = parseParticipantCapabilityDirective(match[0] ?? "");
+  if (!parsed) return null;
+
+  const strippedText = text.replace(re, "").trim();
+  return {
+    intent: parsed,
+    strippedText,
+  };
+}
+
+export function mergeDirectorIntents(
+  ...intents: Array<DirectorIntent | null | undefined>
+): DirectorIntent | null {
+  const merged: DirectorIntent = {};
+  for (const intent of intents) {
+    if (!intent) continue;
+    if (intent.timeSkip) merged.timeSkip = intent.timeSkip;
+    if (intent.exactMinutes != null) merged.exactMinutes = intent.exactMinutes;
+    if (intent.sceneCut) merged.sceneCut = true;
+    if (intent.target?.trim()) merged.target = intent.target.trim();
+    if (intent.absoluteTime) merged.absoluteTime = intent.absoluteTime;
+    if (intent.clearParticipantCapabilityOverrides) {
+      merged.clearParticipantCapabilityOverrides = true;
+    }
+    if (intent.clearedParticipantKeys?.length) {
+      merged.clearedParticipantKeys = [
+        ...(merged.clearedParticipantKeys ?? []),
+        ...intent.clearedParticipantKeys,
+      ];
+    }
+    if (intent.participantCapabilityOverrides?.length) {
+      merged.participantCapabilityOverrides = [
+        ...(merged.participantCapabilityOverrides ?? []),
+        ...intent.participantCapabilityOverrides,
+      ];
+    }
+  }
+  return Object.keys(merged).length ? merged : null;
 }

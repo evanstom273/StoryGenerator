@@ -21,6 +21,7 @@ import {
 	redactNarrativePromptText,
 	resolveNarrativePromptName,
 } from "../narrativeIdentity";
+import { stripInventedSceneCapabilityOverrides } from "../sceneParticipation";
 
 const MAX_RECENT_MESSAGES = 40;
 
@@ -174,6 +175,7 @@ export function buildStoryStateExtractionPrompt({
       "- Use characterStateTransient for short-term mood/emotion/current goal that can change frequently and should NOT be promoted into characterTraitsPersistent.",
       "- Major life-changing events should aggressively update character status and registry descriptions.",
       "- Put short-term scene specifics (current location/participants/active situation) in sceneState.",
+      "- Never invent or output scene.participantCapabilityOverrides. Those are explicit scene directives only and are not inferred from dialogue, narration, or memory.",
       "- Put only lasting, story-changing events in significantMemories (diagnoses, deaths, betrayals, promotions, major injuries, identity changes).",
       "- relationshipState should be a consolidated set of relationship facts that affect future behavior.",
       "- Use relationships for structured relationship metrics between characters (including recurring NPCs).",
@@ -503,6 +505,11 @@ export function parseStoryStateData(text: string): StoryStateData | null {
 
   if ((parsed as any).scene && (typeof (parsed as any).scene !== "object" || Array.isArray((parsed as any).scene))) {
     delete (parsed as any).scene;
+  } else if ((parsed as any).scene && typeof (parsed as any).scene === "object") {
+    const strippedScene = stripInventedSceneCapabilityOverrides((parsed as any).scene);
+    if (strippedScene) {
+      (parsed as any).scene = strippedScene;
+    }
   }
 
   if ((parsed as any).threads && (typeof (parsed as any).threads !== "object" || Array.isArray((parsed as any).threads))) {

@@ -12,6 +12,10 @@ import { isDirectorMessage } from "../../lib/storyText/directorMode";
 import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
 import { isStoryHistoryDividerMessage } from "../../lib/guidedChapterGeneration/storyHistoryDivider";
 import { ChapterListenBanner, FullStoryAudiobookControls } from "./StorySpeechControls";
+import {
+	findResolvedParticipant,
+	type ResolvedSceneParticipant,
+} from "../../lib/sceneParticipation";
 
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
@@ -26,6 +30,7 @@ type StoryTranscriptViewProps = {
   className?: string;
   highlightedMessageId?: string | null;
   rpConfig?: RpConfig;
+  resolvedParticipants?: readonly ResolvedSceneParticipant[];
 };
 
 type SpeakerKind =
@@ -292,6 +297,7 @@ export function StoryTranscriptView({
   className,
   highlightedMessageId,
   rpConfig,
+  resolvedParticipants,
 }: StoryTranscriptViewProps) {
   const effectiveLegalName = playerLegalName?.trim() || playerCharacterName;
   const effectiveSceneName = playerSceneName?.trim() || playerCharacterName;
@@ -502,9 +508,23 @@ export function StoryTranscriptView({
               {blocks.map((block, blockIndex) => {
                 const isNarration = !block.speakerLabel || block.speakerLabel === "Narrator";
                 const lines = block.text.split("\n");
+                const resolved = !isNarration
+                  ? findResolvedParticipant(resolvedParticipants ?? [], block.speakerLabel)
+                  : null;
+                const speakerKind: SpeakerKind = isNarration
+                  ? "narrator"
+                  : resolved &&
+                      (resolved.canonicalName === effectiveSceneName ||
+                        resolved.aliases.some(
+                          (alias) =>
+                            alias.trim().toLowerCase() === effectiveSceneName.toLowerCase() ||
+                            alias.trim().toLowerCase() === effectiveLegalName.toLowerCase(),
+                        ))
+                    ? "player"
+                    : "npc";
                 const tag = isNarration
                   ? getSpeakerTag("Narrator", "narrator")
-                  : getSpeakerTag(block.speakerLabel?.trim() || "Unknown", "npc");
+                  : getSpeakerTag(block.speakerLabel?.trim() || "Unknown", speakerKind);
                 if (isNarration) {
                   const displayText = formatNarratorBlockForDisplay(block.text);
                   const displayLines = displayText.split("\n");

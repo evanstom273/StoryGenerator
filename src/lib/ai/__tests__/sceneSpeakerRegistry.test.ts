@@ -25,7 +25,7 @@ describe("buildActiveSceneSpeakerRegistry", () => {
 		expect(registry.eligibleNonPlayerSpeakers).toEqual([
 			expect.objectContaining({
 				canonicalName: "Rosa",
-				evidence: ["story_state_active_participant"],
+				evidence: ["legacy_active_participant"],
 			}),
 		]);
 	});
@@ -129,7 +129,7 @@ describe("speaker registry prompt", () => {
 			"system",
 			"user",
 		]);
-		expect(messages[2]?.content).toContain("A Name: header owns both");
+		expect(messages[2]?.content).toContain("Active participation registry");
 		expect(formatSceneSpeakerRegistryPrompt(registry, false)).toContain(
 			"Rosa",
 		);

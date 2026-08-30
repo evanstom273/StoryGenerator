@@ -79,6 +79,28 @@ export type MaxConcurrentBackgroundTasks = 1 | 2 | 3 | 4 | 5;
 export type MetaChatScopeKind = "story" | "global";
 export type MetaChatReferenceKind = "story" | "character" | "universe";
 
+export type SceneParticipantCapabilities = {
+  canSpeak: boolean;
+  canPerformPhysicalActions: boolean;
+  canBeAddressed: boolean;
+  canBePhysicallyInteractedWith: boolean;
+};
+
+export type SceneParticipantCapabilityOverrideSource =
+  | "live_scene_state"
+  | "director_instruction";
+
+/**
+ * Explicit, scene-scoped capability constraints.
+ * Created only by structured live scene-state updates or structured Director
+ * instructions. Never inferred from transcript, indexing, or memory.
+ */
+export type SceneParticipantCapabilityOverride = {
+  participantKey: string;
+  capabilities: Partial<SceneParticipantCapabilities>;
+  source: SceneParticipantCapabilityOverrideSource;
+};
+
 export type DirectorIntent = {
   timeSkip?: { unit: "hours" | "days" | "weeks" | "months"; amount: number };
   /** Exact minutes to advance, bypasses unit/amount conversion. Set by slash commands. */
@@ -87,6 +109,12 @@ export type DirectorIntent = {
   target?: string;
   /** Absolute time-of-day set, e.g. from "It's 12pm". Sets clock to this hour:minute without advancing. */
   absoluteTime?: { hour: number; minute: number };
+  /** Structured participation directives only. Never inferred from free text. */
+  participantCapabilityOverrides?: SceneParticipantCapabilityOverride[];
+  /** Explicit Director clear of all current-scene capability overrides. */
+  clearParticipantCapabilityOverrides?: boolean;
+  /** Explicit Director clear of named participant overrides only. */
+  clearedParticipantKeys?: string[];
 };
 
 export type StoryAuthorDirective = {
@@ -626,6 +654,11 @@ export type StorySceneSnapshotV2 = {
   currentObjective?: string;
   activeParticipants?: string[];
   sceneSummary?: string;
+  /**
+   * Explicit scene-scoped capability constraints only.
+   * Do not store derived activity, aliases, modes, or inferred presence.
+   */
+  participantCapabilityOverrides?: SceneParticipantCapabilityOverride[];
 };
 
 export type StoryThreadsV2 = {

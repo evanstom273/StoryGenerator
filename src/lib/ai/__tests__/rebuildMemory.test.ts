@@ -330,4 +330,59 @@ describe("rebuildStoryMemoryAndIndexes refusal recovery", () => {
 		expect(checkpoint.lastDeepIndexedMessageCount).toBe(1);
 		expect(checkpoint.lastDeepIndexAttemptedMessageCount).toBe(1);
 	});
+
+	it("cannot create capability overrides from extracted memory and preserves existing ones", async () => {
+		const existingOverride = {
+			participantKey: "Rosa",
+			capabilities: { canSpeak: true, canPerformPhysicalActions: false },
+			source: "director_instruction",
+		};
+		const initialState: StoryState = {
+			id: `story-state:${story.id}`,
+			storyId: story.id,
+			updatedAt: "2026-08-25T00:01:00.000Z",
+			stateJson: JSON.stringify({
+				updatedAt: "2026-08-25T00:01:00.000Z",
+				characters: {},
+				worldFacts: [],
+				unresolvedThreads: [],
+				scene: {
+					currentLocation: "Apartment",
+					participantCapabilityOverrides: [existingOverride],
+				},
+			}),
+		};
+		const messages = [message(1, 'Rosa: "Stay on the line."')];
+		const { repository } = createRepository(messages, initialState);
+		const provider = createProvider(async () => ({
+			content: JSON.stringify({
+				updatedAt: "2026-08-25T00:02:00.000Z",
+				characters: {},
+				worldFacts: [],
+				unresolvedThreads: [],
+				scene: {
+					currentLocation: "Apartment",
+					participantCapabilityOverrides: [
+						{
+							participantKey: "Amy",
+							capabilities: { canSpeak: false },
+							source: "live_scene_state",
+						},
+					],
+				},
+				summaries: { currentSituation: "Rosa is speaking from another room." },
+			}),
+		}));
+
+		const result = await rebuildStoryMemoryAndIndexes({
+			storyId: story.id,
+			repository,
+			provider,
+			apiKey: "test-key",
+			model: "gemini-test",
+		});
+
+		const parsed = safeParseStoryStateData(result.stateJson);
+		expect(parsed?.scene?.participantCapabilityOverrides).toEqual([existingOverride]);
+	});
 });

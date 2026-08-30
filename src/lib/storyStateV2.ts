@@ -22,6 +22,10 @@ import {
 	mergeOpenThreadsAuthoritative,
 	reconcileResolvedOpenThreads,
 } from "./openThreads";
+import {
+	normalizeSceneParticipantCapabilityOverrides,
+	preserveSceneParticipantCapabilityOverrides,
+} from "./sceneParticipation";
 
 export function safeParseStoryStateData(json: string): StoryStateData | null {
   const parsed = safeParseJsonObject<StoryStateDataV2>(json.trim());
@@ -453,7 +457,10 @@ export function mergeStoryStateForIndexing(
       incoming.relationships as Record<string, unknown> | undefined,
     ) as StoryStateDataV2["relationships"],
     summaries: Object.keys(mergedSummaries).length ? mergedSummaries : previous.summaries,
-    scene: { ...(previous.scene ?? {}), ...(incoming.scene ?? {}) },
+    scene: preserveSceneParticipantCapabilityOverrides(previous, {
+      ...(previous.scene ?? {}),
+      ...(incoming.scene ?? {}),
+    }),
     threads: { ...(previous.threads ?? {}), ...(incoming.threads ?? {}) },
     authorDirectives: incoming.authorDirectives ?? previous.authorDirectives,
     rpStats: incoming.rpStats ?? previous.rpStats,
@@ -485,8 +492,22 @@ export function normalizeStoryStateToV2(data: StoryStateData | null): StoryState
       : undefined;
   const scene =
     data.scene && typeof data.scene === "object" && !Array.isArray(data.scene)
-      ? data.scene
+      ? {
+          ...data.scene,
+          ...(normalizeSceneParticipantCapabilityOverrides(
+            data.scene.participantCapabilityOverrides,
+          ).length
+            ? {
+                participantCapabilityOverrides: normalizeSceneParticipantCapabilityOverrides(
+                  data.scene.participantCapabilityOverrides,
+                ),
+              }
+            : { participantCapabilityOverrides: undefined }),
+        }
       : undefined;
+  if (scene && !scene.participantCapabilityOverrides?.length) {
+    delete scene.participantCapabilityOverrides;
+  }
   const threads =
     data.threads && typeof data.threads === "object" && !Array.isArray(data.threads)
       ? data.threads
