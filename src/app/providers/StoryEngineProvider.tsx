@@ -161,11 +161,16 @@ import {
 } from "../../lib/storyText/transcriptSanitizer";
 import { buildPlayerTranscriptIdentityFromStoryContext } from "../../lib/storyText/playerTranscriptIdentity";
 import {
-	buildActiveSceneSpeakerRegistry,
 	formatSceneSpeakerRegistryPrompt,
 	injectSceneSpeakerRegistry,
 	type ActiveSceneSpeakerRegistry,
 } from "../../lib/ai/sceneSpeakerRegistry";
+import {
+	applyDirectorIntentToStoryState,
+	resolveStoryGenerationParticipants,
+	toSemanticSpeakerIdentities,
+	type ResolvedSceneParticipant,
+} from "../../lib/sceneParticipation";
 import {
 	resolveSemanticSpeakerAttribution,
 	type SemanticSpeakerResolutionChange,
@@ -1150,6 +1155,7 @@ type StreamedTranscriptRewritePrompts = {
 function buildLightSceneRewritePrompt(args: {
 	target: { minWords: number; maxWords: number };
 	speakerRegistry: ActiveSceneSpeakerRegistry;
+	resolvedParticipants?: readonly ResolvedSceneParticipant[];
 	allowDirectedPlayerControl: boolean;
 }) {
 	return [
@@ -1172,6 +1178,7 @@ function buildLightSceneRewritePrompt(args: {
 		formatSceneSpeakerRegistryPrompt(
 			args.speakerRegistry,
 			args.allowDirectedPlayerControl,
+			args.resolvedParticipants,
 		),
 		"Mystery rule:",
 		"- If the player introduces an unknown situation, unidentified person, undisclosed discovery, unexplained emergency, mystery, secret, or unusual event, do not invent or reveal the underlying explanation unless the player explicitly provides it.",
@@ -1199,6 +1206,7 @@ async function resolveStreamedAssistantTranscript(args: {
 	skipSceneStateCheck?: boolean;
 	normalizeCandidate?: (text: string) => string;
 	speakerRegistry: ActiveSceneSpeakerRegistry;
+	resolvedParticipants?: readonly ResolvedSceneParticipant[];
 	hiddenDialoguePattern: RegExp;
 	rewritePrompts: StreamedTranscriptRewritePrompts;
 	allowProviderRewrites?: boolean;
@@ -1234,6 +1242,7 @@ async function resolveStreamedAssistantTranscript(args: {
 	const speakerRegistryPrompt = formatSceneSpeakerRegistryPrompt(
 		args.speakerRegistry,
 		args.allowDirectedPlayerControl,
+		args.resolvedParticipants,
 	);
 	const withSpeakerRegistry = (prompt: string) => `${prompt}\n\n${speakerRegistryPrompt}`;
 
@@ -1268,6 +1277,7 @@ async function resolveStreamedAssistantTranscript(args: {
 		ownership: withSpeakerRegistry(args.rewritePrompts.ownership),
 		hidden_dialogue: withSpeakerRegistry(args.rewritePrompts.hiddenDialogue),
 		scene_state: withSpeakerRegistry(args.rewritePrompts.sceneState),
+		participation: withSpeakerRegistry(args.rewritePrompts.format),
 	};
 
 	const resolution = await resolveStreamTranscript<
@@ -1285,12 +1295,15 @@ async function resolveStreamedAssistantTranscript(args: {
 					name: args.speakerRegistry.player.canonicalName,
 					aliases: args.speakerRegistry.player.aliases,
 				},
-				eligibleSpeakers: args.speakerRegistry.eligibleNonPlayerSpeakers.map(
-					(speaker) => ({
-						name: speaker.canonicalName,
-						aliases: speaker.aliases,
-					}),
-				),
+				eligibleSpeakers: args.resolvedParticipants
+					? toSemanticSpeakerIdentities(
+							args.resolvedParticipants,
+							args.speakerRegistry.player.canonicalName,
+						)
+					: args.speakerRegistry.eligibleNonPlayerSpeakers.map((speaker) => ({
+							name: speaker.canonicalName,
+							aliases: speaker.aliases,
+						})),
 			});
 			if (semanticResolution.changes.length) {
 				const attemptRepairs = repairsByProviderAttempt.get(context.providerAttempt) ?? [];
@@ -1318,6 +1331,7 @@ async function resolveStreamedAssistantTranscript(args: {
 				transcriptText: args.transcriptText ?? args.latestUserMessage,
 				repairSpeakerAttribution: false,
 				repairTranscript: context.localPass > 0,
+				resolvedParticipants: args.resolvedParticipants,
 			});
 			if (!validation.valid) {
 				validationDiagnostics.push(
@@ -1682,6 +1696,20 @@ async function persistRepairedStoryStateIfNeeded(args: {
 	await args.repository.saveStoryState({
 		...args.storyState,
 		stateJson: JSON.stringify(args.repairedStoryState),
+		updatedAt: new Date().toISOString(),
+	});
+}
+
+async function persistDirectorParticipationIfNeeded(args: {
+	storyId: string;
+	storyState: StoryState | null | undefined;
+	nextState: StoryStateData | StoryStateDataV2;
+	repository: StoryEngineRepository;
+}): Promise<void> {
+	await args.repository.saveStoryState({
+		id: args.storyState?.id ?? `story-state:${args.storyId}`,
+		storyId: args.storyId,
+		stateJson: JSON.stringify(args.nextState),
 		updatedAt: new Date().toISOString(),
 	});
 }
@@ -6994,21 +7022,15 @@ export function StoryEngineProvider({
           repository,
         });
 
-        const speakerRegistry = buildActiveSceneSpeakerRegistry({
-          player: {
-            canonicalName: playerIdentity.sceneName,
-            aliases: [
-              playerCharacter.name,
-              ...(playerCharacter.aliases ?? []),
-              playerIdentity.legalName,
-              playerIdentity.sceneName,
-            ],
-          },
-          storyState: parsedStoryStateForIdentity,
-          importedCharacters: importedStoryCharacters,
-          recentMessages: sanitizedHistoryMessages,
-          latestUserMessage: previousMessage.content,
-        });
+        const { participants: resolvedParticipants, speakerRegistry } =
+          resolveStoryGenerationParticipants({
+            playerCharacter,
+            playerIdentity,
+            storyState: parsedStoryStateForIdentity,
+            importedCharacters: importedStoryCharacters,
+            recentMessages: sanitizedHistoryMessages,
+            latestUserMessage: previousMessage.content,
+          });
         const context = injectSceneSpeakerRegistry(
           buildStoryChatContext({
             universe: effectiveUniverse,
@@ -7025,9 +7047,11 @@ export function StoryEngineProvider({
             directorIntent: previousMessage.directorIntent ?? null,
             importedStoryCharacters,
             playerIdentity,
+            resolvedParticipants,
           }),
           speakerRegistry,
           allowDirectedPlayerControl,
+          resolvedParticipants,
         );
 
         const allowProviderRewrites = !redactSensitiveContent;
@@ -7266,6 +7290,7 @@ export function StoryEngineProvider({
             characterGenders: streamCharacterGenders,
             allowDirectedPlayerControl,
             speakerRegistry,
+            resolvedParticipants,
             normalizeCandidate: (text) =>
               applyStoryLocalIdentityToSavedAssistantText({
                 text,
@@ -7326,6 +7351,7 @@ export function StoryEngineProvider({
                     content: buildLightSceneRewritePrompt({
                       target,
                       speakerRegistry,
+                      resolvedParticipants,
                       allowDirectedPlayerControl,
                     }),
                   },
@@ -8658,7 +8684,7 @@ export function StoryEngineProvider({
           })();
           const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
           const {
-            parsedStoryState: parsedStoryStateForIdentity,
+            parsedStoryState: parsedStoryStateForIdentityInitial,
             playerIdentity,
             establishedFromTranscript,
             repairedStoryState,
@@ -8667,6 +8693,7 @@ export function StoryEngineProvider({
             storyState,
             recentMessages: [...sanitizedHistoryMessages, userMessage],
           });
+          let parsedStoryStateForIdentity = parsedStoryStateForIdentityInitial;
           await persistRepairedStoryStateIfNeeded({
             storyId,
             storyState,
@@ -8674,21 +8701,37 @@ export function StoryEngineProvider({
             repository,
           });
 
-          const speakerRegistry = buildActiveSceneSpeakerRegistry({
-            player: {
-              canonicalName: playerIdentity.sceneName,
-              aliases: [
-                playerCharacter.name,
-                ...(playerCharacter.aliases ?? []),
-                playerIdentity.legalName,
-                playerIdentity.sceneName,
-              ],
-            },
-            storyState: parsedStoryStateForIdentity,
-            importedCharacters: importedStoryCharacters,
-            recentMessages: sanitizedHistoryMessages,
-            latestUserMessage: userMessage.content,
-          });
+          if (userMessage.directorIntent) {
+            const baseState = parsedStoryStateForIdentity ?? {
+              updatedAt: new Date().toISOString(),
+              characters: {},
+              worldFacts: [],
+              unresolvedThreads: [],
+            };
+            const withParticipation = applyDirectorIntentToStoryState(
+              baseState,
+              userMessage.directorIntent,
+            );
+            if (withParticipation !== baseState) {
+              await persistDirectorParticipationIfNeeded({
+                storyId,
+                storyState,
+                nextState: withParticipation,
+                repository,
+              });
+              parsedStoryStateForIdentity = withParticipation;
+            }
+          }
+
+          const { participants: resolvedParticipants, speakerRegistry } =
+            resolveStoryGenerationParticipants({
+              playerCharacter,
+              playerIdentity,
+              storyState: parsedStoryStateForIdentity,
+              importedCharacters: importedStoryCharacters,
+              recentMessages: sanitizedHistoryMessages,
+              latestUserMessage: userMessage.content,
+            });
           reportPlayerIdentityBeforeGeneration({
             traceId,
             storyId,
@@ -8719,9 +8762,11 @@ export function StoryEngineProvider({
               playerStateHintOverride: opts?.zeroHpConsequence ?? null,
               importedStoryCharacters,
               playerIdentity,
+              resolvedParticipants,
             }),
             speakerRegistry,
             allowDirectedPlayerControl,
+            resolvedParticipants,
           );
           // #region debug-point A:story-request-shape
           reportGenerationAudit({
@@ -8880,9 +8925,11 @@ export function StoryEngineProvider({
                     playerStateHintOverride: opts?.zeroHpConsequence ?? null,
                     importedStoryCharacters,
                     playerIdentity,
+                    resolvedParticipants,
                   }),
                   speakerRegistry,
                   allowDirectedPlayerControl,
+                  resolvedParticipants,
                 );
                 const note =
                   adultContentMode === "mature_non_graphic"
@@ -9122,6 +9169,7 @@ export function StoryEngineProvider({
               characterGenders: streamCharacterGenders,
               allowDirectedPlayerControl,
               speakerRegistry,
+              resolvedParticipants,
               skipSceneStateCheck: opts?.guidedGenerationInternal,
               normalizeCandidate: (text) =>
                 applyStoryLocalIdentityToSavedAssistantText({
@@ -9183,6 +9231,7 @@ export function StoryEngineProvider({
                       content: buildLightSceneRewritePrompt({
                         target,
                         speakerRegistry,
+                        resolvedParticipants,
                         allowDirectedPlayerControl,
                       }),
                     },

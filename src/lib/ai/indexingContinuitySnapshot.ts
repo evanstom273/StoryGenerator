@@ -5,6 +5,10 @@ import type {
 	StoryStateCharacterState,
 	StoryStateDataV2,
 } from "../../types/models";
+import {
+	readLegacyActiveParticipantNames,
+	stripInventedSceneCapabilityOverrides,
+} from "../sceneParticipation";
 
 const ACTIVE_ENTITY_RECENCY_MESSAGES = 50;
 const MAX_OPEN_THREADS = 12;
@@ -154,10 +158,8 @@ function collectActiveCharacterNames(params: BuildIndexingContinuitySnapshotPara
 		}
 	}
 
-	for (const participant of state.scene?.activeParticipants ?? []) {
-		if (participant.trim()) {
-			activeNames.add(normalizeNameKey(participant));
-		}
+	for (const participant of readLegacyActiveParticipantNames(state)) {
+		activeNames.add(normalizeNameKey(participant));
 	}
 
 	return activeNames;
@@ -370,7 +372,9 @@ export function buildIndexingContinuitySnapshot(
 		memoryArchitectureVersion: state.memoryArchitectureVersion,
 		...(summaries && Object.keys(summaries).length ? { summaries } : {}),
 		...(state.authorDirectives ? { authorDirectives: state.authorDirectives } : {}),
-		...(state.scene ? { scene: state.scene } : {}),
+		...(state.scene
+			? { scene: stripInventedSceneCapabilityOverrides(state.scene) }
+			: {}),
 		...(Array.isArray(state.sceneState) && state.sceneState.length
 			? { sceneState: state.sceneState }
 			: {}),
