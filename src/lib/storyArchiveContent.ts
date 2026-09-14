@@ -2,8 +2,6 @@ import type { StoryChapter, StoryExportBundle, StoryMessage, StoryStateDataV2 } 
 import { formatDateTime, sortByTimestampAsc } from "./dates";
 import { getCharacterStatusLines, synthesizeCharacterStatusBullets } from "./characterStatus";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "./storyStateV2";
-import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
-import { cleanTextForExport } from "./storyText/exportCleaner";
 import { resolveUserTranscriptSpeaker } from "./storyText/directorMode";
 import { resolvePlayerCharacterSceneName } from "./playerCharacterPrompt";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
@@ -211,26 +209,13 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 		}
 	}
 
-	let latestUserMessage: string | null = null;
 	const transcript: ArchiveTranscriptLine[] = [];
 	for (let index = 0; index < sortedMessages.length; index += 1) {
 		const message = sortedMessages[index]!;
 		const messageNumber = index + 1;
-		if (message.role === "user") {
-			latestUserMessage = message.content;
-		}
-
-		const resolvedContent =
-			message.role === "assistant"
-				? sanitizeAssistantTranscript({
-						text: cleanTextForExport(message.content),
-						latestUserMessage,
-						playerName: bundle.playerCharacter.name,
-					}).text
-				 : message.content;
 
 		if (message.role === "assistant") {
-			const blocks = parseSceneBlocks(resolvedContent ?? "");
+			const blocks = parseSceneBlocks(message.content);
 			if (blocks.length) {
 				for (const block of blocks) {
 					const speaker =
@@ -241,21 +226,21 @@ export function buildStoryArchiveContent(bundle: StoryExportBundle): StoryArchiv
 						speaker: resolveNarrativeTranscriptSpeaker(speaker, narrativeRegistry, {
 							messageCount: sortedMessages.length,
 						}),
-						text: redact(block.text ?? ""),
+						text: block.text ?? "",
 					});
 				}
 			} else {
 				transcript.push({
 					messageNumber,
 					speaker: resolveArchiveTranscriptSpeaker(message),
-					text: redact(resolvedContent ?? ""),
+					text: message.content,
 				});
 			}
 		} else {
 			transcript.push({
 				messageNumber,
 				speaker: resolveArchiveTranscriptSpeaker(message),
-				text: redact(resolvedContent ?? ""),
+				text: redact(message.content),
 			});
 		}
 	}

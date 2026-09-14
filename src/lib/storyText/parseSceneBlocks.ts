@@ -34,6 +34,7 @@ export function looksLikeNarrationContinuation(remainder: string): boolean {
 
 function isValidSpeakerLabel(label: string): boolean {
   if (!label) return false;
+  if (/^narrator$/i.test(label.trim())) return true;
   if (isDeniedSpeakerLabel(label)) return false;
   if (isPossessiveSpeakerLabel(label)) return false;
   if (/\([^)]*\)/.test(label)) return false;
@@ -185,7 +186,15 @@ function isSpeakerHeader(line: string) {
 		return null;
 	}
 
-	return label;
+	return /^narrator$/i.test(label) ? "Narrator" : label;
+}
+
+function stripRepeatedNarratorPrefixes(text: string) {
+	let remainder = text;
+	while (/^Narrator\s*:\s*/i.test(remainder)) {
+		remainder = remainder.replace(/^Narrator\s*:\s*/i, "");
+	}
+	return remainder;
 }
 
 function parseInlineSpeakerLine(line: string) {
@@ -196,10 +205,6 @@ function parseInlineSpeakerLine(line: string) {
 	}
 
 	const after = trimmed.slice(colonIndex + 1);
-	if (!/^\s+\S/.test(after)) {
-		return null;
-	}
-
 	const label = trimmed.slice(0, colonIndex).trim();
 	const remainder = after.trim();
 
@@ -207,15 +212,19 @@ function parseInlineSpeakerLine(line: string) {
 		return null;
 	}
 
-	if (!isValidSpeakerLabel(label)) {
+	const isNarrator = /^narrator$/i.test(label);
+	if (!isNarrator && !/^\s+\S/.test(after)) {
+		return null;
+	}
+	if (!isNarrator && !isValidSpeakerLabel(label)) {
 		return null;
 	}
 
-	if (looksLikeNarrationContinuation(remainder)) {
+	if (!isNarrator && looksLikeNarrationContinuation(remainder)) {
 		return null;
 	}
 
-	if (looksLikeClockTimeFragment(remainder)) {
+	if (!isNarrator && looksLikeClockTimeFragment(remainder)) {
 		return null;
 	}
 
@@ -223,7 +232,10 @@ function parseInlineSpeakerLine(line: string) {
 		return null;
 	}
 
-	return { speakerLabel: label, text: remainder };
+	return {
+		speakerLabel: isNarrator ? "Narrator" : label,
+		text: isNarrator ? stripRepeatedNarratorPrefixes(remainder) : remainder,
+	};
 }
 
 export function parseSceneBlocks(content: string): SceneBlock[] {

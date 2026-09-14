@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { StoryExportBundle, StoryMessage } from "../../types/models";
 import { buildStoryArchiveContent } from "../storyArchiveContent";
 import { serializeStoryArchiveMarkdown } from "../storyArchiveMarkdown";
+import { serializeStoryExport } from "../storyExport";
+import { serializeStoryExportPdf } from "../storyExportPdf";
+import { serializeStoryArchivePdf } from "../storyArchivePdf";
 
 function makeBundle(overrides: Partial<StoryExportBundle> = {}): StoryExportBundle {
 	const messages: StoryMessage[] = overrides.messages ?? [
@@ -245,4 +248,63 @@ describe("serializeStoryArchiveMarkdown", () => {
 		expect(markdown).toContain("Captain of the precinct");
 		expect(markdown).toContain("Who summoned Jamie?");
 	});
+
+	it("renders narrator blocks as free-floating prose across finished exports", () => {
+		const canonical = "Narrator: *Exact prose stays, unchanged!*";
+		const lowercaseNarration = "Narrator: the room falls silent again.";
+		const namedContent = 'Rosa: *She stands.* "Jamie?"';
+		const messages: StoryMessage[] = [
+			{
+				id: "narrator-regression",
+				storyId: "story-1",
+				role: "assistant",
+				content: canonical,
+				timestamp: "2026-08-01T12:01:00.000Z",
+				speakerType: "narrator",
+			},
+			{
+				id: "plain-narrator-regression",
+				storyId: "story-1",
+				role: "assistant",
+				content: lowercaseNarration,
+				timestamp: "2026-08-01T12:02:00.000Z",
+				speakerType: "narrator",
+			},
+			{
+				id: "named-speaker-regression",
+				storyId: "story-1",
+				role: "assistant",
+				content: namedContent,
+				timestamp: "2026-08-01T12:03:00.000Z",
+				speakerType: "narrator",
+			},
+		];
+		const bundle = makeBundle({ messages });
+		const markdown = serializeStoryArchiveMarkdown(bundle);
+		const text = serializeStoryExport(bundle, "txt").content as string;
+		const pdfText = decodePdf(serializeStoryExportPdf(bundle));
+		const archivePdfText = decodePdf(serializeStoryArchivePdf(bundle).content);
+
+		expect(bundle.messages.map((entry) => entry.content)).toEqual([
+			canonical,
+			lowercaseNarration,
+			namedContent,
+		]);
+		for (const output of [markdown, text, pdfText, archivePdfText]) {
+			expect(output).not.toContain("Narrator:");
+			expect(output.match(/Exact prose stays, unchanged!/g)).toHaveLength(1);
+			expect(output.match(/the room falls silent again\./g)).toHaveLength(1);
+			expect(output).toContain("Rosa");
+			expect(output).toContain('"Jamie?"');
+		}
+		expect(markdown).toContain("**Rosa:**");
+		expect(text).toContain('Rosa: She stands. "Jamie?"');
+		expect(pdfText).toContain("Rosa:");
+		expect(archivePdfText).toContain("Rosa:");
+	});
 });
+
+function decodePdf(bytes: ArrayBuffer | Uint8Array) {
+	const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+	return Array.from(view, (byte) => String.fromCharCode(byte)).join("");
+}

@@ -10,9 +10,12 @@ import { serializeStoryExportPdf } from "./storyExportPdf";
 import { serializeStoryArchivePdf } from "./storyArchivePdf";
 import { serializeStoryArchiveMarkdown } from "./storyArchiveMarkdown";
 import { parseActionSegments } from "./storyText/parseActionSegments";
-import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
-import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies, resolvePlayerCharacterSceneName } from "./playerCharacterPrompt";
-import { cleanTextForExport } from "./storyText/exportCleaner";
+import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
+import {
+  normalizePlayerCharacterAliases,
+  normalizePlayerCharacterKnownTies,
+  resolvePlayerCharacterSceneName,
+} from "./playerCharacterPrompt";
 import { resolveUserTranscriptSpeaker } from "./storyText/directorMode";
 import { safeParseStoryStateData } from "./storyStateV2";
 
@@ -90,21 +93,33 @@ function buildTranscriptLines(bundle: StoryExportBundle) {
     recentMessages: bundle.messages,
   });
 
-  return bundle.messages.map((message) => {
-    const speaker = resolveSpeakerLabel(message, bundle.playerCharacter, playerSceneName);
-    const prefix = speaker ? `${speaker}: ` : "";
-    const content =
-      message.role === "assistant"
-        ? sanitizeAssistantTranscript({
-            text: cleanTextForExport(message.content),
-            playerName: bundle.playerCharacter.name,
-          }).text
-        : message.content;
-    const plain = parseActionSegments(content)
-      .map((segment) => segment.text)
-      .join("")
-      .replace(/\*\*/g, "");
-    return `[${formatDateTime(message.timestamp)}] ${prefix}${plain}`;
+  return bundle.messages.flatMap((message) => {
+    const timestamp = `[${formatDateTime(message.timestamp)}] `;
+    if (message.role !== "assistant") {
+      const speaker = resolveSpeakerLabel(message, bundle.playerCharacter, playerSceneName);
+      const prefix = speaker ? `${speaker}: ` : "";
+      const plain = parseActionSegments(message.content)
+        .map((segment) => segment.text)
+        .join("")
+        .replace(/\*\*/g, "");
+      return [`${timestamp}${prefix}${plain}`];
+    }
+
+    const metadataSpeaker = resolveSpeakerLabel(message, bundle.playerCharacter, playerSceneName);
+    return parseSceneBlocks(message.content).map((block) => {
+      const blockSpeaker = block.speakerLabel?.trim();
+      const speaker = blockSpeaker && !/^narrator$/i.test(blockSpeaker)
+        ? blockSpeaker
+        : !blockSpeaker && !/^narrator$/i.test(metadataSpeaker) && metadataSpeaker !== "Assistant"
+          ? metadataSpeaker
+          : "";
+      const prefix = speaker ? `${speaker}: ` : "";
+      const plain = parseActionSegments(block.text)
+        .map((segment) => segment.text)
+        .join("")
+        .replace(/\*\*/g, "");
+      return `${timestamp}${prefix}${plain}`;
+    });
   });
 }
 

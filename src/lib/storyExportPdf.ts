@@ -2,8 +2,6 @@ import type { PlayerCharacter, StoryExportBundle, StoryMessage } from "../types/
 import { formatDateTime } from "./dates";
 import { safeParseStoryStateData, normalizeStoryStateToV2 } from "./storyStateV2";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
-import { sanitizeAssistantTranscript } from "./storyText/transcriptSanitizer";
-import { cleanTextForExport } from "./storyText/exportCleaner";
 import { resolveUserTranscriptSpeaker } from "./storyText/directorMode";
 import { resolvePlayerCharacterSceneName } from "./playerCharacterPrompt";
 import {
@@ -73,7 +71,6 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
   y = rule(doc, y, pageW);
   y += 8;
 
-  let latestUserMessage: string | null = null;
   const playerSceneName = resolvePlayerCharacterSceneName(bundle.playerCharacter, {
     storyState: storyStateData,
     recentMessages: bundle.messages,
@@ -83,19 +80,13 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
     if (message.role === "system") continue;
 
     if (message.role === "user") {
-      latestUserMessage = message.content;
       const speaker = resolveSpeakerLabel(message, bundle.playerCharacter, playerSceneName);
       y = speakerLine(doc, y, speaker, message.content, pageH);
     } else {
-      const sanitized = sanitizeAssistantTranscript({
-        text: cleanTextForExport(message.content),
-        latestUserMessage,
-        playerName: bundle.playerCharacter.name,
-      }).text;
-      const blocks = parseSceneBlocks(sanitized);
+      const blocks = parseSceneBlocks(message.content);
 
       for (const block of blocks) {
-        const speaker = block.speakerLabel || "Narrator";
+        const speaker = block.speakerLabel || "";
         y = speakerLine(doc, y, speaker, block.text, pageH);
       }
     }

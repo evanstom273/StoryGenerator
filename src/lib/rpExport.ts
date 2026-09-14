@@ -2,7 +2,6 @@ import type { PlayerCharacter, RpConfig, RpEventLogEntry, RpStats, StoryMessage 
 import { normalizePlayerCharacterAliases } from "./playerCharacterPrompt";
 import { formatGold } from "./rpStats";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
-import { cleanTextForExport } from "./storyText/exportCleaner";
 import { formatTimeShort } from "./rpTime";
 import {
   createPdfDoc,
@@ -208,10 +207,14 @@ export function buildRpExportMarkdown(data: RpExportData): string {
       const speaker = msg.speakerName ?? "Player";
       lines.push(`**${speaker}:** ${msg.content}`);
     } else {
-      const blocks = parseSceneBlocks(cleanTextForExport(msg.content ?? ""));
+      const blocks = parseSceneBlocks(msg.content ?? "");
       for (const block of blocks) {
-        const speaker = block.speakerLabel && block.speakerLabel !== "Narrator" ? block.speakerLabel : "Narrator";
-        lines.push(`**${speaker}:** ${block.text}`);
+        const speaker = block.speakerLabel?.trim();
+        if (speaker && !/^narrator$/i.test(speaker)) {
+          lines.push(`**${speaker}:** ${block.text}`);
+        } else {
+          lines.push(block.text);
+        }
       }
     }
     lines.push("");
@@ -309,10 +312,12 @@ export function buildRpExportText(data: RpExportData): string {
       lines.push(`${speaker}:`);
       lines.push(msg.content);
     } else {
-      const blocks = parseSceneBlocks(cleanTextForExport(msg.content ?? ""));
+      const blocks = parseSceneBlocks(msg.content ?? "");
       for (const block of blocks) {
-        const speaker = block.speakerLabel && block.speakerLabel !== "Narrator" ? block.speakerLabel : "Narrator";
-        lines.push(`${speaker}:`);
+        const speaker = block.speakerLabel?.trim();
+        if (speaker && !/^narrator$/i.test(speaker)) {
+          lines.push(`${speaker}:`);
+        }
         lines.push(block.text);
         lines.push("");
       }
@@ -485,9 +490,12 @@ export async function buildRpExportPdf(data: RpExportData): Promise<Blob> {
       const speaker = msg.speakerName ?? "Player";
       y = speakerLine(doc, y, sanitizePdf(speaker), sanitizePdf(msg.content), pageH);
     } else {
-      const blocks = parseSceneBlocks(cleanTextForExport(msg.content ?? ""));
+      const blocks = parseSceneBlocks(msg.content ?? "");
       for (const block of blocks) {
-        const speaker = block.speakerLabel && block.speakerLabel !== "Narrator" ? block.speakerLabel : "Narrator";
+        const speaker =
+          block.speakerLabel && !/^narrator$/i.test(block.speakerLabel)
+            ? block.speakerLabel
+            : "";
         y = speakerLine(doc, y, sanitizePdf(speaker), sanitizePdf(block.text), pageH);
       }
     }

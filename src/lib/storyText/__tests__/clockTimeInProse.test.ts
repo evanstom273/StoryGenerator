@@ -38,12 +38,12 @@ describe("clockTimeInProse", () => {
 });
 
 describe("clock time transcript rendering", () => {
-	it("does not treat clock times as speaker labels", () => {
+	it("parses narrator labels before clock-time prose", () => {
 		const text = "Narrator: By 11:30 AM, the precinct is already buzzing.";
 		const blocks = parseSceneBlocks(text);
 		expect(blocks).toHaveLength(1);
-		expect(blocks[0]?.speakerLabel).toBeUndefined();
-		expect(blocks[0]?.text).toContain("11:30 AM");
+		expect(blocks[0]?.speakerLabel).toBe("Narrator");
+		expect(blocks[0]?.text).toBe("By 11:30 AM, the precinct is already buzzing.");
 	});
 
 	it("does not inject pronouns into clock-time remainders", () => {

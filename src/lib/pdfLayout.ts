@@ -118,7 +118,8 @@ export function speakerLine(
   const { contentW } = pdfDimensions(doc);
   doc.setFont(PDF_FONT, "bold");
   doc.setFontSize(10);
-  const prefix = speaker ? `${speaker}: ` : "";
+  const displaySpeaker = /^narrator$/i.test(speaker.trim()) ? "" : speaker;
+  const prefix = displaySpeaker ? `${displaySpeaker}: ` : "";
   const prefixW = prefix ? doc.getTextWidth(prefix) : 0;
   const indent = Math.min(prefixW, contentW * 0.35);
   const wrapW = contentW - indent;

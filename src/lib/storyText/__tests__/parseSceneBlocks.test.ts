@@ -51,11 +51,22 @@ describe("parseSceneBlocks", () => {
 		expect(blocks[0]?.text).toContain("Twenty:");
 	});
 
-	it("keeps narrator blocks with name-led prose unattributed", () => {
+	it("parses narrator prefixes as structural metadata before plain prose", () => {
 		const text = "Narrator: Ed walked into the bar and looked around.";
 		const blocks = parseSceneBlocks(text);
 		expect(blocks).toHaveLength(1);
-		expect(blocks[0]?.speakerLabel).toBeUndefined();
+		expect(blocks[0]?.speakerLabel).toBe("Narrator");
+		expect(blocks[0]?.text).toBe("Ed walked into the bar and looked around.");
+	});
+
+	it("preserves canonical narrator content while parsing repeated and case-varied markers", () => {
+		const canonical = "narrator: Narrator: *Exact prose stays, unchanged!*";
+		const blocks = parseSceneBlocks(canonical);
+
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0]?.speakerLabel).toBe("Narrator");
+		expect(blocks[0]?.text).toBe("*Exact prose stays, unchanged!*");
+		expect(canonical).toBe("narrator: Narrator: *Exact prose stays, unchanged!*");
 	});
 });
 
