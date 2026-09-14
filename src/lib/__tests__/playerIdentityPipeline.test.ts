@@ -155,6 +155,58 @@ describe("player identity pipeline", () => {
 			);
 			expect(merged?.characters?.["James Peralta"]?.displayName).toBe("Lyra");
 		});
+
+		it("persists identity changes with stable character and source-message provenance", () => {
+			const merged = mergeStoryLocalPlayerIdentityIntoState(
+				corruptedState,
+				{ ...jamieCharacter, id: "player-1" },
+				{
+					sceneName: "Jamie",
+					pronouns: "she/her",
+					hasInStoryTransition: true,
+					sourceMessageId: "message-9",
+					source: "player_turn",
+				},
+			);
+			expect(merged?.playerIdentityOverride).toMatchObject({
+				playerCharacterId: "player-1",
+				sourceMessageId: "message-9",
+				source: "player_turn",
+				pronouns: "she/her",
+			});
+		});
+
+		it("persists an explicit return to sheet pronouns so an older override cannot reappear", () => {
+			const character = { ...jamieCharacter, id: "player-1" };
+			const priorState = {
+				...corruptedState,
+				playerIdentityOverride: {
+					playerCharacterId: "player-1",
+					sourceMessageId: "message-8",
+					source: "player_turn" as const,
+					pronouns: "she/her",
+				},
+				characters: {
+					"James Peralta": {
+						displayName: "The",
+						pronouns: "she/her",
+					},
+				},
+			};
+			const merged = mergeStoryLocalPlayerIdentityIntoState(priorState, character, {
+				sceneName: "Jamie",
+				pronouns: "he/him",
+				hasInStoryTransition: true,
+				sourceMessageId: "message-9",
+				source: "player_turn",
+			});
+
+			expect(merged?.playerIdentityOverride).toMatchObject({
+				sourceMessageId: "message-9",
+				pronouns: "he/him",
+			});
+			expect(merged?.characters?.["James Peralta"]?.pronouns).toBe("he/him");
+		});
 	});
 
 	describe("director notes must not infer identity from prose", () => {

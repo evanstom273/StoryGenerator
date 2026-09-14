@@ -7,7 +7,7 @@ export function buildManualAssistantEdit(
 ): StoryMessage {
 	return {
 		...currentMessage,
-		content: content.trim(),
+		content,
 		speakerAttribution: undefined,
 		editedAt,
 		revision: (currentMessage.revision ?? 0) + 1,

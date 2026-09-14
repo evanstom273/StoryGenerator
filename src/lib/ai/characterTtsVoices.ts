@@ -189,18 +189,34 @@ export function buildCharacterGenderHintsFromStoryState(
 	storyStateData: StoryStateData | StoryStateDataV2 | null | undefined,
 	options?: {
 		playerName?: string | null;
+		playerAliases?: string[] | null;
 		playerGender?: string | null;
 		playerPronouns?: string | null;
 	},
 ): CharacterTtsGenderMap {
 	const hints: CharacterTtsGenderMap = {};
 	const playerGender = inferCharacterTtsGenderHint(options?.playerGender, options?.playerPronouns);
+	const playerIdentityLabels = new Set(
+		[options?.playerName, ...(options?.playerAliases ?? [])]
+			.map((value) => normalizeCharacterTtsKey(value ?? ""))
+			.filter(Boolean),
+	);
+	for (const label of Array.from(playerIdentityLabels)) {
+		const firstName = label.split(" ")[0];
+		if (firstName) playerIdentityLabels.add(firstName);
+	}
 
 	if (playerGender && options?.playerName?.trim()) {
 		applyCharacterGenderHintForName(hints, options.playerName.trim(), playerGender);
 	}
 
 	for (const [canonicalKey, entry] of Object.entries(storyStateData?.characters ?? {})) {
+		const entryNames = [canonicalKey, entry?.canonicalName, entry?.displayName, ...(entry?.aliases ?? [])]
+			.filter((name): name is string => Boolean(name?.trim()))
+			.map((name) => normalizeCharacterTtsKey(name));
+		if (entryNames.some((name) => playerIdentityLabels.has(name))) {
+			continue;
+		}
 		const gender = inferCharacterTtsGenderHint(entry?.gender, entry?.pronouns);
 		if (!gender) {
 			continue;

@@ -226,7 +226,7 @@ describe("unified identity through sanitizer entry points", () => {
 		expect(prepared).toBe("Becca: *She gently runs a hand down her arm.*");
 	});
 
-	it("sanitizeMessageForDisplay repairs raw stored garbage with aliases", () => {
+	it("sanitizeMessageForDisplay preserves raw saved content even when it looks repairable", () => {
 		const display = sanitizeMessageForDisplay({
 			message: assistantMessage('Rebecca: *They gently runs a hand down her arm.*'),
 			playerName: "Becca",
@@ -236,7 +236,7 @@ describe("unified identity through sanitizer entry points", () => {
 			characterGenders: BECCA_IDENTITY.characterGenders,
 		});
 
-		expect(display).toBe("Becca: *She gently runs a hand down her arm.*");
+		expect(display).toBe('Rebecca: *They gently runs a hand down her arm.*');
 	});
 
 	it("repairs orphan They player action lines from the wine-on-the-couch scene", () => {

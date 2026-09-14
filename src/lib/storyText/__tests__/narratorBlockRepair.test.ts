@@ -96,18 +96,14 @@ describe("narratorBlockRepair", () => {
 		);
 	});
 
-	it("does not corrupt unrepaired He narrator blocks during display sanitization", () => {
+	it("preserves saved narrator wording during display sanitization", () => {
 		const raw =
 			"*He narrator: Back at the apartment, the quiet in the living room is suffocating. Amy paces back and forth along the rug.*";
 		const display = sanitizeMessageForDisplay({
 			message: { role: "assistant", content: raw },
 		});
 
-		expect(display).toBe(
-			"Narrator: *Back at the apartment, the quiet in the living room is suffocating. Amy paces back and forth along the rug.*",
-		);
-		expect(display).not.toContain("They back");
-		expect(display).not.toContain("He narrator");
+		expect(display).toBe(raw);
 	});
 
 	it("does not run action-beat pronoun normalization on pronoun pseudo-speakers", () => {

@@ -1,7 +1,7 @@
 # Story Engine — Technical Architecture & Design Document (TAD)
 
 **Document version:** 1.0  
-**Application version:** 3.4.0  
+**Application version:** 3.5.0
 **Last updated:** 2026-08-07  
 **Repository:** StoryGenerator (package name: `story-engine`)  
 **Canonical path:** `src/docs/STORY_ENGINE_DESIGN_DOCUMENT.md`
@@ -17,7 +17,7 @@ This is the **single authoritative design reference** for Story Engine. It is wr
 - Power users who need a complete mental model of how the app works
 - Future maintainers deciding where new features belong
 
-It describes the system **as implemented** in the codebase at v3.4.0, not aspirational features.
+It describes the system **as implemented** in the codebase at v3.5.0, not aspirational features.
 
 ---
 
@@ -638,25 +638,22 @@ Mark:
 | `parseSceneBlocks` | `storyText/parseSceneBlocks.ts` | Split transcript into speaker blocks; validate labels |
 | `parseActionSegments` | `storyText/parseActionSegments.ts` | Parse `*action*` / prose / `"dialogue"` segments |
 | `storyStandardizer` | `storyText/storyStandardizer.ts` | Normalize assistant output to Story Engine format |
-| `transcriptSanitizer` | `storyText/transcriptSanitizer.ts` | Display normalization + save validation |
-| `transcriptFormatRepair` | `storyText/transcriptFormatRepair.ts` | Auto-repair orphans, stray asterisks |
+| `transcriptSanitizer` | `storyText/transcriptSanitizer.ts` | Generation-time validation; legacy display wrapper preserves canonical content |
+| `transcriptFormatRepair` | `storyText/transcriptFormatRepair.ts` | Repair newly generated output before it is accepted as canonical |
 | `speakerLabels` | `storyText/speakerLabels.ts` | Speaker name normalization |
-| `playerSceneName` | `storyText/playerSceneName.ts` | Scene alias masking, action beat pronoun formatting |
+| `playerSceneName` | `storyText/playerSceneName.ts` | Extract explicit player-authored in-story name/pronoun changes |
 | `playerProtection` | `storyText/playerProtection.ts` | Player authorship violation detection |
 | `messageSpeechText` | `storyText/messageSpeechText.ts` | Speech synthesis plan for TTS/audiobook |
 | `directorSyntax` | `storyText/directorSyntax.ts` | Director beat syntax with gist convention |
 | `dialogueQuoteRegions` | `storyText/dialogueQuoteRegions.ts` | Quote-aware text processing |
 
-### 12.3 Display sanitization
+### 12.3 Canonical transcript rendering
 
-`sanitizeMessageForDisplay()` (`transcriptSanitizer.ts`) runs on assistant messages at render time:
+`StoryMessage.content` is the canonical saved text. Transcript and bubble views parse it structurally into narrator, speaker, action, and dialogue blocks; rendering must preserve its wording. `sanitizeMessageForDisplay()` remains as a compatibility wrapper and returns the stored content unchanged.
 
-1. Whitespace normalization
-2. Player legal name → scene alias masking (`applyPlayerSceneNameToTranscript`)
-3. Action beat formatting: wrap bare prose, add pronouns + periods (`normalizeCharacterActionBeatsInTranscript`)
-4. NPC pronouns from story-state gender hints when possessives absent
+Assistant semantic and format validation runs on newly generated output before it is accepted as canonical. It does not run when rendering stored messages, rebuilding Archive state, or saving a user edit. A manual edit replaces the canonical content and increments the message revision.
 
-**Audiobook path** passes `applyActionBeatFormatting: false` then strips pronouns for narrator speech.
+Archive freshness is tied to a deterministic fingerprint of ordered canonical messages (IDs, revisions, roles, timestamps, and per-content hashes). An edit or replacement therefore invalidates derived indexing even when message count and IDs remain unchanged.
 
 ### 12.4 Speaker label validation
 
@@ -1129,7 +1126,7 @@ Hides chrome for distraction-free reading; persisted in localStorage.
 | File | Detail |
 |------|--------|
 | `capacitor.config.ts` | `appId: com.storyengine.app`, `webDir: dist` |
-| `android/app/build.gradle` | `versionCode 30400`, `versionName "3.4.0"` |
+| `android/app/build.gradle` | `versionCode 30500`, `versionName "3.5.0"` |
 | Plugins | App, Filesystem, Share, Media Session |
 
 **Workflow:** `npm run build` → `npx cap sync android` → Android Studio

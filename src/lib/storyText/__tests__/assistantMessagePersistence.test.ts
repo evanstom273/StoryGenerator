@@ -34,7 +34,7 @@ Rebecca: *She lies down beside Rosa.* "Neither am I."
 			"2026-08-24T12:10:00.000Z",
 		);
 
-		expect(edited.content).toBe(content.trim());
+		expect(edited.content).toBe(content);
 		expect(edited.content.match(/^[^:\n]+:/gm)).toEqual(["Rosa:", "Rebecca:"]);
 		expect(edited.speakerAttribution).toBeUndefined();
 		expect(edited.editedAt).toBe("2026-08-24T12:10:00.000Z");

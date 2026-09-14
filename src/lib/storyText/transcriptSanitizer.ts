@@ -1066,34 +1066,9 @@ export function sanitizeMessageForDisplay(args: {
   characterGenders?: CharacterTtsGenderMap | null;
   applyActionBeatFormatting?: boolean;
 }) {
-  if (args.message.role !== "assistant") {
-    return args.message.content;
-  }
-
-  const identity = buildSanitizerPlayerIdentity({
-    legalName: args.playerName,
-    sceneName: args.playerSceneName,
-    pronouns: args.playerPronouns,
-    characterGenders: args.characterGenders,
-    aliases: args.playerAliases,
-    knownTies: args.knownTies,
-    transcriptText: args.message.content,
-  });
-  if (!identity) {
-    let text = repairClockTimeColonCorruption(args.message.content);
-    text = normalizeTranscriptForDisplay(text);
-    text = repairSpeakerLabelArtifacts(text);
-    text = repairNarratorBlocks(text, {
-      transcriptText: text,
-    });
-    return text;
-  }
-
-  return repairAssistantTranscript(args.message.content, {
-    identity,
-    latestUserMessage: args.latestUserMessage,
-    applyActionBeatFormatting: args.applyActionBeatFormatting,
-  });
+  // Kept as a compatibility wrapper for call sites outside the main transcript
+  // views. Saved message content is canonical and display helpers must be lossless.
+  return args.message.content;
 }
 
 function capitalizeFirstLetter(text: string): string {

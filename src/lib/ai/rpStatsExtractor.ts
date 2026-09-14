@@ -28,6 +28,9 @@ export type RpExtractorContext = {
 	universeLore?: string;
 	playerMessage?: string;
 	pendingTransaction?: PendingTransaction;
+	playerName?: string;
+	playerSceneName?: string;
+	playerPronouns?: string;
 };
 
 type ParsedExtractorResponse = {
@@ -101,6 +104,8 @@ export async function extractRpStatChanges(
 	const timeContext = rpStats.timeState ? `Current in-story time: ${formatTime(rpStats.timeState, config)}` : "";
 
 	const settingContext = [
+		context?.playerName ? `Canonical player character: ${context.playerName}${context.playerSceneName && context.playerSceneName !== context.playerName ? ` (currently goes by ${context.playerSceneName})` : ""}.` : "",
+		context?.playerPronouns ? `Canonical/current player pronouns: ${context.playerPronouns}. Use these for the player character; do not infer or copy pronouns from AI-authored dialogue or summaries.` : "",
 		context?.universeLore ? `Setting/universe: ${context.universeLore.slice(0, 400)}` : "",
 		context?.characterBackground ? `Character background: ${context.characterBackground.slice(0, 300)}` : "",
 		timeContext,
@@ -159,6 +164,7 @@ export async function extractRpStatChanges(
 		"",
 		"CHARACTER STATE:",
 		"Set \"characterStateSummary\" to 1-3 sentences describing the player character's current situation in present tense, third person. Always include this field.",
+		"Use the canonical/current player name and pronouns supplied above. If the scene text conflicts with them, do not repeat the conflicting identity; omit the summary if it cannot be stated consistently.",
 		"",
 		"Do NOT track relationship tiers, trust, affection, or other social metrics here. Relationships are updated separately by story indexing.",
 		"",

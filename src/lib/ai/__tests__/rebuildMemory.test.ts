@@ -4,6 +4,7 @@ import type { PlayerCharacter, Story, StoryMessage, StoryState } from "../../../
 import type { AIProvider, GenerateResponseRequest } from "../types";
 import { AIError } from "../errors";
 import { rebuildStoryMemoryAndIndexes } from "../rebuildMemory";
+import { buildCanonicalTranscriptFingerprint } from "../../archiveIndexing";
 import { safeParseStoryStateData } from "../../storyStateV2";
 import {
 	isDeterministicIndexingNoop,
@@ -237,6 +238,9 @@ describe("rebuildStoryMemoryAndIndexes refusal recovery", () => {
 			lastDeepIndexAttemptedMessageCount: 1,
 			indexingGaps: [{ messageNumber: 1, code: "provider_refusal" }],
 		});
+		expect(refusalCheckpoint?.lastDeepIndexedTranscriptFingerprint).toBe(
+			await buildCanonicalTranscriptFingerprint(messages),
+		);
 
 		messages.push(message(2, "The next scene continues safely."));
 		const resumingProvider = createProvider(async (request) => {
@@ -265,6 +269,7 @@ describe("rebuildStoryMemoryAndIndexes refusal recovery", () => {
 
 	it("resumes after the attempted cursor without automatically resending a known gap", async () => {
 		const messages = [message(1, "Opening scene."), message(2, "Blocked scene."), message(3, "Aftermath scene.")];
+		const attemptedPrefixFingerprint = await buildCanonicalTranscriptFingerprint(messages.slice(0, 2));
 		const initialState: StoryState = {
 			id: `story-state:${story.id}`,
 			storyId: story.id,
@@ -276,6 +281,7 @@ describe("rebuildStoryMemoryAndIndexes refusal recovery", () => {
 				unresolvedThreads: [],
 				lastDeepIndexedMessageCount: 1,
 				lastDeepIndexAttemptedMessageCount: 2,
+				lastDeepIndexedTranscriptFingerprint: attemptedPrefixFingerprint,
 				indexingGaps: [{
 					messageNumber: 2,
 					code: "provider_refusal",
@@ -305,6 +311,39 @@ describe("rebuildStoryMemoryAndIndexes refusal recovery", () => {
 		expect(parsed.lastDeepIndexAttemptedMessageCount).toBe(3);
 		expect(parsed.lastDeepIndexedMessageCount).toBe(1);
 		expect(parsed.indexingGaps).toHaveLength(1);
+	});
+
+	it("forces a full reindex when canonical content changes without changing IDs or message count", async () => {
+		const messages = [message(1, "Opening scene."), message(2, "The family returns home.")];
+		const { repository } = createRepository(messages);
+		const firstProvider = createProvider(async () => ({ content: validExtraction("The family is home.") }));
+		await rebuildStoryMemoryAndIndexes({
+			storyId: story.id,
+			repository,
+			provider: firstProvider,
+			apiKey: "test-key",
+			model: "gemini-test",
+		});
+
+		messages[0] = { ...messages[0]!, content: "Edited opening scene with the same message ID." };
+		const progress: Array<{ message?: string }> = [];
+		const secondProvider = createProvider(async (request) => {
+			const prompt = request.messages.map((entry) => entry.content).join("\n");
+			expect(prompt).toContain("Edited opening scene with the same message ID.");
+			return { content: validExtraction("The family is home.") };
+		});
+		await rebuildStoryMemoryAndIndexes({
+			storyId: story.id,
+			repository,
+			provider: secondProvider,
+			apiKey: "test-key",
+			model: "gemini-test",
+			incremental: true,
+			onProgress: (event) => progress.push(event),
+		});
+
+		expect(secondProvider.generateResponse).toHaveBeenCalledTimes(2);
+		expect(progress.some((event) => event.message?.includes("canonical transcript changed"))).toBe(true);
 	});
 
 	it("keeps the previous message checkpoint when a later non-safety failure aborts", async () => {

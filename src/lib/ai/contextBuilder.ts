@@ -26,7 +26,7 @@ import { getAdultContentProviderCapability } from "./providerCapabilities";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, formatPlayerPrimaryAliasNamingPolicy, resolveEffectivePlayerIdentity, resolvePlayerCharacterSceneName, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, formatPlayerPrimaryAliasNamingPolicy, isDerivedPlayerSituationCurrent, isPlayerSituationPronounsCompatible, resolveEffectivePlayerIdentity, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
 import { formatHumanNovelistProseGuidance } from "../storyProseGuidance";
 import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
 import { createNarrativeIdentityPromptContext, redactNarrativePromptText, resolveNarrativePromptName } from "../narrativeIdentity";
@@ -212,7 +212,12 @@ export function buildStoryChatContext({
       : inferSceneDepth(latestUserMessage);
   const wordTarget = getSceneWordTarget(sceneDepth);
   const mostRecentImport = imports[0];
-  const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
+  const latestSummaryCandidate = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
+  const latestSummary = isPlayerSituationPronounsCompatible(
+    latestSummaryCandidate,
+    playerCharacter,
+    playerIdentity,
+  ) ? latestSummaryCandidate : "";
   const playerStateHint = playerStateHintOverride?.trim() || extractExplicitPlayerStateHint({
     playerName: playerCharacter.name,
     recentMessages,
@@ -294,6 +299,8 @@ export function buildStoryChatContext({
       longTerm:
         formatStoryLongTermMemoryForPrompt(gatedStoryState ?? parsed, {
           playerName: playerCharacter.name,
+          playerCharacter,
+          playerIdentity,
           narrativeIdentity,
         }) ||
         "No long-term memory is recorded yet.",
@@ -398,7 +405,12 @@ export function buildStoryChatContext({
             return `Player character birthday: ${rpConfig.birthdayDay} ${mName}. When the in-story date reaches this each year, the character has turned a year older.`;
           })(),
         ] : []),
-        ...(rpStats.characterState ? [
+        ...(isDerivedPlayerSituationCurrent(
+          rpStats.characterState,
+          rpStats.characterStateIdentityBasis,
+          playerCharacter,
+          playerIdentity,
+        ) ? [
           "",
           `Current player situation: ${rpStats.characterState}`,
         ] : []),
@@ -450,6 +462,7 @@ export function buildStoryChatContext({
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
       matureFictionPolicy,
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
+      "Player identity precedence: the current Player Character Identity block and explicit first-person identity declarations by the user-role player are authoritative. AI-written summaries, Archive/Current Situation fields, character extraction, and assistant dialogue cannot override them. If derived context conflicts, ignore it and follow the current player identity.",
       "Continue notes may appear in the transcript as out-of-character instructions to keep the current scene moving without requiring a fresh player action. They are visible in the transcript but are not themselves spoken dialogue or canon events.",
       "Director notes may appear in the transcript as out-of-character production guidance. They are visible in the transcript but are not themselves spoken dialogue or automatic canon facts. Canon comes from what actually happens in the generated scene that follows.",
       "The player character sheet defines starting identity. When the transcript or Long-Term Memory establishes an in-story identity transition (coming out, stable name change, pronoun change), use the current in-story identity instead of outdated sheet defaults.",
@@ -727,19 +740,23 @@ export function buildStorySummaryContext({
 }: {
   storyTitle: string;
   playerCharacterName: string;
-  playerCharacter?: Pick<PlayerCharacter, "name" | "aliases">;
+  playerCharacter?: Pick<
+    PlayerCharacter,
+    "id" | "name" | "aliases" | "pronouns" | "gender" | "species" | "age"
+  >;
   storyState?: StoryState | null;
   messages: StoryMessage[];
 }): AIChatMessage[] {
   const parsedStoryState = storyState?.stateJson?.trim()
     ? safeParseStoryStateData(storyState.stateJson)
     : null;
-  const playerSceneName = playerCharacter
-    ? resolvePlayerCharacterSceneName(playerCharacter, {
+  const playerIdentity = playerCharacter
+    ? resolveEffectivePlayerIdentity(playerCharacter, {
         storyState: parsedStoryState,
         recentMessages: messages,
       })
-    : playerCharacterName;
+    : null;
+  const playerSceneName = playerIdentity?.sceneName ?? playerCharacterName;
   const narrativeIdentity = createNarrativeIdentityPromptContext({
     storyState: parsedStoryState,
     playerCharacter: playerCharacter ?? { name: playerCharacterName, aliases: [] },
@@ -756,6 +773,10 @@ export function buildStorySummaryContext({
       content: normalizeWhitespace(
         [
           `Conversation transcript for "${storyTitle}".`,
+          playerCharacter && playerIdentity
+            ? `Canonical Player Character identity (binding unless an explicit player-authored in-story change exists):\n${formatPlayerCharacterIdentityForPrompt(playerCharacter, playerIdentity.sceneName, playerIdentity.pronouns)}`
+            : `Canonical Player Character: ${playerCharacterName}. Do not infer or change the protagonist's gender or pronouns from assistant dialogue or AI-generated summaries.`,
+          "Canonical player identity outranks AI-generated summaries and assistant-authored dialogue. A normal user-role player turn may explicitly change identity in first person; Director/Author instructions count only when they explicitly target the protagonist.",
           "Write the summary from the audience's current knowledge only. Do not reveal hidden identities, undercover aliases, or true names that the transcript has not yet established.",
           "Use the in-story names characters are known by (for example, a witness name rather than an unrevealed true identity).",
           "Continue lines are out-of-character continuation notes kept in the transcript for reference.",
@@ -773,6 +794,8 @@ export function buildStorySummaryContext({
             content: normalizeWhitespace(
               `Reader knowledge snapshot\n\n${formatStoryLongTermMemoryForPrompt(parsedStoryState, {
                 playerName: playerCharacterName,
+                playerCharacter,
+                playerIdentity,
                 narrativeIdentity,
               })}`,
             ),

@@ -175,7 +175,6 @@ export function StoryWorkspacePage() {
     selectAssistantMessageCandidate,
     generatePlayerAssistMessage,
     regenerateLastAssistantMessage,
-    repairStoryTranscriptClockTimes,
     sendChatMessage,
     setMessageDirectorIntent,
     updateMessage,
@@ -207,16 +206,6 @@ export function StoryWorkspacePage() {
     () => (story ? getMessagesForStory(story.id) : []),
     [getMessagesForStory, story],
   );
-  const repairedClockTimeStoryRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!story?.id || repairedClockTimeStoryRef.current === story.id) {
-      return;
-    }
-
-    repairedClockTimeStoryRef.current = story.id;
-    void repairStoryTranscriptClockTimes(story.id).catch(() => undefined);
-  }, [repairStoryTranscriptClockTimes, story?.id]);
   const assistDefaultsToDirector = useMemo(() => storyHasGeneratedScenes(messages), [messages]);
   const [storyStateJson, setStoryStateJson] = useState<string | null>(null);
   const playerIdentity = useMemo(() => {
@@ -240,6 +229,7 @@ export function StoryWorkspacePage() {
       storyStateJson ? safeParseStoryStateData(storyStateJson) : null,
       {
         playerName: playerCharacter.name,
+        playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
         playerGender: playerCharacter.gender,
         playerPronouns: playerEffectivePronouns,
       },
@@ -1118,20 +1108,21 @@ export function StoryWorkspacePage() {
     const candidate = variantSession.candidates[index];
     if (!candidate || index === variantSession.selectedIndex) return;
 
-    // Optimistically update UI selection index
-    setVariantSession((prev) => prev ? { ...prev, selectedIndex: index } : null);
-
-    // Write selected candidate to DB so transcript-is-truth invariant holds
+    // Persist the candidate first so the variant control never points at text
+    // that the transcript has not accepted as canonical yet.
     setIsSwitchingVariant(true);
     try {
-      await selectAssistantMessageCandidate(
+      const selected = await selectAssistantMessageCandidate(
         latestAssistantMessage.id,
         candidate.content,
         candidate.speakerAttribution,
       );
+      if (!selected) {
+        throw new Error("The selected response could not be saved.");
+      }
+      setVariantSession((prev) => prev ? { ...prev, selectedIndex: index } : null);
     } catch {
-      // Revert on failure
-      setVariantSession((prev) => prev ? { ...prev, selectedIndex: variantSession.selectedIndex } : null);
+      setChatError("Unable to save the selected response variant.");
     } finally {
       setIsSwitchingVariant(false);
     }
@@ -1222,7 +1213,10 @@ export function StoryWorkspacePage() {
     setAssistantEditError(null);
 
     try {
-      await editAssistantMessage(assistantEditMessage.id, assistantEditContent);
+      const saved = await editAssistantMessage(assistantEditMessage.id, assistantEditContent);
+      if (!saved) {
+        throw new Error("The edited message could not be saved.");
+      }
       setVariantSession(null);
       setAssistantEditMessage(null);
       setAssistantEditContent("");
@@ -1778,7 +1772,6 @@ export function StoryWorkspacePage() {
                     <StoryMessageBubble
                       key={message.id}
                       message={message}
-                      messages={messages}
                       playerCharacterName={activePlayerCharacter.name}
                       playerLegalName={activePlayerCharacter.name}
                       playerSceneName={playerSceneName}
@@ -1802,7 +1795,6 @@ export function StoryWorkspacePage() {
             <StoryTranscriptView
               messages={messages}
               playerCharacterName={activePlayerCharacter.name}
-              playerLegalName={activePlayerCharacter.name}
               playerSceneName={playerSceneName}
               playerPronouns={playerEffectivePronouns}
               playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter.aliases)}

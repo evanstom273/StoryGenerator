@@ -258,6 +258,20 @@ export type PendingTransaction = {
   amount: number;
 };
 
+export type PlayerIdentityBasis = {
+  playerCharacterId: EntityId;
+  sceneName: string;
+  pronouns: string;
+};
+
+export type PlayerIdentityOverride = {
+  playerCharacterId: EntityId;
+  sourceMessageId: EntityId;
+  source: "player_turn" | "director_instruction" | "author_instruction";
+  sceneName?: string;
+  pronouns?: string;
+};
+
 export type RpStats = {
   hp: number;
   gold: number;
@@ -268,6 +282,7 @@ export type RpStats = {
   pendingTransaction?: PendingTransaction;
   conditions?: RpCondition[];
   characterState?: string;
+  characterStateIdentityBasis?: PlayerIdentityBasis;
   pendingConditionSuggestion?: string;
 };
 
@@ -737,6 +752,8 @@ export type StoryStateData = {
     relationshipSummary?: string;
     worldSummary?: string;
   };
+  playerIdentityOverride?: PlayerIdentityOverride;
+  currentSituationIdentityBasis?: PlayerIdentityBasis;
   authorDirectives?: StoryAuthorDirectiveState;
   memoryArchitectureVersion?: MemoryArchitectureVersion;
   indexedAt?: Timestamp;
@@ -745,6 +762,7 @@ export type StoryStateData = {
   lastAutoDeepIndexedAt?: Timestamp;
   lastIndexedMessageCount?: number;
   lastDeepIndexedMessageCount?: number;
+  lastDeepIndexedTranscriptFingerprint?: string;
   lastDeepIndexAttemptedMessageCount?: number;
   indexingGaps?: IndexingGap[];
   lastAutoDeepIndexedMessageCount?: number;

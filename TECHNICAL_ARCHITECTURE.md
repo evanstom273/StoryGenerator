@@ -8,4 +8,4 @@
 >
 > Download it from **Settings → Theme → Design Document**, or open the file directly in the repository.
 
-See `src/docs/STORY_ENGINE_DESIGN_DOCUMENT.md` for the complete architecture and design reference at v3.4.0+.
+See `src/docs/STORY_ENGINE_DESIGN_DOCUMENT.md` for the complete architecture and design reference at v3.5.0+.

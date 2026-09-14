@@ -23,6 +23,8 @@ import {
 	resolveNarrativeDisplayName,
 } from "../../lib/narrativeIdentity";
 import { getArchiveIndexStatus } from "../../lib/archiveIndexing";
+import { useCanonicalTranscriptFingerprint } from "../../lib/useCanonicalTranscriptFingerprint";
+import { isDerivedPlayerSituationCurrent, resolveEffectivePlayerIdentity } from "../../lib/playerCharacterPrompt";
 
 function trimStringList(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) {
@@ -46,7 +48,7 @@ export function StoryArchiveView({
   playerAliases?: string[];
   relationshipsRefreshKey?: number;
 }) {
-  const { fetchStoryState, getMessagesForStory, getStoryById, rebuildStatus, queueStoryIndexJob, loadStoryRelationships, cancelStoryIndexing, clearStoryIndex } =
+  const { fetchStoryState, getMessagesForStory, getStoryById, getPlayerCharacterById, rebuildStatus, queueStoryIndexJob, loadStoryRelationships, cancelStoryIndexing, clearStoryIndex } =
     useStoryEngine();
   const [storyStateRecord, setStoryStateRecord] = useState<StoryState | null>(null);
   const [archiveRelationships, setArchiveRelationships] = useState<RelationshipIndexEntry[]>([]);
@@ -57,6 +59,15 @@ export function StoryArchiveView({
   const [expandedEvidenceKeys, setExpandedEvidenceKeys] = useState<Record<string, boolean>>({});
 
   const storyMessages = useMemo(() => getMessagesForStory(storyId), [getMessagesForStory, storyId]);
+  const transcriptFingerprint = useCanonicalTranscriptFingerprint(storyMessages);
+  const story = getStoryById(storyId);
+  const playerCharacter = story ? getPlayerCharacterById(story.playerCharacterId) : undefined;
+  const playerIdentity = useMemo(
+    () => playerCharacter
+      ? resolveEffectivePlayerIdentity(playerCharacter, { recentMessages: storyMessages })
+      : null,
+    [playerCharacter, storyMessages],
+  );
 
   const storyStateData = useMemo(() => {
     const storyStateJson = storyStateRecord?.stateJson ?? "";
@@ -278,10 +289,10 @@ export function StoryArchiveView({
 
   const archiveState = gatedStoryStateData;
 
-  const story = getStoryById(storyId);
   const totalMessages = getMessagesForStory(storyId).length;
   const indexStatus = getArchiveIndexStatus(storyStateRecord, {
     currentMessageCount: totalMessages,
+    currentMessageFingerprint: transcriptFingerprint,
   });
   const indexedMessageCount = indexStatus.indexedMessageCount;
   const staleBy = Math.max(0, totalMessages - indexedMessageCount);
@@ -294,8 +305,12 @@ export function StoryArchiveView({
         ? "Not indexed"
         : indexStatus.reason === "message_count_mismatch"
           ? "Out of sync"
-          : indexStatus.reason === "new_messages"
+      : indexStatus.reason === "new_messages"
             ? `Stale (+${staleBy})`
+            : indexStatus.reason === "content_mismatch" || indexStatus.reason === "fingerprint_missing"
+              ? "Transcript changed"
+              : indexStatus.reason === "fingerprint_pending"
+                ? "Checking transcript…"
             : "Up to date";
   const statusTone = failedIndexing
     ? "text-rose-300"
@@ -317,9 +332,14 @@ export function StoryArchiveView({
   const protagonistSummary = redactNarrative(
     archiveState.summaries?.protagonistSummary?.trim() ?? "",
   );
-  const currentSituation = redactNarrative(
-    archiveState.summaries?.currentSituation?.trim() ?? "",
-  );
+  const currentSituation = isDerivedPlayerSituationCurrent(
+    archiveState.summaries?.currentSituation,
+    archiveState.currentSituationIdentityBasis,
+    playerCharacter,
+    playerIdentity,
+  )
+    ? redactNarrative(archiveState.summaries?.currentSituation?.trim() ?? "")
+    : "";
   const recentDevelopments = trimStringList(archiveState.summaries?.recentDevelopments, 6).map(
     redactNarrative,
   );

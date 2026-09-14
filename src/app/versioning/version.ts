@@ -7,9 +7,21 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "3.4.0";
+export const APP_VERSION = "3.5.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "3.5.0": {
+    title: "Transcript Integrity & Character Identity",
+    releasedAt: "2026-09-14T00:00:00+00:00",
+    fixed: [
+      "Saved assistant message edits now remain canonical across transcript and bubble views, reloads, and response variants",
+      "Transcript rendering preserves saved wording; semantic repair is limited to newly generated assistant output",
+      "Canonical player-character identity and pronouns now take precedence in generation and derived story state",
+      "Explicit identity changes are accepted from normal player turns, while assistant-authored dialogue cannot change player identity",
+      "Archive indexing fingerprints canonical message content so edits invalidate stale derived state even when message counts stay the same",
+    ],
+    knownIssues: [],
+  },
   "3.4.0": {
     title: "Media Library",
     releasedAt: "2026-08-07T03:25:00+00:00",

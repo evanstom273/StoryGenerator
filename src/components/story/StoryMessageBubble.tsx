@@ -2,11 +2,9 @@ import type { StoryMessage, StoryMessageSpeakerType } from "../../types/models";
 import { useState } from "react";
 import { formatDateTime } from "../../lib/dates";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
-import { parseSceneBlocks, formatNarratorBlockForDisplay } from "../../lib/storyText/parseSceneBlocks";
+import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
-import { resolveLatestUserMessageBefore } from "../../lib/storyText/messageSpeechText";
-import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import type { CharacterTtsGenderMap } from "../../lib/ai/characterTtsVoices";
 import { isDirectorMessage, isPlayerLegalNameDirectorBeat, resolveUserTranscriptSpeaker } from "../../lib/storyText/directorMode";
 import { cn } from "../../utils/cn";
@@ -14,7 +12,6 @@ import { Button } from "../ui/Button";
 
 interface StoryMessageBubbleProps {
   message: StoryMessage;
-  messages: StoryMessage[];
   playerCharacterName: string;
   playerLegalName?: string;
   playerSceneName?: string;
@@ -160,13 +157,9 @@ function resolveAvatarClass(label: string, speakerType: StoryMessageSpeakerType 
 
 export function StoryMessageBubble({
   message,
-  messages,
   playerCharacterName,
   playerLegalName,
   playerSceneName,
-  playerPronouns,
-  playerAliases,
-  characterGenders,
   onEdit,
   onQuickEdit,
   onRegenerate,
@@ -214,22 +207,9 @@ export function StoryMessageBubble({
         ? "border-white/8 bg-white/[0.02]"
         : "border-transparent bg-transparent";
 
-  const messageIndex = messages.findIndex((entry) => entry.id === message.id);
-  const latestUserMessage =
-    messageIndex > 0 ? resolveLatestUserMessageBefore(messages, messageIndex) : null;
-
-  const sanitizedContent =
-    message.role === "assistant"
-      ? sanitizeMessageForDisplay({
-          message,
-          latestUserMessage,
-          playerName: effectiveLegalName,
-          playerSceneName: effectiveSceneName,
-          playerPronouns,
-          playerAliases,
-          characterGenders,
-        })
-      : message.content;
+  // StoryMessage.content is canonical once saved; only structural parsing is
+  // allowed in the bubble renderer.
+  const sanitizedContent = message.content;
 
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied">("idle");
 
@@ -299,7 +279,7 @@ export function StoryMessageBubble({
   }
 
   function renderTextLines(text: string, { forceItalic }: { forceItalic?: boolean } = {}) {
-    const prepared = forceItalic ? formatNarratorBlockForDisplay(text) : text;
+    const prepared = text;
     const lines = prepared.replace(/\r\n/g, "\n").split("\n");
 
     return (
@@ -388,7 +368,7 @@ export function StoryMessageBubble({
             ? parseSceneBlocks(sanitizedContent).map((block, index) => (
                 <div key={index}>
                   {!block.speakerLabel || block.speakerLabel === "Narrator"
-                    ? renderTextLines(formatNarratorBlockForDisplay(block.text), { forceItalic: true })
+                    ? renderTextLines(block.text, { forceItalic: true })
                     : renderInlineSpeakerLine(block.speakerLabel, block.text)}
                 </div>
               ))

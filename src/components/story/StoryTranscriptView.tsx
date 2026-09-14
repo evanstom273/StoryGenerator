@@ -3,10 +3,9 @@ import type { RpConfig, RpTimeState, StoryChapter, StoryMessage } from "../../ty
 import { formatTimeShort, timesDiffer } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
-import { parseSceneBlocks, formatNarratorBlockForDisplay } from "../../lib/storyText/parseSceneBlocks";
+import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
-import { sanitizeMessageForDisplay } from "../../lib/storyText/transcriptSanitizer";
 import type { CharacterTtsGenderMap } from "../../lib/ai/characterTtsVoices";
 import { isDirectorMessage, isDirectorSpeakerLabel } from "../../lib/storyText/directorMode";
 import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
@@ -17,7 +16,6 @@ import type { ResolvedSceneParticipant } from "../../lib/sceneParticipation";
 type StoryTranscriptViewProps = {
   messages: StoryMessage[];
   playerCharacterName: string;
-  playerLegalName?: string;
   playerSceneName?: string;
   playerPronouns?: string;
   playerAliases?: string[];
@@ -285,20 +283,14 @@ function renderLine(value: string, { forceItalic }: { forceItalic: boolean }) {
 export function StoryTranscriptView({
   messages,
   playerCharacterName,
-  playerLegalName,
   playerSceneName,
-  playerPronouns,
-  playerAliases,
-  characterGenders,
   storyTitle = "Story",
   chapters,
   className,
   highlightedMessageId,
   rpConfig,
 }: StoryTranscriptViewProps) {
-  const effectiveLegalName = playerLegalName?.trim() || playerCharacterName;
   const effectiveSceneName = playerSceneName?.trim() || playerCharacterName;
-  let latestUserMessage: string | null = null;
   let prevStoryTime: RpTimeState | undefined = undefined;
   const chapterEndByMessageId = new Map<string, string>();
   const chapterStartBeforeMessage = new Map<number, string>();
@@ -410,7 +402,6 @@ export function StoryTranscriptView({
         }
 
         if (message.role === "user") {
-          latestUserMessage = message.content;
           const lines = message.content.split("\n");
           const isAuthorDirective = isAuthorDirectiveMessage(message);
           const isContinue = isContinueMessage(message);
@@ -470,17 +461,9 @@ export function StoryTranscriptView({
           message.role === "assistant" &&
           message.speakerType !== "director" &&
           !isDirectorSpeakerLabel(message.speakerName);
-        const sanitized = isAssistantTranscript
-          ? sanitizeMessageForDisplay({
-              message,
-              latestUserMessage,
-              playerName: effectiveLegalName,
-              playerSceneName: effectiveSceneName,
-              playerPronouns,
-              playerAliases,
-              characterGenders,
-            })
-          : message.content;
+        // StoryMessage.content is canonical once saved. Transcript rendering may
+        // parse its structure, but must never semantically rewrite its wording.
+        const sanitized = message.content;
         const blocks = isAssistantTranscript ? parseSceneBlocks(sanitized) : [];
         const showTimeChip = rpConfig && message.storyTime &&
           (!prevStoryTime || timesDiffer(prevStoryTime, message.storyTime));
@@ -518,8 +501,7 @@ export function StoryTranscriptView({
                   ? getSpeakerTag("Narrator", "narrator")
                   : getSpeakerTag(block.speakerLabel?.trim() || "Unknown", speakerKind);
                 if (isNarration) {
-                  const displayText = formatNarratorBlockForDisplay(block.text);
-                  const displayLines = displayText.split("\n");
+                  const displayLines = block.text.split("\n");
                   return (
                     <div key={blockIndex} className={tag.rowClass}>
                       <div className={cn("min-w-0 text-sm leading-7 whitespace-pre-wrap break-words", tag.contentClass)}>

@@ -1,11 +1,7 @@
-import type { PlayerCharacter, PlayerCharacterDraft, StoryMessage, StoryStateData, StoryStateDataV2 } from "../types/models";
+import type { PlayerCharacter, PlayerCharacterDraft, PlayerIdentityBasis, StoryMessage, StoryStateData, StoryStateDataV2 } from "../types/models";
 import { isDeniedSpeakerLabel } from "./relationshipIndex";
 import { safeParseStoryStateData } from "./storyStateV2";
 import {
-	findPlayerStoryStateEntry,
-	inferPlayerPronounsFromDirectorNotes,
-	inferPlayerPronounsFromMessages,
-	inferPlayerSceneNameFromMessages,
 	detectEstablishedPlayerIdentityFromMessages,
 } from "./storyText/playerSceneName";
 
@@ -19,60 +15,6 @@ export function isValidPlayerSceneName(name: string | null | undefined): boolean
 		return false;
 	}
 	return !isDeniedSpeakerLabel(trimmed);
-}
-
-function resolveExplicitPlayerSceneRenameFromMessages(
-	messages: StoryMessage[],
-	legalName: string,
-	sheetPreferred: string,
-): string | null {
-	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const message = messages[index];
-		const content = message.content.replace(/\r\n/g, "\n");
-		const chosenName = extractChosenNameCandidateFromContent(
-			content,
-			legalName,
-			sheetPreferred,
-		);
-		if (chosenName) {
-			return chosenName;
-		}
-	}
-	return null;
-}
-
-function extractChosenNameCandidateFromContent(
-	content: string,
-	legalName: string,
-	sheetPreferredName: string,
-): string | null {
-	const patterns = [
-		/"([A-Z][a-z]+)\.{0,3}\s*that['']?s my\.{0,3}\s*name/i,
-		/\bmy name is\s+"?([A-Z][a-z]+)"?/i,
-		/\bcall me\s+"?([A-Z][a-z]+)"?/i,
-		/\bIt suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
-		/\bIt'?s beautiful\.?\s*It suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
-	];
-
-	for (const pattern of patterns) {
-		const match = content.match(pattern);
-		const candidate = match?.[1]?.trim();
-		if (!candidate) {
-			continue;
-		}
-		if (candidate.toLowerCase() === legalName.trim().toLowerCase()) {
-			continue;
-		}
-		if (candidate.toLowerCase() === sheetPreferredName.trim().toLowerCase()) {
-			continue;
-		}
-		if (!isValidPlayerSceneName(candidate)) {
-			continue;
-		}
-		return candidate;
-	}
-
-	return null;
 }
 
 export function normalizePlayerCharacterAliases(value: unknown): string[] {
@@ -247,7 +189,7 @@ export function resolvePlayerCharacterPreferredSceneName(
 }
 
 export function resolvePlayerCharacterSceneName(
-	character: Pick<PlayerCharacter, "name" | "aliases">,
+	character: Pick<PlayerCharacter, "name" | "aliases"> & Partial<Pick<PlayerCharacter, "id">>,
 	opts?: {
 		storyState?: StoryStateData | StoryStateDataV2 | null;
 		recentMessages?: StoryMessage[];
@@ -256,38 +198,27 @@ export function resolvePlayerCharacterSceneName(
 	const legalName = character.name.trim();
 	const primaryAlias = resolvePrimaryPlayerAlias(character);
 
-	const storyEntry = findPlayerStoryStateEntry(opts?.storyState, legalName);
-	const storyDisplayName = storyEntry?.displayName?.trim();
-	if (
-		storyDisplayName &&
-		isStoryLocalDisplayNameOverride(storyDisplayName, legalName, primaryAlias)
-	) {
-		return storyDisplayName;
-	}
-
 	if (opts?.recentMessages?.length) {
-		const explicitRename = resolveExplicitPlayerSceneRenameFromMessages(
+		const authoredIdentity = detectEstablishedPlayerIdentityFromMessages(
 			opts.recentMessages,
 			legalName,
 			primaryAlias,
 		);
-		if (explicitRename) {
+		const explicitRename = authoredIdentity?.sceneName;
+		if (
+			explicitRename &&
+			isValidPlayerSceneName(explicitRename) &&
+			!(
+				isLegalNameOnlyFragment(explicitRename, legalName) &&
+				explicitRename.toLowerCase() !== primaryAlias.toLowerCase()
+			)
+		) {
 			return explicitRename;
 		}
 	}
-
-	const inferredFromMessages = opts?.recentMessages?.length
-		? inferPlayerSceneNameFromMessages(opts.recentMessages, legalName)
-		: null;
-	if (
-		inferredFromMessages &&
-		isValidPlayerSceneName(inferredFromMessages) &&
-		!(
-			isLegalNameOnlyFragment(inferredFromMessages, legalName) &&
-			inferredFromMessages.toLowerCase() !== primaryAlias.toLowerCase()
-		)
-	) {
-		return inferredFromMessages;
+	const trustedOverride = getTrustedPlayerIdentityOverride(character, opts?.storyState);
+	if (trustedOverride?.sceneName && isValidPlayerSceneName(trustedOverride.sceneName)) {
+		return trustedOverride.sceneName.trim();
 	}
 
 	return primaryAlias;
@@ -298,10 +229,71 @@ export interface EffectivePlayerIdentity {
 	pronouns: string;
 	legalName: string;
 	hasInStoryTransition: boolean;
+	sourceMessageId?: string;
+	source?: "player_turn" | "director_instruction" | "author_instruction";
+}
+
+function getTrustedPlayerIdentityOverride(
+	character: Pick<PlayerCharacter, "name" | "aliases"> & Partial<Pick<PlayerCharacter, "id">>,
+	storyState: StoryStateData | StoryStateDataV2 | null | undefined,
+) {
+	const override = storyState?.playerIdentityOverride;
+	if (
+		!character.id ||
+		!override ||
+		override.playerCharacterId !== character.id ||
+		!override.sourceMessageId?.trim() ||
+		!("player_turn" === override.source || "director_instruction" === override.source || "author_instruction" === override.source)
+	) {
+		return null;
+	}
+	return override;
+}
+
+/**
+ * Derived prose is displayable as current only when it was built for this exact
+ * story protagonist and identity. A conservative pronoun check hides summaries
+ * whose first-person subject context contradicts that identity.
+ */
+export function isDerivedPlayerSituationCurrent(
+	text: string | null | undefined,
+	basis: PlayerIdentityBasis | null | undefined,
+	character: Pick<PlayerCharacter, "id" | "name" | "aliases"> | null | undefined,
+	identity: Pick<EffectivePlayerIdentity, "sceneName" | "pronouns"> | null | undefined,
+): boolean {
+	if (!text?.trim() || !basis || !character || !identity) return false;
+	if (basis.playerCharacterId !== character.id) return false;
+	if (basis.sceneName.trim().toLowerCase() !== identity.sceneName.trim().toLowerCase()) return false;
+	if (basis.pronouns.trim().toLowerCase() !== identity.pronouns.trim().toLowerCase()) return false;
+	return isPlayerSituationPronounsCompatible(text, character, identity);
+}
+
+export function isPlayerSituationPronounsCompatible(
+	text: string | null | undefined,
+	character: Pick<PlayerCharacter, "name" | "aliases"> | null | undefined,
+	identity: Pick<EffectivePlayerIdentity, "sceneName" | "pronouns"> | null | undefined,
+): boolean {
+	if (!text?.trim() || !character || !identity) return false;
+	const pronouns = identity.pronouns.toLowerCase();
+	const expectsFeminine = pronouns.includes("she") && !pronouns.includes("they");
+	const expectsMasculine = pronouns.includes("he") && !pronouns.includes("they");
+	const aliases = [character.name, identity.sceneName, ...(character.aliases ?? [])]
+		.map((value) => value.trim())
+		.filter(Boolean);
+	const sentences = text.split(/[.!?\n]+/).filter((sentence) => sentence.trim());
+	const playerSentences = sentences.filter((sentence) =>
+		aliases.some((alias) => new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\b`, "i").test(sentence)) ||
+		/^(?:he|him|his|she|her|hers|they|them|their)\b/i.test(sentence.trim()),
+	);
+	const relevantText = playerSentences.length ? playerSentences.join(" ") : sentences[0] ?? text;
+	if (expectsMasculine && /\b(she|her|hers)\b/i.test(relevantText)) return false;
+	if (expectsFeminine && /\b(he|him|his)\b/i.test(relevantText)) return false;
+	if (pronouns.includes("they") && /\b(she|her|hers|he|him|his)\b/i.test(relevantText)) return false;
+	return true;
 }
 
 export function resolveEffectivePlayerPronouns(
-	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns">,
+	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns"> & Partial<Pick<PlayerCharacter, "id">>,
 	opts?: {
 		storyState?: StoryStateData | StoryStateDataV2 | null;
 		recentMessages?: StoryMessage[];
@@ -310,19 +302,6 @@ export function resolveEffectivePlayerPronouns(
 ): string {
 	const sheetPronouns = character.pronouns.trim();
 	const sheetPreferred = resolvePlayerCharacterPreferredSceneName(character);
-	const sceneName =
-		opts?.sceneName?.trim() ||
-		resolvePlayerCharacterSceneName(character, {
-			storyState: opts?.storyState,
-			recentMessages: opts?.recentMessages,
-		});
-
-	const storyEntry = findPlayerStoryStateEntry(opts?.storyState, character.name.trim());
-	const storyPronouns = storyEntry?.pronouns?.trim();
-	if (storyPronouns) {
-		return storyPronouns;
-	}
-
 	const establishedIdentity = opts?.recentMessages?.length
 		? detectEstablishedPlayerIdentityFromMessages(
 				opts.recentMessages,
@@ -333,26 +312,16 @@ export function resolveEffectivePlayerPronouns(
 	if (establishedIdentity?.pronouns?.trim()) {
 		return establishedIdentity.pronouns.trim();
 	}
-
-	const fromDirectorNotes = opts?.recentMessages?.length
-		? inferPlayerPronounsFromDirectorNotes(opts.recentMessages)
-		: null;
-	if (fromDirectorNotes) {
-		return fromDirectorNotes;
-	}
-
-	const fromMessages = opts?.recentMessages?.length
-		? inferPlayerPronounsFromMessages(opts.recentMessages, character.name.trim(), sceneName)
-		: null;
-	if (fromMessages) {
-		return fromMessages;
+	const trustedOverride = getTrustedPlayerIdentityOverride(character, opts?.storyState);
+	if (trustedOverride?.pronouns?.trim()) {
+		return trustedOverride.pronouns.trim();
 	}
 
 	return sheetPronouns;
 }
 
 export function resolveEffectivePlayerIdentity(
-	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns">,
+	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns"> & Partial<Pick<PlayerCharacter, "id">>,
 	opts?: {
 		storyState?: StoryStateData | StoryStateDataV2 | null;
 		recentMessages?: StoryMessage[];
@@ -360,8 +329,6 @@ export function resolveEffectivePlayerIdentity(
 ): EffectivePlayerIdentity {
 	const legalName = character.name.trim();
 	const sheetPreferred = resolvePlayerCharacterPreferredSceneName(character);
-	const storyEntry = findPlayerStoryStateEntry(opts?.storyState, legalName);
-
 	let sceneName = resolvePlayerCharacterSceneName(character, {
 		storyState: opts?.storyState,
 		recentMessages: opts?.recentMessages,
@@ -374,6 +341,7 @@ export function resolveEffectivePlayerIdentity(
 				sheetPreferred,
 			)
 		: null;
+	const trustedOverride = getTrustedPlayerIdentityOverride(character, opts?.storyState);
 	if (
 		establishedIdentity?.sceneName?.trim() &&
 		isValidPlayerSceneName(establishedIdentity.sceneName)
@@ -392,18 +360,17 @@ export function resolveEffectivePlayerIdentity(
 		!!character.pronouns.trim() &&
 		!!pronouns &&
 		pronouns.toLowerCase() !== character.pronouns.trim().toLowerCase();
-	const hasStoryStateIdentity =
-		isStoryLocalDisplayNameOverride(
-			storyEntry?.displayName ?? "",
-			legalName,
-			sheetPreferred,
-		) || !!storyEntry?.pronouns?.trim();
+	const hasAuthoredIdentity = Boolean(
+		establishedIdentity?.sceneName || establishedIdentity?.pronouns || trustedOverride?.sceneName || trustedOverride?.pronouns,
+	);
 
 	return {
 		sceneName,
 		pronouns,
 		legalName,
-		hasInStoryTransition: hasNameTransition || hasPronounTransition || hasStoryStateIdentity,
+		hasInStoryTransition: hasNameTransition || hasPronounTransition || hasAuthoredIdentity,
+		sourceMessageId: establishedIdentity?.sourceMessageId ?? trustedOverride?.sourceMessageId,
+		source: establishedIdentity?.source ?? trustedOverride?.source,
 	};
 }
 
@@ -529,6 +496,7 @@ export function formatPlayerCharacterPronounAndNamingRules(
 ): string {
 	const preferredName = sceneNameOverride?.trim() || resolvePrimaryPlayerAlias(character);
 	const pronouns = pronounOverride?.trim() || character.pronouns.trim();
+	const normalizedPronouns = pronouns.toLowerCase();
 	const usesDifferentPronouns =
 		!!pronounOverride?.trim() &&
 		!!character.pronouns.trim() &&
@@ -542,11 +510,11 @@ export function formatPlayerCharacterPronounAndNamingRules(
 		pronouns
 			? `- Player pronouns: ${pronouns}. These are authoritative. NEVER infer pronouns from name, gender field, or stereotypes. Use only these pronouns when referring to the player character in narration.`
 			: "- Player pronouns were not specified. Do not assume he/him or she/her from name or gender.",
-		pronouns.includes("they")
+		normalizedPronouns.includes("they")
 			? `- Use they/them/their forms in narration for ${preferredName}. Never write he/him/his or she/her/hers for this character.`
-			: pronouns.includes("she")
+			: normalizedPronouns.includes("she")
 				? `- Use she/her/hers forms in narration for ${preferredName}. Never write he/him/his for this character.`
-				: pronouns.includes("he")
+				: normalizedPronouns.includes("he")
 					? `- Use he/him/his forms in narration for ${preferredName}. Never write she/her/hers for this character.`
 					: "",
 	]

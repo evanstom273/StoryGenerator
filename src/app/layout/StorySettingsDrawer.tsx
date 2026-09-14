@@ -37,6 +37,8 @@ import {
 } from "../../lib/characterStatus";
 import { normalizeStoryStateToV2, safeParseStoryStateData } from "../../lib/storyStateV2";
 import { getArchiveIndexStatus } from "../../lib/archiveIndexing";
+import { useCanonicalTranscriptFingerprint } from "../../lib/useCanonicalTranscriptFingerprint";
+import { isDerivedPlayerSituationCurrent, resolveEffectivePlayerIdentity } from "../../lib/playerCharacterPrompt";
 import {
 	applyTranscriptPresenceGate,
 	listPresentIndexedCharacterNames,
@@ -262,6 +264,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const storyMessages = useMemo(
     () => (story ? getMessagesForStory(story.id) : []),
     [getMessagesForStory, story],
+  );
+  const transcriptFingerprint = useCanonicalTranscriptFingerprint(storyMessages);
+  const playerIdentity = useMemo(
+    () => playerCharacter
+      ? resolveEffectivePlayerIdentity(playerCharacter, { recentMessages: storyMessages })
+      : null,
+    [playerCharacter, storyMessages],
   );
 
   const gatedStoryStateData = useMemo(() => {
@@ -1614,6 +1623,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     const archiveStoryState = gatedStoryStateData ?? storyStateData;
                     const indexStatus = getArchiveIndexStatus(storyStateRecord, {
                       currentMessageCount: totalMessages,
+                      currentMessageFingerprint: transcriptFingerprint,
                     });
                     const indexedMessageCount = indexStatus.indexedMessageCount;
                     const staleBy = Math.max(0, totalMessages - indexedMessageCount);
@@ -1626,9 +1636,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                           ? "Not indexed"
                           : indexStatus.reason === "message_count_mismatch"
                             ? "Out of sync"
-                            : indexStatus.reason === "new_messages"
-                              ? `Stale (+${staleBy})`
-                              : "Up to date";
+                        : indexStatus.reason === "new_messages"
+                          ? `Stale (+${staleBy})`
+                          : indexStatus.reason === "content_mismatch" || indexStatus.reason === "fingerprint_missing"
+                            ? "Transcript changed"
+                            : indexStatus.reason === "fingerprint_pending"
+                              ? "Checking transcript…"
+                          : "Up to date";
                     const statusTone = failedIndexing
                       ? "text-rose-300"
                       : indexStatus.needsRefresh
@@ -1660,7 +1674,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
                     const significantMemories = (archiveStoryState.indexes as any)?.significantMemories ?? [];
                     const premise = archiveStoryState.summaries?.premise?.trim() ?? "";
                     const protagonistSummary = archiveStoryState.summaries?.protagonistSummary?.trim() ?? "";
-                    const currentSituation = archiveStoryState.summaries?.currentSituation?.trim() ?? "";
+                    const currentSituation = isDerivedPlayerSituationCurrent(
+                      archiveStoryState.summaries?.currentSituation,
+                      archiveStoryState.currentSituationIdentityBasis,
+                      playerCharacter,
+                      playerIdentity,
+                    )
+                      ? archiveStoryState.summaries?.currentSituation?.trim() ?? ""
+                      : "";
                     const recentDevelopments = trimStringList(archiveStoryState.summaries?.recentDevelopments, 6);
                     const autoIndexMode = (story.autoIndexMode ??
                       (story.autoIndexInterval === "disabled" ? "disabled" : "messages")) as AutoIndexMode;

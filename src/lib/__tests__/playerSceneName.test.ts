@@ -25,7 +25,7 @@ describe("resolvePlayerCharacterSceneName", () => {
 		).toBe("Jamie");
 	});
 
-	it("prefers in-story displayName over the legal character sheet name", () => {
+	it("ignores an unverified displayName stored in AI-derived story state", () => {
 		expect(
 			resolvePlayerCharacterSceneName(
 				{ name: "Silas Thorne", aliases: [] },
@@ -42,7 +42,7 @@ describe("resolvePlayerCharacterSceneName", () => {
 					},
 				},
 			),
-		).toBe("Mark Owen");
+		).toBe("Silas");
 	});
 
 	it("ignores corrupted displayName tokens persisted from prose inference", () => {
@@ -110,24 +110,22 @@ describe("resolveEffectivePlayerIdentity with director notes", () => {
 });
 
 describe("detectEstablishedPlayerIdentityFromMessages", () => {
-	it("locks Lyra and she/her after a coming-out scene", () => {
+	it("accepts explicit first-person player name and pronoun changes without a name prefix", () => {
 		const messages: StoryMessage[] = [
 			{
 				id: "23",
 				storyId: "story-1",
-				role: "assistant",
-				content:
-					'Jamie: "I know. I\'m trans. I\'m your daughter... and I\'m really sorry."\nAmy: "Oh, sweetie... you have nothing to be sorry for."',
-				speakerType: "assistant",
+				role: "user",
+				content: "I want to use she/her now.",
+				speakerType: "player",
 				timestamp: "2026-08-21T00:06:00.000Z",
 			},
 			{
 				id: "27",
 				storyId: "story-1",
-				role: "assistant",
-				content:
-					'Jamie: "Lyra... that\'s my... name."\nAmy: *She eases back to look at her daughter\'s face.* "Lyra... like the heroine from His Dark Materials?"',
-				speakerType: "assistant",
+				role: "user",
+				content: '*I look at Rosa.* "Call me Lyra from now on."',
+				speakerType: "player",
 				timestamp: "2026-08-21T00:07:00.000Z",
 			},
 		];
@@ -137,7 +135,24 @@ describe("detectEstablishedPlayerIdentityFromMessages", () => {
 		).toEqual({
 			sceneName: "Lyra",
 			pronouns: "she/her",
+		sourceMessageId: "27",
+		source: "player_turn",
 		});
+	});
+
+	it("never learns protagonist identity from assistant dialogue or narration", () => {
+		const messages: StoryMessage[] = [
+			{
+				id: "28",
+				storyId: "story-1",
+				role: "assistant",
+				content: 'Jamie: She turns toward Rosa. Rosa: "I love my daughter." Call me Lyra.',
+				speakerType: "assistant",
+				timestamp: "2026-08-21T00:08:00.000Z",
+			},
+		];
+
+		expect(detectEstablishedPlayerIdentityFromMessages(messages, "Jamie Diaz", "Jamie")).toBeNull();
 	});
 });
 
@@ -222,7 +237,7 @@ describe("inferPlayerSceneNameFromDirectorNotes", () => {
 });
 
 describe("inferPlayerPronounsFromDirectorNotes", () => {
-	it("reads feminine pronouns from a director note", () => {
+	it("does not infer player pronouns from ordinary third-person Director prose", () => {
 		const messages: StoryMessage[] = [
 			{
 				id: "30",
@@ -234,7 +249,7 @@ describe("inferPlayerPronounsFromDirectorNotes", () => {
 			},
 		];
 
-		expect(inferPlayerPronounsFromDirectorNotes(messages)).toBe("she/her");
+		expect(inferPlayerPronounsFromDirectorNotes(messages)).toBeNull();
 	});
 
 	it("does not treat collective possessive their as a they/them player pronoun signal", () => {
@@ -255,7 +270,7 @@ describe("inferPlayerPronounsFromDirectorNotes", () => {
 });
 
 describe("inferPlayerPronounsFromMessages", () => {
-	it("infers she/her from recent assistant scenes about the player", () => {
+	it("does not infer she/her from recent assistant scenes about the player", () => {
 		const messages: StoryMessage[] = [
 			{
 				id: "27",
@@ -268,7 +283,7 @@ describe("inferPlayerPronounsFromMessages", () => {
 			},
 		];
 
-		expect(inferPlayerPronounsFromMessages(messages, "James Peralta", "Lyra")).toBe("she/her");
+		expect(inferPlayerPronounsFromMessages(messages, "James Peralta", "Lyra")).toBeNull();
 	});
 });
 

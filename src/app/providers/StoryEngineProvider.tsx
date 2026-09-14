@@ -105,7 +105,7 @@ import type {
   AIProvider,
   GenerateResponseResult,
 } from "../../lib/ai/types";
-import { getArchiveIndexStatus } from "../../lib/archiveIndexing";
+import { buildCanonicalTranscriptFingerprint, getArchiveIndexStatus } from "../../lib/archiveIndexing";
 import {
   createSequelStoryStateData,
   normalizeStoryStateToV2,
@@ -114,7 +114,6 @@ import {
   reconcileStoryIndexes,
   safeParseStoryStateData,
   mergeStoryLocalPlayerIdentityIntoState,
-  repairCorruptedPlayerIdentityInStoryState,
   withIndexedMetadata,
 } from "../../lib/storyStateV2";
 import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
@@ -176,7 +175,6 @@ import {
 	type SemanticSpeakerResolutionChange,
 } from "../../lib/storyText/semanticSpeakerResolver";
 import { resolveStreamTranscript } from "../../lib/ai/streamTranscriptResolution";
-import { repairClockTimeColonCorruption } from "../../lib/storyText/clockTimeInProse";
 import {
 	getStreamValidationAttemptLimit,
 } from "../../lib/storyText/streamValidationPolicy";
@@ -261,6 +259,7 @@ import {
   resolvePlayerCharacterSceneName,
   resolvePlayerCharacterPreferredSceneName,
   formatPlayerCharacterIdentityForPrompt,
+  isPlayerSituationPronounsCompatible,
 } from "../../lib/playerCharacterPrompt";
 import {
   buildPlayerIdentityAuditSnapshot,
@@ -483,7 +482,6 @@ interface StoryEngineContextValue {
     draft: Omit<StoryMessageDraft, "storyId">,
   ) => Promise<StoryMessage | null>;
   deleteMessage: (id: string) => Promise<void>;
-  repairStoryTranscriptClockTimes: (storyId: string) => Promise<number>;
   setMessageDirectorIntent: (
     messageId: string,
     intent: StoryMessage["directorIntent"] | null,
@@ -1581,6 +1579,7 @@ function applyStoryLocalIdentityToSavedAssistantText(args: {
 }): string {
 	const characterGenders = buildCharacterGenderHintsFromStoryState(args.storyStateData, {
 		playerName: args.playerCharacter.name,
+		playerAliases: args.playerCharacter.aliases,
 		playerGender: args.playerCharacter.gender,
 		playerPronouns: args.playerIdentity.pronouns,
 	});
@@ -1612,23 +1611,10 @@ function resolveStoryPlayerIdentityForGeneration(args: {
 	parsedStoryState: StoryStateData | StoryStateDataV2 | null;
 	playerIdentity: EffectivePlayerIdentity;
 	establishedFromTranscript: ReturnType<typeof detectEstablishedPlayerIdentityFromMessages>;
-	repairedStoryState: StoryStateData | StoryStateDataV2 | null;
 } {
-	let parsedStoryState: StoryStateData | StoryStateDataV2 | null = args.storyState?.stateJson?.trim()
+	const parsedStoryState: StoryStateData | StoryStateDataV2 | null = args.storyState?.stateJson?.trim()
 		? safeParseStoryStateData(args.storyState.stateJson)
 		: null;
-	let repairedStoryState: StoryStateData | StoryStateDataV2 | null = null;
-
-	if (parsedStoryState) {
-		const repaired = repairCorruptedPlayerIdentityInStoryState(
-			parsedStoryState,
-			args.playerCharacter,
-		);
-		if (repaired.changed && repaired.state) {
-			parsedStoryState = repaired.state;
-			repairedStoryState = repaired.state;
-		}
-	}
 
 	const sheetPreferred = resolvePlayerCharacterPreferredSceneName(args.playerCharacter);
 	const establishedFromTranscript = detectEstablishedPlayerIdentityFromMessages(
@@ -1645,7 +1631,6 @@ function resolveStoryPlayerIdentityForGeneration(args: {
 		parsedStoryState,
 		playerIdentity,
 		establishedFromTranscript,
-		repairedStoryState,
 	};
 }
 
@@ -1683,23 +1668,6 @@ function reportPlayerIdentityBeforeGeneration(args: {
 	// #endregion
 }
 
-async function persistRepairedStoryStateIfNeeded(args: {
-	storyId: string;
-	storyState: StoryState | null | undefined;
-	repairedStoryState: StoryStateData | StoryStateDataV2 | null;
-	repository: StoryEngineRepository;
-}): Promise<void> {
-	if (!args.repairedStoryState || !args.storyState?.stateJson?.trim()) {
-		return;
-	}
-
-	await args.repository.saveStoryState({
-		...args.storyState,
-		stateJson: JSON.stringify(args.repairedStoryState),
-		updatedAt: new Date().toISOString(),
-	});
-}
-
 async function persistDirectorParticipationIfNeeded(args: {
 	storyId: string;
 	storyState: StoryState | null | undefined;
@@ -1717,15 +1685,29 @@ async function persistDirectorParticipationIfNeeded(args: {
 async function persistStoryLocalPlayerIdentity(args: {
 	storyId: string;
 	storyState: StoryState | null | undefined;
+	storyStateData?: StoryStateData | StoryStateDataV2 | null;
 	playerCharacter: PlayerCharacter;
 	playerIdentity: EffectivePlayerIdentity;
 	repository: StoryEngineRepository;
 }): Promise<void> {
-	if (!args.playerIdentity.hasInStoryTransition || !args.storyState?.stateJson?.trim()) {
+	if (
+		!args.playerIdentity.hasInStoryTransition ||
+		!args.playerIdentity.sourceMessageId ||
+		!args.playerIdentity.source ||
+		!args.playerCharacter.id
+	) {
 		return;
 	}
 
-	const parsed = safeParseStoryStateData(args.storyState.stateJson);
+	const parsed = args.storyStateData ?? (args.storyState?.stateJson?.trim()
+		? safeParseStoryStateData(args.storyState.stateJson)
+		: {
+			updatedAt: new Date().toISOString(),
+			characters: {},
+			worldFacts: [],
+			unresolvedThreads: [],
+		});
+	if (!parsed) return;
 	const merged = mergeStoryLocalPlayerIdentityIntoState(
 		parsed,
 		args.playerCharacter,
@@ -1736,7 +1718,9 @@ async function persistStoryLocalPlayerIdentity(args: {
 	}
 
 	await args.repository.saveStoryState({
-		...args.storyState,
+		...(args.storyState ?? {}),
+		id: args.storyState?.id ?? `story-state:${args.storyId}`,
+		storyId: args.storyId,
 		stateJson: JSON.stringify(merged),
 		updatedAt: new Date().toISOString(),
 	});
@@ -4403,6 +4387,7 @@ export function StoryEngineProvider({
         : undefined;
       const characterGenders = buildCharacterGenderHintsFromStoryState(storyStateData, {
         playerName: playerCharacter.name,
+        playerAliases: playerCharacter.aliases,
         playerGender: playerCharacter.gender,
         playerPronouns: playerCharacter.pronouns,
       });
@@ -6989,16 +6974,7 @@ export function StoryEngineProvider({
         const recentMessages = sortByTimestampAsc(existingMessages.slice(0, -1)).slice(-31);
         const historyMessages = recentMessages.slice(0, -1);
 
-        const sanitizedHistoryMessages = historyMessages.map((message) => {
-          if (message.role !== "assistant") {
-            return message;
-          }
-
-          return {
-            ...message,
-            content: normalizeTranscriptForDisplay(message.content),
-          };
-        });
+        const sanitizedHistoryMessages = historyMessages;
 
         const latestPriorUserMessage = getLatestPriorUserMessage(sanitizedHistoryMessages);
         const allowDirectedPlayerControl = shouldAllowDirectedPlayerControlForUserTurn(
@@ -7009,19 +6985,11 @@ export function StoryEngineProvider({
         const {
           parsedStoryState: parsedStoryStateForIdentity,
           playerIdentity,
-          repairedStoryState,
         } = resolveStoryPlayerIdentityForGeneration({
           playerCharacter,
           storyState,
           recentMessages: [...sanitizedHistoryMessages, previousMessage],
         });
-        await persistRepairedStoryStateIfNeeded({
-          storyId,
-          storyState,
-          repairedStoryState,
-          repository,
-        });
-
         const { participants: resolvedParticipants, speakerRegistry } =
           resolveStoryGenerationParticipants({
             playerCharacter,
@@ -7275,6 +7243,7 @@ export function StoryEngineProvider({
 
         const streamCharacterGenders = buildCharacterGenderHintsFromStoryState(parsedStoryStateForIdentity, {
           playerName: playerCharacter.name,
+          playerAliases: playerCharacter.aliases,
           playerGender: playerCharacter.gender,
           playerPronouns: playerIdentity.pronouns,
         });
@@ -7430,34 +7399,6 @@ export function StoryEngineProvider({
         await repository.deleteStoryMessage(id);
         await touchStory(currentMessage.storyId);
         await hydrate(false);
-      },
-      async repairStoryTranscriptClockTimes(storyId) {
-        const storyMessages = await repository.listStoryMessages(storyId);
-        let repairedCount = 0;
-
-        for (const message of storyMessages) {
-          if (message.role !== "assistant") {
-            continue;
-          }
-
-          const repaired = repairClockTimeColonCorruption(message.content);
-          if (repaired === message.content) {
-            continue;
-          }
-
-          await repository.saveStoryMessage({
-            ...message,
-            content: repaired,
-          });
-          repairedCount += 1;
-        }
-
-        if (repairedCount > 0) {
-          await touchStory(storyId);
-          await hydrate(false);
-        }
-
-        return repairedCount;
       },
       async setMessageDirectorIntent(messageId, intent) {
         const currentMessage = await repository.getStoryMessage(messageId);
@@ -7729,6 +7670,7 @@ export function StoryEngineProvider({
           ]);
           const indexStatus = getArchiveIndexStatus(storyState, {
             currentMessageCount: messages.length,
+            currentMessageFingerprint: await buildCanonicalTranscriptFingerprint(messages),
           });
 
           if (indexStatus.needsRefresh) {
@@ -8609,16 +8551,7 @@ export function StoryEngineProvider({
             ? recentMessages.slice(0, -1)
             : recentMessages;
 
-        const sanitizedHistoryMessages = historyMessages.map((message) => {
-          if (message.role !== "assistant") {
-            return message;
-          }
-
-          return {
-            ...message,
-            content: normalizeTranscriptForDisplay(message.content),
-          };
-        });
+        const sanitizedHistoryMessages = historyMessages;
         const inputSafetyAnalysis = analyzeStoryInputSafety({
           playerCharacterName: playerCharacter.name,
           latestUserMessage: trimmed,
@@ -8666,6 +8599,48 @@ export function StoryEngineProvider({
         let rpEventSummary: string | null = null;
         let updatedMessages: StoryMessage[] = [];
 
+        const {
+          parsedStoryState: parsedStoryStateForIdentityInitial,
+          playerIdentity,
+          establishedFromTranscript,
+        } = resolveStoryPlayerIdentityForGeneration({
+          playerCharacter,
+          storyState,
+          recentMessages: [...sanitizedHistoryMessages, userMessage],
+        });
+        let parsedStoryStateForIdentity = parsedStoryStateForIdentityInitial;
+        if (userMessage.directorIntent) {
+          const baseState = parsedStoryStateForIdentity ?? {
+            updatedAt: new Date().toISOString(),
+            characters: {},
+            worldFacts: [],
+            unresolvedThreads: [],
+          };
+          const withParticipation = applyDirectorIntentToStoryState(
+            baseState,
+            userMessage.directorIntent,
+          );
+          if (withParticipation !== baseState) {
+            await persistDirectorParticipationIfNeeded({
+              storyId,
+              storyState,
+              nextState: withParticipation,
+              repository,
+            });
+            parsedStoryStateForIdentity = withParticipation;
+          }
+        }
+        // Persist explicit player-authored identity changes immediately after
+        // the user turn is saved, even if response generation later fails.
+        await persistStoryLocalPlayerIdentity({
+          storyId,
+          storyState,
+          storyStateData: parsedStoryStateForIdentity,
+          playerCharacter,
+          playerIdentity,
+          repository,
+        });
+
         if (!shouldSkipAssistantReply) {
           if (adultContentProviderCapability === "unsupported") {
             throw new Error(formatUnsupportedExplicitProviderMessage(providerType));
@@ -8683,45 +8658,6 @@ export function StoryEngineProvider({
             return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
           })();
           const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
-          const {
-            parsedStoryState: parsedStoryStateForIdentityInitial,
-            playerIdentity,
-            establishedFromTranscript,
-            repairedStoryState,
-          } = resolveStoryPlayerIdentityForGeneration({
-            playerCharacter,
-            storyState,
-            recentMessages: [...sanitizedHistoryMessages, userMessage],
-          });
-          let parsedStoryStateForIdentity = parsedStoryStateForIdentityInitial;
-          await persistRepairedStoryStateIfNeeded({
-            storyId,
-            storyState,
-            repairedStoryState,
-            repository,
-          });
-
-          if (userMessage.directorIntent) {
-            const baseState = parsedStoryStateForIdentity ?? {
-              updatedAt: new Date().toISOString(),
-              characters: {},
-              worldFacts: [],
-              unresolvedThreads: [],
-            };
-            const withParticipation = applyDirectorIntentToStoryState(
-              baseState,
-              userMessage.directorIntent,
-            );
-            if (withParticipation !== baseState) {
-              await persistDirectorParticipationIfNeeded({
-                storyId,
-                storyState,
-                nextState: withParticipation,
-                repository,
-              });
-              parsedStoryStateForIdentity = withParticipation;
-            }
-          }
 
           const { participants: resolvedParticipants, speakerRegistry } =
             resolveStoryGenerationParticipants({
@@ -9154,6 +9090,7 @@ export function StoryEngineProvider({
 
           const streamCharacterGenders = buildCharacterGenderHintsFromStoryState(parsedStoryStateForIdentity, {
             playerName: playerCharacter.name,
+            playerAliases: playerCharacter.aliases,
             playerGender: playerCharacter.gender,
             playerPronouns: playerIdentity.pronouns,
           });
@@ -9306,13 +9243,6 @@ export function StoryEngineProvider({
           };
 
           await repository.saveStoryMessage(assistantMessage);
-          await persistStoryLocalPlayerIdentity({
-            storyId,
-            storyState,
-            playerCharacter,
-            playerIdentity,
-            repository,
-          });
           // #region debug-point C:story-save
           reportGenerationAudit({
             hypothesisId: "C",
@@ -9345,6 +9275,9 @@ export function StoryEngineProvider({
                   universeLore: effectiveUniverse.description ?? undefined,
                   playerMessage: trimmed,
                   pendingTransaction: currentRpStats.pendingTransaction,
+                  playerName: playerCharacter.name,
+                  playerSceneName: playerIdentity.sceneName,
+                  playerPronouns: playerIdentity.pronouns,
                 },
               );
               if (extracted) {
@@ -9457,8 +9390,26 @@ export function StoryEngineProvider({
                 }
 
                 // Apply character state summary
-                if (characterStateSummary) {
-                  nextStats = { ...nextStats, characterState: characterStateSummary };
+                if (characterStateSummary && isPlayerSituationPronounsCompatible(
+                  characterStateSummary,
+                  playerCharacter,
+                  playerIdentity,
+                )) {
+                  nextStats = {
+                    ...nextStats,
+                    characterState: characterStateSummary,
+                    characterStateIdentityBasis: {
+                      playerCharacterId: playerCharacter.id,
+                      sceneName: playerIdentity.sceneName,
+                      pronouns: playerIdentity.pronouns,
+                    },
+                  };
+                } else {
+                  nextStats = {
+                    ...nextStats,
+                    characterState: undefined,
+                    characterStateIdentityBasis: undefined,
+                  };
                 }
 
                 // Apply condition suggestion

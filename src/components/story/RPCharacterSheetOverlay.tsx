@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/Button";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import {
@@ -19,7 +19,8 @@ import {
 import { downloadFile } from "../../lib/download";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { getProviderDefaultModel } from "../../lib/ai/models";
-import { formatPlayerCharacterAliasesForPrompt, normalizePlayerCharacterAliases } from "../../lib/playerCharacterPrompt";
+import { formatPlayerCharacterAliasesForPrompt, isDerivedPlayerSituationCurrent, normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity } from "../../lib/playerCharacterPrompt";
+import { sortByTimestampAsc } from "../../lib/dates";
 import type { RpCalendarConfig, RpCondition, RpConfig, RpDiceModifiers, RpRecurringEvent, RpRecurringFrequency, RpStats, RpTimeState, Story } from "../../types/models";
 import { computeInitialNextDue, formatTime, formatTimeShort, minutesBetween } from "../../lib/rpTime";
 import { cn } from "../../utils/cn";
@@ -125,6 +126,16 @@ export function RPCharacterSheetOverlay(props: {
 }) {
   const { fetchStoryState, updateRpStats, updateStory, messages: allMessages, getPlayerCharacterById, aiSettings } = useStoryEngine();
   const playerCharacter = getPlayerCharacterById(props.story.playerCharacterId);
+  const storyMessages = useMemo(
+    () => sortByTimestampAsc(allMessages.filter((message) => message.storyId === props.story.id)),
+    [allMessages, props.story.id],
+  );
+  const playerIdentity = useMemo(
+    () => playerCharacter
+      ? resolveEffectivePlayerIdentity(playerCharacter, { recentMessages: storyMessages })
+      : null,
+    [playerCharacter, storyMessages],
+  );
   const [rpStats, setRpStats] = useState<RpStats | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("profile");
   const [saving, setSaving] = useState(false);
@@ -522,8 +533,13 @@ ${profileText}`;
                     {/* Current Situation — AI managed */}
                     <div className="space-y-1">
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Current Situation</p>
-                      {rpStats?.characterState ? (
-                        <p className="whitespace-pre-wrap text-sm text-ink">{rpStats.characterState}</p>
+                      {isDerivedPlayerSituationCurrent(
+                        rpStats?.characterState,
+                        rpStats?.characterStateIdentityBasis,
+                        playerCharacter,
+                        playerIdentity,
+                      ) ? (
+                        <p className="whitespace-pre-wrap text-sm text-ink">{rpStats?.characterState}</p>
                       ) : (
                         <p className="text-sm text-ink-muted/60 italic">Updates automatically as the story progresses.</p>
                       )}

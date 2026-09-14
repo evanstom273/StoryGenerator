@@ -66,7 +66,7 @@ describe("clock time transcript rendering", () => {
 		expect(formatted).not.toContain("They 30 AM");
 	});
 
-	it("sanitizes stored assistant messages for display without pronoun corruption", () => {
+	it("preserves canonical saved assistant text exactly in the display sanitizer", () => {
 		const sanitized = sanitizeMessageForDisplay({
 			message: {
 				id: "msg-1",
@@ -76,7 +76,6 @@ describe("clock time transcript rendering", () => {
 				timestamp: "2026-01-01T00:00:00.000Z",
 			},
 		});
-		expect(sanitized).toContain("11:30 AM");
-		expect(sanitized).not.toContain("They 30 AM");
+		expect(sanitized).toBe("Narrator: By 11: They 30 AM, the room quiets.");
 	});
 });

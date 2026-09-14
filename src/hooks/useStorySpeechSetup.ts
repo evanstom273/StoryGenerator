@@ -89,6 +89,7 @@ export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterNam
 			setCharacterGenders(
 				buildCharacterGenderHintsFromStoryState(parsed, {
 					playerName: playerCharacterName,
+					playerAliases: playerCharacter?.aliases,
 					playerGender: playerCharacter?.gender,
 					playerPronouns: playerCharacter?.pronouns,
 				}),
@@ -101,6 +102,7 @@ export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterNam
 	}, [
 		fetchStoryState,
 		playerCharacter?.gender,
+		playerCharacter?.aliases,
 		playerCharacter?.pronouns,
 		playerCharacterName,
 		storyId,

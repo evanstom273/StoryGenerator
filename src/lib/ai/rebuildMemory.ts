@@ -12,17 +12,16 @@ import {
 	estimateTokensFromText,
 	logIndexingCallDiagnostics,
 } from "./indexingDiagnostics";
-import { repairMalformedTranscriptFormat } from "../storyText/transcriptFormatRepair";
-import { normalizeSpeakerNamesInTranscript } from "../storyText/speakerLabels";
 import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing, applyOpenThreadReconciliation } from "../storyStateV2";
 import { applyTranscriptPresenceGate } from "../transcriptPresence";
-import { normalizePlayerCharacterAliases } from "../playerCharacterPrompt";
+import { normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity, isPlayerSituationPronounsCompatible } from "../playerCharacterPrompt";
 import { loadStoryImportedCharacters, mergeImportedCharacterAllowlist } from "../storyImportedCharacters";
 import { ensureIndexedCharacterStatus } from "../characterStatus";
 import { AIError, formatProviderRefusalDiagnostic } from "./errors";
 import { extractFirstJsonObject, safeParseJsonObject } from "./json";
 import { getIndexingRequestConfig } from "./models";
 import { isDeterministicIndexingNoop } from "./indexingMessageClassification";
+import { buildCanonicalTranscriptFingerprint } from "../archiveIndexing";
 
 const INDEXING_CHUNK_SIZE = 1;
 
@@ -79,12 +78,6 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     const id = setTimeout(resolve, ms);
     signal?.addEventListener("abort", () => { clearTimeout(id); reject(new Error("Rebuild aborted.")); }, { once: true });
   });
-}
-
-function sanitizeIndexingMessageContent(content: string, playerName: string) {
-	return repairMalformedTranscriptFormat(normalizeSpeakerNamesInTranscript(content), {
-		playerName,
-	});
 }
 
 function resolveRefusalStage(error: AIError): IndexingGap["stage"] {
@@ -153,8 +146,16 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     throw new Error("Story not found.");
   }
 
-  const messages = sortByTimestampAsc(rawMessages);
+  const messages = sortByTimestampAsc(rawMessages).sort((left, right) => {
+    const timeDifference = new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime();
+    return timeDifference || left.id.localeCompare(right.id);
+  });
   const total = messages.length;
+  const transcriptFingerprint = await buildCanonicalTranscriptFingerprint(messages);
+  const playerIdentity = resolveEffectivePlayerIdentity(playerCharacter, {
+    storyState: storyState?.stateJson ? safeParseStoryStateData(storyState.stateJson) : null,
+    recentMessages: messages,
+  });
   const storyImportedCharacters = await loadStoryImportedCharacters(story, (id) =>
     repository.getPlayerCharacter(id),
   );
@@ -164,6 +165,28 @@ export async function rebuildStoryMemoryAndIndexes(params: {
   );
 
   const baseParsed = storyState?.stateJson ? safeParseStoryStateData(storyState.stateJson) : null;
+  const priorAttemptedCount = Math.max(
+    0,
+    Math.trunc(
+      baseParsed?.lastDeepIndexAttemptedMessageCount ??
+      baseParsed?.lastDeepIndexedMessageCount ??
+      baseParsed?.lastIndexedMessageCount ??
+      0,
+    ),
+  );
+  const priorFingerprint = baseParsed?.lastDeepIndexedTranscriptFingerprint;
+  const canResumeIncrementally = Boolean(
+    incremental && priorFingerprint && priorAttemptedCount <= total &&
+    (await buildCanonicalTranscriptFingerprint(messages.slice(0, priorAttemptedCount))) === priorFingerprint,
+  );
+  const useIncremental = incremental && canResumeIncrementally;
+  if (incremental && !useIncremental) {
+    onProgress?.({
+      processed: 0,
+      total,
+      message: "The canonical transcript changed since its last index; rebuilding the full index.",
+    });
+  }
   let currentState: StoryStateDataV2 = normalizeStoryStateToV2(baseParsed);
   currentState = {
     ...currentState,
@@ -172,10 +195,20 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     worldFacts: currentState.worldFacts ?? [],
     unresolvedThreads: currentState.unresolvedThreads ?? [],
     memoryArchitectureVersion: "2.0",
-    ...(!incremental
+    currentSituationIdentityBasis: undefined,
+    ...(currentState.rpStats
+      ? {
+          rpStats: {
+            ...currentState.rpStats,
+            characterStateIdentityBasis: undefined,
+          },
+        }
+      : {}),
+    ...(!useIncremental
       ? {
           lastDeepIndexedMessageCount: 0,
           lastDeepIndexAttemptedMessageCount: 0,
+          lastDeepIndexedTranscriptFingerprint: undefined,
           indexingGaps: [],
         }
       : {}),
@@ -183,12 +216,22 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
   const persistCheckpoint = async () => {
     const now = new Date().toISOString();
+    const attemptedCount = Math.max(0, Math.min(
+      total,
+      Math.trunc(currentState.lastDeepIndexAttemptedMessageCount ?? 0),
+    ));
     currentState = {
       ...currentState,
       updatedAt: now,
       characters: currentState.characters ?? {},
       worldFacts: currentState.worldFacts ?? [],
       unresolvedThreads: currentState.unresolvedThreads ?? [],
+      // A checkpoint fingerprint describes exactly the canonical prefix whose
+      // messages have been attempted. This permits safe refusal recovery while
+      // detecting edits to any earlier message before resuming incrementally.
+      lastDeepIndexedTranscriptFingerprint: await buildCanonicalTranscriptFingerprint(
+        messages.slice(0, attemptedCount),
+      ),
     };
     await repository.saveStoryState({
       id: storyState?.id ?? `story-state:${storyId}`,
@@ -203,12 +246,12 @@ export async function rebuildStoryMemoryAndIndexes(params: {
   // and must NOT be used here — it would make every incremental run see 0 new messages.
   // The attempted cursor is the resume point even when a provider refusal left a typed gap.
   // The contiguous deep-index cursor remains behind the first gap for freshness reporting.
-  const lastIndexedCount = incremental
+  const lastIndexedCount = useIncremental
     ? (baseParsed?.lastDeepIndexAttemptedMessageCount ??
       baseParsed?.lastDeepIndexedMessageCount ??
       baseParsed?.lastIndexedMessageCount ??
       0)
-    : 0;
+      : 0;
   const newMessages = messages.slice(lastIndexedCount);
 
   if (incremental && newMessages.length === 0) {
@@ -218,7 +261,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       total,
       message: gapCount
         ? `All messages have been attempted; ${gapCount} indexing gap${gapCount === 1 ? " remains" : "s remain"}.`
-        : "Index is already up to date.",
+      : "Index is already up to date.",
       warning: gapCount
         ? `${gapCount} message${gapCount === 1 ? " was" : "s were"} declined by provider safeguards. Run a Full reindex to retry.`
         : undefined,
@@ -240,7 +283,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     total,
     message: newMessages.length === 0
       ? "No messages to index."
-      : incremental
+      : useIncremental
       ? `Indexing ${newMessages.length} new message${newMessages.length === 1 ? "" : "s"}…`
       : `Loading ${total} message${total === 1 ? "" : "s"}…`,
   });
@@ -261,14 +304,9 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     };
 
     const chunkEnd = processed + chunk.length;
-    const sanitizedChunk = chunk.map((message) =>
-      message.role === "assistant"
-        ? {
-            ...message,
-            content: sanitizeIndexingMessageContent(message.content, playerCharacter.name),
-          }
-        : message,
-    );
+    // Index the canonical persisted transcript. Any semantic repair belongs to
+    // the generation validation path before a new assistant message is saved.
+    const sanitizedChunk = chunk;
 
     // Classify persisted structural messages before assistant transcript repair can
     // add formatting that makes a pure chapter marker look like story prose.
@@ -323,6 +361,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       messageNumberStart: processed + 1,
       messageNumberTotal: total,
       perMessageIndexing: chunk.length === 1,
+      playerIdentity,
     });
 
     const generateParams = {
@@ -368,6 +407,7 @@ export async function rebuildStoryMemoryAndIndexes(params: {
         messageNumberStart: processed + 1,
         messageNumberTotal: total,
         perMessageIndexing: chunk.length === 1,
+        playerIdentity,
       });
       const minimizedGenerateParams = {
         ...generateParams,
@@ -493,6 +533,47 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       reconciledIndexes ?? combinedIndexes,
     );
 
+    const extractedCurrentSituation = normalized.summaries?.currentSituation?.trim();
+    if (extractedCurrentSituation) {
+      if (isPlayerSituationPronounsCompatible(extractedCurrentSituation, playerCharacter, playerIdentity)) {
+        const identityBasis = {
+          playerCharacterId: playerCharacter.id,
+          sceneName: playerIdentity.sceneName,
+          pronouns: playerIdentity.pronouns,
+        };
+        currentState = {
+          ...currentState,
+          currentSituationIdentityBasis: identityBasis,
+          ...(currentState.rpStats
+            ? {
+                rpStats: {
+                  ...currentState.rpStats,
+                  characterState: extractedCurrentSituation,
+                  characterStateIdentityBasis: identityBasis,
+                },
+              }
+            : {}),
+        };
+      } else {
+        const summaries = { ...(currentState.summaries ?? {}) };
+        delete summaries.currentSituation;
+        currentState = {
+          ...currentState,
+          summaries,
+          currentSituationIdentityBasis: undefined,
+          ...(currentState.rpStats
+            ? {
+                rpStats: {
+                  ...currentState.rpStats,
+                  characterState: undefined,
+                  characterStateIdentityBasis: undefined,
+                },
+              }
+            : {}),
+        };
+      }
+    }
+
     processed += chunk.length;
     const indexedAt = new Date().toISOString();
     const nextGaps = withoutGapAtMessage(currentState.indexingGaps, chunkEnd);
@@ -540,7 +621,10 @@ export async function rebuildStoryMemoryAndIndexes(params: {
   const gatedState = applyTranscriptPresenceGate(finalState, messages, playerCharacter, {
     messageCount: total,
   });
-  const finalJson = JSON.stringify(gatedState);
+  const finalJson = JSON.stringify({
+    ...gatedState,
+    lastDeepIndexedTranscriptFingerprint: transcriptFingerprint,
+  });
 
   return {
     stateJson: finalJson,

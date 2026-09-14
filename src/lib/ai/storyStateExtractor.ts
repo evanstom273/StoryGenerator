@@ -1,5 +1,6 @@
 import type {
   PlayerCharacter,
+  PlayerIdentityBasis,
   StoryAuthorDirectiveState,
   StoryMessage,
   StoryStateData,
@@ -15,7 +16,7 @@ import {
 } from "../storyText/authorDirectives";
 import { isContinueMessage } from "../storyText/continueMode";
 import { isDirectorMessage } from "../storyText/directorMode";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, resolveEffectivePlayerIdentity } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, isDerivedPlayerSituationCurrent, isPlayerSituationPronounsCompatible, resolveEffectivePlayerIdentity, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
 import {
 	type NarrativeIdentityPromptContext,
 	redactNarrativePromptText,
@@ -77,6 +78,7 @@ export function buildStoryStateExtractionPrompt({
   messageNumberStart,
   messageNumberTotal,
   perMessageIndexing,
+  playerIdentity: playerIdentityOverride,
 }: {
   playerName: string;
   playerCharacter?: PlayerCharacter | null;
@@ -85,12 +87,15 @@ export function buildStoryStateExtractionPrompt({
   messageNumberStart?: number;
   messageNumberTotal?: number;
   perMessageIndexing?: boolean;
+  playerIdentity?: EffectivePlayerIdentity | null;
 }): AIChatMessage[] {
   const system = normalizeWhitespace(
     [
       "You extract and maintain current story-state for continuity.",
-      "Story events define current truth. The character sheet and transcript define the starting state.",
-      "The player character sheet defines the protagonist's starting identity facts (name, age, gender, pronouns, species, role/occupation, disabilities/limitations). When the transcript establishes an in-story identity transition such as coming out, a stable name change, or a pronoun change, update characters.displayName, characters.pronouns, summaries, and indexes to reflect the current in-story identity.",
+      "Story events define current truth. The character sheet defines the protagonist's canonical identity unless the player explicitly declares an identity change.",
+      "Canonical protagonist identity has higher authority than AI-written summaries, character-state fields, or assistant dialogue. Assistant-generated dialogue attributed to the protagonist is never evidence of a name, gender, or pronoun change.",
+      "A normal user-role player turn can establish an identity change through an explicit first-person statement (for example, 'I use she/her now' or 'Call me Lyra from now on'). Director/Author instructions may establish one only when they explicitly identify the protagonist. Do not infer identity from third-person prose, relationship words such as son/daughter, or pronouns used by another character.",
+      "When no eligible explicit player-authored identity change exists, preserve the canonical character sheet name, gender, and pronouns exactly. Only update characters.displayName or characters.pronouns when supported by an eligible explicit player turn or targeted Director/Author instruction.",
       "Prefer existing story-state; update only when new evidence appears.",
       "Track only explicit, high-confidence changes. Do not invent facts.",
       "Transcript is the source of truth. Indexes are derived and rebuildable.",
@@ -231,15 +236,15 @@ export function buildStoryStateExtractionPrompt({
     ].join("\n"),
   );
 
-  const playerIdentity = playerCharacter
+  const playerIdentity = playerIdentityOverride ?? (playerCharacter
     ? resolveEffectivePlayerIdentity(playerCharacter, { recentMessages })
-    : null;
+    : null);
 
   const user = normalizeWhitespace(
     [
       playerCharacter
         ? [
-            "Player Character Sheet (starting identity; transcript may override with current in-story identity):",
+            "Canonical Player Character Identity (use as binding unless current in-story identity above is explicitly player-authored):",
             formatPlayerCharacterIdentityForPrompt(
               playerCharacter,
               playerIdentity?.sceneName,
@@ -534,6 +539,8 @@ export function formatStoryLongTermMemoryForPrompt(
   storyStateData: StoryStateData | StoryStateDataV2,
   opts?: {
     playerName?: string | null;
+    playerCharacter?: Pick<PlayerCharacter, "id" | "name" | "aliases"> | null;
+    playerIdentity?: EffectivePlayerIdentity | null;
     narrativeIdentity?: NarrativeIdentityPromptContext;
   },
 ) {
@@ -568,7 +575,15 @@ export function formatStoryLongTermMemoryForPrompt(
       lines.push("Player Character Focus:");
       lines.push(`- ${redact(protagonistSummary.trim())}`);
     }
-    if (typeof currentSituation === "string" && currentSituation.trim()) {
+    if (
+      typeof currentSituation === "string" && currentSituation.trim() &&
+      isDerivedPlayerSituationCurrent(
+        currentSituation,
+        storyStateData.currentSituationIdentityBasis as PlayerIdentityBasis | undefined,
+        opts?.playerCharacter,
+        opts?.playerIdentity,
+      )
+    ) {
       lines.push("");
       lines.push("Current Situation:");
       lines.push(`- ${redact(currentSituation.trim())}`);
@@ -615,14 +630,38 @@ export function formatStoryLongTermMemoryForPrompt(
       const entry = characters[name];
       if (!entry) continue;
       const displayName = resolveName(name);
+      const playerLabels = [
+        opts?.playerName,
+        opts?.playerIdentity?.sceneName,
+        ...(opts?.playerCharacter?.aliases ?? []),
+      ]
+        .map((label) => label?.trim().toLowerCase())
+        .filter(Boolean);
+      const entryLabels = [name, entry.canonicalName, ...(entry.aliases ?? [])]
+        .map((label) => label?.trim().toLowerCase())
+        .filter(Boolean);
+      const isPlayerEntry = entryLabels.some((label) => playerLabels.includes(label));
+      const playerDerivedTextIsConsistent = (text: string) =>
+        !isPlayerEntry ||
+        !opts?.playerCharacter ||
+        !opts.playerIdentity ||
+        isPlayerSituationPronounsCompatible(text, opts.playerCharacter, opts.playerIdentity);
 
       const parts: string[] = [];
-      if (entry.displayName && entry.displayName !== name && resolveName(entry.displayName) !== displayName) {
+      if (isPlayerEntry && opts?.playerIdentity?.sceneName) {
+        if (resolveName(opts.playerIdentity.sceneName) !== displayName) {
+          parts.push(`goes by ${resolveName(opts.playerIdentity.sceneName)}`);
+        }
+      } else if (!isPlayerEntry && entry.displayName && entry.displayName !== name && resolveName(entry.displayName) !== displayName) {
         parts.push(`goes by ${resolveName(entry.displayName)}`);
       }
-      if (entry.pronouns) parts.push(`pronouns: ${entry.pronouns}`);
+      if (isPlayerEntry && opts?.playerIdentity?.pronouns) {
+        parts.push(`pronouns: ${opts.playerIdentity.pronouns}`);
+      } else if (!isPlayerEntry && entry.pronouns) {
+        parts.push(`pronouns: ${entry.pronouns}`);
+      }
       if (entry.titleOrRank) parts.push(redact(entry.titleOrRank));
-      if (entry.status) parts.push(redact(entry.status));
+      if (entry.status && playerDerivedTextIsConsistent(entry.status)) parts.push(redact(entry.status));
       if (entry.aliases?.length) {
         const visibleAliases = entry.aliases
           .map((alias) => resolveName(alias))
@@ -642,7 +681,8 @@ export function formatStoryLongTermMemoryForPrompt(
 
       lines.push(`- ${displayName}${parts.length ? ` — ${parts.join("; ")}` : ""}`);
 
-      const statusBullets = trimStringList((entry as any).statusBullets, 4);
+      const statusBullets = trimStringList((entry as any).statusBullets, 4)
+        .filter((status) => playerDerivedTextIsConsistent(status));
       if (statusBullets.length) {
         lines.push(`  status: ${statusBullets.map(redact).join(" | ")}`);
       }

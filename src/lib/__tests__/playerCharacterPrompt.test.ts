@@ -78,7 +78,7 @@ describe("resolveEffectivePlayerIdentity", () => {
 		age: "15",
 	};
 
-	it("uses in-story displayName and pronouns after a coming-out rename", () => {
+	it("does not let unverified story-state identity override the character sheet", () => {
 		const identity = resolveEffectivePlayerIdentity(jamieCharacter, {
 			storyState: {
 				updatedAt: "2026-08-21T00:00:00.000Z",
@@ -93,12 +93,12 @@ describe("resolveEffectivePlayerIdentity", () => {
 			},
 		});
 
-		expect(identity.sceneName).toBe("Lyra");
-		expect(identity.pronouns).toBe("she/her");
-		expect(identity.hasInStoryTransition).toBe(true);
+		expect(identity.sceneName).toBe("Jamie");
+		expect(identity.pronouns).toBe("he/him");
+		expect(identity.hasInStoryTransition).toBe(false);
 	});
 
-	it("infers Lyra and she/her from a director note after coming out", () => {
+	it("ignores assistant identity dialogue and untargeted Director prose", () => {
 		const messages: StoryMessage[] = [
 			{
 				id: "23",
@@ -138,14 +138,55 @@ describe("resolveEffectivePlayerIdentity", () => {
 
 		const identity = resolveEffectivePlayerIdentity(jamieCharacter, { recentMessages: messages });
 
-		expect(identity.sceneName).toBe("Lyra");
+		expect(identity.sceneName).toBe("Jamie");
+		expect(identity.pronouns).toBe("he/him");
+		expect(identity.hasInStoryTransition).toBe(false);
+	});
+
+	it("accepts explicit player-authored pronoun changes without requiring a name prefix", () => {
+		const identity = resolveEffectivePlayerIdentity(jamieCharacter, {
+			recentMessages: [{
+				id: "36",
+				storyId: "story-1",
+				role: "user",
+				speakerType: "player",
+				content: "I want to use she/her now.",
+				timestamp: "2026-08-22T00:00:00.000Z",
+			}],
+		});
+
+		expect(identity.sceneName).toBe("Jamie");
 		expect(identity.pronouns).toBe("she/her");
 		expect(identity.hasInStoryTransition).toBe(true);
+	});
+
+	it("uses a provenance-tagged story-local identity override for long histories", () => {
+		const identity = resolveEffectivePlayerIdentity(
+			{ ...jamieCharacter, id: "player-1" },
+			{
+				storyState: {
+					updatedAt: "2026-08-22T00:00:00.000Z",
+					characters: {},
+					worldFacts: [],
+					unresolvedThreads: [],
+					playerIdentityOverride: {
+						playerCharacterId: "player-1",
+						sourceMessageId: "message-9",
+						source: "player_turn",
+						sceneName: "Lyra",
+						pronouns: "she/her",
+					},
+				},
+			},
+		);
+		expect(identity.sceneName).toBe("Lyra");
+		expect(identity.pronouns).toBe("she/her");
+		expect(identity.sourceMessageId).toBe("message-9");
 	});
 });
 
 describe("resolveEffectivePlayerPronouns", () => {
-	it("prefers story-state pronouns over the character sheet", () => {
+	it("prefers canonical profile pronouns over unverified story-state pronouns", () => {
 		expect(
 			resolveEffectivePlayerPronouns(
 				{
@@ -168,7 +209,7 @@ describe("resolveEffectivePlayerPronouns", () => {
 					},
 				},
 			),
-		).toBe("she/her");
+		).toBe("he/him");
 	});
 });
 

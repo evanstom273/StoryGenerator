@@ -6,7 +6,6 @@ import {
 	normalizeCharacterTtsKey,
 } from "../ai/characterTtsVoices";
 import { isDeniedSpeakerLabel } from "../relationshipIndex";
-import { extractSpeakerPrefix } from "./extractSpeakerPrefix";
 import { splitDialogueQuoteRegions } from "./dialogueQuoteRegions";
 import { findSpeakerColonIndex, looksLikeClockTimeFragment } from "./clockTimeInProse";
 import { isSubjectPronounPseudoSpeaker } from "./narratorBlockRepair";
@@ -78,17 +77,90 @@ export function findPlayerStoryStateEntry(
 	return null;
 }
 
+type PlayerIdentityMessageKind = "player" | "instruction" | null;
+
+function playerIdentityMessageKind(message: StoryMessage): PlayerIdentityMessageKind {
+	if (message.role !== "user") return null;
+	if (message.authorDirective || message.speakerType === "author" || message.speakerType === "canon") {
+		return "instruction";
+	}
+	if (isDirectorMessage(message) || message.speakerType === "director") return "instruction";
+	if (message.speakerType && message.speakerType !== "player") return null;
+	return "player";
+}
+
+function instructionTargetsPlayer(content: string, legalName: string, sceneName: string) {
+	const targets = [legalName, sceneName]
+		.map((value) => value.trim())
+		.filter((value) => value.length >= 2);
+	return /\b(?:protagonist|player character|player's character|PC)\b/i.test(content) ||
+		targets.some((name) => new RegExp(`\\b${escapeRegex(name)}\\b`, "i").test(content));
+}
+
+function extractExplicitPronouns(
+	content: string,
+	kind: Exclude<PlayerIdentityMessageKind, null>,
+	legalName: string,
+	sceneName: string,
+) {
+	const normalized = content.replace(/\r\n/g, "\n");
+	if (kind === "player") {
+		const direct = normalized.match(/\b(?:my pronouns? (?:are|are now)|i (?:want|would like) to use|i use|i go by|use)\s+(she\/her|he\/him|they\/them)\b/i)?.[1];
+		if (direct) return direct.toLowerCase();
+		const selfDescription = normalized.match(/\bI(?:'m| am)\s+(?:a\s+)?(girl|woman|boy|man|non[- ]binary)\b/i)?.[1]?.toLowerCase();
+		if (selfDescription === "girl" || selfDescription === "woman") return "she/her";
+		if (selfDescription === "boy" || selfDescription === "man") return "he/him";
+		if (selfDescription?.startsWith("non")) return "they/them";
+		return null;
+	}
+
+	if (!instructionTargetsPlayer(normalized, legalName, sceneName)) return null;
+	const target = `(?:${[legalName, sceneName, "the protagonist", "player character", "the PC"]
+		.map((value) => value.trim())
+		.filter(Boolean)
+		.map(escapeRegex)
+		.join("|")})`;
+	const explicit = [
+		new RegExp(`\\b${target}\\s+(?:uses?|has)\\s+(?:the\\s+)?pronouns?\\s+(?:of\\s+)?(she\\/her|he\\/him|they\\/them)\\b`, "i"),
+		new RegExp(`\\b${target}['’]?s\\s+pronouns?\\s+(?:are|should be)\\s+(she\\/her|he\\/him|they\\/them)\\b`, "i"),
+		new RegExp(`\\buse\\s+(she\\/her|he\\/him|they\\/them)\\s+for\\s+${target}\\b`, "i"),
+		new RegExp(`\\brefer to\\s+${target}\\s+with\\s+(she\\/her|he\\/him|they\\/them)\\b`, "i"),
+	];
+	for (const pattern of explicit) {
+		const match = normalized.match(pattern)?.[1];
+		if (match) return match.toLowerCase();
+	}
+	return null;
+}
+
+function extractAuthoredIdentity(
+	message: StoryMessage,
+	legalName: string,
+	sheetPreferredName: string,
+): EstablishedPlayerIdentity | null {
+	const kind = playerIdentityMessageKind(message);
+	if (!kind) return null;
+	const content = message.content.replace(/\r\n/g, "\n");
+	const pronouns = extractExplicitPronouns(content, kind, legalName, sheetPreferredName);
+	const targetsPlayer = kind === "player" || instructionTargetsPlayer(content, legalName, sheetPreferredName);
+	const sceneName = targetsPlayer
+		? extractChosenNameCandidate(content, legalName, sheetPreferredName)
+		: null;
+	if (!pronouns && !sceneName) return null;
+	return { ...(sceneName ? { sceneName } : {}), ...(pronouns ? { pronouns } : {}) };
+}
+
 function extractChosenNameCandidate(
 	content: string,
 	legalName: string,
 	sheetPreferredName: string,
 ): string | null {
 	const patterns = [
-		/"([A-Z][a-z]+)\.{0,3}\s*that['']?s my\.{0,3}\s*name/i,
-		/\bmy name is\s+"?([A-Z][a-z]+)"?/i,
-		/\bcall me\s+"?([A-Z][a-z]+)"?/i,
-		/\bIt suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
-		/\bIt'?s beautiful\.?\s*It suits you so perfectly,\s+([A-Z][a-z]+)\b/i,
+		/"([A-Z][a-z]+(?:[ '-][A-Z][a-z]+){0,2})\.{0,3}\s*that['']?s my\.{0,3}\s*name/i,
+		/\bmy name is\s+"?([A-Z][a-z]+(?:[ '-][A-Z][a-z]+){0,2})"?/i,
+		/\bcall me\s+"?([A-Z][a-z]+(?:[ '-][A-Z][a-z]+){0,2})"?/i,
+		/\bIt suits you so perfectly,\s+([A-Z][a-z]+(?:[ '-][A-Z][a-z]+){0,2})\b/i,
+		/\bIt'?s beautiful\.?\s*It suits you so perfectly,\s+([A-Z][a-z]+(?:[ '-][A-Z][a-z]+){0,2})\b/i,
 	];
 
 	for (const pattern of patterns) {
@@ -110,17 +182,6 @@ function extractChosenNameCandidate(
 	}
 
 	return null;
-}
-
-function isValidPlayerSceneNameForRename(name: string): boolean {
-	const trimmed = name.trim();
-	if (!trimmed || trimmed.length < 2) {
-		return false;
-	}
-	if (!/^[A-Z]/.test(trimmed)) {
-		return false;
-	}
-	return !isDeniedSpeakerLabel(trimmed);
 }
 
 export function inferExplicitPlayerSceneRenameFromDirectorNotes(
@@ -165,108 +226,20 @@ export function inferPlayerPronounsFromMessages(
 	legalName: string,
 	sceneName: string,
 ): string | null {
-	const sceneLabel = sceneName.trim();
-	const legalLabel = legalName.trim();
-	if (!sceneLabel) {
-		return null;
-	}
-
-	let sheScore = 0;
-	let heScore = 0;
-	let theyScore = 0;
-	const scanStart = Math.max(0, messages.length - 20);
-
-	for (let index = messages.length - 1; index >= scanStart; index -= 1) {
-		const message = messages[index];
-		if (message.role !== "assistant") {
-			continue;
-		}
-
-		const content = message.content.replace(/\r\n/g, "\n");
-		const lines = content.split("\n");
-		for (const line of lines) {
-			const speakerMatch = line.match(/^([^:\n]{1,64}):\s*\*(She|He|They)\b/i);
-			if (speakerMatch?.[1] && speakerMatch[2]) {
-				const label = speakerMatch[1].trim();
-				if (
-					isLegalNameReference(label, legalLabel) ||
-					label.toLowerCase() === sceneLabel.toLowerCase()
-				) {
-					const token = speakerMatch[2].toLowerCase();
-					if (token === "she") {
-						sheScore += 4;
-					} else if (token === "he") {
-						heScore += 4;
-					} else {
-						theyScore += 4;
-					}
-				}
-			}
-		}
-
-		const scenePattern = new RegExp(
-			`\\b(?:${escapeRegex(sceneLabel)}|${escapeRegex(nameTokens(legalLabel)[0] ?? sceneLabel)})\\b`,
-			"i",
-		);
-		if (!scenePattern.test(content)) {
-			continue;
-		}
-
-		const feminineMatches = content.match(/\b(she|her|hers|daughter)\b/gi)?.length ?? 0;
-		const masculineMatches = content.match(/\b(he|him|his|son)\b/gi)?.length ?? 0;
-		const neutralMatches = content.match(/\b(they|them|their|themself|themselves)\b/gi)?.length ?? 0;
-		sheScore += feminineMatches;
-		heScore += masculineMatches;
-		theyScore += neutralMatches;
-	}
-
-	if (sheScore >= 2 && sheScore > heScore && sheScore >= theyScore) {
-		return "she/her";
-	}
-	if (heScore >= 2 && heScore > sheScore && heScore >= theyScore) {
-		return "he/him";
-	}
-	if (theyScore >= 2 && theyScore > sheScore && theyScore > heScore) {
-		return "they/them";
-	}
-
-	return null;
+	return detectEstablishedPlayerIdentityFromMessages(messages, legalName, sceneName)?.pronouns ?? null;
 }
 
 export function inferPlayerPronounsFromDirectorNotes(
 	messages: StoryMessage[],
 ): string | null {
-	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const message = messages[index];
-		if (message.role !== "user" || !isDirectorMessage(message)) {
-			continue;
-		}
-
-		const content = message.content;
-		const hasFeminine = /\b(she|her|hers|daughter)\b/i.test(content);
-		const hasMasculine = /\b(he|him|his|son)\b/i.test(content);
-		// Do not treat collective possessive "their" (e.g. "their apartment") as a player pronoun signal.
-		const hasNeutral =
-			/\bthey\/them\b/i.test(content) ||
-			/\b(they|them|themself|themselves)\b/i.test(content);
-
-		if (hasFeminine && !hasMasculine) {
-			return "she/her";
-		}
-		if (hasMasculine && !hasFeminine) {
-			return "he/him";
-		}
-		if (hasNeutral && !hasFeminine && !hasMasculine) {
-			return "they/them";
-		}
-	}
-
-	return null;
+	return detectEstablishedPlayerIdentityFromMessages(messages, "", "")?.pronouns ?? null;
 }
 
 export interface EstablishedPlayerIdentity {
 	sceneName?: string;
 	pronouns?: string;
+	sourceMessageId?: string;
+	source?: "player_turn" | "director_instruction" | "author_instruction";
 }
 
 export function detectEstablishedPlayerIdentityFromMessages(
@@ -274,97 +247,29 @@ export function detectEstablishedPlayerIdentityFromMessages(
 	legalName: string,
 	sheetPreferredName: string,
 ): EstablishedPlayerIdentity | null {
-	let pronouns: string | null = null;
-	let sceneName: string | null = null;
-
+	let established: EstablishedPlayerIdentity | null = null;
 	for (const message of messages) {
-		const content = message.content.replace(/\r\n/g, "\n");
-
-		const explicitPronouns = content.match(/\b(she\/her|he\/him|they\/them)\b/i);
-		if (explicitPronouns?.[1]) {
-			pronouns = explicitPronouns[1].toLowerCase();
-		}
-
-		if (
-			/\bI['']?m trans\b/i.test(content) &&
-			(/\bdaughter\b/i.test(content) || /\bI['']?m your daughter\b/i.test(content))
-		) {
-			pronouns = "she/her";
-		} else if (/\bI['']?m (?:your )?daughter\b/i.test(content) || /\bI am (?:your )?daughter\b/i.test(content)) {
-			pronouns = "she/her";
-		}
-
-		if (/\b(?:our|your) (?:daughter|girl)\b/i.test(content) && /\b(she|her|hers)\b/i.test(content)) {
-			pronouns = "she/her";
-		}
-
-		const chosenName = extractChosenNameCandidate(content, legalName, sheetPreferredName);
-		if (chosenName && isValidPlayerSceneNameForRename(chosenName)) {
-			sceneName = chosenName;
-		}
+		const next = extractAuthoredIdentity(message, legalName, sheetPreferredName);
+		if (!next) continue;
+		const kind = playerIdentityMessageKind(message);
+		if (!kind) continue;
+		established = {
+			...(established ?? {}),
+			...next,
+			sourceMessageId: message.id,
+			source: kind === "player" ? "player_turn" : message.authorDirective || message.speakerType === "author"
+				? "author_instruction"
+				: "director_instruction",
+		};
 	}
-
-	const latestDirectorPronouns = inferPlayerPronounsFromDirectorNotes(messages);
-	if (latestDirectorPronouns) {
-		pronouns = latestDirectorPronouns;
-	}
-
-	if (!pronouns && !sceneName) {
-		return null;
-	}
-
-	return {
-		sceneName: sceneName ?? undefined,
-		pronouns: pronouns ?? undefined,
-	};
+	return established;
 }
 
 export function inferPlayerSceneNameFromMessages(
 	messages: StoryMessage[],
 	legalName: string,
 ): string | null {
-	const legalLower = legalName.trim().toLowerCase();
-	if (!legalLower) {
-		return null;
-	}
-
-	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const message = messages[index];
-		if (message.role !== "user") {
-			continue;
-		}
-
-		if (
-			message.speakerType === "director" ||
-			message.speakerType === "continue" ||
-			message.speakerType === "author"
-		) {
-			continue;
-		}
-
-		const speakerName = message.speakerName?.trim();
-		if (speakerName && !isLegalNameReference(speakerName, legalName)) {
-			const speakerLower = speakerName.toLowerCase();
-			if (speakerLower !== "continue" && speakerLower !== "director" && speakerLower !== legalLower) {
-				return speakerName;
-			}
-		}
-
-		const prefix = extractSpeakerPrefix(message.content);
-		if (prefix?.speakerLabel) {
-			const label = prefix.speakerLabel.trim();
-			if (!isLegalNameReference(label, legalName)) {
-				return label;
-			}
-
-			const legalTokens = legalName.trim().split(/\s+/).filter(Boolean);
-			if (legalTokens.length > 1 && label.toLowerCase() === legalTokens[0]?.toLowerCase()) {
-				return label;
-			}
-		}
-	}
-
-	return null;
+	return detectEstablishedPlayerIdentityFromMessages(messages, legalName, "")?.sceneName ?? null;
 }
 
 export function resolveSubjectPronoun(pronouns: string | null | undefined): "He" | "She" | "They" {

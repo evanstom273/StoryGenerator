@@ -186,6 +186,76 @@ describe("contextBuilder scene grammar", () => {
   });
 });
 
+describe("contextBuilder player identity authority", () => {
+	it("keeps canonical pronouns authoritative and excludes unverified derived situation text", () => {
+		const jamie: PlayerCharacter = {
+			...playerCharacter,
+			id: "player-jamie",
+			name: "Jamie Diaz",
+			aliases: [],
+			age: "15",
+			gender: "Male",
+			species: "Human",
+			pronouns: "He/him",
+		};
+		const context = buildStoryChatContext({
+			universe,
+			story: {
+				...story,
+				playerCharacterId: jamie.id,
+				currentSummary: "Jamie is being comforted by her mother, Rosa.",
+			},
+			playerCharacter: jamie,
+			imports: [],
+			summaries: [],
+			storyState: {
+				id: "story-state:story-1",
+				storyId: story.id,
+				updatedAt: "2026-01-01T00:00:00.000Z",
+				stateJson: JSON.stringify({
+					summaries: {
+						currentSituation: "Jamie is being comforted by her mother, Rosa.",
+					},
+				}),
+			},
+			recentMessages: [],
+			latestUserMessage: "I look at Rosa.",
+		});
+		const prompt = context.map((entry) => entry.content).join("\n");
+
+		expect(prompt).toContain("Player Gender: Male");
+		expect(prompt).toContain("Player Pronouns: He/him");
+		expect(prompt).toContain("These are authoritative");
+		expect(prompt).toContain("Never write she/her/hers for this character");
+		expect(prompt).not.toContain("Jamie is being comforted by her mother");
+
+		const summaryContext = buildStorySummaryContext({
+			storyTitle: "Test Story",
+			playerCharacterName: jamie.name,
+			playerCharacter: jamie,
+			storyState: {
+				id: "story-state:story-1",
+				storyId: story.id,
+				updatedAt: "2026-01-01T00:00:00.000Z",
+				stateJson: JSON.stringify({
+				summaries: {
+					currentSituation: "Jamie is being comforted by her mother, Rosa.",
+				},
+				characters: {
+					"Jamie Diaz": { pronouns: "she/her", status: "Jamie is comforted by her mother." },
+				},
+				}),
+			},
+			messages: [],
+		});
+		const summaryPrompt = summaryContext.map((entry) => entry.content).join("\n");
+		expect(summaryPrompt).toContain("Player Pronouns: He/him");
+		expect(summaryPrompt).toContain("Canonical player identity outranks AI-generated summaries");
+		expect(summaryPrompt).not.toContain("pronouns: she/her");
+		expect(summaryPrompt).not.toContain("Jamie is comforted by her mother");
+	});
+});
+
 function sceneDirectionFor(
   storyOverride: Story,
   providerType?: "openai" | "gemini" | "openrouter" | "anthropic",

@@ -457,6 +457,8 @@ export function mergeStoryStateForIndexing(
       incoming.relationships as Record<string, unknown> | undefined,
     ) as StoryStateDataV2["relationships"],
     summaries: Object.keys(mergedSummaries).length ? mergedSummaries : previous.summaries,
+    currentSituationIdentityBasis: previous.currentSituationIdentityBasis,
+    playerIdentityOverride: previous.playerIdentityOverride,
     scene: preserveSceneParticipantCapabilityOverrides(previous, {
       ...(previous.scene ?? {}),
       ...(incoming.scene ?? {}),
@@ -472,6 +474,7 @@ export function mergeStoryStateForIndexing(
     lastIndexedMessageCount: previous.lastIndexedMessageCount,
     lastDeepIndexedMessageCount: previous.lastDeepIndexedMessageCount,
     lastDeepIndexAttemptedMessageCount: previous.lastDeepIndexAttemptedMessageCount,
+    lastDeepIndexedTranscriptFingerprint: previous.lastDeepIndexedTranscriptFingerprint,
     indexingGaps: previous.indexingGaps,
     lastAutoDeepIndexedMessageCount: previous.lastAutoDeepIndexedMessageCount,
     messagesSinceDeepIndexUpdate: previous.messagesSinceDeepIndexUpdate,
@@ -1012,36 +1015,51 @@ export function repairCorruptedPlayerIdentityInStoryState(
 
 export function mergeStoryLocalPlayerIdentityIntoState(
 	storyState: StoryStateData | StoryStateDataV2 | null | undefined,
-	character: Pick<PlayerCharacter, "name" | "aliases">,
+	character: Pick<PlayerCharacter, "name" | "aliases" | "pronouns"> & Partial<Pick<PlayerCharacter, "id">>,
 	identity: {
 		sceneName: string;
 		pronouns: string;
 		hasInStoryTransition: boolean;
+		sourceMessageId?: string;
+		source?: "player_turn" | "director_instruction" | "author_instruction";
 	},
 ): StoryStateData | StoryStateDataV2 | null {
-	if (!storyState || !identity.hasInStoryTransition) {
+	if (!identity.hasInStoryTransition) {
 		return storyState ?? null;
 	}
+	const baseState = storyState ?? {
+		updatedAt: new Date().toISOString(),
+		characters: {},
+		worldFacts: [],
+		unresolvedThreads: [],
+	};
 
 	const trimmedLegal = character.name.trim();
 	const trimmedScene = identity.sceneName.trim();
 	const trimmedPronouns = identity.pronouns.trim();
 	if (!trimmedLegal || !trimmedScene || !trimmedPronouns) {
-		return storyState;
+		return storyState ?? null;
 	}
 	if (!isValidPlayerSceneName(trimmedScene)) {
-		return storyState;
+		return storyState ?? null;
 	}
 
-	const existingEntry = findPlayerStoryStateEntry(storyState, trimmedLegal);
+	const existingEntry = findPlayerStoryStateEntry(baseState, trimmedLegal);
 	const primaryAlias = resolvePlayerCharacterPreferredSceneName(character);
-	if (!isStoryLocalDisplayNameOverride(trimmedScene, trimmedLegal, primaryAlias)) {
-		return storyState;
+	const hasNameOverride = isStoryLocalDisplayNameOverride(trimmedScene, trimmedLegal, primaryAlias);
+	const hasPronounOverride = trimmedPronouns.toLowerCase() !== character.pronouns.trim().toLowerCase();
+	const hasExplicitProvenance = Boolean(
+		character.id && identity.sourceMessageId?.trim() && identity.source,
+	);
+	// Preserve an explicit return to sheet defaults too. Otherwise an older
+	// story-local override could reappear after the source turn leaves context.
+	if (!hasNameOverride && !hasPronounOverride && !hasExplicitProvenance) {
+		return storyState ?? null;
 	}
 
 	const existingKey =
-		Object.entries(storyState.characters ?? {}).find(([, entry]) => entry === existingEntry)?.[0] ??
-		(storyState.characters?.[trimmedLegal] ? trimmedLegal : trimmedLegal);
+		Object.entries(baseState.characters ?? {}).find(([, entry]) => entry === existingEntry)?.[0] ??
+		(baseState.characters?.[trimmedLegal] ? trimmedLegal : trimmedLegal);
 
 	const priorAliases = new Set(
 		(existingEntry?.aliases ?? [])
@@ -1058,16 +1076,27 @@ export function mergeStoryLocalPlayerIdentityIntoState(
 	const nextEntry = {
 		...(existingEntry ?? {}),
 		canonicalName: trimmedLegal,
-		displayName: trimmedScene,
+		...(hasNameOverride ? { displayName: trimmedScene } : { displayName: undefined }),
 		pronouns: trimmedPronouns,
 		...(priorAliases.size ? { aliases: Array.from(priorAliases).slice(0, 12) } : {}),
 	};
 
 	return {
-		...storyState,
+		...baseState,
 		updatedAt: new Date().toISOString(),
+		...(character.id && identity.sourceMessageId && identity.source
+			? {
+				playerIdentityOverride: {
+					playerCharacterId: character.id,
+					sourceMessageId: identity.sourceMessageId,
+					source: identity.source,
+					...(hasNameOverride ? { sceneName: trimmedScene } : {}),
+					pronouns: trimmedPronouns,
+				},
+			}
+			: {}),
 		characters: {
-			...(storyState.characters ?? {}),
+			...(baseState.characters ?? {}),
 			[existingKey]: nextEntry,
 		},
 	};

@@ -1,5 +1,28 @@
-import type { IndexingGap, StoryState, StoryStateData } from "../types/models";
+import type { IndexingGap, StoryMessage, StoryState, StoryStateData } from "../types/models";
 import { safeParseStoryStateData } from "./storyStateV2";
+
+async function sha256Hex(value: string): Promise<string> {
+	const subtle = globalThis.crypto?.subtle;
+	if (!subtle) throw new Error("Web Crypto is required to fingerprint the canonical transcript.");
+	const digest = await subtle.digest("SHA-256", new TextEncoder().encode(value));
+	return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** Hash ordered canonical message state without persisting transcript text. */
+export async function buildCanonicalTranscriptFingerprint(messages: readonly StoryMessage[]) {
+	const ordered = [...messages].sort((left, right) => {
+		const timeDifference = new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime();
+		return timeDifference || left.id.localeCompare(right.id);
+	});
+	const rows = await Promise.all(ordered.map(async (message) => ({
+		id: message.id,
+		revision: Number.isFinite(message.revision) ? Math.trunc(message.revision!) : 0,
+		role: message.role,
+		timestamp: message.timestamp,
+		contentHash: await sha256Hex(message.content ?? ""),
+	})));
+	return `sha256:${await sha256Hex(JSON.stringify(rows))}`;
+}
 
 function toTimestampMs(value: string | null | undefined) {
 	if (!value) {
@@ -71,7 +94,7 @@ function readStoryStateFields(storyState: StoryState | null | undefined) {
 
 export function getArchiveIndexStatus(
 	storyState: StoryState | null | undefined,
-	opts?: { currentMessageCount?: number },
+	opts?: { currentMessageCount?: number; currentMessageFingerprint?: string | null },
 ) {
 	const parsed = readStoryStateFields(storyState);
 
@@ -86,6 +109,8 @@ export function getArchiveIndexStatus(
 	const indexedMessageCount = resolveIndexedMessageCount(parsed);
 	const attemptedMessageCount = resolveAttemptedMessageCount(parsed, indexedMessageCount);
 	const indexingGaps = resolveIndexingGaps(parsed);
+	const indexedFingerprint = parsed?.lastDeepIndexedTranscriptFingerprint;
+	const currentMessageFingerprint = opts?.currentMessageFingerprint?.trim() || null;
 	const currentMessageCount =
 		typeof opts?.currentMessageCount === "number" && Number.isFinite(opts.currentMessageCount)
 			? Math.max(0, Math.trunc(opts.currentMessageCount))
@@ -133,6 +158,34 @@ export function getArchiveIndexStatus(
 				currentMessageCount > indexedMessageCount
 					? ("new_messages" as const)
 					: ("message_count_mismatch" as const),
+		};
+	}
+
+	if (!indexedFingerprint || !currentMessageFingerprint) {
+		return {
+			indexedAt,
+			indexedMessageCount,
+			attemptedMessageCount,
+			indexingGaps,
+			currentMessageCount,
+			ageMs: indexedAtMs == null ? null : Math.max(0, Date.now() - indexedAtMs),
+			isFresh: false,
+			needsRefresh: true,
+			reason: !indexedFingerprint ? ("fingerprint_missing" as const) : ("fingerprint_pending" as const),
+		};
+	}
+
+	if (indexedFingerprint !== currentMessageFingerprint) {
+		return {
+			indexedAt,
+			indexedMessageCount,
+			attemptedMessageCount,
+			indexingGaps,
+			currentMessageCount,
+			ageMs: indexedAtMs == null ? null : Math.max(0, Date.now() - indexedAtMs),
+			isFresh: false,
+			needsRefresh: true,
+			reason: "content_mismatch" as const,
 		};
 	}
 
