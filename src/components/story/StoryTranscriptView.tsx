@@ -8,7 +8,7 @@ import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import type { CharacterTtsGenderMap } from "../../lib/ai/characterTtsVoices";
 import { isDirectorMessage, isDirectorSpeakerLabel } from "../../lib/storyText/directorMode";
-import { resolveMessageChapterBoundary, resolveChapterEndMessageIndex } from "../../lib/storyText/chapterNavigation";
+import { resolveMessageChapterBoundary } from "../../lib/storyText/chapterNavigation";
 import { isStoryHistoryDividerMessage } from "../../lib/guidedChapterGeneration/storyHistoryDivider";
 import { ChapterListenBanner, FullStoryAudiobookControls } from "./StorySpeechControls";
 import type { ResolvedSceneParticipant } from "../../lib/sceneParticipation";
@@ -37,112 +37,6 @@ type SpeakerKind =
   | "narrator"
   | "npc"
   | "system";
-
-const NUMBER_WORDS = [
-  "Zero",
-  "One",
-  "Two",
-  "Three",
-  "Four",
-  "Five",
-  "Six",
-  "Seven",
-  "Eight",
-  "Nine",
-  "Ten",
-  "Eleven",
-  "Twelve",
-  "Thirteen",
-  "Fourteen",
-  "Fifteen",
-  "Sixteen",
-  "Seventeen",
-  "Eighteen",
-  "Nineteen",
-  "Twenty",
-];
-
-function parseRomanNumeral(value: string) {
-  const roman = value.trim().toUpperCase();
-  if (!roman || !/^[IVXLCDM]+$/.test(roman)) {
-    return null;
-  }
-
-  const numerals: Record<string, number> = {
-    I: 1,
-    V: 5,
-    X: 10,
-    L: 50,
-    C: 100,
-    D: 500,
-    M: 1000,
-  };
-
-  let total = 0;
-  for (let index = 0; index < roman.length; index += 1) {
-    const current = numerals[roman[index]];
-    const next = numerals[roman[index + 1]] ?? 0;
-    total += current < next ? -current : current;
-  }
-  return total > 0 ? total : null;
-}
-
-function toRomanNumeral(value: number) {
-  if (!Number.isFinite(value) || value <= 0) {
-    return null;
-  }
-
-  const table: Array<[number, string]> = [
-    [1000, "M"],
-    [900, "CM"],
-    [500, "D"],
-    [400, "CD"],
-    [100, "C"],
-    [90, "XC"],
-    [50, "L"],
-    [40, "XL"],
-    [10, "X"],
-    [9, "IX"],
-    [5, "V"],
-    [4, "IV"],
-    [1, "I"],
-  ];
-
-  let remaining = Math.trunc(value);
-  let result = "";
-  for (const [amount, token] of table) {
-    while (remaining >= amount) {
-      result += token;
-      remaining -= amount;
-    }
-  }
-
-  return result || null;
-}
-
-function getNextChapterBannerLabel(label: string) {
-  const match = label.trim().match(/^Chapter\s+(.+)$/i);
-  if (!match?.[1]) {
-    return "Next Chapter";
-  }
-
-  const token = match[1].trim();
-  if (/^\d+$/.test(token)) {
-    return `Chapter ${Number.parseInt(token, 10) + 1}`;
-  }
-
-  const roman = parseRomanNumeral(token);
-  if (roman) {
-    return `Chapter ${toRomanNumeral(roman + 1) ?? roman + 1}`;
-  }
-
-  const wordIndex = NUMBER_WORDS.findIndex((word) => word.toLowerCase() === token.toLowerCase());
-  if (wordIndex >= 1 && wordIndex + 1 < NUMBER_WORDS.length) {
-    return `Chapter ${NUMBER_WORDS[wordIndex + 1]}`;
-  }
-
-  return "Next Chapter";
-}
 
 function getSpeakerTag(label: string, kind: SpeakerKind) {
   const baseTagClass = "shrink-0 font-semibold";
@@ -293,27 +187,10 @@ export function StoryTranscriptView({
   const effectiveSceneName = playerSceneName?.trim() || playerCharacterName;
   let prevStoryTime: RpTimeState | undefined = undefined;
   const chapterEndByMessageId = new Map<string, string>();
-  const chapterStartBeforeMessage = new Map<number, string>();
   const sortedChapters = [...(chapters ?? [])].sort((left, right) => left.endsAtIndex - right.endsAtIndex);
   for (const chapter of sortedChapters) {
     if (chapter.endsAtMessageId) {
       chapterEndByMessageId.set(chapter.endsAtMessageId, chapter.label);
-    }
-
-    const endIndex = resolveChapterEndMessageIndex(messages, chapter);
-    if (endIndex !== null) {
-      let hasExplicitNextStart = false;
-      for (let index = endIndex + 1; index < messages.length; index += 1) {
-        const boundary = resolveMessageChapterBoundary(messages[index]!);
-        if (boundary?.kind === "start") {
-          hasExplicitNextStart = true;
-          break;
-        }
-      }
-
-      if (!hasExplicitNextStart && endIndex + 1 < messages.length) {
-        chapterStartBeforeMessage.set(endIndex + 2, getNextChapterBannerLabel(chapter.label));
-      }
     }
   }
   return (
@@ -324,14 +201,13 @@ export function StoryTranscriptView({
         storyTitle={storyTitle}
         chapters={chapters}
       />
-      {messages.map((message, messageIndex) => {
+      {messages.map((message) => {
         const highlight = highlightedMessageId === message.id;
         const chapterEndLabel = chapterEndByMessageId.get(message.id);
         const explicitChapterBoundary = resolveMessageChapterBoundary(message);
         const chapterBoundary =
           explicitChapterBoundary ??
           (chapterEndLabel ? { kind: "end" as const, label: chapterEndLabel } : null);
-        const chapterStartLabel = chapterStartBeforeMessage.get(messageIndex + 1);
 
         if (chapterBoundary?.kind === "end") {
           return (
@@ -374,20 +250,11 @@ export function StoryTranscriptView({
           const tag = getSpeakerTag("System", "system");
           return (
             <Fragment key={message.id}>
-              {chapterStartLabel ? (
-                <ChapterListenBanner
-                  messageId={message.id}
-                  label={chapterStartLabel}
-                  highlighted={highlight}
-                  messages={messages}
-                  playerCharacterName={playerCharacterName}
-                />
-              ) : null}
               <div
                 id={`story-message-${message.id}`}
                 className={cn(
                   tag.rowClass,
-                  highlight && !chapterStartLabel ? "border-accent/60 bg-accent/10 ring-2 ring-accent/35" : "",
+                  highlight ? "border-accent/60 bg-accent/10 ring-2 ring-accent/35" : "",
                 )}
               >
                 <div className="flex items-start gap-3 text-sm leading-7">
@@ -407,17 +274,7 @@ export function StoryTranscriptView({
           const isContinue = isContinueMessage(message);
           const isDirector = isDirectorMessage(message);
           if (isContinue || isDirector) {
-            return chapterStartLabel ? (
-              <Fragment key={message.id}>
-                <ChapterListenBanner
-                  messageId={message.id}
-                  label={chapterStartLabel}
-                  highlighted={highlight}
-                  messages={messages}
-                  playerCharacterName={playerCharacterName}
-                />
-              </Fragment>
-            ) : null;
+            return null;
           }
           const label = isAuthorDirective
             ? message.speakerName?.trim() || "Author"
@@ -428,20 +285,11 @@ export function StoryTranscriptView({
           );
           return (
             <Fragment key={message.id}>
-              {chapterStartLabel ? (
-                <ChapterListenBanner
-                  messageId={message.id}
-                  label={chapterStartLabel}
-                  highlighted={highlight}
-                  messages={messages}
-                  playerCharacterName={playerCharacterName}
-                />
-              ) : null}
               <div
                 id={`story-message-${message.id}`}
                 className={cn(
                   tag.rowClass,
-                  highlight && !chapterStartLabel ? "ring-2 ring-accent/35" : "",
+                  highlight ? "ring-2 ring-accent/35" : "",
                 )}
               >
                 <div className="flex items-start gap-3 text-sm leading-7">
@@ -470,15 +318,6 @@ export function StoryTranscriptView({
         if (message.storyTime) prevStoryTime = message.storyTime;
         return (
           <Fragment key={message.id}>
-            {chapterStartLabel ? (
-              <ChapterListenBanner
-                messageId={message.id}
-                label={chapterStartLabel}
-                highlighted={highlight}
-                messages={messages}
-                playerCharacterName={playerCharacterName}
-              />
-            ) : null}
             {showTimeChip && rpConfig && message.storyTime ? (
               <div className="select-none py-1 text-center text-[10px] text-white/25">
                 {formatTimeShort(message.storyTime, rpConfig)}
@@ -488,7 +327,7 @@ export function StoryTranscriptView({
               id={`story-message-${message.id}`}
               className={cn(
                 "space-y-2",
-                highlight && !chapterStartLabel ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
+                highlight ? "rounded-2xl bg-accent/10 px-2 py-1 ring-2 ring-accent/35" : "",
               )}
             >
               {isAssistantTranscript ? blocks.map((block, blockIndex) => {
