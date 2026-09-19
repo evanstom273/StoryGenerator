@@ -11,6 +11,7 @@ import { safeParseJsonObject } from "./ai/json";
 import {
 	buildCharacterAllowlist,
 	isIndexedPlayerCharacterDuplicate,
+	buildPlayerNameVariants,
 	buildResolvedPlayerNameVariants,
 	reconcileRelationshipEntries,
 } from "./relationshipIndex";
@@ -286,11 +287,12 @@ export function mergeStoryIndexesIncremental(
   const mergeEntities = (
     left?: StoryIndexesV2["characters"],
     right?: StoryIndexesV2["characters"],
+    kind: "character" | "location" | "item" | "faction" = "character",
   ) => {
     if (!left && !right) {
       return undefined;
     }
-    const { merged } = reconcileIndexedEntities({ ...(left ?? {}), ...(right ?? {}) });
+    const { merged } = reconcileIndexedEntities({ ...(left ?? {}), ...(right ?? {}) }, kind);
     return merged;
   };
 
@@ -304,12 +306,12 @@ export function mergeStoryIndexesIncremental(
     ...(mergeEntities(prev.characters, inc.characters)
       ? { characters: mergeEntities(prev.characters, inc.characters) }
       : {}),
-    ...(mergeEntities(prev.locations, inc.locations)
-      ? { locations: mergeEntities(prev.locations, inc.locations) }
+    ...(mergeEntities(prev.locations, inc.locations, "location")
+      ? { locations: mergeEntities(prev.locations, inc.locations, "location") }
       : {}),
-    ...(mergeEntities(prev.items, inc.items) ? { items: mergeEntities(prev.items, inc.items) } : {}),
-    ...(mergeEntities(prev.factions, inc.factions)
-      ? { factions: mergeEntities(prev.factions, inc.factions) }
+    ...(mergeEntities(prev.items, inc.items, "item") ? { items: mergeEntities(prev.items, inc.items, "item") } : {}),
+    ...(mergeEntities(prev.factions, inc.factions, "faction")
+      ? { factions: mergeEntities(prev.factions, inc.factions, "faction") }
       : {}),
     worldFacts: mergeIndexedEvidenceRows(prev.worldFacts, inc.worldFacts, "fact") as StoryIndexesV2["worldFacts"],
     significantMemories: mergeIndexedEvidenceRows(
@@ -355,12 +357,54 @@ function mergeCharacterStateMaps(
 		return {};
 	}
 
-	const merged: StoryStateData["characters"] = { ...prev };
-	for (const [name, entry] of Object.entries(inc)) {
+	type CharacterGroup = {
+		key: string;
+		entry: NonNullable<StoryStateData["characters"]>[string];
+		labels: Set<string>;
+	};
+	const groups: CharacterGroup[] = [];
+	const allEntries = [...Object.entries(prev), ...Object.entries(inc)];
+	const fullNamesByToken = new Map<string, Set<string>>();
+	for (const [name, entry] of allEntries) {
+		for (const label of [name, entry?.canonicalName, entry?.displayName, ...(entry?.aliases ?? [])]) {
+			if (typeof label !== "string" || !label.trim()) continue;
+			const normalized = normalizeEntityLabel(label);
+			const tokens = normalized.split(" ").filter(Boolean);
+			if (tokens.length < 2) continue;
+			for (const token of tokens) {
+				const values = fullNamesByToken.get(token) ?? new Set<string>();
+				values.add(normalized);
+				fullNamesByToken.set(token, values);
+			}
+		}
+	}
+
+	for (const [name, entry] of allEntries) {
 		if (!name.trim() || !entry || typeof entry !== "object") {
 			continue;
 		}
-		const existing = merged[name] ?? {};
+		const rawLabels = [name, entry.canonicalName, entry.displayName, ...(entry.aliases ?? [])]
+			.filter((label): label is string => typeof label === "string" && Boolean(label.trim()));
+		const labels = new Set(rawLabels.map(normalizeEntityLabel));
+		const explicitMatch = groups.find((group) =>
+			Array.from(labels).some((label) => group.labels.has(label)),
+		);
+		const inferredMatches = explicitMatch
+			? []
+			: groups.filter((group) =>
+				Array.from(labels).some((left) =>
+					Array.from(group.labels).some((right) =>
+						areUnambiguousNameVariants(left, right, fullNamesByToken),
+					),
+				),
+		);
+		const match = explicitMatch ?? (inferredMatches.length === 1 ? inferredMatches[0] : undefined);
+		if (!match) {
+			groups.push({ key: name.trim(), entry: { ...entry }, labels });
+			continue;
+		}
+
+		const existing = match.entry ?? {};
 		const mergedBullets = mergeLiveStringArray(
 			(existing as { statusBullets?: string[] }).statusBullets,
 			(entry as { statusBullets?: string[] }).statusBullets,
@@ -379,17 +423,37 @@ function mergeCharacterStateMaps(
 			(entry as { weaknesses?: string[] }).weaknesses,
 		);
 
-		merged[name] = {
+		const mergedAliases = Array.from(new Set([
+			...(existing.aliases ?? []),
+			...(entry.aliases ?? []),
+			match.key,
+			name,
+		]))
+			.map((alias) => alias.trim())
+			.filter((alias) => alias && normalizeEntityLabel(alias) !== normalizeEntityLabel(match.key))
+			.slice(0, 12);
+		match.entry = {
 			...existing,
 			...entry,
+			...(mergedAliases.length ? { aliases: mergedAliases } : {}),
 			...(mergedBullets ? { statusBullets: mergedBullets } : {}),
 			...(mergedTransient ? { characterStateTransient: mergedTransient } : {}),
 			...(mergedStrengths ? { strengths: mergedStrengths } : {}),
 			...(mergedWeaknesses ? { weaknesses: mergedWeaknesses } : {}),
 		};
+		for (const label of labels) match.labels.add(label);
+		for (const label of mergedAliases) match.labels.add(normalizeEntityLabel(label));
+		if (shouldPreferExpandedName(match.key, name, fullNamesByToken)) {
+			const oldKey = match.key;
+			match.key = name.trim();
+			match.labels.add(normalizeEntityLabel(oldKey));
+			match.entry.aliases = Array.from(new Set([...(match.entry.aliases ?? []), oldKey]))
+				.filter((alias) => normalizeEntityLabel(alias) !== normalizeEntityLabel(match.key))
+				.slice(0, 12);
+		}
 	}
 
-	return merged;
+	return Object.fromEntries(groups.map((group) => [group.key, group.entry]));
 }
 
 export function mergeStoryStateForIndexing(
@@ -538,8 +602,61 @@ export function withIndexedMetadata(
   };
 }
 
+function normalizeEntityLabel(value: string) {
+  return value
+    .trim()
+    .replace(/^(?:mr|mrs|ms|miss|dr|doctor|detective|captain|officer|professor)\.?\s+/i, "")
+    .replace(/[^\p{L}\p{N}'-]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 function normalizeKey(value: string) {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
+  return normalizeEntityLabel(value);
+}
+
+function areUnambiguousNameVariants(
+  left: string,
+  right: string,
+  fullNamesByToken: Map<string, Set<string>>,
+) {
+  if (!left || !right || left === right) return left === right;
+  const leftTokens = left.split(" ").filter(Boolean);
+  const rightTokens = right.split(" ").filter(Boolean);
+  const [short, full] = leftTokens.length === 1 && rightTokens.length > 1
+    ? [left, right]
+    : rightTokens.length === 1 && leftTokens.length > 1
+      ? [right, left]
+      : ["", ""];
+  if (!short || !full || short.length < 3 || !full.split(" ").includes(short)) {
+    return false;
+  }
+  const candidates = fullNamesByToken.get(short);
+  return candidates?.size === 1 && candidates.has(full);
+}
+
+function shouldPreferExpandedName(
+  current: string,
+  candidate: string,
+  fullNamesByToken: Map<string, Set<string>>,
+) {
+  const currentNormalized = normalizeEntityLabel(current);
+  const candidateNormalized = normalizeEntityLabel(candidate);
+  return (
+    currentNormalized.split(" ").length === 1 &&
+    candidateNormalized.split(" ").length > 1 &&
+    areUnambiguousNameVariants(currentNormalized, candidateNormalized, fullNamesByToken)
+  );
+}
+
+function stableEntityId(kind: "character" | "location" | "item" | "faction", seed: string) {
+  const normalized = normalizeEntityLabel(seed) || "unknown";
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${kind}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 function isHighPriorityCharacterDescription(value: unknown) {
@@ -568,8 +685,45 @@ function mergeEvidence(left: any, right: any) {
   return merged.length ? { messageNumbers: merged } : undefined;
 }
 
+function normalizedDescriptionTokens(value: unknown) {
+  if (typeof value !== "string") return new Set<string>();
+  const stopWords = new Set(["this", "that", "with", "from", "into", "where", "which", "story", "place", "space", "location"]);
+  return new Set(
+    value
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s-]+/gu, " ")
+      .split(/\s+/)
+      .map((token) => token.replace(/(?:ation|ing|ed|s)$/i, ""))
+      .filter((token) => token.length >= 4 && !stopWords.has(token)),
+  );
+}
+
+function descriptionsIdentifySameLocation(left: any, right: any) {
+  const leftName = normalizeKey(left?.name ?? "");
+  const rightName = normalizeKey(right?.name ?? "");
+  const leftDescription = normalizeKey(left?.description ?? "");
+  const rightDescription = normalizeKey(right?.description ?? "");
+  if (
+    (leftName && rightDescription.includes(leftName)) ||
+    (rightName && leftDescription.includes(rightName))
+  ) {
+    return true;
+  }
+
+  const leftEvidence = new Set<number>(left?.evidence?.messageNumbers ?? []);
+  const sharesEvidence = (right?.evidence?.messageNumbers ?? []).some((number: number) => leftEvidence.has(number));
+  if (!sharesEvidence) return false;
+
+  const leftTokens = normalizedDescriptionTokens(left?.description);
+  const rightTokens = normalizedDescriptionTokens(right?.description);
+  if (leftTokens.size < 2 || rightTokens.size < 2) return false;
+  const overlap = Array.from(leftTokens).filter((token) => rightTokens.has(token)).length;
+  return overlap >= 2 && overlap / Math.min(leftTokens.size, rightTokens.size) >= 0.6;
+}
+
 function reconcileIndexedEntities(
   entities: StoryIndexesV2["characters"] | undefined,
+  kind: "character" | "location" | "item" | "faction" = "character",
 ): { merged: StoryIndexesV2["characters"] | undefined; aliasToCanonical: Map<string, string> } {
   const aliasToCanonical = new Map<string, string>();
 
@@ -584,6 +738,23 @@ function reconcileIndexedEntities(
   };
 
   const groups: Group[] = [];
+
+  const rawEntries = Object.entries(entities).filter(([, value]) => value && typeof value === "object");
+  const fullNamesByToken = new Map<string, Set<string>>();
+  for (const [key, value] of rawEntries) {
+    const labels = [key, (value as any).name, ...((value as any).aliases ?? [])];
+    for (const label of labels) {
+      if (typeof label !== "string" || !label.trim()) continue;
+      const normalized = normalizeKey(label);
+      const tokens = normalized.split(" ").filter(Boolean);
+      if (tokens.length < 2) continue;
+      for (const token of tokens) {
+        const names = fullNamesByToken.get(token) ?? new Set<string>();
+        names.add(normalized);
+        fullNamesByToken.set(token, names);
+      }
+    }
+  }
 
   for (const [key, value] of Object.entries(entities)) {
     if (!value || typeof value !== "object") continue;
@@ -604,12 +775,29 @@ function reconcileIndexedEntities(
     }
 
     const normalizedAliases = new Set(Array.from(aliasSet).map((alias) => normalizeKey(alias)));
-    const match = groups.find((group) => Array.from(normalizedAliases).some((alias) => group.aliases.has(alias)));
+    const stableId = typeof (value as any).id === "string" && (value as any).id.trim()
+      ? (value as any).id.trim()
+      : "";
+    const explicitMatch = groups.find((group) =>
+      (stableId && group.entity.id === stableId) ||
+      Array.from(normalizedAliases).some((alias) => group.aliases.has(alias)),
+    );
+    const inferredMatches = explicitMatch
+      ? []
+      : groups.filter((group) =>
+          Array.from(normalizedAliases).some((left) =>
+            Array.from(group.aliases).some((right) =>
+              areUnambiguousNameVariants(left, right, fullNamesByToken),
+            ),
+          ) ||
+          (kind === "location" && descriptionsIdentifySameLocation(group.entity, value)),
+        );
+    const match = explicitMatch ?? (inferredMatches.length === 1 ? inferredMatches[0] : undefined);
 
     if (!match) {
       groups.push({
         key: name,
-        entity: { ...value, name },
+        entity: { ...value, id: stableId || stableEntityId(kind, name), name },
         aliases: normalizedAliases,
       });
       continue;
@@ -632,24 +820,30 @@ function reconcileIndexedEntities(
         (!isHighPriorityCharacterDescription(previousDescription) &&
           nextDescription.length > previousDescription.length));
 
+    const oldKey = match.key;
+    if (shouldPreferExpandedName(match.key, name, fullNamesByToken)) {
+      match.key = name;
+      mergedAliases.add(normalizeKey(oldKey));
+    }
     match.aliases = mergedAliases;
     const mergedAliasList = Array.from(
       new Set([
         ...(Array.isArray(match.entity.aliases) ? match.entity.aliases : []),
         ...(Array.isArray((value as any).aliases) ? (value as any).aliases : []),
         key,
+        oldKey,
         name,
       ]),
     )
       .filter((item): item is string => typeof item === "string")
       .map((item) => item.trim())
-      .filter((item) => item && item !== match.entity.name)
+      .filter((item) => item && normalizeKey(item) !== normalizeKey(match.key))
       .slice(0, 12);
 
     match.entity = {
       ...match.entity,
-      ...(typeof (value as any).id === "string" && (value as any).id.trim() ? { id: (value as any).id.trim() } : {}),
-      name: match.entity.name,
+      id: match.entity.id || stableId || stableEntityId(kind, match.key),
+      name: match.key,
       ...(mergedAliasList.length ? { aliases: mergedAliasList } : {}),
       ...(shouldPreferNextDescription ? { description: nextDescription } : {}),
       ...(mergedEvidence?.messageNumbers?.length
@@ -681,6 +875,11 @@ function reconcileIndexedEntities(
 
   const merged: Record<string, any> = {};
   for (const group of groups) {
+    group.entity = {
+      ...group.entity,
+      id: group.entity.id || stableEntityId(kind, group.key),
+      name: group.key,
+    };
     merged[group.key] = group.entity;
 
     aliasToCanonical.set(normalizeKey(group.key), group.key);
@@ -691,6 +890,84 @@ function reconcileIndexedEntities(
   }
 
   return { merged: Object.keys(merged).length ? merged : undefined, aliasToCanonical };
+}
+
+const RELATIONAL_CHARACTER_ALIASES: Record<string, string[]> = {
+  father: ["dad", "daddy", "father", "my dad", "my father"],
+  mother: ["mom", "mum", "mommy", "mummy", "mother", "my mom", "my mum", "my mother"],
+  brother: ["brother", "my brother"],
+  sister: ["sister", "my sister"],
+  son: ["son", "my son"],
+  daughter: ["daughter", "my daughter"],
+};
+
+function classifyFamilyRole(value: string) {
+  const normalized = normalizeKey(value);
+  for (const [role, aliases] of Object.entries(RELATIONAL_CHARACTER_ALIASES)) {
+    if (aliases.some((alias) => new RegExp(`\\b${alias.replace(/ /g, "\\s+")}\\b`, "i").test(normalized))) {
+      return role;
+    }
+  }
+  return null;
+}
+
+function isRelationalCharacterLabel(value: string) {
+  const normalized = normalizeKey(value).replace(/^my /, "");
+  return Object.values(RELATIONAL_CHARACTER_ALIASES)
+    .flat()
+    .some((alias) => normalizeKey(alias).replace(/^my /, "") === normalized);
+}
+
+function addRelationalAliasesToCharacters(
+  characters: StoryIndexesV2["characters"] | undefined,
+  relationships: StoryIndexesV2["relationships"] | undefined,
+  playerName: string | undefined,
+  playerAliases: string[] | undefined,
+) {
+  if (!characters || !playerName) return characters;
+  const playerVariants = buildPlayerNameVariants(playerName, playerAliases);
+  const candidates = new Map<string, Set<string>>();
+  const addCandidate = (role: string | null, name: string) => {
+    if (!role || !name.trim() || isRelationalCharacterLabel(name)) return;
+    const names = candidates.get(role) ?? new Set<string>();
+    names.add(name.trim());
+    candidates.set(role, names);
+  };
+
+  for (const [key, entity] of Object.entries(characters)) {
+    addCandidate(classifyFamilyRole(entity?.description ?? ""), key);
+  }
+  for (const relationship of relationships ?? []) {
+    const leftIsPlayer = playerVariants.has(normalizeKey(relationship.a));
+    const rightIsPlayer = playerVariants.has(normalizeKey(relationship.b));
+    if (leftIsPlayer === rightIsPlayer) continue;
+    const other = leftIsPlayer ? relationship.b : relationship.a;
+    const evidenceText = [
+      relationship.summary,
+      ...(relationship.history ?? []).map((entry) => entry.summary),
+    ].filter(Boolean).join(" ");
+    addCandidate(classifyFamilyRole(evidenceText), other);
+  }
+
+  const cloned = Object.fromEntries(
+    Object.entries(characters).map(([key, entity]) => [key, { ...entity, aliases: [...(entity.aliases ?? [])] }]),
+  );
+  for (const [role, names] of candidates) {
+    if (names.size !== 1) continue;
+    const candidateName = Array.from(names)[0]!;
+    const match = Object.entries(cloned).find(([key, entity]) =>
+      [key, entity.name, ...(entity.aliases ?? [])].some(
+        (label) => normalizeKey(label) === normalizeKey(candidateName),
+      ),
+    );
+    if (!match) continue;
+    const [key, entity] = match;
+    cloned[key] = {
+      ...entity,
+      aliases: Array.from(new Set([...(entity.aliases ?? []), ...(RELATIONAL_CHARACTER_ALIASES[role] ?? [])])),
+    };
+  }
+  return cloned;
 }
 
 export function reconcileStoryIndexes(
@@ -712,7 +989,16 @@ export function reconcileStoryIndexes(
 
   const messageCount = totalMessages > 0 ? totalMessages : indexes.messageCount;
 
-  const { merged: rawCharacters, aliasToCanonical } = reconcileIndexedEntities(indexes.characters);
+  const charactersWithRelationalAliases = addRelationalAliasesToCharacters(
+    indexes.characters,
+    indexes.relationships,
+    opts?.playerName,
+    opts?.playerAliases,
+  );
+  const { merged: rawCharacters, aliasToCanonical } = reconcileIndexedEntities(charactersWithRelationalAliases, "character");
+  const { merged: normalizedLocations } = reconcileIndexedEntities(indexes.locations, "location");
+  const { merged: normalizedItems } = reconcileIndexedEntities(indexes.items, "item");
+  const { merged: normalizedFactions } = reconcileIndexedEntities(indexes.factions, "faction");
 
   const playerVariants = opts?.playerName
     ? buildResolvedPlayerNameVariants({
@@ -737,7 +1023,7 @@ export function reconcileStoryIndexes(
   const allowlist = buildCharacterAllowlist({
     playerName: opts?.playerName ?? "",
     playerAliases: opts?.playerAliases,
-    indexedCharacters: normalizedCharacters ?? indexes.characters,
+    indexedCharacters: rawCharacters ?? indexes.characters,
     universeImportedCharacters: opts?.universeImportedCharacters,
     existingRelationships: indexes.relationships,
   });
@@ -746,12 +1032,21 @@ export function reconcileStoryIndexes(
     playerName: opts?.playerName,
     playerAliases: opts?.playerAliases,
     allowlist,
-    indexedCharacters: normalizedCharacters ?? indexes.characters,
+    indexedCharacters: rawCharacters ?? indexes.characters,
     universeImportedCharacters: opts?.universeImportedCharacters,
     identityRevealedAtMessage: opts?.identityRevealedAtMessage,
     messageCount: opts?.messageCount ?? messageCount,
     canonicalName: opts?.canonicalName,
     narrativeName: opts?.narrativeName,
+    entityIds: new Map(
+      Object.entries(rawCharacters ?? {}).flatMap(([key, entity]) => {
+        const id = entity.id?.trim();
+        if (!id) return [];
+        return [key, entity.name, ...(entity.aliases ?? [])].map(
+          (label) => [normalizeKey(label), id] as const,
+        );
+      }),
+    ),
   });
 
   return {
@@ -759,6 +1054,9 @@ export function reconcileStoryIndexes(
     ...(messageCount ? { messageCount } : {}),
     messageNumberingVersion: "1.0",
     ...(normalizedCharacters ? { characters: normalizedCharacters } : {}),
+    ...(normalizedLocations ? { locations: normalizedLocations } : {}),
+    ...(normalizedItems ? { items: normalizedItems } : {}),
+    ...(normalizedFactions ? { factions: normalizedFactions } : {}),
     ...(relationships ? { relationships } : {}),
   };
 }
@@ -811,12 +1109,23 @@ export function finalizeStoryStateForSave(params: {
     narrativeName: playerEntry?.narrativeName,
   });
 
-  const base: StoryStateDataV2 = {
-    ...previousV2,
-    ...normalized,
-    memoryArchitectureVersion: "2.0",
-    indexes: reconciledIndexes,
-  };
+  const base: StoryStateDataV2 = params.mode === "deep"
+    ? {
+        ...normalized,
+        memoryArchitectureVersion: "2.0",
+        indexes: reconciledIndexes,
+        // These fields are primary/user-authored state, not rebuildable index prose.
+        rpStats: normalized.rpStats ?? previousV2.rpStats,
+        authorDirectives: normalized.authorDirectives ?? previousV2.authorDirectives,
+        playerIdentityOverride:
+          normalized.playerIdentityOverride ?? previousV2.playerIdentityOverride,
+      }
+    : {
+        ...previousV2,
+        ...normalized,
+        memoryArchitectureVersion: "2.0",
+        indexes: reconciledIndexes,
+      };
 
   const deepIndexProgress = params.deepIndexProgress
     ? {

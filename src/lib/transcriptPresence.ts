@@ -13,6 +13,7 @@ import { isAuthorDirectiveMessage } from "./storyText/authorDirectives";
 import { isContinueMessage } from "./storyText/continueMode";
 import { isDirectorMessage, isPlayerLegalNameDirectorBeat } from "./storyText/directorMode";
 import { extractSpeakerPrefix } from "./storyText/extractSpeakerPrefix";
+import { isPureChapterMarkerMessage } from "./ai/indexingMessageClassification";
 
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -79,6 +80,9 @@ function isMetaTranscriptMessage(
 	opts: { playerLegalName: string; playerSceneName: string },
 ): boolean {
 	if (message.role === "system" || message.speakerType === "system") {
+		return true;
+	}
+	if (isPureChapterMarkerMessage(message)) {
 		return true;
 	}
 
@@ -667,6 +671,11 @@ export function applyTranscriptPresenceGate(
 		messageCount,
 		playerPresent,
 	});
+	if (playerPresent) {
+		for (const variant of playerVariants) {
+			presentNames.add(normalizeName(variant));
+		}
+	}
 
 	const filteredCharacters: StoryStateDataV2["characters"] = {};
 	for (const [name, entry] of Object.entries(workingState.characters ?? {})) {

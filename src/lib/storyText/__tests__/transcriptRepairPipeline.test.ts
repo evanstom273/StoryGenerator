@@ -93,6 +93,7 @@ describe("transcriptRepairPipeline", () => {
 
 	it("keeps an in-story renamed identity stable when legacy aliases appear in speaker labels", () => {
 		const character = {
+			id: "player-1",
 			name: "James Peralta",
 			aliases: ["Jamie"],
 			knownTies: ["Rosa"],
@@ -111,6 +112,13 @@ describe("transcriptRepairPipeline", () => {
 			},
 			worldFacts: [],
 			unresolvedThreads: [],
+			playerIdentityOverride: {
+				playerCharacterId: "player-1",
+				sourceMessageId: "message-27",
+				source: "player_turn" as const,
+				sceneName: "Lyra",
+				pronouns: "she/her",
+			},
 		};
 		const effectiveIdentity = resolveEffectivePlayerIdentity(character, { storyState });
 		const identity = buildPlayerTranscriptIdentityFromStoryContext({

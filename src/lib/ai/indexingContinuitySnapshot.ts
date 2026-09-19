@@ -283,8 +283,10 @@ function pickIndexedWorldFacts(
 type StoryIndexesV2WorldFact = NonNullable<NonNullable<StoryStateDataV2["indexes"]>["worldFacts"]>[number];
 
 function pickWorldFacts(state: StoryStateDataV2): string[] {
-	const facts = Array.isArray(state.worldFacts) ? state.worldFacts.filter((fact) => fact.trim()) : [];
-	return facts.slice(0, MAX_WORLD_FACTS);
+	return (state.indexes?.worldFacts ?? [])
+		.filter((entry) => entry.fact?.trim() && entry.evidence?.messageNumbers?.length)
+		.map((entry) => entry.fact.trim())
+		.slice(0, MAX_WORLD_FACTS);
 }
 
 function pickSummaries(state: StoryStateDataV2) {

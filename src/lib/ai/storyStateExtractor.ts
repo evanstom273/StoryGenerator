@@ -142,7 +142,7 @@ export function buildStoryStateExtractionPrompt({
       '    "locations"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
       '    "items"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
       '    "factions"?: { "<name>": { "name": string, "aliases"?: string[], "description"?: string, "firstSeenMessage"?: number, "lastSeenMessage"?: number, "evidence"?: { "messageNumbers": number[] } } },',
-      '    "relationships"?: Array<{ "a": string, "b": string, "tier": "stranger"|"acquaintance"|"friend"|"family"|"ally"|"rival"|"enemy"|"nemesis"|"lover", "summary"?: string, "history"?: Array<{ "summary": string, "messageNumber"?: number }>, "evidence"?: { "messageNumbers": number[] } }>,',
+      '    "relationships"?: Array<{ "a": string, "b": string, "aId"?: string, "bId"?: string, "tier": "stranger"|"acquaintance"|"friend"|"family"|"ally"|"rival"|"enemy"|"nemesis"|"lover", "summary"?: string, "history"?: Array<{ "summary": string, "messageNumber"?: number }>, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "worldFacts"?: Array<{ "fact": string, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "significantMemories"?: Array<{ "moment": string, "evidence"?: { "messageNumbers": number[] } }>,',
       '    "openThreads"?: Array<{ "thread": string, "evidence"?: { "messageNumbers": number[] } }>',
@@ -209,6 +209,10 @@ export function buildStoryStateExtractionPrompt({
       "- Personal conditions belong in the relevant character entry, not in worldFacts. Example: 'Lyra is permanently blind' is character status, while 'the poison causes permanent blindness' is a world fact only if the transcript explicitly establishes it as a general rule.",
       "- If a major event is trivial or local, do not let it overwrite the premise. If it is story-defining, reflect it in premise/currentSituation/recentDevelopments.",
       "- Treat probable spelling variants, nicknames, and near-identical names as the same person unless the transcript clearly establishes separate individuals.",
+      "- Entity identity is stable across surface names. Reuse an existing indexes entity id whenever the continuity snapshot identifies the same person/place; never mint a second entity merely because a full name, nickname, title, relational label, preferred name, or pronouns changed.",
+      "- Resolve first-person kinship references (Mom, Dad, my brother, my sister, etc.) against the speaker and established relationships. Store them as aliases of the existing person, never as standalone characters when the relative is already known.",
+      "- If a place is renamed or described by function (for example, a garage called the conversion space), keep one location entity and add the other wording to aliases.",
+      "- Continuity summaries and descriptions are derived hints, not primary evidence. They may help locate earlier facts but cannot establish or change a fact without character-sheet, author-declaration, or transcript evidence.",
       "- Keep lists short and deduplicated.",
       "- Keep indexes bounded: max 50 entities per category, max 30 worldFacts, max 50 significantMemories, max 20 openThreads, max 60 relationships.",
       "- Evidence should use messageNumbers from the transcript brackets. If uncertain, omit the entry instead of guessing.",
@@ -265,7 +269,7 @@ export function buildStoryStateExtractionPrompt({
         : "",
       continuitySnapshotJson?.trim()
         ? [
-            "Continuity Snapshot JSON (active story state for incremental merge; preserve omitted entities from prior canon):",
+            "Continuity Snapshot JSON (derived active index for incremental merge; preserve omitted entities, but never treat summary prose as evidence or let it override primary canon):",
             "indexes.openThreads lists unresolved threads — return indexes.openThreads as the full updated unresolved set only.",
             continuitySnapshotJson.trim(),
           ].join("\n")
@@ -376,9 +380,15 @@ function sanitizeIndexes(value: any) {
                 }))
             : undefined;
 
+          if (!evidence && !sanitizedHistory?.some((history: { messageNumber?: number }) => history.messageNumber)) {
+            return null;
+          }
+
           return {
             a: entry.a.trim(),
             b: entry.b.trim(),
+            ...(typeof entry.aId === "string" && entry.aId.trim() ? { aId: entry.aId.trim() } : {}),
+            ...(typeof entry.bId === "string" && entry.bId.trim() ? { bId: entry.bId.trim() } : {}),
             tier,
             ...(sanitizedHistory?.length ? { history: sanitizedHistory } : {}),
             ...(typeof entry.summary === "string" && entry.summary.trim() ? { summary: entry.summary.trim() } : {}),
@@ -401,6 +411,7 @@ function sanitizeIndexes(value: any) {
         const value = entry[key];
         if (typeof value !== "string" || !value.trim()) return null;
         const evidence = sanitizeEvidence(entry.evidence, maxMessageNumber);
+        if (!evidence) return null;
         return { [key]: value.trim(), ...(evidence ? { evidence } : {}) } as any;
       })
       .filter(Boolean);
@@ -829,10 +840,16 @@ export function formatStoryLongTermMemoryForPrompt(
     }
   }
 
-  if (storyStateData.worldFacts?.length) {
+  const evidencedWorldFacts = (storyStateData.indexes?.worldFacts ?? [])
+    .filter((entry) => entry.fact?.trim() && entry.evidence?.messageNumbers?.length)
+    .map((entry) => entry.fact.trim());
+  const retrievableWorldFacts = evidencedWorldFacts.length
+    ? Array.from(new Set(evidencedWorldFacts)).slice(0, 12)
+    : [];
+  if (retrievableWorldFacts.length) {
     lines.push("");
-    lines.push("World Facts:");
-    for (const fact of storyStateData.worldFacts.slice(0, 12)) {
+    lines.push("Evidence-backed World Facts:");
+    for (const fact of retrievableWorldFacts) {
       lines.push(`- ${redact(fact)}`);
     }
   }

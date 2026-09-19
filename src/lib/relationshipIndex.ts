@@ -528,6 +528,8 @@ export function simplifyRelationshipEntry(entry: RelationshipIndexEntry): Relati
 	const simplified: RelationshipIndexEntry = {
 		a: entry.a,
 		b: entry.b,
+		...(entry.aId?.trim() ? { aId: entry.aId.trim() } : {}),
+		...(entry.bId?.trim() ? { bId: entry.bId.trim() } : {}),
 		tier: sanitizeRelationshipTier(entry.tier),
 	};
 	if (typeof entry.summary === "string" && entry.summary.trim()) {
@@ -562,6 +564,8 @@ export function mergeRelationshipEntries(
 	return simplifyRelationshipEntry({
 		a: left.a,
 		b: left.b,
+		aId: left.aId ?? right.aId,
+		bId: left.bId ?? right.bId,
 		tier,
 		...(history?.length ? { history } : {}),
 		...(summary ? { summary } : {}),
@@ -630,6 +634,7 @@ export function reconcileRelationshipEntries(
 		messageCount?: number;
 		canonicalName?: string;
 		narrativeName?: string;
+		entityIds?: Map<string, string>;
 	},
 ): RelationshipIndexEntry[] | undefined {
 	if (!relationships?.length) return undefined;
@@ -699,11 +704,25 @@ export function reconcileRelationshipEntries(
 			...entry,
 			a: ordered.a,
 			b: ordered.b,
+			...(opts?.entityIds?.get(ordered.ka)
+				? { aId: opts.entityIds.get(ordered.ka) }
+				: opts?.playerName && isPlayerNameVariant(ordered.a, opts.playerName, playerVariants)
+					? { aId: `player:${normalizeRelationshipKey(opts.playerName)}` }
+					: {}),
+			...(opts?.entityIds?.get(ordered.kb)
+				? { bId: opts.entityIds.get(ordered.kb) }
+				: opts?.playerName && isPlayerNameVariant(ordered.b, opts.playerName, playerVariants)
+					? { bId: `player:${normalizeRelationshipKey(opts.playerName)}` }
+					: {}),
 			tier: sanitizeRelationshipTier(entry.tier),
 		};
+		if (normalizedEntry.aId && normalizedEntry.aId === normalizedEntry.bId) continue;
 
-		const existing = byPair.get(pairKey);
-		byPair.set(pairKey, existing ? mergeRelationshipEntries(existing, normalizedEntry) : normalizedEntry);
+		const canonicalPairKey = normalizedEntry.aId && normalizedEntry.bId
+			? [normalizedEntry.aId, normalizedEntry.bId].sort().join("::")
+			: pairKey;
+		const existing = byPair.get(canonicalPairKey);
+		byPair.set(canonicalPairKey, existing ? mergeRelationshipEntries(existing, normalizedEntry) : normalizedEntry);
 	}
 
 	const merged = Array.from(byPair.values()).map(simplifyRelationshipEntry);

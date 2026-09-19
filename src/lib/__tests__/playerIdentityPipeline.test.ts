@@ -263,15 +263,14 @@ describe("player identity pipeline", () => {
 			).toBe("Lyra");
 		});
 
-		it("accepts Lyra from coming-out transcript dialogue", () => {
+		it("accepts Lyra from an explicit player-authored coming-out turn", () => {
 			const messages: StoryMessage[] = [
 				{
 					id: "27",
 					storyId: "story-1",
-					role: "assistant",
-					content:
-						'Jamie: "Lyra... that\'s my... name."\nAmy: *She eases back to look at her daughter\'s face.*',
-					speakerType: "assistant",
+					role: "user",
+					content: '*I look at my parents.* "Call me Lyra from now on."',
+					speakerType: "player",
 					timestamp: "2026-08-21T00:07:00.000Z",
 				},
 			];
@@ -280,9 +279,9 @@ describe("player identity pipeline", () => {
 			).toBe("Lyra");
 		});
 
-		it("uses Lyra from valid story-state displayName on existing renamed stories", () => {
+		it("uses a provenance-tagged Lyra override on existing renamed stories", () => {
 			expect(
-				resolveEffectivePlayerIdentity(jamieCharacter, {
+				resolveEffectivePlayerIdentity({ ...jamieCharacter, id: "player-1" }, {
 					storyState: {
 						updatedAt: "2026-08-21T00:00:00.000Z",
 						characters: {
@@ -293,6 +292,13 @@ describe("player identity pipeline", () => {
 						},
 						worldFacts: [],
 						unresolvedThreads: [],
+						playerIdentityOverride: {
+							playerCharacterId: "player-1",
+							sourceMessageId: "message-27",
+							source: "player_turn",
+							sceneName: "Lyra",
+							pronouns: "she/her",
+						},
 					},
 				}).sceneName,
 			).toBe("Lyra");

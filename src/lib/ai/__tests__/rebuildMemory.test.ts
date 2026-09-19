@@ -122,7 +122,7 @@ describe("rebuildStoryMemoryAndIndexes refusal recovery", () => {
 		});
 	});
 
-	it("preserves existing fields in structural-message checkpoints", async () => {
+	it("starts a full rebuild from clean derived state while preserving primary state", async () => {
 		const initialState: StoryState = {
 			id: `story-state:${story.id}`,
 			storyId: story.id,
@@ -133,6 +133,7 @@ describe("rebuildStoryMemoryAndIndexes refusal recovery", () => {
 				worldFacts: ["The family lives in the suburbs."],
 				unresolvedThreads: ["Return home safely."],
 				summaries: { currentSituation: "The family is searching." },
+				rpStats: { hp: 7, gold: 2, npcHp: {}, changelog: [] },
 			}),
 		};
 		const { repository, saves } = createRepository(
@@ -153,11 +154,12 @@ describe("rebuildStoryMemoryAndIndexes refusal recovery", () => {
 
 		const checkpoint = safeParseStoryStateData(saves[0]!.stateJson);
 		expect(checkpoint).toMatchObject({
-			characters: { Rosa: { status: "Waiting at home" } },
-			worldFacts: ["The family lives in the suburbs."],
-			unresolvedThreads: ["Return home safely."],
-			summaries: { currentSituation: "The family is searching." },
+			characters: {},
+			worldFacts: [],
+			unresolvedThreads: [],
+			rpStats: { hp: 7, gold: 2 },
 		});
+		expect(checkpoint?.summaries).toEqual({});
 	});
 
 	it("uses one minimum-context retry, records a gap, and continues with a contiguous cursor", async () => {
@@ -327,11 +329,7 @@ describe("rebuildStoryMemoryAndIndexes refusal recovery", () => {
 
 		messages[0] = { ...messages[0]!, content: "Edited opening scene with the same message ID." };
 		const progress: Array<{ message?: string }> = [];
-		const secondProvider = createProvider(async (request) => {
-			const prompt = request.messages.map((entry) => entry.content).join("\n");
-			expect(prompt).toContain("Edited opening scene with the same message ID.");
-			return { content: validExtraction("The family is home.") };
-		});
+		const secondProvider = createProvider(async () => ({ content: validExtraction("The family is home.") }));
 		await rebuildStoryMemoryAndIndexes({
 			storyId: story.id,
 			repository,
@@ -343,6 +341,10 @@ describe("rebuildStoryMemoryAndIndexes refusal recovery", () => {
 		});
 
 		expect(secondProvider.generateResponse).toHaveBeenCalledTimes(2);
+		const rebuiltPrompts = vi.mocked(secondProvider.generateResponse).mock.calls
+			.map(([request]) => request.messages.map((entry) => entry.content).join("\n"));
+		expect(rebuiltPrompts[0]).toContain("Edited opening scene with the same message ID.");
+		expect(rebuiltPrompts[1]).toContain("The family returns home.");
 		expect(progress.some((event) => event.message?.includes("canonical transcript changed"))).toBe(true);
 	});
 

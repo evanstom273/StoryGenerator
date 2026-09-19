@@ -117,6 +117,7 @@ import {
   withIndexedMetadata,
 } from "../../lib/storyStateV2";
 import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
+import { protectGeneratedSummaryPlayerFacts } from "../../lib/ai/generatedSummaryAuthority";
 import { applyTranscriptPresenceGate, createClearedStoryStateV2 } from "../../lib/transcriptPresence";
 import { runGuidedChapterGeneration } from "../../lib/guidedChapterGeneration/runGuidedChapters";
 import {
@@ -2239,6 +2240,7 @@ async function rebuildChapterArchiveSummaries(params: {
       "Canon/Secret/Reveal/Retcon lines are author declarations preserved in the transcript. Treat them as authoritative continuity constraints, secrecy rules, or retcons, but do not summarize the declaration itself as if it were an on-screen beat.",
       "This output is for the story archive, not for narration. Do not write prose scenes.",
       "Keep it compact and spoiler-aware: focus on what actually happened, key reveals, and state changes.",
+      "The Player Character Sheet below is primary canon. Derived summaries are context hints only and must never override it. Do not change age, identity, pronouns, species, or other sheet facts unless this chapter transcript explicitly establishes the change.",
       "Output format:",
       "- 1 short paragraph summary",
       "- Then 3-6 bullet points of major beats",
@@ -2247,6 +2249,7 @@ async function rebuildChapterArchiveSummaries(params: {
     const contextBlock = [
       `Story title: ${params.story.title}`,
       `Chapter: ${chapter.label}`,
+      `Player Character Sheet (primary canon):\n${formatPlayerCharacterIdentityForPrompt(params.playerCharacter)}`,
       normalizedState?.summaries?.premise?.trim()
         ? `Premise: ${normalizedState.summaries.premise.trim()}`
         : null,
@@ -2275,9 +2278,14 @@ async function rebuildChapterArchiveSummaries(params: {
       })
     ).content;
 
+    const protectedChapterSummary = protectGeneratedSummaryPlayerFacts(
+      chapterSummaryText.trim(),
+      params.playerCharacter,
+      slice,
+    );
     await params.repository.saveStoryChapter({
       ...chapter,
-      summary: chapterSummaryText.trim(),
+      summary: protectedChapterSummary,
     });
   }
 
@@ -3992,9 +4000,14 @@ export function StoryEngineProvider({
         }
 
         if (!story.currentSummary?.trim() && result.summaryText?.trim()) {
+          const protectedSummary = protectGeneratedSummaryPlayerFacts(
+            result.summaryText,
+            playerCharacter,
+            allMessages,
+          );
           await repository.saveStory({
             ...story,
-            currentSummary: result.summaryText.trim(),
+            currentSummary: protectedSummary.trim(),
             updatedAt: new Date().toISOString(),
           });
         }
@@ -5602,9 +5615,14 @@ export function StoryEngineProvider({
       });
 
       if (!story.currentSummary?.trim() && rebuilt.summaryText?.trim()) {
+        const protectedSummary = protectGeneratedSummaryPlayerFacts(
+          rebuilt.summaryText,
+          playerCharacter,
+          refreshedMessages,
+        );
         await repository.saveStory({
           ...story,
-          currentSummary: rebuilt.summaryText.trim(),
+          currentSummary: protectedSummary.trim(),
           updatedAt: new Date().toISOString(),
         });
       }
@@ -9480,7 +9498,7 @@ export function StoryEngineProvider({
           });
 
           try {
-            const summaryText = await generateSummaryWithRetry({
+            const generatedSummaryText = await generateSummaryWithRetry({
               providerType,
               provider,
               apiKey,
@@ -9495,6 +9513,11 @@ export function StoryEngineProvider({
                 redactContent: redactSensitiveContent,
               },
             });
+            const summaryText = protectGeneratedSummaryPlayerFacts(
+              generatedSummaryText,
+              playerCharacter,
+              updatedMessages,
+            );
 
             await repository.saveStorySummary({
               id: createEntityId("story-summary"),
@@ -9569,6 +9592,7 @@ export function StoryEngineProvider({
                 "Canon/Secret/Reveal/Retcon lines are author declarations preserved in the transcript. Treat them as authoritative continuity constraints, secrecy rules, or retcons, but do not summarize the declaration itself as if it were an on-screen beat.",
                 "This summary is for the archive, not for narration. Do not write prose scenes.",
                 "Keep it compact and spoiler-aware: focus on what actually happened, key reveals, and state changes.",
+                "The Player Character Sheet below is primary canon. Derived summaries are context hints only and must never override it. Do not change age, identity, pronouns, species, or other sheet facts unless this chapter transcript explicitly establishes the change.",
                 "Output format:",
                 "- 1 short paragraph summary",
                 "- Then 3-6 bullet points of major beats",
@@ -9577,6 +9601,7 @@ export function StoryEngineProvider({
               const contextBlock = [
                 `Story title: ${story.title}`,
                 `Chapter: ${createdChapter.label}`,
+                `Player Character Sheet (primary canon):\n${formatPlayerCharacterIdentityForPrompt(playerCharacter)}`,
                 normalizedState?.summaries?.premise?.trim()
                   ? `Premise: ${normalizedState.summaries.premise.trim()}`
                   : null,
@@ -9599,9 +9624,14 @@ export function StoryEngineProvider({
                 })
               ).content;
 
+              const protectedChapterSummary = protectGeneratedSummaryPlayerFacts(
+                chapterSummaryText.trim(),
+                playerCharacter,
+                slice,
+              );
               await repository.saveStoryChapter({
                 ...createdChapter,
-                summary: chapterSummaryText.trim(),
+                summary: protectedChapterSummary,
               });
               await hydrate(false);
             } catch {}

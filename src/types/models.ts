@@ -593,6 +593,9 @@ export type RelationshipHistoryEntry = {
 export type RelationshipIndexEntry = {
   a: string;
   b: string;
+  /** Stable canonical entity identifiers. Names remain denormalized for display/backward compatibility. */
+  aId?: string;
+  bId?: string;
   friendship?: number;
   trust?: number;
   respect?: number;

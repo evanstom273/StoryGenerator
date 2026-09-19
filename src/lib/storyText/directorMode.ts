@@ -53,7 +53,12 @@ export function isPlayerLegalNameDirectorBeat(
 
   const legal = legalName.trim();
   const scene = sceneName.trim();
-  if (!legal || !scene || legal.toLowerCase() === scene.toLowerCase()) {
+  if (
+    !legal ||
+    !scene ||
+    legal.toLowerCase() === scene.toLowerCase() ||
+    isLegalNameReference(scene, legal)
+  ) {
     return false;
   }
 

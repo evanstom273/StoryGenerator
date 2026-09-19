@@ -5,6 +5,7 @@ import {
 	mergeStoryIndexesIncremental,
 	mergeStoryStateForIndexing,
 	parseStoryStateJson,
+	reconcileStoryIndexes,
 } from "../storyStateV2";
 
 describe("storyStateV2 indexing merge", () => {
@@ -188,5 +189,117 @@ describe("storyStateV2 indexing merge", () => {
 		expect(finalized.lastDeepIndexAttemptedMessageCount).toBe(16);
 		expect(finalized.indexingGaps).toEqual([]);
 		expect(finalized.messagesSinceDeepIndexUpdate).toBe(0);
+	});
+
+	it("converges short and full character names on one stable canonical entity", () => {
+		const reconciled = reconcileStoryIndexes({
+			characters: {
+				Amy: { name: "Amy", description: "A detective and Lyra's mother.", evidence: { messageNumbers: [1] } },
+				"Amy Peralta": { name: "Amy Peralta", description: "Lyra's mother and a detective.", evidence: { messageNumbers: [2] } },
+				jake: { name: "Jake", evidence: { messageNumbers: [1] } },
+				" Jake ": { name: "Jake", evidence: { messageNumbers: [2] } },
+			},
+		}, 2);
+
+		expect(Object.keys(reconciled?.characters ?? {})).toEqual(["Amy Peralta", "Jake"]);
+		expect(reconciled?.characters?.["Amy Peralta"]?.aliases).toContain("Amy");
+		expect(reconciled?.characters?.["Amy Peralta"]?.id).toMatch(/^character:/);
+	});
+
+	it("merges an explicit identity transition into the existing character-state record", () => {
+		const merged = mergeStoryStateForIndexing(
+			{
+				updatedAt: "2026-01-01T00:00:00.000Z",
+				characters: { Jamie: { canonicalName: "Jamie", pronouns: "he/him" } },
+				worldFacts: [],
+				unresolvedThreads: [],
+			},
+			{
+				updatedAt: "2026-01-02T00:00:00.000Z",
+				characters: {
+					Lyra: { canonicalName: "Jamie", displayName: "Lyra", aliases: ["Jamie"], pronouns: "she/her" },
+				},
+				worldFacts: [],
+				unresolvedThreads: [],
+			},
+			undefined,
+		);
+
+		expect(Object.keys(merged.characters ?? {})).toHaveLength(1);
+		expect(Object.values(merged.characters ?? {})[0]).toMatchObject({
+			canonicalName: "Jamie",
+			displayName: "Lyra",
+			pronouns: "she/her",
+		});
+	});
+
+	it("resolves first-person family labels before relationship deduplication", () => {
+		const reconciled = reconcileStoryIndexes({
+			characters: {
+				Jake: { name: "Jake", description: "Lyra's father.", evidence: { messageNumbers: [1] } },
+				Dad: { name: "Dad", description: "The protagonist's father.", evidence: { messageNumbers: [2] } },
+			},
+			relationships: [
+				{ a: "Lyra", b: "Dad", tier: "family", summary: "Lyra trusts her dad.", evidence: { messageNumbers: [2] } },
+				{ a: "Jamie", b: "Jake", tier: "family", summary: "Jake is her father.", evidence: { messageNumbers: [1] } },
+			],
+		}, 2, { playerName: "Jamie", playerAliases: ["Lyra"] });
+
+		expect(Object.keys(reconciled?.characters ?? {})).toEqual(["Jake"]);
+		expect(reconciled?.characters?.Jake?.aliases).toContain("Dad");
+		expect(reconciled?.relationships).toHaveLength(1);
+		expect(reconciled?.relationships?.[0]).toMatchObject({ tier: "family" });
+		expect(reconciled?.relationships?.[0]?.aId).toBeTruthy();
+		expect(reconciled?.relationships?.[0]?.bId).toBeTruthy();
+	});
+
+	it("merges contextually equivalent location labels and remains idempotent", () => {
+		const input = {
+			locations: {
+				Garage: {
+					name: "Garage",
+					description: "The converted family garage used as a private workshop and training room.",
+					evidence: { messageNumbers: [4] },
+				},
+				"Conversion Space": {
+					name: "Conversion Space",
+					description: "The converted garage workshop and private training room.",
+					evidence: { messageNumbers: [4] },
+				},
+			},
+		};
+		const once = reconcileStoryIndexes(input, 4);
+		const twice = reconcileStoryIndexes(once, 4);
+
+		expect(Object.keys(once?.locations ?? {})).toHaveLength(1);
+		expect(twice).toEqual(once);
+	});
+
+	it("does not resurrect stale derived records during a full deep finalization", () => {
+		const finalized = JSON.parse(finalizeStoryStateForSave({
+			parsedState: {
+				updatedAt: "2026-01-02T00:00:00.000Z",
+				characters: {},
+				worldFacts: [],
+				unresolvedThreads: [],
+				indexes: { messageCount: 1, characters: {} },
+			},
+			previousStateJson: JSON.stringify({
+				updatedAt: "2026-01-01T00:00:00.000Z",
+				characters: { Ghost: { status: "stale" } },
+				worldFacts: ["Invented old fact"],
+				unresolvedThreads: [],
+				npcs: { Ghost: { description: "stale" } },
+				rpStats: { hp: 5 },
+			}),
+			totalMessages: 1,
+			now: "2026-01-02T00:00:00.000Z",
+			mode: "deep",
+		}));
+
+		expect(finalized.characters).toEqual({});
+		expect(finalized.worldFacts).toEqual([]);
+		expect(finalized.npcs).toBeUndefined();
+		expect(finalized.rpStats).toEqual({ hp: 5 });
 	});
 });

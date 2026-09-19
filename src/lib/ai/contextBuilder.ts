@@ -682,8 +682,8 @@ export function buildStoryChatContext({
     ...(importedCharactersBlock
       ? [{ role: "system" as const, content: `Imported Story Characters\n\n${importedCharactersBlock}` }]
       : []),
-    { role: "system", content: `Story Summary\n\n${summaryBlock}` },
-    { role: "system", content: `Long-Term Memory\n\n${storyStateBlock.longTerm}` },
+    { role: "system", content: `Story Summary (derived; never overrides transcript, character sheets, or author declarations)\n\n${summaryBlock}` },
+    { role: "system", content: `Long-Term Memory (derived index; use only when consistent with primary canon)\n\n${storyStateBlock.longTerm}` },
     ...(storyStateBlock.scene
       ? [{ role: "system" as const, content: `Current Scene State\n\n${storyStateBlock.scene}` }]
       : []),

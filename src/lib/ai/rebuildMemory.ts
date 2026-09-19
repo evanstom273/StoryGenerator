@@ -13,7 +13,7 @@ import {
 	logIndexingCallDiagnostics,
 } from "./indexingDiagnostics";
 import { normalizeStoryStateToV2, reconcileStoryIndexes, safeParseStoryStateData, withIndexedMetadata, mergeStoryIndexesIncremental, mergeStoryStateForIndexing, applyOpenThreadReconciliation } from "../storyStateV2";
-import { applyTranscriptPresenceGate } from "../transcriptPresence";
+import { applyTranscriptPresenceGate, createClearedStoryStateV2 } from "../transcriptPresence";
 import { normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity, isPlayerSituationPronounsCompatible } from "../playerCharacterPrompt";
 import { loadStoryImportedCharacters, mergeImportedCharacterAllowlist } from "../storyImportedCharacters";
 import { ensureIndexedCharacterStatus } from "../characterStatus";
@@ -187,7 +187,25 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       message: "The canonical transcript changed since its last index; rebuilding the full index.",
     });
   }
-  let currentState: StoryStateDataV2 = normalizeStoryStateToV2(baseParsed);
+  const normalizedBase = normalizeStoryStateToV2(baseParsed);
+  let currentState: StoryStateDataV2 = useIncremental
+    ? normalizedBase
+    : {
+        ...createClearedStoryStateV2({
+          rpStats: normalizedBase.rpStats,
+          authorDirectives: normalizedBase.authorDirectives,
+        }),
+        ...(normalizedBase.playerIdentityOverride
+          ? { playerIdentityOverride: normalizedBase.playerIdentityOverride }
+          : {}),
+        ...(normalizedBase.scene?.participantCapabilityOverrides?.length
+          ? {
+              scene: {
+                participantCapabilityOverrides: normalizedBase.scene.participantCapabilityOverrides,
+              },
+            }
+          : {}),
+      };
   currentState = {
     ...currentState,
     updatedAt: currentState.updatedAt ?? new Date().toISOString(),
@@ -348,7 +366,10 @@ export async function rebuildStoryMemoryAndIndexes(params: {
       state: currentState,
       currentMessageNumber: chunkEnd,
       playerName: playerCharacter.name,
-      playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
+      playerAliases: Array.from(new Set([
+        ...normalizePlayerCharacterAliases(playerCharacter.aliases),
+        playerIdentity.sceneName,
+      ])),
       currentChunkMessages: sanitizedChunk,
     });
     const continuitySnapshotJson = serializeIndexingContinuitySnapshot(continuitySnapshot);
@@ -523,7 +544,10 @@ export async function rebuildStoryMemoryAndIndexes(params: {
     };
     const reconciledIndexes = reconcileStoryIndexes(combinedIndexes, total, {
       playerName: playerCharacter.name,
-      playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
+      playerAliases: Array.from(new Set([
+        ...normalizePlayerCharacterAliases(playerCharacter.aliases),
+        playerIdentity.sceneName,
+      ])),
       universeImportedCharacters,
     });
 
@@ -604,7 +628,10 @@ export async function rebuildStoryMemoryAndIndexes(params: {
 
   const finalIndexes = reconcileStoryIndexes(currentState.indexes, total, {
     playerName: playerCharacter.name,
-    playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
+    playerAliases: Array.from(new Set([
+      ...normalizePlayerCharacterAliases(playerCharacter.aliases),
+      playerIdentity.sceneName,
+    ])),
     universeImportedCharacters,
   });
   const finalState = ensureIndexedCharacterStatus(
