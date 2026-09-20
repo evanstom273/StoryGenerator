@@ -383,6 +383,110 @@ describe("storyIndexingPipeline", () => {
       expect(rel.state).toBe("Protective caution");
     });
 
+    it("promotes an explicit new name and pronouns without changing character identity", async () => {
+      const playerCharacter = {
+        ...mockPlayerCharacter,
+        id: "player-lyra",
+        name: "James Peralta",
+        aliases: ["Jamie"],
+        pronouns: "He/him",
+        background: "James is Jake and Amy's son. He is a bright student who trusts his parents.",
+      } as PlayerCharacter;
+
+      const existingIndex: StoryIndex = {
+        storyId: mockStory.id,
+        chapterSummaries: [],
+        characters: [{
+          id: "player-lyra",
+          canonicalName: "James Peralta",
+          aliases: ["Jamie"],
+          pronouns: "He/him",
+          description: "James is Jake and Amy's son. He is close to his parents.",
+          status: "He is talking with his parents.",
+          developments: ["Jamie asked his parents if he could talk privately."],
+          provenance: ["msg-old"],
+          updatedAt: "1",
+        }],
+        relationships: [{
+          id: buildRelationshipPairKey("player-lyra", "char-jake"),
+          characterIdA: "player-lyra",
+          characterIdB: "char-jake",
+          nature: "Father and son",
+          state: "He trusts Jake deeply",
+          developments: ["Jamie asked Jake for support because he trusts him."],
+          provenance: ["msg-old"],
+          updatedAt: "1",
+        }],
+        indexedMessageCount: 1,
+        updatedAt: "1",
+      };
+      existingIndex.characters.push({
+        id: "char-jake",
+        canonicalName: "Jake Peralta",
+        aliases: ["Jake"],
+        description: "James's father.",
+        status: "Supportive",
+        developments: [],
+        provenance: ["msg-old"],
+        updatedAt: "1",
+      });
+
+      const provider = makeMockProvider(JSON.stringify({
+        chapterSummary: "Lyra came out to her parents and chose her new name.",
+        characters: [{
+          matchedId: "player-lyra",
+          name: "Lyra Peralta",
+          aliases: ["Jamie", "James Peralta"],
+          pronouns: "She/her",
+          identityUpdate: { name: "Lyra Peralta", pronouns: "She/her" },
+          description: "Lyra is Jake and Amy's daughter. She has chosen the name Lyra and uses she/her pronouns.",
+          status: "She is embracing her parents.",
+          developments: ["Lyra came out as transgender and chose her name."],
+        }],
+        relationships: [{
+          characterA: "player-lyra",
+          characterB: "char-jake",
+          nature: "Father and daughter",
+          state: "Loving and affirming",
+          developments: ["Lyra came out to Jake and he affirmed her identity."],
+        }],
+      }));
+
+      const result = await processIndexingBatch({
+        story: { ...mockStory, playerCharacterId: "player-lyra" },
+        playerCharacter,
+        chapterLabel: "Chapter 2",
+        messages: [{
+          id: "msg-new",
+          storyId: mockStory.id,
+          role: "user",
+          speakerName: "Lyra",
+          content: '"Lyra. And she/her."',
+          timestamp: "2",
+        }],
+        existingIndex,
+        provider,
+        model: "gemini-2.5-flash",
+      });
+
+      const lyra = result.characters.find((character) => character.id === "player-lyra");
+      expect(lyra?.canonicalName).toBe("Lyra Peralta");
+      expect(lyra?.pronouns).toBe("She/her");
+      expect(lyra?.aliases).toContain("James Peralta");
+      expect(lyra?.aliases).toContain("Jamie");
+      expect(result.characters.filter((character) => character.id === "player-lyra")).toHaveLength(1);
+      expect(lyra?.description).toContain("Lyra");
+      expect(lyra?.description).toContain("She");
+      expect(lyra?.developments.join(" ")).not.toMatch(/\b(he|him|his)\b/i);
+
+      const relationship = result.relationships.find((rel) =>
+        rel.characterIdA === "player-lyra" || rel.characterIdB === "player-lyra"
+      );
+      expect(relationship?.nature).toBe("Father and daughter");
+      expect(relationship?.developments.join(" ")).not.toContain("Jamie");
+      expect(relationship?.developments.join(" ")).toContain("Lyra");
+    });
+
     it("updates existing chapter summary in place with provenance", async () => {
       const mockExtraction1 = {
         chapterSummary: "Initial chapter events.",
