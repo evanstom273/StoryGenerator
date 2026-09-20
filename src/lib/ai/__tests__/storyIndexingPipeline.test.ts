@@ -142,6 +142,43 @@ describe("storyIndexingPipeline", () => {
   });
 
   describe("processIndexingBatch", () => {
+    it("retries once when the model returns malformed JSON", async () => {
+      let calls = 0;
+      const provider: AIProvider = {
+        async generateResponse(): Promise<GenerateResponseResult> {
+          calls += 1;
+          return {
+            content: calls === 1
+              ? '{"chapterSummary":"truncated"'
+              : JSON.stringify({ chapterSummary: "Recovered summary.", characters: [], relationships: [] }),
+            finishReason: "stop",
+          };
+        },
+        async generateStream(): Promise<AsyncIterable<string>> {
+          async function* gen() {
+            yield "";
+          }
+          return gen();
+        },
+        async validateConnection() {
+          return true;
+        },
+      };
+
+      const result = await processIndexingBatch({
+        story: mockStory,
+        playerCharacter: mockPlayerCharacter,
+        chapterLabel: "Chapter 1",
+        messages: [{ id: "msg-retry", storyId: "story-1", role: "user", content: "Hello", timestamp: "1" }],
+        existingIndex: null,
+        provider,
+        model: "gemini-2.5-flash",
+      });
+
+      expect(calls).toBe(2);
+      expect(result.chapterSummaries[0]?.summary).toBe("Recovered summary.");
+    });
+
     const messages: StoryMessage[] = [
       {
         id: "msg-1",
