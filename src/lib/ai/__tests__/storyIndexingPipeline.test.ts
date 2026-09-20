@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   matchExistingCharacter,
   buildRelationshipPairKey,
+  buildIndexingPrompt,
   parseAndValidateIndexingExtraction,
   processIndexingBatch,
   normalizeNameKey,
@@ -100,6 +101,34 @@ describe("storyIndexingPipeline", () => {
     it("produces identical pair key regardless of parameter order", () => {
       expect(buildRelationshipPairKey("char-a", "char-b")).toBe("char-a::char-b");
       expect(buildRelationshipPairKey("char-b", "char-a")).toBe("char-a::char-b");
+    });
+  });
+
+  describe("buildIndexingPrompt relationship guidance", () => {
+    it("treats narratively significant interpersonal history as relationship-worthy", () => {
+      const prompt = buildIndexingPrompt({
+        storyTitle: mockStory.title,
+        playerCharacter: mockPlayerCharacter,
+        chapterLabel: "Chapter 1",
+        existingCharacters: [],
+        existingRelationships: [],
+        newMessages: [
+          {
+            id: "msg-relationship",
+            storyId: mockStory.id,
+            role: "assistant",
+            content: "A saboteur attacks Arthur after being confronted.",
+            timestamp: "1",
+          },
+        ],
+      });
+
+      expect(prompt).toContain("A single consequential interaction can be relationship-worthy");
+      expect(prompt).toContain("Bias toward preserving a meaningful relationship rather than omitting it");
+      expect(prompt).toContain("mere co-presence or trivial incidental exchanges");
+      expect(prompt).toContain("Keep relationship developments selective");
+      expect(prompt).toContain("captain/officer");
+      expect(prompt).toContain("adversaries");
     });
   });
 
