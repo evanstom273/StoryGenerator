@@ -3528,7 +3528,7 @@ export function StoryEngineProvider({
               phase: "extracting",
               processedMessages: processed,
               totalMessages: total,
-              message: `Indexed ${processed} of ${total} pending messages...`,
+              message: `Indexed ${processed} of ${total} chapters...`,
             });
           },
         });
@@ -3595,7 +3595,7 @@ export function StoryEngineProvider({
               phase: "extracting",
               processedMessages: processed,
               totalMessages: total,
-              message: `Indexed ${processed} of ${total} messages...`,
+              message: `Indexed ${processed} of ${total} chapters...`,
             });
           },
         });
@@ -3687,7 +3687,7 @@ export function StoryEngineProvider({
           phase: "extracting",
           processedMessages: processed,
           totalMessages: total,
-          message: `Indexed ${processed} of ${total} messages...`,
+          message: `Indexed ${processed} of ${total} chapters...`,
           jobId: opts?.jobId,
         });
       };
@@ -4473,7 +4473,7 @@ export function StoryEngineProvider({
               phase: "extracting",
               processedMessages: processed,
               totalMessages: total,
-              message: `Indexed ${processed} of ${total} messages...`,
+              message: `Indexed ${processed} of ${total} chapters...`,
               jobId: job.id,
             });
           };
