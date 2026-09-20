@@ -71,6 +71,7 @@ export function StoryCreatePage() {
     createStory,
     generatePlayerCharacterDraft,
     generatePlayerCharacterConcept,
+    generateStoryTitle,
     getPlayerCharacterById,
     getStoryAIConfig,
     getStoryById,
@@ -93,6 +94,8 @@ export function StoryCreatePage() {
   const [quickCharacterError, setQuickCharacterError] = useState<string | null>(null);
   const [isQuickGenerating, setIsQuickGenerating] = useState(false);
   const [isQuickGeneratingConcept, setIsQuickGeneratingConcept] = useState(false);
+  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+  const [storyTitleError, setStoryTitleError] = useState<string | null>(null);
   const [storyProviderType, setStoryProviderType] = useState(() =>
     resolveVisibleProvider(aiSettings?.activeProviderType),
   );
@@ -387,6 +390,48 @@ export function StoryCreatePage() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleGenerateStoryTitle() {
+    if (!hasSelectedUniverses) {
+      setStoryTitleError("Select at least one universe first.");
+      return;
+    }
+
+    const playerCharacter =
+      protagonistMode === "quick"
+        ? quickCharacterState
+        : getPlayerCharacterById(formState.playerCharacterId);
+
+    if (!playerCharacter?.name?.trim()) {
+      setStoryTitleError("Select or create a protagonist first.");
+      return;
+    }
+
+    setIsGeneratingTitle(true);
+    setStoryTitleError(null);
+
+    try {
+      const title = await generateStoryTitle({
+        universeIds:
+          formState.universeIds.length > 0
+            ? formState.universeIds
+            : formState.universeId
+              ? [formState.universeId]
+              : [],
+        playerCharacter,
+        importedCharacterIds: formState.importedCharacterIds,
+        openingPrompt: formState.openingPrompt,
+        existingTitle: formState.title,
+      });
+      setFormState((currentState) => ({ ...currentState, title }));
+    } catch (error) {
+      setStoryTitleError(
+        error instanceof Error ? error.message : "Unable to generate a story title.",
+      );
+    } finally {
+      setIsGeneratingTitle(false);
     }
   }
 
@@ -985,15 +1030,32 @@ export function StoryCreatePage() {
           ) : null}
 
           <div className="space-y-6">
-            <Field label="Story Title" hint="Required" help="Shown in your library and story header. You can rename it later in story settings.">
+            <Field
+              label="Story Title"
+              hint="Required"
+              help="Shown in your library and story header. Generate one from the selected universe, protagonist, imported characters, and opening setup, or type your own."
+              action={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void handleGenerateStoryTitle()}
+                  disabled={isGeneratingTitle || isSubmitting || !hasSelectedUniverses}
+                >
+                  <SparklesIcon className="h-4 w-4" />
+                  {isGeneratingTitle ? "Generating..." : formState.title.trim() ? "Regenerate" : "Generate"}
+                </Button>
+              }
+            >
               <TextInput
                 value={formState.title}
-                onChange={(event) =>
+                onChange={(event) => {
+                  setStoryTitleError(null);
                   setFormState((currentState) => ({
                     ...currentState,
                     title: event.target.value,
-                  }))
-                }
+                  }));
+                }}
                 placeholder={
                   isBranchMode
                     ? "Example: Starfall Saga (Branch)"
@@ -1002,6 +1064,9 @@ export function StoryCreatePage() {
                     : "Example: The Harbor Job: Alex Rivera"
                 }
               />
+              {storyTitleError ? (
+                <p className="mt-2 text-sm text-danger">{storyTitleError}</p>
+              ) : null}
             </Field>
 
             {isBranchMode ? null : (
