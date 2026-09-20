@@ -122,6 +122,18 @@ describe("storyIndexingPipeline", () => {
       expect(result.chapterSummary).toBe("Summary text.");
     });
 
+    it("parses code fences with conversational preamble and trailing commentary", () => {
+      const input = "Here is the extraction:\n```json\n" + JSON.stringify({ chapterSummary: "Summary text with intro." }) + "\n```\nHope this helps!";
+      const result = parseAndValidateIndexingExtraction(input);
+      expect(result.chapterSummary).toBe("Summary text with intro.");
+    });
+
+    it("repairs trailing commas in JSON object", () => {
+      const input = '{\n  "chapterSummary": "Summary with trailing comma.",\n}';
+      const result = parseAndValidateIndexingExtraction(input);
+      expect(result.chapterSummary).toBe("Summary with trailing comma.");
+    });
+
     it("throws on completely malformed JSON", () => {
       expect(() => parseAndValidateIndexingExtraction("Not JSON at all")).toThrow(
         /failed to parse structured JSON/i,

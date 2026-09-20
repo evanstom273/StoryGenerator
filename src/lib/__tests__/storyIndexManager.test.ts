@@ -248,6 +248,7 @@ describe("storyIndexManager", () => {
     it("indexes pending messages and updates index record", async () => {
       const repository = createMockRepository({ messages });
       const provider = makeMockProvider(mockExtraction);
+      const progressCalls: Array<[number, number]> = [];
 
       const result = await updateStoryIndexToCurrent({
         storyId: "story-1",
@@ -256,12 +257,19 @@ describe("storyIndexManager", () => {
         story: { id: "story-1", universeId: "u1", playerCharacterId: "player-1", title: "Story", createdAt: "1", updatedAt: "1" },
         provider,
         model: "gemini-2.5-flash",
+        onProgress: (processed, total) => {
+          progressCalls.push([processed, total]);
+        },
       });
 
       expect(result.indexedMessageCount).toBe(2);
       expect(result.lastIndexedMessageId).toBe("m2");
       expect(result.chapterSummaries).toHaveLength(1);
       expect(result.chapterSummaries[0].summary).toBe("Explored the eastern cave.");
+      expect(progressCalls).toEqual([
+        [1, 2],
+        [2, 2],
+      ]);
 
       const saved = await repository.getStoryIndex("story-1");
       expect(saved?.lastIndexedMessageId).toBe("m2");

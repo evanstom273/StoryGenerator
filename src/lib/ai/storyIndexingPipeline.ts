@@ -82,28 +82,65 @@ export function buildRelationshipPairKey(idA: string, idB: string): string {
   return [idA, idB].sort().join("::");
 }
 
+function tryParseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeAndParseJson(candidate: string): unknown {
+  // Direct parse
+  const direct = tryParseJson(candidate);
+  if (direct) return direct;
+
+  // Trailing commas fix before } or ]
+  const withoutTrailingCommas = candidate.replace(/,\s*([}\]])/g, "$1");
+  const trailingFix = tryParseJson(withoutTrailingCommas);
+  if (trailingFix) return trailingFix;
+
+  // Strip unescaped control characters (except common whitespace \n, \r, \t)
+  const cleanedControls = withoutTrailingCommas.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F]+/g, " ");
+  return tryParseJson(cleanedControls);
+}
+
 export function parseAndValidateIndexingExtraction(
   jsonText: string,
 ): IndexingExtractionResponse {
-  let parsed: unknown;
-  try {
+  let parsed: unknown = null;
+
+  // 1. Check markdown code block first (e.g. "Here is the extraction:\n```json ... ```")
+  const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch && codeBlockMatch[1]?.trim()) {
+    parsed = sanitizeAndParseJson(codeBlockMatch[1].trim());
+  }
+
+  // 2. Direct cleaned attempt
+  if (!parsed) {
     const cleaned = jsonText
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")
       .replace(/\s*```$/i, "")
       .trim();
-    parsed = JSON.parse(cleaned);
-  } catch {
-    // Attempt relaxed extraction from surrounding text
-    const match = jsonText.match(/\{[\s\S]*\}/);
-    if (!match) {
+    parsed = sanitizeAndParseJson(cleaned);
+  }
+
+  // 3. Outermost brace search { ... }
+  if (!parsed) {
+    const firstBrace = jsonText.indexOf("{");
+    const lastBrace = jsonText.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      const candidate = jsonText.slice(firstBrace, lastBrace + 1);
+      parsed = sanitizeAndParseJson(candidate);
+    }
+  }
+
+  if (!parsed) {
+    if (!jsonText.includes("{") || !jsonText.includes("}")) {
       throw new Error("Invalid model response: failed to parse structured JSON.");
     }
-    try {
-      parsed = JSON.parse(match[0]);
-    } catch {
-      throw new Error("Invalid model response: JSON substring is malformed.");
-    }
+    throw new Error("Invalid model response: JSON substring is malformed.");
   }
 
   if (!parsed || typeof parsed !== "object") {

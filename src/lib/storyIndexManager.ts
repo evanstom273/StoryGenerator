@@ -190,25 +190,28 @@ export async function updateStoryIndexToCurrent(
 
   let processedCount = 0;
   for (const group of groups) {
-    if (signal?.aborted) {
-      throw new Error("Indexing operation cancelled.");
+    for (const message of group.messages) {
+      if (signal?.aborted) {
+        throw new Error("Indexing operation cancelled.");
+      }
+
+      currentIndex = await processIndexingBatch({
+        story,
+        playerCharacter,
+        chapterLabel: group.chapterLabel,
+        chapterId: group.chapterId,
+        messages: [message],
+        existingIndex: currentIndex,
+        provider,
+        apiKey,
+        model,
+        signal,
+      });
+
+      processedCount += 1;
+      onProgress?.(processedCount, pendingMessages.length);
+      await repository.saveStoryIndex(currentIndex);
     }
-
-    currentIndex = await processIndexingBatch({
-      story,
-      playerCharacter,
-      chapterLabel: group.chapterLabel,
-      chapterId: group.chapterId,
-      messages: group.messages,
-      existingIndex: currentIndex,
-      provider,
-      apiKey,
-      model,
-      signal,
-    });
-
-    processedCount += group.messages.length;
-    onProgress?.(processedCount, pendingMessages.length);
   }
 
   // Atomically save the completed index
@@ -267,25 +270,27 @@ export async function rebuildFullStoryIndex(
 
   let processedCount = 0;
   for (const group of groups) {
-    if (signal?.aborted) {
-      throw new Error("Re-index operation cancelled.");
+    for (const message of group.messages) {
+      if (signal?.aborted) {
+        throw new Error("Re-index operation cancelled.");
+      }
+
+      stagingIndex = await processIndexingBatch({
+        story,
+        playerCharacter,
+        chapterLabel: group.chapterLabel,
+        chapterId: group.chapterId,
+        messages: [message],
+        existingIndex: stagingIndex,
+        provider,
+        apiKey,
+        model,
+        signal,
+      });
+
+      processedCount += 1;
+      onProgress?.(processedCount, allMessages.length);
     }
-
-    stagingIndex = await processIndexingBatch({
-      story,
-      playerCharacter,
-      chapterLabel: group.chapterLabel,
-      chapterId: group.chapterId,
-      messages: group.messages,
-      existingIndex: stagingIndex,
-      provider,
-      apiKey,
-      model,
-      signal,
-    });
-
-    processedCount += group.messages.length;
-    onProgress?.(processedCount, allMessages.length);
   }
 
   // Atomically replace previous index with clean rebuilt index
