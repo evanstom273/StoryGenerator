@@ -90,6 +90,49 @@ export function buildRelationshipPairKey(idA: string, idB: string): string {
   return [idA, idB].sort().join("::");
 }
 
+function replaceIdentityWord(text: string, from: string, to: string): string {
+  if (!from.trim() || normalizeNameKey(from) === normalizeNameKey(to)) return text;
+  const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\export function buildRelationshipPairKey(idA: string, idB: string): string {
+  return [idA, idB].sort().join("::");
+}
+
+function tryParseJson");
+  return text.replace(new RegExp(`\\b${escaped}\\b`, "gi"), (match) =>
+    match[0] === match[0]?.toUpperCase() ? to.toUpperCase() : to,
+  );
+}
+
+function pronounForms(pronouns?: string): { subject?: string; object?: string; possessive?: string } {
+  if (!pronouns) return {};
+  const [subject, object] = pronouns.toLowerCase().split("/").map((part) => part.trim());
+  const possessive =
+    subject === "he" ? "his" :
+    subject === "she" ? "her" :
+    subject === "they" ? "their" :
+    undefined;
+  return { subject, object, possessive };
+}
+
+function rewriteIdentityReferences(
+  text: string,
+  formerNames: string[],
+  oldPronouns: string | undefined,
+  newName: string,
+  newPronouns: string | undefined,
+): string {
+  let rewritten = text;
+  for (const formerName of formerNames) {
+    rewritten = replaceIdentityWord(rewritten, formerName, newName);
+  }
+
+  const oldForms = pronounForms(oldPronouns);
+  const newForms = pronounForms(newPronouns);
+  if (oldForms.subject && newForms.subject) rewritten = replaceIdentityWord(rewritten, oldForms.subject, newForms.subject);
+  if (oldForms.object && newForms.object) rewritten = replaceIdentityWord(rewritten, oldForms.object, newForms.object);
+  if (oldForms.possessive && newForms.possessive) rewritten = replaceIdentityWord(rewritten, oldForms.possessive, newForms.possessive);
+  return rewritten;
+}
+
 function tryParseJson(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -515,12 +558,48 @@ export function applyExtractionToIndex(params: {
     }
   }
 
+  // Normalize previously derived character prose when the story explicitly
+  // establishes a new current identity. This keeps the current index panel
+  // consistent without altering the authoritative transcript or chapter summaries.
+  for (const change of identityChanges) {
+    const character = characters.find((candidate) => candidate.id === change.characterId);
+    if (!character) continue;
+    character.description = rewriteIdentityReferences(
+      character.description, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+    );
+    character.status = rewriteIdentityReferences(
+      character.status, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+    );
+    character.developments = character.developments.map((development) =>
+      rewriteIdentityReferences(
+        development, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+      ),
+    );
+  }
+
   // 3. Prepare Relationships (using canonical Character IDs)
   const relationships: StoryIndexRelationship[] = (existingIndex?.relationships ?? []).map((r) => ({
     ...r,
     developments: [...r.developments],
     provenance: [...r.provenance],
   }));
+
+  for (const change of identityChanges) {
+    for (const relationship of relationships) {
+      if (relationship.characterIdA !== change.characterId && relationship.characterIdB !== change.characterId) continue;
+      relationship.nature = rewriteIdentityReferences(
+        relationship.nature, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+      );
+      relationship.state = rewriteIdentityReferences(
+        relationship.state, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+      );
+      relationship.developments = relationship.developments.map((development) =>
+        rewriteIdentityReferences(
+          development, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+        ),
+      );
+    }
+  }
 
   for (const extractedRel of extraction.relationships ?? []) {
     const charA = matchExistingCharacter(extractedRel.characterA, characters);
