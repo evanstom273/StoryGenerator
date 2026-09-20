@@ -232,6 +232,30 @@ describe("storyIndexManager", () => {
       expect(groups[1].chapterLabel).toBe("Chapter 2");
       expect(groups[1].messages.map((m) => m.id)).toEqual(["m3"]);
     });
+
+    it("assigns a pending slice to the correct later chapter using the full transcript", () => {
+      const allMessages: StoryMessage[] = [
+        { id: "m1", storyId: "s1", role: "user", content: "1", timestamp: "1" },
+        { id: "m2", storyId: "s1", role: "assistant", content: "2", timestamp: "2" },
+        { id: "m3", storyId: "s1", role: "user", content: "3", timestamp: "3" },
+        { id: "m4", storyId: "s1", role: "assistant", content: "4", timestamp: "4" },
+      ];
+      const chapters: StoryChapter[] = [
+        {
+          id: "ch-1",
+          storyId: "s1",
+          label: "Chapter 1",
+          endsAtMessageId: "m2",
+          endsAtIndex: 2,
+          createdAt: "1",
+        },
+      ];
+
+      const groups = groupMessagesByChapter([allMessages[2]!, allMessages[3]!], chapters, allMessages);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].chapterLabel).toBe("Chapter 2");
+      expect(groups[0].messages.map((m) => m.id)).toEqual(["m3", "m4"]);
+    });
   });
 
   describe("updateStoryIndexToCurrent", () => {
@@ -266,13 +290,64 @@ describe("storyIndexManager", () => {
       expect(result.lastIndexedMessageId).toBe("m2");
       expect(result.chapterSummaries).toHaveLength(1);
       expect(result.chapterSummaries[0].summary).toBe("Explored the eastern cave.");
-      expect(progressCalls).toEqual([
-        [1, 2],
-        [2, 2],
-      ]);
+      expect(progressCalls).toEqual([[2, 2]]);
 
       const saved = await repository.getStoryIndex("story-1");
       expect(saved?.lastIndexedMessageId).toBe("m2");
+    });
+
+    it("keeps an existing saved index untouched when a later chapter batch fails", async () => {
+      const chapteredMessages: StoryMessage[] = [
+        { id: "m1", storyId: "story-1", role: "user", content: "Old chapter", timestamp: "1" },
+        { id: "m2", storyId: "story-1", role: "assistant", content: "New chapter", timestamp: "2" },
+      ];
+      const chapters: StoryChapter[] = [
+        {
+          id: "ch-1",
+          storyId: "story-1",
+          label: "Chapter 1",
+          endsAtMessageId: "m1",
+          endsAtIndex: 1,
+          createdAt: "1",
+        },
+      ];
+      const initialIndex: StoryIndex = {
+        storyId: "story-1",
+        lastIndexedMessageId: "m1",
+        chapterSummaries: [{
+          chapterId: "ch-1",
+          chapterLabel: "Chapter 1",
+          summary: "Already indexed.",
+          sourceMessageIds: ["m1"],
+          lastIndexedMessageId: "m1",
+          updatedAt: "1",
+        }],
+        characters: [],
+        relationships: [],
+        indexedMessageCount: 1,
+        updatedAt: "1",
+      };
+      const repository = createMockRepository({
+        messages: chapteredMessages,
+        chapters,
+        storyIndex: initialIndex,
+      });
+
+      await expect(
+        updateStoryIndexToCurrent({
+          storyId: "story-1",
+          repository,
+          playerCharacter: { id: "player-1", name: "Hero", createdAt: "1", updatedAt: "1" },
+          story: { id: "story-1", universeId: "u1", playerCharacterId: "player-1", title: "Story", createdAt: "1", updatedAt: "1" },
+          provider: makeMockProvider("", true),
+          model: "gemini-2.5-flash",
+        }),
+      ).rejects.toThrow();
+
+      const saved = await repository.getStoryIndex("story-1");
+      expect(saved?.lastIndexedMessageId).toBe("m1");
+      expect(saved?.chapterSummaries).toHaveLength(1);
+      expect(saved?.chapterSummaries[0].chapterLabel).toBe("Chapter 1");
     });
 
     it("does not update lastIndexedMessageId if indexing operation fails", async () => {
