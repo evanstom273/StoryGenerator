@@ -564,6 +564,8 @@ export interface StoryIndexCharacter {
   id: EntityId;
   canonicalName: string;
   aliases: string[];
+  /** Current story-established pronouns. Optional for indexes created before identity-state tracking. */
+  pronouns?: string;
   description: string;
   status: string;
   developments: string[];

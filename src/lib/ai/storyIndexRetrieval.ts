@@ -125,12 +125,13 @@ export function formatIndexedCharactersForDirector(
       const aliasesPart = c.aliases.length
         ? ` (Aliases: ${c.aliases.join(", ")})`
         : "";
+      const pronounsPart = c.pronouns ? `\n  - Current Pronouns: ${c.pronouns}` : "";
       const statusPart = c.status ? `\n  - Current Status: ${c.status}` : "";
       const descPart = c.description ? `\n  - Background: ${c.description}` : "";
       const devPart = c.developments.length
         ? `\n  - Developments:\n${c.developments.map((d) => `    * ${d}`).join("\n")}`
         : "";
-      return `* ${c.canonicalName}${aliasesPart}:${statusPart}${descPart}${devPart}`;
+      return `* ${c.canonicalName}${aliasesPart}:${pronounsPart}${statusPart}${descPart}${devPart}`;
     })
     .join("\n\n");
 }

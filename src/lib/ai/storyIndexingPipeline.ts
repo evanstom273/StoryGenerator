@@ -15,6 +15,11 @@ export interface IndexingExtractionCharacter {
   name: string;
   matchedId?: string;
   aliases?: string[];
+  pronouns?: string;
+  identityUpdate?: {
+    name?: string;
+    pronouns?: string;
+  };
   description?: string;
   status?: string;
   developments?: string[];
@@ -83,6 +88,47 @@ export function matchExistingCharacter(
  */
 export function buildRelationshipPairKey(idA: string, idB: string): string {
   return [idA, idB].sort().join("::");
+}
+
+function replaceIdentityWord(text: string, from: string, to: string): string {
+  if (!from.trim() || normalizeNameKey(from) === normalizeNameKey(to)) return text;
+  const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`\\b${escaped}\\b`, "gi"), (match) => {
+    if (match === match.toUpperCase()) return to.toUpperCase();
+    if (match[0] === match[0]?.toUpperCase()) return to.charAt(0).toUpperCase() + to.slice(1);
+    return to;
+  });
+}
+
+function pronounForms(pronouns?: string): { subject?: string; object?: string; possessive?: string } {
+  if (!pronouns) return {};
+  const [subject, object] = pronouns.toLowerCase().split("/").map((part) => part.trim());
+  const possessive =
+    subject === "he" ? "his" :
+    subject === "she" ? "her" :
+    subject === "they" ? "their" :
+    undefined;
+  return { subject, object, possessive };
+}
+
+function rewriteIdentityReferences(
+  text: string,
+  formerNames: string[],
+  oldPronouns: string | undefined,
+  newName: string,
+  newPronouns: string | undefined,
+): string {
+  let rewritten = text;
+  for (const formerName of formerNames) {
+    rewritten = replaceIdentityWord(rewritten, formerName, newName);
+  }
+
+  const oldForms = pronounForms(oldPronouns);
+  const newForms = pronounForms(newPronouns);
+  if (oldForms.subject && newForms.subject) rewritten = replaceIdentityWord(rewritten, oldForms.subject, newForms.subject);
+  if (oldForms.object && newForms.object) rewritten = replaceIdentityWord(rewritten, oldForms.object, newForms.object);
+  if (oldForms.possessive && newForms.possessive) rewritten = replaceIdentityWord(rewritten, oldForms.possessive, newForms.possessive);
+  return rewritten;
 }
 
 function tryParseJson(text: string): unknown {
@@ -166,6 +212,18 @@ export function parseAndValidateIndexingExtraction(
         aliases: Array.isArray(c.aliases)
           ? c.aliases.filter((a): a is string => typeof a === "string" && Boolean(a.trim()))
           : [],
+        pronouns: typeof c.pronouns === "string" ? c.pronouns.trim() : undefined,
+        identityUpdate:
+          c.identityUpdate && typeof c.identityUpdate === "object"
+            ? {
+                name: typeof (c.identityUpdate as Record<string, unknown>).name === "string"
+                  ? ((c.identityUpdate as Record<string, unknown>).name as string).trim()
+                  : undefined,
+                pronouns: typeof (c.identityUpdate as Record<string, unknown>).pronouns === "string"
+                  ? ((c.identityUpdate as Record<string, unknown>).pronouns as string).trim()
+                  : undefined,
+              }
+            : undefined,
         description: typeof c.description === "string" ? c.description.trim() : "",
         status: typeof c.status === "string" ? c.status.trim() : "",
         developments: Array.isArray(c.developments)
@@ -216,7 +274,7 @@ export function buildIndexingPrompt(params: {
     ? existingCharacters
         .map(
           (c) =>
-            `- ID: ${c.id} | Name: "${c.canonicalName}" | Aliases: [${c.aliases.map((a) => `"${a}"`).join(", ")}] | Info: ${c.description || "None"} | Status: ${c.status || "None"}`,
+            `- ID: ${c.id} | Name: "${c.canonicalName}" | Aliases: [${c.aliases.map((a) => `"${a}"`).join(", ")}] | Pronouns: ${c.pronouns || "Unknown"} | Info: ${c.description || "None"} | Status: ${c.status || "None"}`,
         )
         .join("\n")
     : "None recorded yet.";
@@ -242,10 +300,12 @@ export function buildIndexingPrompt(params: {
     `You are the StoryEngine Indexing Intelligence. Analyze the new story transcript messages for "${storyTitle}" (Active Chapter: "${chapterLabel}") and extract coherent structured indexing memory.`,
     "",
     "### Authoritative Canon Constraints (Strict):",
-    `- Player Character: "${playerCharacter.name}" (Aliases: [${(playerCharacter.aliases ?? []).map((a) => `"${a}"`).join(", ")}]). Pronouns: ${playerCharacter.pronouns || "Unknown"}. Gender: ${playerCharacter.gender || "Unknown"}.`,
+    `- Initial Player Character Sheet: "${playerCharacter.name}" (Aliases: [${(playerCharacter.aliases ?? []).map((a) => `"${a}"`).join(", ")}]). Pronouns: ${playerCharacter.pronouns || "Unknown"}. Gender: ${playerCharacter.gender || "Unknown"}.`,
     "- The transcript is authoritative. The index is derived narrative memory.",
-    "- NEVER change the player character's canonical identity, gender, or core profile.",
-    "- STABLE CHARACTER IDENTITY: If a character is referred to by a nickname, alias, title, or former name (e.g. 'Jamie' vs 'James', 'Becca' vs 'Rebecca'), resolve them to the SAME canonical character record rather than creating a duplicate person.",
+    "- The player character sheet is the INITIAL identity baseline. Do not casually overwrite core profile facts, but the transcript may explicitly establish a later preferred name or pronouns.",
+    "- STABLE CHARACTER IDENTITY: If a character is referred to by a nickname, alias, title, former name, or newly chosen name, resolve them to the SAME canonical character record rather than creating a duplicate person.",
+    "- IDENTITY EVOLUTION: Only when the transcript explicitly establishes that a character now uses a different name and/or pronouns, return identityUpdate for that existing character. Never infer an identity change from a nickname, disguise, title, typo, or one-off form of address.",
+    "- When identityUpdate is present, use the character's CURRENT preferred name and pronouns throughout character and relationship text. Keep former names as aliases.",
     "- If matching an existing character listed below, specify their existing ID in matchedId.",
     "",
     "### Existing Chapter Summary for this Chapter:",
@@ -282,8 +342,10 @@ export function buildIndexingPrompt(params: {
     "    {",
     '      "matchedId": "Existing ID if this matches an existing character from the list above, or omit for new character",',
     '      "name": "Canonical display name",',
-    '      "aliases": ["any aliases, nicknames, or alternate names used in story"],',
-    '      "description": "Established character information, role, traits grounded in story",',
+    '      "aliases": ["any aliases, nicknames, former names, or alternate names used in story"],',
+    '      "pronouns": "Current pronouns if established in the story, otherwise omit",',
+    '      "identityUpdate": { "name": "New current preferred display name ONLY if explicitly established, otherwise omit", "pronouns": "New current pronouns ONLY if explicitly established, otherwise omit" },',
+    '      "description": "Established character information, role, traits grounded in story using current preferred name/pronouns",',
     '      "status": "Current status/state at this point in the story (condition, location, current activity)",',
     '      "developments": ["Important character developments relevant to future continuity"]',
     "    }",
@@ -378,6 +440,7 @@ export function applyExtractionToIndex(params: {
       id: playerCharacter.id || createEntityId("char-player"),
       canonicalName: playerCharacter.name,
       aliases: Array.from(new Set(playerCharacter.aliases ?? [])),
+      pronouns: playerCharacter.pronouns || undefined,
       description: playerCharacter.background || "",
       status: "Active",
       developments: [],
@@ -386,14 +449,26 @@ export function applyExtractionToIndex(params: {
     };
     characters.unshift(pcRecord);
   } else {
-    // Keep player character ID and canonical name authoritative
+    // Keep the stable player-character ID authoritative. Display identity may
+    // evolve later in the transcript without creating a second character.
     pcRecord.id = playerCharacter.id || pcRecord.id;
+    if (!pcRecord.pronouns && playerCharacter.pronouns) {
+      pcRecord.pronouns = playerCharacter.pronouns;
+    }
     for (const a of playerCharacter.aliases ?? []) {
       if (!pcRecord.aliases.some((existing) => normalizeNameKey(existing) === normalizeNameKey(a))) {
         pcRecord.aliases.push(a);
       }
     }
   }
+
+  const identityChanges: Array<{
+    characterId: string;
+    formerNames: string[];
+    oldPronouns?: string;
+    newName: string;
+    newPronouns?: string;
+  }> = [];
 
   // Merge model extracted characters
   for (const extracted of extraction.characters ?? []) {
@@ -415,8 +490,34 @@ export function applyExtractionToIndex(params: {
     }
 
     if (existing) {
-      // Update existing record
-      if (extracted.description && extracted.description.length > existing.description.length) {
+      // Explicit story-established identity changes update presentation while
+      // preserving the same stable character ID and retaining former names as aliases.
+      const nextName = extracted.identityUpdate?.name?.trim();
+      const nextPronouns = extracted.identityUpdate?.pronouns?.trim();
+      if (nextName || nextPronouns) {
+        const formerNames = [existing.canonicalName, ...existing.aliases];
+        const oldPronouns = existing.pronouns;
+        if (nextName && normalizeNameKey(nextName) !== normalizeNameKey(existing.canonicalName)) {
+          const formerName = existing.canonicalName;
+          if (!existing.aliases.some((a) => normalizeNameKey(a) === normalizeNameKey(formerName))) {
+            existing.aliases.push(formerName);
+          }
+          existing.canonicalName = nextName;
+        }
+        if (nextPronouns) existing.pronouns = nextPronouns;
+        identityChanges.push({
+          characterId: existing.id,
+          formerNames,
+          oldPronouns,
+          newName: nextName || existing.canonicalName,
+          newPronouns: nextPronouns || existing.pronouns,
+        });
+      } else if (extracted.pronouns?.trim()) {
+        existing.pronouns = extracted.pronouns.trim();
+      }
+
+      // An explicit identity update may legitimately produce a shorter rewritten description.
+      if (extracted.description && (extracted.identityUpdate || extracted.description.length > existing.description.length)) {
         existing.description = extracted.description;
       }
       if (extracted.status) {
@@ -443,8 +544,9 @@ export function applyExtractionToIndex(params: {
       const newId = createEntityId("char");
       characters.push({
         id: newId,
-        canonicalName: extracted.name,
+        canonicalName: extracted.identityUpdate?.name?.trim() || extracted.name,
         aliases: extracted.aliases ?? [],
+        pronouns: extracted.identityUpdate?.pronouns?.trim() || extracted.pronouns?.trim() || undefined,
         description: extracted.description ?? "",
         status: extracted.status ?? "Active",
         developments: extracted.developments ?? [],
@@ -454,12 +556,48 @@ export function applyExtractionToIndex(params: {
     }
   }
 
+  // Normalize previously derived character prose when the story explicitly
+  // establishes a new current identity. This keeps the current index panel
+  // consistent without altering the authoritative transcript or chapter summaries.
+  for (const change of identityChanges) {
+    const character = characters.find((candidate) => candidate.id === change.characterId);
+    if (!character) continue;
+    character.description = rewriteIdentityReferences(
+      character.description, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+    );
+    character.status = rewriteIdentityReferences(
+      character.status, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+    );
+    character.developments = character.developments.map((development) =>
+      rewriteIdentityReferences(
+        development, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+      ),
+    );
+  }
+
   // 3. Prepare Relationships (using canonical Character IDs)
   const relationships: StoryIndexRelationship[] = (existingIndex?.relationships ?? []).map((r) => ({
     ...r,
     developments: [...r.developments],
     provenance: [...r.provenance],
   }));
+
+  for (const change of identityChanges) {
+    for (const relationship of relationships) {
+      if (relationship.characterIdA !== change.characterId && relationship.characterIdB !== change.characterId) continue;
+      relationship.nature = rewriteIdentityReferences(
+        relationship.nature, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+      );
+      relationship.state = rewriteIdentityReferences(
+        relationship.state, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+      );
+      relationship.developments = relationship.developments.map((development) =>
+        rewriteIdentityReferences(
+          development, change.formerNames, change.oldPronouns, change.newName, change.newPronouns,
+        ),
+      );
+    }
+  }
 
   for (const extractedRel of extraction.relationships ?? []) {
     const charA = matchExistingCharacter(extractedRel.characterA, characters);
