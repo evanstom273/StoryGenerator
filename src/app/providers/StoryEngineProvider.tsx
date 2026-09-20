@@ -662,6 +662,13 @@ interface StoryEngineContextValue {
     universeId?: string,
     existing?: Partial<PlayerCharacterDraft>,
   ) => Promise<string>;
+  generateStoryTitle: (input: {
+    universeIds: string[];
+    playerCharacter: Partial<PlayerCharacter>;
+    importedCharacterIds?: string[];
+    openingPrompt?: string;
+    existingTitle?: string;
+  }) => Promise<string>;
   sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string; previousChapterContext?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void; onGenerationAttempt?: (attempt: number, maxAttempts: number) => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   selectAssistantMessageCandidate: (
@@ -7890,6 +7897,116 @@ export function StoryEngineProvider({
 
         return draft;
       },
+      async generateStoryTitle(input) {
+        const settings = await getNormalizedAISettings();
+        if (!settings) {
+          throw new Error("Configure an AI provider in Settings before generating a story title.");
+        }
+
+        const providerType = settings.activeProviderType;
+        const { apiKey, model } = await resolveAIProfile(providerType, undefined, "creation");
+        const provider = createAIProvider(providerType);
+
+        const universeIds = normalizeUniverseIds(input.universeIds);
+        const [selectedUniverses, importedCharacters] = await Promise.all([
+          Promise.all(universeIds.map((id) => repository.getUniverse(id))),
+          Promise.all(
+            normalizeStoryImportedCharacterIds(input.importedCharacterIds ?? []).map((id) =>
+              repository.getPlayerCharacter(id),
+            ),
+          ),
+        ]);
+
+        const universesForPrompt = selectedUniverses
+          .filter((universe): universe is Universe => Boolean(universe))
+          .map((universe) => ({
+            name: universe.name,
+            description: universe.description,
+            concept: universe.concept,
+            genreTheme: universe.genreTheme,
+            tone: universe.tone,
+            universeBlueprint: universe.universeBlueprint?.slice(0, 5000),
+          }));
+
+        const characterForPrompt = (character: Partial<PlayerCharacter>) => ({
+          name: character.name,
+          aliases: character.aliases,
+          age: character.age,
+          gender: character.gender,
+          species: character.species,
+          pronouns: character.pronouns,
+          characterConcept: character.characterConcept,
+          appearance: character.appearance,
+          personality: character.personality,
+          background: character.background,
+          goals: character.goals,
+          notes: character.notes,
+          knownTies: character.knownTies,
+        });
+
+        const promptContext = {
+          universes: universesForPrompt,
+          protagonist: characterForPrompt(input.playerCharacter),
+          importedCharacters: importedCharacters
+            .filter((character): character is PlayerCharacter => Boolean(character))
+            .map(characterForPrompt),
+          openingSetup: input.openingPrompt?.trim() || undefined,
+          previousSuggestion: input.existingTitle?.trim() || undefined,
+        };
+
+        let response: GenerateResponseResult;
+        try {
+          response = await generateResponseWithRetry({
+            providerType,
+            provider,
+            apiKey,
+            model,
+            messages: [
+              {
+                role: "system",
+                content: [
+                  "You generate titles for interactive fiction stories.",
+                  "Return exactly one title and nothing else: no quotation marks, labels, explanation, markdown, or alternatives.",
+                  "Use the supplied universe, protagonist sheet, supporting characters, and opening setup to make the title feel specific to this story.",
+                  "Match the source universe's naming and tonal conventions where appropriate.",
+                  "Prefer concise, memorable, natural titles. Episode-like titles are welcome when they fit the universe.",
+                  "Avoid generic AI-title cliches such as 'Shadows of Destiny', 'Echoes of the Past', 'Threads of Fate', and similarly vague constructions.",
+                  "Do not simply use the protagonist's name unless that is unusually fitting.",
+                  "If previousSuggestion is present, produce a meaningfully different title.",
+                ].join("\n"),
+              },
+              {
+                role: "user",
+                content: `Generate a story title from this context:\n${JSON.stringify(promptContext, null, 2)}`,
+              },
+            ],
+            maxTokens: 80,
+            temperature: 0.95,
+            thinking:
+              providerType === "gemini"
+                ? resolveGeminiMinimalThinkingSettings(model)
+                : undefined,
+            timeoutMs: 30_000,
+            maxAttempts: 2,
+          });
+        } catch (error) {
+          rethrowUserFacingGenerationError(error, providerType);
+        }
+
+        const title = response.content
+          .trim()
+          .split(/\r?\n/)[0]
+          ?.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+          .replace(/^title\s*:\s*/i, "")
+          .trim();
+
+        if (!title) {
+          throw new Error("The AI returned an empty story title. Try again.");
+        }
+
+        return title.slice(0, 120);
+      },
+
       async generatePlayerCharacterConcept(universeId, existing) {
         const settings = await getNormalizedAISettings();
         if (!settings) {
