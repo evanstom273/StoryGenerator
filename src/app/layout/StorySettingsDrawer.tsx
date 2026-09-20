@@ -26,6 +26,7 @@ import { clampAudiobookParallelChapters, DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS, MA
 import { DEFAULT_AUDIOBOOK_PERFORMANCE_MODE, type AudiobookPerformanceMode } from "../../lib/ai/audiobookPerformance";
 import { cn } from "../../utils/cn";
 import { isAudiobookExportBackgroundJob } from "../../lib/backgroundTasks";
+import { StoryIndexSection } from "../../components/story/StoryIndexSection";
 
 function Section({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -158,6 +159,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               <div><FieldLabel label="Imported Characters" help="Library characters available to the story." labelClassName="text-xs text-ink-muted" /><ImportedCharactersPicker selectedIds={fields.importedCharacterIds} excludeCharacterId={story.playerCharacterId} universeIds={getUniverseIds(story)} disabled={isReadOnly} getPlayerCharactersForUniverse={getPlayerCharactersForUniverse} getUniverseById={getUniverseById} getPlayerCharacterById={getPlayerCharacterById} onChange={(ids) => setFields((current) => ({ ...current, importedCharacterIds: ids }))} /></div>
               <Button type="submit" className="w-full" disabled={saving || isReadOnly}>{saving ? "Saving…" : "Save Story"}</Button>
             </form>
+          </Section>
+          <Section title="Story Index" defaultOpen>
+            <StoryIndexSection storyId={story.id} />
           </Section>
           <Section title="Story accent">
             <ThemePicker accentOnly allowAppDefault appDefaultSelected={!fields.accentThemeKey} selectedKey={fields.accentThemeKey ?? "ruby"} customAccent={fields.accentThemeCustom} onSelectAppDefault={() => setFields((current) => ({ ...current, accentThemeKey: null }))} onSelectKey={(key) => isAccentThemeKey(key) && setFields((current) => ({ ...current, accentThemeKey: key }))} onCustomAccentChange={(value) => setFields((current) => ({ ...current, accentThemeCustom: value, accentThemeKey: "custom" }))} />

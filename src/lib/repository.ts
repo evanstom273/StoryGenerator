@@ -17,6 +17,7 @@ import type {
   StoryState,
   StoryMessage,
   StorySummary,
+  StoryIndex,
   UniverseExportBundleV1,
   Universe,
   UniverseImport,
@@ -112,6 +113,9 @@ export interface StoryEngineRepository {
   saveStorySummary(record: StorySummary): Promise<StorySummary>;
   getStoryState(storyId: EntityId): Promise<StoryState | null>;
   saveStoryState(record: StoryState): Promise<StoryState>;
+  getStoryIndex(storyId: EntityId): Promise<StoryIndex | null>;
+  saveStoryIndex(index: StoryIndex): Promise<StoryIndex>;
+  deleteStoryIndex(storyId: EntityId): Promise<void>;
   listDeveloperBugs(): Promise<DeveloperBug[]>;
   getDeveloperBug(id: EntityId): Promise<DeveloperBug | null>;
   saveDeveloperBug(record: DeveloperBug): Promise<DeveloperBug>;
@@ -186,6 +190,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
       await deleteAllByIndex("storyAiConfigs", "storyId", id);
       await deleteAllByIndex("backgroundJobs", "storyId", id);
       await deleteAllByIndex("storyUiStates", "storyId", id);
+      await deleteFromStore("storyIndexes", id);
     },
     async listAllMessages() {
       const messages = await getAllFromStore<StoryMessage>("messages");
@@ -268,12 +273,13 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         return null;
       }
 
-      const [universe, playerCharacter, messages, storyState, chapters] = await Promise.all([
+      const [universe, playerCharacter, messages, storyState, chapters, storyIndex] = await Promise.all([
         getFromStore<Universe>("universes", story.universeId),
         getFromStore<PlayerCharacter>("playerCharacters", story.playerCharacterId),
         getAllByIndex<StoryMessage>("messages", "storyId", storyId),
         getFromStore<StoryState>("storyStates", `story-state:${storyId}`),
         getAllByIndex<StoryChapter>("storyChapters", "storyId", storyId),
+        getFromStore<StoryIndex>("storyIndexes", storyId),
       ]);
 
       if (!universe || !playerCharacter) {
@@ -288,6 +294,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         messages: sortByTimestampAsc(messages),
         storyState: storyState ?? undefined,
         chapters: [...chapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex),
+        storyIndex: storyIndex ?? undefined,
       };
     },
     async getUniverseExportBundle(universeId) {
@@ -628,6 +635,20 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     async saveStoryState(record) {
       return putInStore("storyStates", await sanitizeStoryStateRecord(record));
     },
+    async getStoryIndex(storyId) {
+      return getFromStore<StoryIndex>("storyIndexes", storyId);
+    },
+    async saveStoryIndex(index) {
+      const record: StoryIndex & { id: string } = {
+        ...index,
+        id: index.id || `story-index:${index.storyId}`,
+      };
+      await putInStore("storyIndexes", record);
+      return index;
+    },
+    async deleteStoryIndex(storyId) {
+      await deleteFromStore("storyIndexes", storyId);
+    },
     async listDeveloperBugs() {
       const bugs = await getAllFromStore<DeveloperBug>("developerBugs");
       return [...bugs].sort(
@@ -689,6 +710,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         storyStates,
         storyAiConfigs,
         storyUiStates,
+        storyIndexes,
         aiSettings,
       ] = await Promise.all([
         getAllFromStore<Universe>("universes"),
@@ -700,6 +722,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         getAllFromStore<StoryState>("storyStates"),
         getAllFromStore<StoryAIConfig>("storyAiConfigs"),
         getAllFromStore<StoryUiState>("storyUiStates"),
+        getAllFromStore<StoryIndex>("storyIndexes"),
         getFromStore<AISettings>("aiSettings", "ai-settings"),
       ]);
 
@@ -749,6 +772,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           storyStates,
           storyAiConfigs,
           storyUiStates,
+          storyIndexes,
           aiSettings: sanitizedAISettings,
         },
         uiPrefs: {
@@ -770,6 +794,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         clearStore("storyAiConfigs"),
         clearStore("backgroundJobs"),
         clearStore("storyUiStates"),
+        clearStore("storyIndexes"),
       ]);
     },
     async deleteAllPlayerCharacters() {
@@ -790,6 +815,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         clearStore("storyAiConfigs"),
         clearStore("backgroundJobs"),
         clearStore("storyUiStates"),
+        clearStore("storyIndexes"),
         clearStore("aiSettings"),
         clearStore("developerBugs"),
         clearStore("developerFeatureRequests"),
@@ -816,6 +842,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
       const storyStates = Array.isArray(data.storyStates) ? data.storyStates : [];
       const storyAiConfigs = Array.isArray(data.storyAiConfigs) ? data.storyAiConfigs : [];
       const storyUiStates = Array.isArray(data.storyUiStates) ? data.storyUiStates : [];
+      const storyIndexes = Array.isArray((data as any).storyIndexes) ? (data as any).storyIndexes : [];
       const aiSettingsRecord = data.aiSettings ?? null;
 
       function assertHasId(store: string, record: unknown) {
@@ -882,6 +909,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         await clearStore("storyAiConfigs");
         await clearStore("backgroundJobs");
         await clearStore("storyUiStates");
+        await clearStore("storyIndexes");
         await clearStore("aiSettings");
         await clearStore("developerBugs");
         await clearStore("developerFeatureRequests");
@@ -900,6 +928,10 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         await putManyInStore("storyStates", storyStates);
         await putManyInStore("storyAiConfigs", storyAiConfigs);
         await putManyInStore("storyUiStates", storyUiStates);
+        await putManyInStore(
+          "storyIndexes",
+          storyIndexes.map((si: any) => ({ ...si, id: si.id || `story-index:${si.storyId}` })),
+        );
         if (normalizedAISettings) {
           await putManyInStore("aiSettings", [normalizedAISettings]);
         }
@@ -914,6 +946,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           existingStoryStates,
           existingStoryAiConfigs,
           existingStoryUiStates,
+          existingStoryIndexes,
         ] = await Promise.all([
           getAllFromStore<Universe>("universes"),
           getAllFromStore<PlayerCharacter>("playerCharacters"),
@@ -924,6 +957,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           getAllFromStore<StoryState>("storyStates"),
           getAllFromStore<StoryAIConfig>("storyAiConfigs"),
           getAllFromStore<StoryUiState>("storyUiStates"),
+          getAllFromStore<StoryIndex>("storyIndexes"),
         ]);
 
         const existingByStore = {
@@ -936,6 +970,7 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           storyStates: new Set(existingStoryStates.map((record) => record.id)),
           storyAiConfigs: new Set(existingStoryAiConfigs.map((record) => record.id)),
           storyUiStates: new Set(existingStoryUiStates.map((record) => record.id)),
+          storyIndexes: new Set(existingStoryIndexes.map((record) => record.storyId)),
         };
 
         function shouldWrite(store: keyof typeof existingByStore, id: string) {
@@ -982,6 +1017,12 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         await putManyInStore(
           "storyUiStates",
           storyUiStates.filter((record) => shouldWrite("storyUiStates", record.id)),
+        );
+        await putManyInStore(
+          "storyIndexes",
+          storyIndexes
+            .filter((record: any) => shouldWrite("storyIndexes", record.storyId))
+            .map((si: any) => ({ ...si, id: si.id || `story-index:${si.storyId}` })),
         );
         if (normalizedAISettings) {
           await putManyInStore("aiSettings", [normalizedAISettings]);

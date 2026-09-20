@@ -83,6 +83,8 @@ export function getAIModelForRole(
 			return settings.metachatModels?.[providerType] ?? storyModel;
 		case "creation":
 			return settings.creationModels?.[providerType] ?? storyModel;
+		case "indexing":
+			return settings.indexingModels?.[providerType] ?? storyModel;
 	}
 }
 

@@ -17,7 +17,7 @@ import {
 } from "../app/versioning/designDocumentExport";
 import { useTheme } from "../app/theming/ThemeContext";
 import { resolveMaxConcurrentBackgroundTasks } from "../lib/backgroundTasks";
-import type { AIModelRole, AIProviderType, AISettings, MaxConcurrentBackgroundTasks } from "../types/models";
+import type { AIModelRole, AIProviderType, AISettings, MaxConcurrentBackgroundTasks, IndexingCadence } from "../types/models";
 import { getAIModelForRole, getProviderModels, getValidModel } from "../lib/ai/models";
 import { downloadFile } from "../lib/download";
 import {
@@ -60,10 +60,16 @@ const MODEL_ROLE_OPTIONS = [
     help: "Used for live play: chat replies, Director beats, Continue, guided chapters, and Story History generation.",
   },
   {
+    role: "indexing" as const,
+    label: "Story Indexing Model",
+    hint: "Detailed chapter summaries, canonical characters, and relationship extraction",
+    help: "Powers background and manual story indexing to extract grounded narrative memory.",
+  },
+  {
     role: "metachat" as const,
     label: "MetaChat Model",
     hint: "MetaChat only",
-    help: "Powers MetaChat â€” out-of-character planning and questions without changing the story transcript.",
+    help: "Powers MetaChat — out-of-character planning and questions without changing the story transcript.",
   },
   {
     role: "creation" as const,
@@ -98,7 +104,7 @@ function buildRoleModelMaps(settings: AISettings | null): RoleModelMaps {
   return {
     story: readRole("story"),
     metachat: readRole("metachat"),
-    indexing: readRole("story"),
+    indexing: readRole("indexing"),
     creation: readRole("creation"),
   };
 }
@@ -175,6 +181,9 @@ export function SettingsPage() {
     useState<MaxConcurrentBackgroundTasks>(
       resolveMaxConcurrentBackgroundTasks(aiSettings?.maxConcurrentBackgroundTasks),
     );
+  const [indexingCadence, setIndexingCadence] = useState<IndexingCadence>(
+    aiSettings?.indexingCadence ?? "every_5_messages",
+  );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -230,6 +239,7 @@ export function SettingsPage() {
     setMaxConcurrentBackgroundTasks(
       resolveMaxConcurrentBackgroundTasks(aiSettings?.maxConcurrentBackgroundTasks),
     );
+    setIndexingCadence(aiSettings?.indexingCadence ?? "every_5_messages");
   }, [aiSettings]);
 
   function setProviderRoleModel(role: AIModelRole, provider: AIProviderType, model: string) {
@@ -318,12 +328,14 @@ export function SettingsPage() {
       void saveAISettings({
         activeProviderType,
         defaultModels: roleModels.story,
+        indexingModels: roleModels.indexing,
         metachatModels: roleModels.metachat,
         creationModels: roleModels.creation,
+        indexingCadence,
       }).catch(() => {});
     },
     800,
-    [aiSettings, isSaving, activeProviderType, roleModels],
+    [aiSettings, isSaving, activeProviderType, roleModels, indexingCadence],
   );
 
   useDebouncedEffect(
@@ -350,8 +362,10 @@ export function SettingsPage() {
           anthropic: anthropicKey ? anthropicKey : undefined,
         },
         defaultModels: roleModels.story,
+        indexingModels: roleModels.indexing,
         metachatModels: roleModels.metachat,
         creationModels: roleModels.creation,
+        indexingCadence,
       })
         .then(() => {
           setOpenaiKeyInput("");
@@ -405,9 +419,11 @@ export function SettingsPage() {
           anthropic: anthropicKeyInput.trim() ? anthropicKeyInput : undefined,
         },
         defaultModels: roleModels.story,
+        indexingModels: roleModels.indexing,
         metachatModels: roleModels.metachat,
         creationModels: roleModels.creation,
         maxConcurrentBackgroundTasks,
+        indexingCadence,
       });
       setOpenaiKeyInput("");
       setGeminiKeyInput("");
@@ -911,6 +927,42 @@ export function SettingsPage() {
               </div>
             </Panel>
           ))}
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+              Story Indexing
+            </div>
+            <div className="mt-3">
+              <Field
+                label="Automatic Indexing Cadence"
+                hint="Controls when pending story messages are automatically indexed."
+                help="Choose how frequently StoryEngine automatically extracts and grounds canonical memory (chapter summaries, characters, relationships) from new story messages."
+              >
+                <SelectInput
+                  value={indexingCadence}
+                  onChange={(event) => {
+                    const nextCadence = event.target.value as IndexingCadence;
+                    setIndexingCadence(nextCadence);
+                    void saveAISettings({
+                      activeProviderType,
+                      indexingCadence: nextCadence,
+                      defaultModels: roleModels.story,
+                      indexingModels: roleModels.indexing,
+                      metachatModels: roleModels.metachat,
+                      creationModels: roleModels.creation,
+                    }).catch(() => {});
+                  }}
+                >
+                  <option value="every_message">After every message</option>
+                  <option value="every_5_messages">Every 5 messages</option>
+                  <option value="every_10_messages">Every 10 messages</option>
+                  <option value="every_15_messages">Every 15 messages</option>
+                  <option value="every_20_messages">Every 20 messages</option>
+                  <option value="every_chapter">After every chapter</option>
+                </SelectInput>
+              </Field>
+            </div>
+          </Panel>
 
           <Panel variant="flat">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">

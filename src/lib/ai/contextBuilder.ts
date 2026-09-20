@@ -5,6 +5,7 @@ import type {
   RpConfig,
   RpStats,
   Story,
+  StoryIndex,
   StoryMessage,
   StoryState,
   Universe,
@@ -24,6 +25,7 @@ import { formatUniverseWikiSources } from "../universeSources";
 import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, formatPlayerPrimaryAliasNamingPolicy, isDerivedPlayerSituationCurrent, resolveEffectivePlayerIdentity, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
 import { formatHumanNovelistProseGuidance } from "../storyProseGuidance";
 import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
+import { buildDirectorIndexedMemory } from "./storyIndexRetrieval";
 import {
   formatAuthorDirectiveStateForPrompt,
   isAuthorDirectiveMessage,
@@ -119,6 +121,7 @@ export interface BuildStoryChatContextInput {
   imports: UniverseImport[];
   summaries?: unknown[];
   storyState?: StoryState | null;
+  storyIndex?: StoryIndex | null;
   recentMessages: StoryMessage[];
   latestUserMessage: string;
   latestUserMessageSpeakerType?: StoryMessage["speakerType"];
@@ -153,6 +156,7 @@ export function buildStoryChatContext({
   playerCharacter,
   imports,
   storyState,
+  storyIndex,
   recentMessages,
   latestUserMessage,
   latestUserMessageSpeakerType,
@@ -249,6 +253,14 @@ export function buildStoryChatContext({
     importedStoryCharacters,
     null,
   );
+
+  const indexedMemoryBlock = storyIndex
+    ? buildDirectorIndexedMemory({
+        index: storyIndex,
+        recentMessages,
+        playerCharacter,
+      })
+    : null;
 
   const authorDirectiveBlock = formatAuthorDirectiveStateForPrompt(
     storyState?.stateJson?.trim()
@@ -604,6 +616,9 @@ export function buildStoryChatContext({
     ...(importedCharactersBlock
       ? [{ role: "system" as const, content: `Imported Story Characters\n\n${importedCharactersBlock}` }]
       : []),
+    ...(indexedMemoryBlock
+      ? [{ role: "system" as const, content: `Indexed Story Memory (derived memory; never overrides primary canon or transcript)\n\n${indexedMemoryBlock}` }]
+      : []),
     ...(authorDirectiveBlock
       ? [{ role: "system" as const, content: `Author Declarations\n\n${authorDirectiveBlock}` }]
       : []),
@@ -645,5 +660,56 @@ export function buildStoryChatContext({
               `Player (${playerSceneName}) turn:\n${latestUserMessage}`,
             ),
     },
+  ];
+}
+
+export function buildStorySummaryContext({
+  storyTitle,
+  playerCharacterName,
+  playerCharacter,
+  storyState,
+  messages,
+}: {
+  storyTitle: string;
+  playerCharacterName: string;
+  playerCharacter?: Pick<
+    PlayerCharacter,
+    "id" | "name" | "aliases" | "pronouns" | "gender" | "species" | "age"
+  >;
+  storyState?: StoryState | null;
+  messages: StoryMessage[];
+}): AIChatMessage[] {
+  void storyState;
+  const playerIdentity = playerCharacter
+    ? resolveEffectivePlayerIdentity(playerCharacter as PlayerCharacter, {
+        recentMessages: messages,
+      })
+    : null;
+  const playerSceneName = playerIdentity?.sceneName ?? playerCharacterName;
+  const chatHistory = sortByTimestampAsc(messages)
+    .slice(-MAX_RECENT_MESSAGES)
+    .map((message) => formatTimelineMessage(message, playerSceneName));
+
+  return [
+    {
+      role: "system",
+      content: normalizeWhitespace(
+        [
+          `Conversation transcript for "${storyTitle}".`,
+          playerCharacter && playerIdentity
+            ? `Canonical Player Character identity (binding unless an explicit player-authored in-story change exists):\n${formatPlayerCharacterIdentityForPrompt(playerCharacter as PlayerCharacter, playerIdentity.sceneName, playerIdentity.pronouns)}`
+            : `Canonical Player Character: ${playerCharacterName}. Do not infer or change the protagonist's gender or pronouns from assistant dialogue or AI-generated summaries.`,
+          "Canonical player identity outranks AI-generated summaries and assistant-authored dialogue. A normal user-role player turn may explicitly change identity in first person; Director/Author instructions count only when they explicitly target the protagonist.",
+          "Write the summary from the audience's current knowledge only. Do not reveal hidden identities, undercover aliases, or true names that the transcript has not yet established.",
+          "Use the in-story names characters are known by (for example, a witness name rather than an unrevealed true identity).",
+          "Continue lines are out-of-character continuation notes kept in the transcript for reference.",
+          "They tell the model to keep the current scene moving, but they are not themselves in-universe events to summarize.",
+          "Director lines are out-of-character staging notes kept in the transcript for reference.",
+          "Treat the actual generated scene outcomes as canon. Do not summarize the Director note itself as if it were an in-universe event.",
+          "Canon/Secret/Reveal/Retcon lines are explicit author declarations. Use them as authoritative continuity constraints rather than spoken dialogue.",
+        ].join("\n"),
+      ),
+    },
+    ...chatHistory,
   ];
 }

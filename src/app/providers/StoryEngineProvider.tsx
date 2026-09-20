@@ -29,6 +29,13 @@ import { resolveGeminiMinimalThinkingSettings, resolveGeminiStoryThinkingSetting
 import {
   buildStoryChatContext,
 } from "../../lib/ai/contextBuilder";
+import {
+  updateStoryIndexToCurrent,
+  rebuildFullStoryIndex,
+  clearStoryIndex as clearStoryIndexRecord,
+  calculatePendingMessages,
+  shouldTriggerAutomaticIndexing,
+} from "../../lib/storyIndexManager";
 import { getValidModel, getAIModelForRole, getCharacterConceptRequestConfig, getIndexingRequestConfig, getModelStreamConfig, getStoryStreamIdleTimeoutMs } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
 import { buildDirectorAssistContext, buildPlayerAssistContext, storyHasGeneratedScenes } from "../../lib/ai/playerAssistContext";
@@ -108,15 +115,12 @@ import { buildCanonicalTranscriptFingerprint } from "../../lib/transcriptFingerp
 import {
   createSequelStoryStateData,
   normalizeStoryStateToV2,
-  finalizeStoryStateForSave,
   parseStoryStateJson,
   reconcileStoryIndexes,
   safeParseStoryStateData,
   mergeStoryLocalPlayerIdentityIntoState,
-  rebuildStoryMemoryAndIndexes,
   protectGeneratedSummaryPlayerFacts,
   applyTranscriptPresenceGate,
-  createClearedStoryStateV2,
   selectChaptersForArchiveRebuild,
   getArchiveIndexStatus,
   formatStoryLongTermMemoryForPrompt,
@@ -297,6 +301,8 @@ import type {
   StoryAIConfig,
   StoryEngineBackup,
   StoryDraft,
+  IndexingCadence,
+  StoryIndex,
   StoryExportBundle,
   StoryChapter,
   StoryIndexesV2,
@@ -525,6 +531,9 @@ interface StoryEngineContextValue {
   loadStoryRelationships: (storyId: string) => Promise<RelationshipIndexEntry[]>;
   refreshStoryState: (storyId: string, opts?: { force?: boolean }) => Promise<void>;
   updateIndexesDeep: (storyId: string, opts?: { signal?: AbortSignal; incremental?: boolean }) => Promise<void>;
+  getStoryIndex: (storyId: string) => Promise<StoryIndex | null>;
+  updateStoryIndex: (storyId: string) => Promise<StoryIndex>;
+  fullReindexStory: (storyId: string) => Promise<StoryIndex>;
   queueStoryIndexJob: (
     storyId: string,
     opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean },
@@ -625,6 +634,7 @@ interface StoryEngineContextValue {
     geminiPodcastTts?: Partial<GeminiPodcastTtsSettings>;
     geminiNarrationTts?: Partial<GeminiNarrationTtsSettings>;
     maxConcurrentBackgroundTasks?: 1 | 2 | 3 | 4 | 5;
+    indexingCadence?: IndexingCadence;
   }) => Promise<AISettings>;
   validateAIConnection: (providerType?: AIProviderType) => Promise<void>;
   getStoryAIConfig: (storyId: string) => Promise<StoryAIConfig | null>;
@@ -2989,11 +2999,6 @@ export function StoryEngineProvider({
 
   const queueStoryIndexJob = useCallback(
     async (storyId: string, opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean }) => {
-      void storyId;
-      void opts;
-      throw new Error("Story indexing has been removed; generation uses the canonical transcript.");
-      /* legacy index queue retained only for migration of old callers */
-      /*
       const existingJobs = await repository.listBackgroundJobs();
       const existing = existingJobs.find(
         (job) =>
@@ -3013,10 +3018,6 @@ export function StoryEngineProvider({
         });
         const existingController = backgroundJobControllersRef.current[existing.id];
         existingController?.abort();
-        // Clear the active ref immediately so the new job can be picked up without
-        // waiting for the old job's async cleanup to settle (which can take up to
-        // REBUILD_REQUEST_TIMEOUT_MS if the abort signal lands mid-AI-call).
-        // The finally block guards against clearing a different job's ref.
         if (activeBackgroundJobIdsRef.current.has(existing.id)) {
           activeBackgroundJobIdsRef.current.delete(existing.id);
         }
@@ -3040,7 +3041,6 @@ export function StoryEngineProvider({
       await repository.saveBackgroundJob(job);
       await hydrate(false);
       return { job, duplicate: false };
-      */
     },
     [hydrate, repository],
   );
@@ -3462,29 +3462,155 @@ export function StoryEngineProvider({
     [cancelBackgroundJob, repository],
   );
 
+  const getStoryIndex = useCallback(
+    async (storyId: string) => {
+      return repository.getStoryIndex(storyId);
+    },
+    [repository],
+  );
+
   const clearStoryIndex = useCallback(
     async (storyId: string) => {
       await cancelStoryIndexing(storyId);
-
-      const existing = await repository.getStoryState(storyId);
-      const parsed = existing?.stateJson?.trim() ? safeParseStoryStateData(existing.stateJson) : null;
-      const cleared = createClearedStoryStateV2({
-        rpStats: parsed?.rpStats,
-        authorDirectives: parsed?.authorDirectives,
-      });
-      const now = new Date().toISOString();
-
-      await repository.saveStoryState({
-        id: existing?.id ?? `story-state:${storyId}`,
-        storyId,
-        stateJson: JSON.stringify(cleared),
-        updatedAt: now,
-      });
-
+      await clearStoryIndexRecord({ storyId, repository });
       setRebuildStatus((current) => (current?.storyId === storyId ? undefined : current));
       await hydrate(false);
     },
     [cancelStoryIndexing, hydrate, repository],
+  );
+
+  const updateStoryIndex = useCallback(
+    async (storyId: string) => {
+      const story = await repository.getStory(storyId);
+      if (!story) throw new Error("Story not found.");
+      const playerCharacter = await repository.getPlayerCharacter(story.playerCharacterId);
+      if (!playerCharacter) throw new Error("Player character not found.");
+      const aiSettings = await getNormalizedAISettings();
+      if (!aiSettings) throw new Error("AI settings not configured.");
+      const providerType = aiSettings.activeProviderType ?? "gemini";
+      const apiKey = aiSettings.apiKeys?.[providerType];
+      if (!apiKey) throw new Error(`API key not configured for ${providerType}.`);
+      const provider = createAIProvider(providerType);
+      const model = getValidModel(
+        providerType,
+        getAIModelForRole(aiSettings, providerType, "indexing"),
+      );
+
+      setRebuildStatus({
+        storyId,
+        phase: "extracting",
+        processedMessages: 0,
+        totalMessages: 0,
+        message: "Updating story index...",
+      });
+
+      try {
+        const result = await updateStoryIndexToCurrent({
+          storyId,
+          repository,
+          playerCharacter,
+          story,
+          provider,
+          apiKey,
+          model,
+          onProgress: (processed, total) => {
+            setRebuildStatus({
+              storyId,
+              phase: "extracting",
+              processedMessages: processed,
+              totalMessages: total,
+              message: `Indexed ${processed} of ${total} pending messages...`,
+            });
+          },
+        });
+        setRebuildStatus({
+          storyId,
+          phase: "done",
+          processedMessages: result.indexedMessageCount,
+          totalMessages: result.indexedMessageCount,
+          message: "Story index updated.",
+        });
+        await hydrate(false);
+        return result;
+      } catch (err) {
+        setRebuildStatus({
+          storyId,
+          phase: "error",
+          processedMessages: 0,
+          totalMessages: 0,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
+    },
+    [getNormalizedAISettings, hydrate, repository],
+  );
+
+  const fullReindexStory = useCallback(
+    async (storyId: string) => {
+      const story = await repository.getStory(storyId);
+      if (!story) throw new Error("Story not found.");
+      const playerCharacter = await repository.getPlayerCharacter(story.playerCharacterId);
+      if (!playerCharacter) throw new Error("Player character not found.");
+      const aiSettings = await getNormalizedAISettings();
+      if (!aiSettings) throw new Error("AI settings not configured.");
+      const providerType = aiSettings.activeProviderType ?? "gemini";
+      const apiKey = aiSettings.apiKeys?.[providerType];
+      if (!apiKey) throw new Error(`API key not configured for ${providerType}.`);
+      const provider = createAIProvider(providerType);
+      const model = getValidModel(
+        providerType,
+        getAIModelForRole(aiSettings, providerType, "indexing"),
+      );
+
+      setRebuildStatus({
+        storyId,
+        phase: "extracting",
+        processedMessages: 0,
+        totalMessages: 0,
+        message: "Rebuilding full story index...",
+      });
+
+      try {
+        const result = await rebuildFullStoryIndex({
+          storyId,
+          repository,
+          playerCharacter,
+          story,
+          provider,
+          apiKey,
+          model,
+          onProgress: (processed, total) => {
+            setRebuildStatus({
+              storyId,
+              phase: "extracting",
+              processedMessages: processed,
+              totalMessages: total,
+              message: `Indexed ${processed} of ${total} messages...`,
+            });
+          },
+        });
+        setRebuildStatus({
+          storyId,
+          phase: "done",
+          processedMessages: result.indexedMessageCount,
+          totalMessages: result.indexedMessageCount,
+          message: "Full re-index complete.",
+        });
+        await hydrate(false);
+        return result;
+      } catch (err) {
+        setRebuildStatus({
+          storyId,
+          phase: "error",
+          processedMessages: 0,
+          totalMessages: 0,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
+    },
+    [getNormalizedAISettings, hydrate, repository],
   );
 
   const cancelGuidedChapterGeneration = useCallback(
@@ -3520,436 +3646,85 @@ export function StoryEngineProvider({
   );
 
   const runDeepIndexProcess = useCallback(
-    async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean; jobId?: string; rebuildAllChapterSummaries?: boolean }) => {
-      void storyId;
-      void opts;
-      throw new Error("Story indexing has been removed; generation uses the canonical transcript.");
-      /*
-      rebuildAbortRef.current?.abort();
-      const controller = new AbortController();
-      rebuildAbortRef.current = controller;
-      const signal = opts?.signal ?? controller.signal;
-      const indexingStartedAtMs = Date.now();
+    async (
+      storyId: string,
+      opts?: {
+        signal?: AbortSignal;
+        trigger?: "manual" | "auto";
+        incremental?: boolean;
+        jobId?: string;
+        rebuildAllChapterSummaries?: boolean;
+      },
+    ): Promise<string> => {
+      const isIncremental = Boolean(opts?.incremental);
+      const story = await repository.getStory(storyId);
+      if (!story) throw new Error("Story not found.");
+      const playerCharacter = await repository.getPlayerCharacter(story.playerCharacterId);
+      if (!playerCharacter) throw new Error("Player character not found.");
+      const settings = await getNormalizedAISettings();
+      if (!settings) throw new Error("Configure an AI provider in Settings before re-indexing.");
+      const storyConfig = await repository.getStoryAIConfig(storyId);
+      const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+      const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "indexing");
+      const provider = createAIProvider(providerType);
 
-      // #region debug-point job-cancel-timeout:deep-index-start
-      reportJobDebug({
-        hypothesisId: "B",
-        location: "StoryEngineProvider.tsx:runDeepIndexProcess:start",
-        msg: "deep index started",
-        data: {
+      const onProgress = (processed: number, total: number) => {
+        setRebuildStatus({
           storyId,
-          trigger: opts?.trigger ?? "manual",
-          signalProvided: Boolean(opts?.signal),
-          abortedAtStart: signal.aborted,
-        },
-      });
-      // #endregion
+          phase: "extracting",
+          processedMessages: processed,
+          totalMessages: total,
+          message: `Indexed ${processed} of ${total} messages...`,
+          jobId: opts?.jobId,
+        });
+      };
 
       setRebuildStatus({
         storyId,
         phase: "loading",
         processedMessages: 0,
         totalMessages: 0,
-        message: "Loading story...",
-        startedAtMs: indexingStartedAtMs,
-        stage: "loading",
+        message: "Loading story transcript...",
         jobId: opts?.jobId,
       });
 
       try {
-        const story = await repository.getStory(storyId);
-        if (!story) {
-          throw new Error("Story not found.");
-        }
-
-        const storyConfig = await repository.getStoryAIConfig(storyId);
-        const settings = await getNormalizedAISettings();
-
-        if (!settings) {
-          throw new Error("Configure an AI provider in Settings before re-indexing.");
-        }
-
-        const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-        const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "indexing");
-        const provider = createAIProvider(providerType);
-
-        const [allMessages, existingStoryState, storedChapters, playerCharacter] = await Promise.all([
-          repository.listStoryMessages(storyId),
-          repository.getStoryState(storyId),
-          repository.listStoryChapters(storyId),
-          repository.getPlayerCharacter(story.playerCharacterId),
-        ]);
-
-        if (!playerCharacter) {
-          throw new Error("Story references missing player character.");
-        }
-
-        setRebuildStatus({
-          storyId,
-          phase: "extracting",
-          processedMessages: 0,
-          totalMessages: allMessages.length,
-          message: `Indexing message 0/${allMessages.length}ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦`,
-          startedAtMs: indexingStartedAtMs,
-          stage: "messages",
-          jobId: opts?.jobId,
-        });
-
-        const result = await rebuildStoryMemoryAndIndexes({
-          storyId,
-          repository,
-          provider,
-          apiKey,
-          model,
-          signal,
-          incremental: opts?.incremental ?? false,
-          onProgress: ({ processed, total, message, warning }) => {
-            // #region debug-point job-cancel-timeout:deep-index-progress
-            reportJobDebug({
-              hypothesisId: "B",
-              location: "StoryEngineProvider.tsx:runDeepIndexProcess:progress",
-              msg: "deep index progress",
-              data: {
-                storyId,
-                processed,
-                total,
-                message,
-                aborted: signal.aborted,
-              },
+        const resultIndex = isIncremental
+          ? await updateStoryIndexToCurrent({
+              storyId,
+              repository,
+              playerCharacter,
+              story,
+              provider,
+              apiKey,
+              model,
+              signal: opts?.signal,
+              onProgress,
+            })
+          : await rebuildFullStoryIndex({
+              storyId,
+              repository,
+              playerCharacter,
+              story,
+              provider,
+              apiKey,
+              model,
+              signal: opts?.signal,
+              onProgress,
             });
-            // #endregion
-            setRebuildStatus((current) => {
-              if (!current || current.storyId !== storyId) {
-                return current;
-              }
 
-              return {
-                ...current,
-                phase: "extracting",
-                stage: "messages",
-                processedMessages: processed,
-                totalMessages: total,
-                message,
-                warning: warning ?? current.warning,
-                startedAtMs: current.startedAtMs ?? indexingStartedAtMs,
-                jobId: opts?.jobId ?? current.jobId,
-              };
-            });
-            // Mirror progress into the DB job record so the job card shows live status
-            if (opts?.jobId) {
-              void repository.getBackgroundJob(opts.jobId).then((liveJob) => {
-                if (!liveJob || liveJob.status !== "running") return;
-                void repository.saveBackgroundJob({
-                  ...liveJob,
-                  progress: {
-                    current: processed,
-                    total,
-                    label: message ?? `${processed}/${total} messages`,
-                  },
-                }).catch(() => {});
-              }).catch(() => {});
-            }
-          },
-        });
-
-        if (signal.aborted) {
-          // #region debug-point job-cancel-timeout:deep-index-aborted
-          reportJobDebug({
-            hypothesisId: "B",
-            location: "StoryEngineProvider.tsx:runDeepIndexProcess:post-rebuild",
-            msg: "deep index observed aborted after rebuild returned",
-            data: { storyId },
-          });
-          // #endregion
-          throw new Error("Re-index aborted.");
-        }
-
-        setRebuildStatus((current) =>
-          current && current.storyId === storyId
-            ? {
-                ...current,
-                phase: "saving",
-                stage: "saving-state",
-                message: "Saving indexed state...",
-              }
-            : current,
-        );
-
-        const now = new Date().toISOString();
-        const nextStateJson = (() => {
-          try {
-            const parsed = safeParseStoryStateData(result.stateJson);
-            if (!parsed) {
-              // Preserve rpStats through fallback path (AI state failed V2 validation)
-              try {
-                const rawNew = JSON.parse(result.stateJson) as Record<string, unknown>;
-                if (!rawNew.rpStats && existingStoryState?.stateJson) {
-                  const rawPrev = JSON.parse(existingStoryState.stateJson) as Record<string, unknown>;
-                  const prevRpStats =
-                    (rawPrev?.rpStats as StoryStateData["rpStats"] | undefined) ??
-                    (safeParseStoryStateData(existingStoryState.stateJson))?.rpStats;
-                  if (prevRpStats) {
-                    return JSON.stringify(
-                      applyAuthorDirectivesToStoryState(
-                        { ...rawNew, rpStats: prevRpStats },
-                        allMessages,
-                      ),
-                    );
-                  }
-                }
-              } catch {}
-              return JSON.stringify(
-                applyAuthorDirectivesToStoryState(
-                  safeParseStoryStateData(result.stateJson),
-                  allMessages,
-                ),
-              );
-            }
-            const withAuthorDirectives = applyAuthorDirectivesToStoryState(parsed, allMessages);
-            const indexingGaps = parsed.indexingGaps ?? [];
-            const deepIndexCompletedMessageCount = Math.max(
-              0,
-              Math.min(
-                allMessages.length,
-                parsed.lastDeepIndexedMessageCount ??
-                  (indexingGaps.length
-                    ? Math.min(...indexingGaps.map((gap) => gap.messageNumber)) - 1
-                    : allMessages.length),
-              ),
-            );
-            const deepIndexAttemptedMessageCount = Math.max(
-              deepIndexCompletedMessageCount,
-              Math.min(
-                allMessages.length,
-                parsed.lastDeepIndexAttemptedMessageCount ?? allMessages.length,
-              ),
-            );
-            return finalizeStoryStateForSave({
-              parsedState: withAuthorDirectives as StoryStateData,
-              previousStateJson: existingStoryState?.stateJson,
-              totalMessages: allMessages.length,
-              now,
-              mode: "deep",
-              deepIndexTrigger: opts?.trigger ?? "manual",
-              playerName: playerCharacter.name,
-              playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
-              playerCharacter: {
-                name: playerCharacter.name,
-                aliases: playerCharacter.aliases,
-              },
-              messages: allMessages,
-              universeImportedCharacters: getStoryImportedCharacterContext(story).universeImportedCharacters,
-              deepIndexProgress: {
-                completedMessageCount: deepIndexCompletedMessageCount,
-                attemptedMessageCount: deepIndexAttemptedMessageCount,
-                gaps: indexingGaps,
-              },
-            });
-          } catch {
-            return JSON.stringify(
-              applyAuthorDirectivesToStoryState(
-                safeParseStoryStateData(result.stateJson),
-                allMessages,
-              ),
-            );
-          }
-        })();
-
-        await repository.saveStoryState({
-          id: `story-state:${storyId}`,
-          storyId,
-          stateJson: nextStateJson,
-          updatedAt: now,
-        });
-
-        const previousDeepIndexedMessageCount =
-          safeParseStoryStateData(existingStoryState?.stateJson ?? "")?.lastDeepIndexedMessageCount ??
-          0;
-
-        setRebuildStatus((current) =>
-          current && current.storyId === storyId
-            ? {
-                ...current,
-                phase: "saving",
-                stage: "chapter-boundaries",
-                message: "Rebuilding chapter boundaries...",
-              }
-            : current,
-        );
-
-        const rebuiltChapters = await syncStoryChaptersFromTranscript({
-          storyId,
-          repository,
-          messages: allMessages,
-          existingChapters: storedChapters,
-        });
-
-        const chaptersToRebuild = selectChaptersForArchiveRebuild(
-          rebuiltChapters,
-          {
-            incremental: opts?.incremental ?? false,
-            previousDeepIndexedMessageCount,
-            rebuildAllChapterSummaries:
-              opts?.rebuildAllChapterSummaries ?? !(opts?.incremental ?? false),
-            storedChapters: storedChapters,
-          },
-        );
-
-        if (chaptersToRebuild.length) {
-          setRebuildStatus((current) =>
-            current && current.storyId === storyId
-              ? {
-                  ...current,
-                  phase: "saving",
-                  stage: "chapter-reviews",
-                  processedMessages: 0,
-                  totalMessages: chaptersToRebuild.length,
-                  message: `Rebuilding chapter reviewsÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ 0/${chaptersToRebuild.length}`,
-                  chapterReviews: buildInitialChapterReviewProgress(chaptersToRebuild),
-                }
-              : current,
-          );
-
-          await rebuildChapterArchiveSummaries({
-            story,
-            playerCharacter,
-            repository,
-            messages: allMessages,
-            chapters: rebuiltChapters,
-            storedChapters,
-            storyStateJson: nextStateJson,
-            providerType,
-            provider,
-            apiKey,
-            model,
-            signal,
-            incremental: opts?.incremental ?? false,
-            rebuildAllChapterSummaries:
-              opts?.rebuildAllChapterSummaries ?? !(opts?.incremental ?? false),
-            previousDeepIndexedMessageCount,
-            onProgress: ({ processed, total, label }) => {
-              const nowMs = Date.now();
-              setRebuildStatus((current) => {
-                if (!current || current.storyId !== storyId) {
-                  return current;
-                }
-
-                const chapterReviews = (current.chapterReviews ?? []).map((chapter, index) => {
-                  if (index < processed - 1) {
-                    return {
-                      ...chapter,
-                      status: "done" as const,
-                      completedAtMs: chapter.completedAtMs ?? nowMs,
-                    };
-                  }
-
-                  if (index === processed - 1) {
-                    return {
-                      ...chapter,
-                      status: "active" as const,
-                      startedAtMs: chapter.startedAtMs ?? nowMs,
-                    };
-                  }
-
-                  return chapter;
-                });
-
-                return {
-                  ...current,
-                  phase: "saving",
-                  stage: "chapter-reviews",
-                  processedMessages: processed,
-                  totalMessages: total,
-                  message: `Rebuilding chapter reviewsÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ ${processed}/${total} (${label})`,
-                  chapterReviews,
-                };
-              });
-            },
-          });
-
-          setRebuildStatus((current) => {
-            if (!current || current.storyId !== storyId || !current.chapterReviews?.length) {
-              return current;
-            }
-
-            const nowMs = Date.now();
-            return {
-              ...current,
-              chapterReviews: current.chapterReviews.map((chapter) => ({
-                ...chapter,
-                status: "done",
-                completedAtMs: chapter.completedAtMs ?? nowMs,
-              })),
-            };
-          });
-        }
-
-        if (!story.openingPrompt?.trim() && result.summaryText?.trim()) {
-          const protectedSummary = protectGeneratedSummaryPlayerFacts(
-            result.summaryText,
-            playerCharacter,
-            allMessages,
-          );
-          await repository.saveStory({
-            ...story,
-            currentSummary: protectedSummary.trim(),
-            updatedAt: new Date().toISOString(),
-          });
-        }
-
-        await touchStory(storyId);
-        await hydrate(false);
-
-        const summaryLine = (() => {
-          try {
-            const parsed = JSON.parse(nextStateJson) as any;
-            const indexes = parsed?.indexes;
-            const indexingGaps = Array.isArray(parsed?.indexingGaps)
-              ? parsed.indexingGaps
-              : [];
-            const completionPrefix = indexingGaps.length
-              ? `Re-index partial. ${indexingGaps.length} message${indexingGaps.length === 1 ? "" : "s"} could not be indexed.`
-              : "Re-index complete.";
-            if (!indexes || typeof indexes !== "object") {
-              return completionPrefix;
-            }
-            const characterCount =
-              indexes.characters && typeof indexes.characters === "object"
-                ? Object.keys(indexes.characters).length
-                : 0;
-            const locationCount =
-              indexes.locations && typeof indexes.locations === "object"
-                ? Object.keys(indexes.locations).length
-                : 0;
-            const threadCount = Array.isArray(indexes.openThreads)
-              ? indexes.openThreads.length
-              : 0;
-            const relationshipCount = Array.isArray(indexes.relationships)
-              ? indexes.relationships.length
-              : 0;
-            const parts = [
-              characterCount ? `${characterCount} character${characterCount === 1 ? "" : "s"}` : null,
-              locationCount ? `${locationCount} location${locationCount === 1 ? "" : "s"}` : null,
-              relationshipCount ? `${relationshipCount} relationship${relationshipCount === 1 ? "" : "s"}` : null,
-              threadCount ? `${threadCount} thread${threadCount === 1 ? "" : "s"}` : null,
-            ].filter(Boolean);
-            return parts.length
-              ? `${completionPrefix} Indexed: ${parts.join(", ")}.`
-              : completionPrefix;
-          } catch {
-            return "Re-index complete.";
-          }
-        })();
+        const summaryLine = `Indexed ${resultIndex.indexedMessageCount} messages (${resultIndex.characters.length} characters, ${resultIndex.relationships.length} relationships, ${resultIndex.chapterSummaries.length} chapter summaries).`;
 
         setRebuildStatus({
           storyId,
           phase: "done",
-          processedMessages: allMessages.length,
-          totalMessages: allMessages.length,
+          processedMessages: resultIndex.indexedMessageCount,
+          totalMessages: resultIndex.indexedMessageCount,
           message: summaryLine,
-          startedAtMs: indexingStartedAtMs,
+          jobId: opts?.jobId,
         });
 
+        await hydrate(false);
         return summaryLine;
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -3959,14 +3734,9 @@ export function StoryEngineProvider({
             : current,
         );
         throw error;
-      } finally {
-        if (rebuildAbortRef.current === controller) {
-          rebuildAbortRef.current = null;
-        }
       }
-      */
     },
-    [getNormalizedAISettings, getStoryImportedCharacterContext, hydrate, repository, resolveAIProfile, touchStory],
+    [getNormalizedAISettings, hydrate, repository, resolveAIProfile],
   );
 
   const generateMetaChatAssistantReply = useCallback(
@@ -4671,13 +4441,76 @@ export function StoryEngineProvider({
         }
 
         if (job.type === "story_index") {
-          const summaryLine = await runDeepIndexProcess(job.storyId ?? "", {
-            signal,
-            trigger: job.payload?.trigger ?? "manual",
-            incremental: job.payload?.incremental ?? false,
-            rebuildAllChapterSummaries: job.payload?.rebuild ?? !(job.payload?.incremental ?? false),
+          const isIncremental = Boolean(job.payload?.incremental);
+          const storyId = job.storyId ?? "";
+          const story = await repository.getStory(storyId);
+          if (!story) throw new Error("Story not found.");
+          const playerCharacter = await repository.getPlayerCharacter(story.playerCharacterId);
+          if (!playerCharacter) throw new Error("Player character not found.");
+          const settings = await getNormalizedAISettings();
+          if (!settings) throw new Error("AI settings not configured.");
+          const providerType = settings.activeProviderType ?? "gemini";
+          const apiKey = settings.apiKeys?.[providerType];
+          if (!apiKey) throw new Error(`API key not configured for ${providerType}.`);
+          const provider = createAIProvider(providerType);
+          const model = getValidModel(
+            providerType,
+            getAIModelForRole(settings, providerType, "indexing"),
+          );
+
+          const onProgress = (processed: number, total: number) => {
+            setRebuildStatus({
+              storyId,
+              phase: "extracting",
+              processedMessages: processed,
+              totalMessages: total,
+              message: `Indexed ${processed} of ${total} messages...`,
+              jobId: job.id,
+            });
+          };
+
+          setRebuildStatus({
+            storyId,
+            phase: "loading",
+            processedMessages: 0,
+            totalMessages: 0,
             jobId: job.id,
           });
+
+          const resultIndex = isIncremental
+            ? await updateStoryIndexToCurrent({
+                storyId,
+                repository,
+                playerCharacter,
+                story,
+                provider,
+                apiKey,
+                model,
+                signal,
+                onProgress,
+              })
+            : await rebuildFullStoryIndex({
+                storyId,
+                repository,
+                playerCharacter,
+                story,
+                provider,
+                apiKey,
+                model,
+                signal,
+                onProgress,
+              });
+
+          setRebuildStatus({
+            storyId,
+            phase: "done",
+            processedMessages: resultIndex.indexedMessageCount,
+            totalMessages: resultIndex.indexedMessageCount,
+            message: "Indexing complete.",
+            jobId: job.id,
+          });
+
+          const summaryLine = `Indexed ${resultIndex.indexedMessageCount} messages (${resultIndex.characters.length} characters, ${resultIndex.relationships.length} relationships, ${resultIndex.chapterSummaries.length} chapter summaries).`;
           const refreshed = await repository.getBackgroundJob(job.id);
           if (signal.aborted || refreshed?.status === "cancelled") {
             await repository.saveBackgroundJob({
@@ -4689,7 +4522,6 @@ export function StoryEngineProvider({
             await hydrate(false);
             return;
           }
-          const story = job.storyId ? await repository.getStory(job.storyId) : null;
           const completedJob: BackgroundJob = {
             ...runningJob,
             status: "complete",
@@ -5126,6 +4958,11 @@ export function StoryEngineProvider({
               current?.storyId === job.storyId ? undefined : current,
             );
           }
+          if (job.type === "story_index" && job.storyId) {
+            setRebuildStatus((current) =>
+              current?.storyId === job.storyId ? undefined : current,
+            );
+          }
           await hydrate(false).catch(() => {});
           return;
         }
@@ -5137,6 +4974,16 @@ export function StoryEngineProvider({
             error: error instanceof Error ? error.message : "Background job failed.",
           });
         } catch {}
+        if (job.type === "story_index" && job.storyId) {
+          setRebuildStatus({
+            storyId: job.storyId,
+            phase: "error",
+            processedMessages: 0,
+            totalMessages: 0,
+            error: error instanceof Error ? error.message : "Indexing failed.",
+            jobId: job.id,
+          });
+        }
         if (job.type === "guided_chapter_generate" && job.storyId) {
           setGuidedGenerationStatus({
             storyId: job.storyId,
@@ -5389,129 +5236,39 @@ export function StoryEngineProvider({
 
     const refreshStoryStateInternal = async (storyId: string, opts?: { force?: boolean }) => {
       const story = await repository.getStory(storyId);
-      if (!story) {
-        return;
-      }
-
-      const [playerCharacter, refreshedMessages, storyConfig, storyState] = await Promise.all([
+      if (!story) return;
+      const [playerCharacter, refreshedMessages, storyConfig, storyIndex] = await Promise.all([
         repository.getPlayerCharacter(story.playerCharacterId),
         repository.listStoryMessages(storyId),
         repository.getStoryAIConfig(storyId),
-        repository.getStoryState(storyId),
+        repository.getStoryIndex(storyId),
       ]);
-
-      if (!playerCharacter) {
-        return;
-      }
-
+      if (!playerCharacter) return;
       const lastMessage = refreshedMessages[refreshedMessages.length - 1];
       if (
         !opts?.force &&
-        storyState?.updatedAt &&
+        storyIndex?.updatedAt &&
         lastMessage?.timestamp &&
-        storyState.updatedAt >= lastMessage.timestamp
+        storyIndex.updatedAt >= lastMessage.timestamp
       ) {
         return;
       }
-
       const settings = await getNormalizedAISettings();
-      if (!settings) {
-        return;
-      }
-
+      if (!settings) return;
       const providerType = storyConfig?.providerType ?? settings.activeProviderType;
       const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "indexing");
       const provider = createAIProvider(providerType);
 
-      const rebuilt = await rebuildStoryMemoryAndIndexes({
+      await updateStoryIndexToCurrent({
         storyId,
         repository,
+        playerCharacter,
+        story,
         provider,
         apiKey,
         model,
-        onProgress: () => {},
       });
-
-      const now = new Date().toISOString();
-      const nextStateJson = (() => {
-        try {
-          const parsed = safeParseStoryStateData(rebuilt.stateJson);
-          if (!parsed) {
-            // Preserve rpStats through fallback path (AI state failed V2 validation)
-            try {
-              const rawNew = JSON.parse(rebuilt.stateJson) as Record<string, unknown>;
-              if (!rawNew.rpStats && storyState?.stateJson) {
-                const rawPrev = JSON.parse(storyState.stateJson) as Record<string, unknown>;
-                const prevRpStats =
-                  (rawPrev?.rpStats as StoryStateData["rpStats"] | undefined) ??
-                  (safeParseStoryStateData(storyState.stateJson))?.rpStats;
-                if (prevRpStats) {
-                  return JSON.stringify(
-                    applyAuthorDirectivesToStoryState(
-                      { ...rawNew, rpStats: prevRpStats },
-                      refreshedMessages,
-                    ),
-                  );
-                }
-              }
-            } catch {}
-            return JSON.stringify(
-              applyAuthorDirectivesToStoryState(
-                safeParseStoryStateData(rebuilt.stateJson),
-                refreshedMessages,
-              ),
-            );
-          }
-
-          const withAuthorDirectives = applyAuthorDirectivesToStoryState(
-            parsed,
-            refreshedMessages,
-          );
-
-          return finalizeStoryStateForSave({
-            parsedState: withAuthorDirectives as StoryStateData,
-            previousStateJson: storyState?.stateJson,
-            totalMessages: refreshedMessages.length,
-            now,
-            mode: "deep",
-            playerName: playerCharacter.name,
-            playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
-            playerCharacter: {
-              name: playerCharacter.name,
-              aliases: playerCharacter.aliases,
-            },
-            messages: refreshedMessages,
-            universeImportedCharacters: getStoryImportedCharacterContext(story).universeImportedCharacters,
-          });
-        } catch {
-          return JSON.stringify(
-            applyAuthorDirectivesToStoryState(
-              safeParseStoryStateData(rebuilt.stateJson),
-              refreshedMessages,
-            ),
-          );
-        }
-      })();
-
-      await repository.saveStoryState({
-        id: `story-state:${storyId}`,
-        storyId,
-        stateJson: nextStateJson,
-        updatedAt: now,
-      });
-
-      if (!story.openingPrompt?.trim() && rebuilt.summaryText?.trim()) {
-        const protectedSummary = protectGeneratedSummaryPlayerFacts(
-          rebuilt.summaryText,
-          playerCharacter,
-          refreshedMessages,
-        );
-        await repository.saveStory({
-          ...story,
-          currentSummary: protectedSummary.trim(),
-          updatedAt: new Date().toISOString(),
-        });
-      }
+      await hydrate(false);
     };
 
     const syncAuthorDirectiveStateForStory = async (storyId: string) => {
@@ -6843,10 +6600,11 @@ export function StoryEngineProvider({
           throw new Error("Story references missing player character.");
         }
 
-        const [summaries, storyConfig, storyState] = await Promise.all([
+        const [summaries, storyConfig, storyState, storyIndex] = await Promise.all([
           repository.listStorySummaries(storyId),
           repository.getStoryAIConfig(storyId),
           repository.getStoryState(storyId),
+          repository.getStoryIndex(storyId),
         ]);
         const effectiveUniverse = universeContext.universe;
         const effectiveImports = universeContext.imports;
@@ -6912,6 +6670,7 @@ export function StoryEngineProvider({
             playerCharacter,
             imports: effectiveImports,
             summaries,
+            storyIndex,
             storyState,
             recentMessages: sanitizedHistoryMessages,
             latestUserMessage: previousMessage.content,
@@ -7730,6 +7489,9 @@ export function StoryEngineProvider({
           incremental: opts?.incremental ?? false,
         });
       },
+      getStoryIndex,
+      updateStoryIndex,
+      fullReindexStory,
       queueStoryIndexJob,
       queueAudiobookJob,
       beginAudiobookPlaybackBackgroundTask,
@@ -7824,6 +7586,8 @@ export function StoryEngineProvider({
         const maxConcurrentBackgroundTasks = resolveMaxConcurrentBackgroundTasks(
           next.maxConcurrentBackgroundTasks ?? current?.maxConcurrentBackgroundTasks,
         );
+        const indexingCadence =
+          next.indexingCadence ?? current?.indexingCadence ?? "every_5_messages";
 
         const settings: AISettings = {
           id: "ai-settings",
@@ -7836,6 +7600,7 @@ export function StoryEngineProvider({
           geminiPodcastTts,
           geminiNarrationTts,
           maxConcurrentBackgroundTasks,
+          indexingCadence,
           createdAt,
           updatedAt: now,
         };
@@ -8348,12 +8113,13 @@ export function StoryEngineProvider({
           }
         }
 
-        const [summaries, refreshedMessages, storyConfig, storyState, storedChapters] = await Promise.all([
+        const [summaries, refreshedMessages, storyConfig, storyState, storedChapters, storyIndex] = await Promise.all([
           repository.listStorySummaries(storyId),
           repository.listStoryMessages(storyId),
           repository.getStoryAIConfig(storyId),
           repository.getStoryState(storyId),
           repository.listStoryChapters(storyId),
+          repository.getStoryIndex(storyId),
         ]);
 
         const sortedForNumbering = sortByTimestampAsc(refreshedMessages);
@@ -8590,6 +8356,7 @@ export function StoryEngineProvider({
               playerCharacter,
               imports: effectiveImports,
               summaries,
+              storyIndex,
               storyState,
               recentMessages: sanitizedHistoryMessages,
               latestUserMessage: userMessage.content,
@@ -8751,6 +8518,7 @@ export function StoryEngineProvider({
                     playerCharacter,
                     imports: effectiveImports,
                     summaries,
+                    storyIndex,
                     storyState,
                     recentMessages: sanitizedHistoryMessages,
                     latestUserMessage: transmitSafe.wasModified
@@ -9376,6 +9144,18 @@ export function StoryEngineProvider({
 
         updatedMessages = await repository.listStoryMessages(storyId);
 
+        // Check automatic indexing cadence
+        const pendingCount = calculatePendingMessages(updatedMessages, storyIndex).length;
+        if (
+          shouldTriggerAutomaticIndexing(
+            settings.indexingCadence,
+            pendingCount,
+            Boolean(createdChapter),
+          )
+        ) {
+          void updateStoryIndex(storyId).catch(() => undefined);
+        }
+
         await touchStory(storyId);
         await hydrate(false);
 
@@ -9404,6 +9184,11 @@ export function StoryEngineProvider({
     queueGuidedChapterJob,
     rebuildStatus,
     guidedGenerationStatus,
+    getStoryIndex,
+    updateStoryIndex,
+    fullReindexStory,
+    cancelStoryIndexing,
+    clearStoryIndex,
   ]);
 
   sendChatMessageRef.current = value.sendChatMessage;

@@ -1,5 +1,5 @@
 const DATABASE_NAME = "story-engine-db";
-const DATABASE_VERSION = 10;
+const DATABASE_VERSION = 11;
 
 export type StoreName =
   | "universes"
@@ -20,7 +20,8 @@ export type StoreName =
   | "developerTestingNotes"
   | "autoBackups"
   | "geminiTtsCache"
-  | "mediaLibrary";
+  | "mediaLibrary"
+  | "storyIndexes";
 
 let databasePromise: Promise<IDBDatabase> | null = null;
 
@@ -129,6 +130,8 @@ export function openStoryEngineDatabase() {
       ensureIndex(mediaLibrary, "storyId", "storyId", { unique: false });
       ensureIndex(mediaLibrary, "createdAtMs", "createdAtMs", { unique: false });
 
+      ensureStore("storyIndexes", { keyPath: "storyId" });
+
       const runMigrations = (fromVersion: number, toVersion: number) => {
         if (fromVersion < 2 && toVersion >= 2) {
           return;
@@ -191,6 +194,10 @@ export function openStoryEngineDatabase() {
 
         if (fromVersion < 10 && toVersion >= 10) {
           return;
+        }
+
+        if (fromVersion < 11 && toVersion >= 11) {
+          ensureStore("storyIndexes", { keyPath: "storyId" });
         }
       };
 

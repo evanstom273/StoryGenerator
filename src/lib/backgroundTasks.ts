@@ -6,6 +6,7 @@ export const BACKGROUND_TASK_JOB_TYPES = [
 	"story_audiobook",
 	"ai_document",
 	"podcast_audio",
+	"story_index",
 ] as const satisfies readonly BackgroundJobType[];
 
 export type BackgroundTaskJobType = (typeof BACKGROUND_TASK_JOB_TYPES)[number];
@@ -29,6 +30,8 @@ export function resolveMaxConcurrentBackgroundTasks(
 
 export function getBackgroundTaskTypeLabel(job: BackgroundJob): string {
 	switch (job.type) {
+		case "story_index":
+			return job.payload?.incremental === true ? "Update Index" : "Full Re-index";
 		case "story_audiobook":
 			switch (job.payload?.audiobookPurpose) {
 				case "playback":

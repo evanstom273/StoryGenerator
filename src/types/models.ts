@@ -402,6 +402,14 @@ export interface GeminiNarrationTtsSettings {
 
 export type AIModelRole = "story" | "metachat" | "creation" | "indexing";
 
+export type IndexingCadence =
+  | "every_message"
+  | "every_5_messages"
+  | "every_10_messages"
+  | "every_15_messages"
+  | "every_20_messages"
+  | "every_chapter";
+
 export interface AISettings {
   id: "ai-settings";
   activeProviderType: AIProviderType;
@@ -413,6 +421,7 @@ export interface AISettings {
   indexingModels?: Partial<Record<AIProviderType, string>>;
   /** Character/universe generation and related creation tools */
   creationModels?: Partial<Record<AIProviderType, string>>;
+  indexingCadence?: IndexingCadence;
   geminiPodcastTts?: GeminiPodcastTtsSettings;
   geminiNarrationTts?: GeminiNarrationTtsSettings;
   /** Max simultaneous long-running background tasks. */
@@ -539,6 +548,49 @@ export interface StorySummary {
   storyId: EntityId;
   summary: string;
   generatedAt: Timestamp;
+}
+
+export interface StoryIndexChapterSummary {
+  chapterId: EntityId;
+  chapterLabel: string;
+  summary: string;
+  sourceMessageIds: EntityId[];
+  lastIndexedMessageId: EntityId;
+  updatedAt: Timestamp;
+}
+
+export interface StoryIndexCharacter {
+  id: EntityId;
+  canonicalName: string;
+  aliases: string[];
+  description: string;
+  status: string;
+  developments: string[];
+  provenance: EntityId[];
+  updatedAt: Timestamp;
+}
+
+export interface StoryIndexRelationship {
+  id: EntityId;
+  characterIdA: EntityId;
+  characterIdB: EntityId;
+  nature: string;
+  state: string;
+  developments: string[];
+  provenance: EntityId[];
+  updatedAt: Timestamp;
+}
+
+export interface StoryIndex {
+  id?: EntityId;
+  storyId: EntityId;
+  chapterSummaries: StoryIndexChapterSummary[];
+  characters: StoryIndexCharacter[];
+  relationships: StoryIndexRelationship[];
+  lastIndexedMessageId?: EntityId;
+  lastIndexedAt?: Timestamp;
+  indexedMessageCount: number;
+  updatedAt: Timestamp;
 }
 
 export interface DeveloperBug {
@@ -697,6 +749,7 @@ export interface StoryExportBundle {
   messages: StoryMessage[];
   storyState?: StoryState;
   chapters?: StoryChapter[];
+  storyIndex?: StoryIndex;
 }
 
 export interface UniverseExportBundleV1 {
@@ -741,6 +794,7 @@ export type StoryEngineBackupV1 = {
     storyStates: StoryState[];
     storyAiConfigs: StoryAIConfig[];
     storyUiStates?: StoryUiState[];
+    storyIndexes?: StoryIndex[];
     aiSettings: (Omit<AISettings, "apiKeys"> & { apiKeys?: Partial<Record<AIProviderType, string>> }) | null;
   };
   uiPrefs: {
