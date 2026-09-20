@@ -30,11 +30,17 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
     clearStoryIndex,
     rebuildStatus,
     backgroundJobs,
+    getPlayerCharacterById,
   } = useStoryEngine();
 
   const story = useMemo(
     () => stories.find((s) => s.id === storyId),
     [stories, storyId],
+  );
+
+  const playerCharacter = useMemo(
+    () => (story?.playerCharacterId && getPlayerCharacterById ? getPlayerCharacterById(story.playerCharacterId) : undefined),
+    [story?.playerCharacterId, getPlayerCharacterById],
   );
 
   const providerIndex = useMemo(
@@ -45,7 +51,30 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
   const [localIndex, setLocalIndex] = useState<StoryIndex | null>(null);
   const index = providerIndex ?? localIndex;
 
-  const [activeTab, setActiveTab] = useState<"characters" | "relationships" | "chapters">("characters");
+  const [openSections, setOpenSections] = useState<{
+    characters: boolean;
+    relationships: boolean;
+    chapters: boolean;
+  }>({
+    characters: true,
+    relationships: true,
+    chapters: true,
+  });
+
+  const toggleSection = (section: "characters" | "relationships" | "chapters") => {
+    setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const allExpanded = openSections.characters && openSections.relationships && openSections.chapters;
+
+  const toggleAllSections = () => {
+    const next = !allExpanded;
+    setOpenSections({
+      characters: next,
+      relationships: next,
+      chapters: next,
+    });
+  };
   const [confirmFullReindex, setConfirmFullReindex] = useState(false);
   const [confirmClearIndex, setConfirmClearIndex] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -313,189 +342,221 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-divider/40">
+      {/* Collapsible Sections Header */}
+      <div className="flex items-center justify-between px-1 pt-1">
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-muted">
+          Indexed Narrative Memory
+        </span>
         <button
           type="button"
-          onClick={() => setActiveTab("characters")}
-          className={cn(
-            "flex-1 pb-2 text-center text-xs font-medium transition-colors border-b-2",
-            activeTab === "characters"
-              ? "border-accent text-accent-soft font-semibold"
-              : "border-transparent text-ink-muted hover:text-ink",
-          )}
+          onClick={toggleAllSections}
+          className="text-[11px] font-medium text-accent-soft hover:text-accent transition-colors"
         >
-          Characters ({characters.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("relationships")}
-          className={cn(
-            "flex-1 pb-2 text-center text-xs font-medium transition-colors border-b-2",
-            activeTab === "relationships"
-              ? "border-accent text-accent-soft font-semibold"
-              : "border-transparent text-ink-muted hover:text-ink",
-          )}
-        >
-          Relationships ({relationships.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("chapters")}
-          className={cn(
-            "flex-1 pb-2 text-center text-xs font-medium transition-colors border-b-2",
-            activeTab === "chapters"
-              ? "border-accent text-accent-soft font-semibold"
-              : "border-transparent text-ink-muted hover:text-ink",
-          )}
-        >
-          Chapter Summaries ({chapterSummaries.length})
+          {allExpanded ? "Collapse All" : "Expand All"}
         </button>
       </div>
 
-      {/* Tab Content */}
-      <div className="max-h-[380px] overflow-y-auto space-y-2.5 pr-1">
-        {/* Characters Tab */}
-        {activeTab === "characters" && (
-          <>
-            {characters.length === 0 ? (
-              <div className="py-6 text-center text-xs text-ink-muted">
-                No canonical characters indexed yet. Click "Update Index" to extract characters from the story transcript.
-              </div>
-            ) : (
-              characters.map((char) => (
-                <div
-                  key={char.id}
-                  className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-1.5 text-xs"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="font-semibold text-ink text-sm">{char.canonicalName}</span>
-                    {char.status && (
-                      <Badge variant="neutral" className="text-[10px]">
-                        {char.status}
-                      </Badge>
-                    )}
-                  </div>
-
-                  {char.aliases.length > 0 && (
-                    <div className="text-[11px] text-ink-muted">
-                      <span className="text-ink/60">Aliases:</span> {char.aliases.join(", ")}
-                    </div>
-                  )}
-
-                  {char.description && (
-                    <div className="text-ink/90 text-[11px] leading-relaxed">
-                      {char.description}
-                    </div>
-                  )}
-
-                  {char.developments.length > 0 && (
-                    <div className="space-y-1 pt-1 border-t border-divider/[0.15]">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                        Developments:
-                      </div>
-                      <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-ink/80">
-                        {char.developments.map((dev, idx) => (
-                          <li key={idx}>{dev}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  <div className="pt-1 text-[10px] text-ink-muted">
-                    Provenance: {char.provenance.length} source message{char.provenance.length === 1 ? "" : "s"}
-                  </div>
+      {/* Collapsible Sections */}
+      <div className="space-y-3">
+        {/* Characters Section */}
+        <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection("characters")}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-panel-muted/20"
+          >
+            <div className="flex items-center gap-2.5">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent-soft">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              <span className="text-xs font-semibold text-ink">Characters ({characters.length})</span>
+            </div>
+            <span className={cn("text-xs text-ink-muted transition-transform duration-200", openSections.characters ? "rotate-0" : "-rotate-90")}>
+              ▼
+            </span>
+          </button>
+          {openSections.characters && (
+            <div className="border-t border-divider/[0.25] p-3 space-y-2.5 max-h-[380px] overflow-y-auto">
+              {characters.length === 0 ? (
+                <div className="py-6 text-center text-xs text-ink-muted">
+                  No canonical characters indexed yet. Click "Update Index" to extract characters from the story transcript.
                 </div>
-              ))
-            )}
-          </>
-        )}
-
-        {/* Relationships Tab */}
-        {activeTab === "relationships" && (
-          <>
-            {relationships.length === 0 ? (
-              <div className="py-6 text-center text-xs text-ink-muted">
-                No relationships indexed yet.
-              </div>
-            ) : (
-              relationships.map((rel, idx) => {
-                const charA = characterMap.get(rel.characterIdA);
-                const charB = characterMap.get(rel.characterIdB);
-                const nameA = charA?.canonicalName ?? rel.characterIdA;
-                const nameB = charB?.canonicalName ?? rel.characterIdB;
-
-                return (
+              ) : (
+                characters.map((char) => (
                   <div
-                    key={`${rel.characterIdA}-${rel.characterIdB}-${idx}`}
-                    className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-1.5 text-xs"
+                    key={char.id}
+                    className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-1.5 text-xs transition hover:border-divider/50"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <span className="font-semibold text-ink">
-                        {nameA} & {nameB}
-                      </span>
-                      {rel.state && (
+                      <span className="font-semibold text-ink text-sm">{char.canonicalName}</span>
+                      {char.status && (
                         <Badge variant="neutral" className="text-[10px]">
-                          {rel.state}
+                          {char.status}
                         </Badge>
                       )}
                     </div>
 
-                    <div className="text-ink/90 text-[11px]">{rel.nature}</div>
+                    {char.aliases.length > 0 && (
+                      <div className="text-[11px] text-ink-muted">
+                        <span className="text-ink/60">Aliases:</span> {char.aliases.join(", ")}
+                      </div>
+                    )}
 
-                    {rel.developments.length > 0 && (
-                      <div className="space-y-0.5 pt-1 border-t border-divider/[0.15]">
+                    {char.description && (
+                      <div className="text-ink/90 text-[11px] leading-relaxed">
+                        {char.description}
+                      </div>
+                    )}
+
+                    {char.developments.length > 0 && (
+                      <div className="space-y-1 pt-1 border-t border-divider/[0.15]">
                         <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                          Key Developments:
+                          Developments:
                         </div>
                         <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-ink/80">
-                          {rel.developments.map((dev, dIdx) => (
-                            <li key={dIdx}>{dev}</li>
+                          {char.developments.map((dev, idx) => (
+                            <li key={idx}>{dev}</li>
                           ))}
                         </ul>
                       </div>
                     )}
 
                     <div className="pt-1 text-[10px] text-ink-muted">
-                      Provenance: {rel.provenance.length} source message{rel.provenance.length === 1 ? "" : "s"}
+                      Provenance: {char.provenance.length} source message{char.provenance.length === 1 ? "" : "s"}
                     </div>
                   </div>
-                );
-              })
-            )}
-          </>
-        )}
+                ))
+              )}
+            </div>
+          )}
+        </div>
 
-        {/* Chapter Summaries Tab */}
-        {activeTab === "chapters" && (
-          <>
-            {chapterSummaries.length === 0 ? (
-              <div className="py-6 text-center text-xs text-ink-muted">
-                No chapter summaries indexed yet.
-              </div>
-            ) : (
-              chapterSummaries.map((summary) => (
-                <div
-                  key={summary.chapterId}
-                  className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-2 text-xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-ink text-sm">
-                      {summary.chapterLabel}
-                    </span>
-                    <span className="text-[10px] text-ink-muted">
-                      {summary.sourceMessageIds.length} message{summary.sourceMessageIds.length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-
-                  <p className="text-ink/90 text-[11px] leading-relaxed whitespace-pre-wrap">
-                    {summary.summary}
-                  </p>
+        {/* Relationships Section */}
+        <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection("relationships")}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-panel-muted/20"
+          >
+            <div className="flex items-center gap-2.5">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent-soft">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <line x1="19" y1="8" x2="19" y2="14" />
+                <line x1="22" y1="11" x2="16" y2="11" />
+              </svg>
+              <span className="text-xs font-semibold text-ink">Relationships ({relationships.length})</span>
+            </div>
+            <span className={cn("text-xs text-ink-muted transition-transform duration-200", openSections.relationships ? "rotate-0" : "-rotate-90")}>
+              ▼
+            </span>
+          </button>
+          {openSections.relationships && (
+            <div className="border-t border-divider/[0.25] p-3 space-y-2.5 max-h-[380px] overflow-y-auto">
+              {relationships.length === 0 ? (
+                <div className="py-6 text-center text-xs text-ink-muted">
+                  No relationships indexed yet.
                 </div>
-              ))
-            )}
-          </>
-        )}
+              ) : (
+                relationships.map((rel, idx) => {
+                  const charA = characterMap.get(rel.characterIdA);
+                  const charB = characterMap.get(rel.characterIdB);
+                  const nameA = (rel.characterIdA === playerCharacter?.id ? playerCharacter.name : undefined) ?? charA?.canonicalName ?? rel.characterIdA;
+                  const nameB = (rel.characterIdB === playerCharacter?.id ? playerCharacter.name : undefined) ?? charB?.canonicalName ?? rel.characterIdB;
+
+                  return (
+                    <div
+                      key={`${rel.characterIdA}-${rel.characterIdB}-${idx}`}
+                      className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-1.5 text-xs transition hover:border-divider/50"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-semibold text-ink">
+                          {nameA} & {nameB}
+                        </span>
+                        {rel.state && (
+                          <Badge variant="neutral" className="text-[10px]">
+                            {rel.state}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="text-ink/90 text-[11px]">{rel.nature}</div>
+
+                      {rel.developments.length > 0 && (
+                        <div className="space-y-0.5 pt-1 border-t border-divider/[0.15]">
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+                            Key Developments:
+                          </div>
+                          <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-ink/80">
+                            {rel.developments.map((dev, dIdx) => (
+                              <li key={dIdx}>{dev}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="pt-1 text-[10px] text-ink-muted">
+                        Provenance: {rel.provenance.length} source message{rel.provenance.length === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Chapter Summaries Section */}
+        <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection("chapters")}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-panel-muted/20"
+          >
+            <div className="flex items-center gap-2.5">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent-soft">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+              <span className="text-xs font-semibold text-ink">Chapter Summaries ({chapterSummaries.length})</span>
+            </div>
+            <span className={cn("text-xs text-ink-muted transition-transform duration-200", openSections.chapters ? "rotate-0" : "-rotate-90")}>
+              ▼
+            </span>
+          </button>
+          {openSections.chapters && (
+            <div className="border-t border-divider/[0.25] p-3 space-y-2.5 max-h-[380px] overflow-y-auto">
+              {chapterSummaries.length === 0 ? (
+                <div className="py-6 text-center text-xs text-ink-muted">
+                  No chapter summaries indexed yet.
+                </div>
+              ) : (
+                chapterSummaries.map((summary) => (
+                  <div
+                    key={summary.chapterId}
+                    className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-2 text-xs transition hover:border-divider/50"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-ink text-sm">
+                        {summary.chapterLabel}
+                      </span>
+                      <span className="text-[10px] text-ink-muted">
+                        {summary.sourceMessageIds.length} message{summary.sourceMessageIds.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+
+                    <p className="text-ink/90 text-[11px] leading-relaxed whitespace-pre-wrap">
+                      {summary.summary}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Full Re-index Confirmation Modal */}

@@ -140,27 +140,36 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     finally { setCleaning(false); setCleanupOpen(false); }
   }
 
+  useEffect(() => {
+    if (!storySettingsOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [storySettingsOpen]);
+
   const activeAudiobookJob = story ? backgroundJobs.find((job) => isAudiobookExportBackgroundJob(job) && job.storyId === story.id && (job.status === "queued" || job.status === "running")) : undefined;
   const audiobookProgress = audiobookExportStatus && audiobookExportStatus.storyId === story?.id ? audiobookExportStatus.progress ?? null : null;
 
   if (!storySettingsOpen) return null;
 
   return <div className={cn(OVERLAY_BACKDROP_CLASS, "fixed inset-0 z-[70] flex justify-end")} onClick={() => setStorySettingsOpen(false)}>
-    <div className={cn(DRAWER_PANEL_CLASS, "h-full w-full max-w-xl overflow-y-auto")} onClick={(event) => event.stopPropagation()}>
+    <div className={cn(DRAWER_PANEL_CLASS, "h-full w-full max-w-xl overflow-y-auto overscroll-contain")} onClick={(event) => event.stopPropagation()}>
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-divider bg-app/95 px-5 py-4 backdrop-blur">
         <div><div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Story settings</div><div className="mt-1 text-xl font-bold text-ink">{story?.title ?? "Story"}</div></div>
         <Button variant="ghost" onClick={() => setStorySettingsOpen(false)}>Close</Button>
       </div>
       <div className="space-y-3 p-4">
         {story ? <>
-          <Section title="Edit Story" defaultOpen>
+          <Section title="Edit Story">
             <form className="space-y-3" onSubmit={saveDetails}>
               <label className="block space-y-2"><FieldLabel label="Title" help="Shown in your library and story header." labelClassName="text-xs text-ink-muted" /><input className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={fields.title} disabled={isReadOnly} onChange={(e) => setFields((current) => ({ ...current, title: e.target.value }))} /></label>
               <div><FieldLabel label="Imported Characters" help="Library characters available to the story." labelClassName="text-xs text-ink-muted" /><ImportedCharactersPicker selectedIds={fields.importedCharacterIds} excludeCharacterId={story.playerCharacterId} universeIds={getUniverseIds(story)} disabled={isReadOnly} getPlayerCharactersForUniverse={getPlayerCharactersForUniverse} getUniverseById={getUniverseById} getPlayerCharacterById={getPlayerCharacterById} onChange={(ids) => setFields((current) => ({ ...current, importedCharacterIds: ids }))} /></div>
               <Button type="submit" className="w-full" disabled={saving || isReadOnly}>{saving ? "Saving…" : "Save Story"}</Button>
             </form>
           </Section>
-          <Section title="Story Index" defaultOpen>
+          <Section title="Story Index">
             <StoryIndexSection storyId={story.id} />
           </Section>
           <Section title="Story accent">

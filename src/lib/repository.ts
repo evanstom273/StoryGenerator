@@ -572,6 +572,16 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         await putInStore("storyStates", normalizedStoryState);
       }
 
+      if (bundle.storyIndex) {
+        const importedStoryIndex = {
+          ...bundle.storyIndex,
+          id: newStoryId,
+          storyId: newStoryId,
+          updatedAt: now,
+        };
+        await putInStore("storyIndexes", importedStoryIndex);
+      }
+
       return {
         storyId: newStoryId,
         universeId: newUniverseId,

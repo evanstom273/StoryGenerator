@@ -13,6 +13,7 @@ import { useGeminiTtsPlayback } from "../app/providers/GeminiTtsPlaybackProvider
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
 import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
 import { RPCharacterSheetOverlay } from "../components/story/RPCharacterSheetOverlay";
+import { StoryIndexDrawer } from "../components/story/StoryIndexDrawer";
 import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
@@ -358,6 +359,7 @@ export function StoryWorkspacePage() {
   const [assistantEditError, setAssistantEditError] = useState<string | null>(null);
   const [isAssistantEditSaving, setIsAssistantEditSaving] = useState(false);
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
+  const [storyIndexOpen, setStoryIndexOpen] = useState(false);
 
   interface VariantCandidate {
     id: string;
@@ -1682,6 +1684,12 @@ export function StoryWorkspacePage() {
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>}
             />
             <WorkspaceIconBtn
+              label="Story Index"
+              active={storyIndexOpen}
+              onClick={() => setStoryIndexOpen((c) => !c)}
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8M8 11h6"/></svg>}
+            />
+            <WorkspaceIconBtn
               label="Bubble view"
               active={showChrome}
               onClick={() => setShowChrome(!showChrome)}
@@ -2165,6 +2173,13 @@ export function StoryWorkspacePage() {
           refreshKey={rpStatsRefreshKey}
           onGoldChange={(g) => setTaskbarGold(g)}
           universeLore={activeUniverse?.description ?? undefined}
+        />
+      ) : null}
+      {storyId && storyIndexOpen ? (
+        <StoryIndexDrawer
+          open={storyIndexOpen}
+          storyId={storyId}
+          onClose={() => setStoryIndexOpen(false)}
         />
       ) : null}
 
