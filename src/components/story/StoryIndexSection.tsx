@@ -399,9 +399,15 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                       )}
                     </div>
 
-                    {char.aliases.length > 0 && (
+                    {(char.aliases.length > 0 || char.pronouns) && (
                       <div className="text-[11px] text-ink-muted">
-                        <span className="text-ink/60">Aliases:</span> {char.aliases.join(", ")}
+                        {char.aliases.length > 0 && (
+                          <><span className="text-ink/60">Aliases:</span> {char.aliases.join(", ")}</>
+                        )}
+                        {char.aliases.length > 0 && char.pronouns ? " · " : ""}
+                        {char.pronouns && (
+                          <><span className="text-ink/60">Pronouns:</span> {char.pronouns}</>
+                        )}
                       </div>
                     )}
 
@@ -464,8 +470,10 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                 relationships.map((rel, idx) => {
                   const charA = characterMap.get(rel.characterIdA);
                   const charB = characterMap.get(rel.characterIdB);
-                  const nameA = (rel.characterIdA === playerCharacter?.id ? playerCharacter.name : undefined) ?? charA?.canonicalName ?? rel.characterIdA;
-                  const nameB = (rel.characterIdB === playerCharacter?.id ? playerCharacter.name : undefined) ?? charB?.canonicalName ?? rel.characterIdB;
+                  // Indexed canonical names reflect the character's current story identity.
+                  // Fall back to the static character sheet only when the index has no record.
+                  const nameA = charA?.canonicalName ?? (rel.characterIdA === playerCharacter?.id ? playerCharacter.name : undefined) ?? rel.characterIdA;
+                  const nameB = charB?.canonicalName ?? (rel.characterIdB === playerCharacter?.id ? playerCharacter.name : undefined) ?? rel.characterIdB;
 
                   return (
                     <div
