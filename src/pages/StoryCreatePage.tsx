@@ -1065,7 +1065,7 @@ export function StoryCreatePage() {
                 }
               />
               {storyTitleError ? (
-                <p className="mt-2 text-sm text-danger">{storyTitleError}</p>
+                <p className="mt-2 text-sm text-rose-200">{storyTitleError}</p>
               ) : null}
             </Field>
 
