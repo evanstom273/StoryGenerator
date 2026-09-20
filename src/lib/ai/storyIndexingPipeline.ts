@@ -93,9 +93,11 @@ export function buildRelationshipPairKey(idA: string, idB: string): string {
 function replaceIdentityWord(text: string, from: string, to: string): string {
   if (!from.trim() || normalizeNameKey(from) === normalizeNameKey(to)) return text;
   const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return text.replace(new RegExp(`\\b${escaped}\\b`, "gi"), (match) =>
-    match[0] === match[0]?.toUpperCase() ? to.toUpperCase() : to,
-  );
+  return text.replace(new RegExp(`\\b${escaped}\\b`, "gi"), (match) => {
+    if (match === match.toUpperCase()) return to.toUpperCase();
+    if (match[0] === match[0]?.toUpperCase()) return to.charAt(0).toUpperCase() + to.slice(1);
+    return to;
+  });
 }
 
 function pronounForms(pronouns?: string): { subject?: string; object?: string; possessive?: string } {
@@ -298,7 +300,7 @@ export function buildIndexingPrompt(params: {
     `You are the StoryEngine Indexing Intelligence. Analyze the new story transcript messages for "${storyTitle}" (Active Chapter: "${chapterLabel}") and extract coherent structured indexing memory.`,
     "",
     "### Authoritative Canon Constraints (Strict):",
-    `- Player Character: "${playerCharacter.name}" (Aliases: [${(playerCharacter.aliases ?? []).map((a) => `"${a}"`).join(", ")}]). Pronouns: ${playerCharacter.pronouns || "Unknown"}. Gender: ${playerCharacter.gender || "Unknown"}.`,
+    `- Initial Player Character Sheet: "${playerCharacter.name}" (Aliases: [${(playerCharacter.aliases ?? []).map((a) => `"${a}"`).join(", ")}]). Pronouns: ${playerCharacter.pronouns || "Unknown"}. Gender: ${playerCharacter.gender || "Unknown"}.`,
     "- The transcript is authoritative. The index is derived narrative memory.",
     "- The player character sheet is the INITIAL identity baseline. Do not casually overwrite core profile facts, but the transcript may explicitly establish a later preferred name or pronouns.",
     "- STABLE CHARACTER IDENTITY: If a character is referred to by a nickname, alias, title, former name, or newly chosen name, resolve them to the SAME canonical character record rather than creating a duplicate person.",
