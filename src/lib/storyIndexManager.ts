@@ -73,52 +73,59 @@ export interface ChapterMessageGroup {
 export function groupMessagesByChapter(
   messages: StoryMessage[],
   chapters: StoryChapter[],
+  allMessages: StoryMessage[] = messages,
 ): ChapterMessageGroup[] {
   if (!messages.length) return [];
 
-  const sortedMessages = sortByTimestampAsc(messages);
+  const sortedAllMessages = sortByTimestampAsc(allMessages);
+  const pendingIds = new Set(messages.map((message) => message.id));
   const sortedChapters = [...chapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex);
-
-  // Build a map of messageId -> chapter
   const groups: ChapterMessageGroup[] = [];
   let currentChapterIdx = 0;
-  let currentGroup: ChapterMessageGroup = {
-    chapterLabel: sortedChapters[0]?.label || "Chapter 1",
-    chapterId: sortedChapters[0]?.id,
-    messages: [],
+  let currentGroup: ChapterMessageGroup | null = null;
+
+  const ensureGroup = (message: StoryMessage): ChapterMessageGroup => {
+    const explicitStart = message.chapterBoundary?.kind === "start"
+      ? message.chapterBoundary.label
+      : undefined;
+    const chapter = sortedChapters[currentChapterIdx];
+    const label = explicitStart || chapter?.label || `Chapter ${currentChapterIdx + 1}`;
+    const chapterId = explicitStart ? undefined : chapter?.id;
+
+    if (
+      !currentGroup ||
+      currentGroup.chapterLabel !== label ||
+      currentGroup.chapterId !== chapterId
+    ) {
+      if (currentGroup?.messages.length) {
+        groups.push(currentGroup);
+      }
+      currentGroup = { chapterLabel: label, chapterId, messages: [] };
+    }
+
+    return currentGroup;
   };
 
-  for (const message of sortedMessages) {
-    // Check if previous chapter ended
+  // Walk the complete transcript so chapter state is correct even when the
+  // pending slice starts after one or more already-indexed chapter boundaries.
+  for (const message of sortedAllMessages) {
+    if (pendingIds.has(message.id)) {
+      ensureGroup(message).messages.push(message);
+    }
+
     if (
       currentChapterIdx < sortedChapters.length &&
       sortedChapters[currentChapterIdx]!.endsAtMessageId === message.id
     ) {
-      currentGroup.messages.push(message);
-      groups.push(currentGroup);
       currentChapterIdx += 1;
-      currentGroup = {
-        chapterLabel: sortedChapters[currentChapterIdx]?.label || `Chapter ${currentChapterIdx + 1}`,
-        chapterId: sortedChapters[currentChapterIdx]?.id,
-        messages: [],
-      };
-      continue;
+      if (currentGroup?.messages.length) {
+        groups.push(currentGroup);
+      }
+      currentGroup = null;
     }
-
-    // Check if message itself declared a start boundary
-    if (message.chapterBoundary?.kind === "start" && currentGroup.messages.length > 0) {
-      groups.push(currentGroup);
-      currentGroup = {
-        chapterLabel: message.chapterBoundary.label,
-        messages: [message],
-      };
-      continue;
-    }
-
-    currentGroup.messages.push(message);
   }
 
-  if (currentGroup.messages.length > 0) {
+  if (currentGroup?.messages.length) {
     groups.push(currentGroup);
   }
 
@@ -177,7 +184,7 @@ export async function updateStoryIndexToCurrent(
     );
   }
 
-  const groups = groupMessagesByChapter(pendingMessages, existingChapters);
+  const groups = groupMessagesByChapter(pendingMessages, existingChapters, allMessages);
   let currentIndex: StoryIndex = existingIndex ?? {
     id: `story-index:${storyId}`,
     storyId,
@@ -190,31 +197,29 @@ export async function updateStoryIndexToCurrent(
 
   let processedCount = 0;
   for (const group of groups) {
-    for (const message of group.messages) {
-      if (signal?.aborted) {
-        throw new Error("Indexing operation cancelled.");
-      }
-
-      currentIndex = await processIndexingBatch({
-        story,
-        playerCharacter,
-        chapterLabel: group.chapterLabel,
-        chapterId: group.chapterId,
-        messages: [message],
-        existingIndex: currentIndex,
-        provider,
-        apiKey,
-        model,
-        signal,
-      });
-
-      processedCount += 1;
-      onProgress?.(processedCount, pendingMessages.length);
-      await repository.saveStoryIndex(currentIndex);
+    if (signal?.aborted) {
+      throw new Error("Indexing operation cancelled.");
     }
+
+    currentIndex = await processIndexingBatch({
+      story,
+      playerCharacter,
+      chapterLabel: group.chapterLabel,
+      chapterId: group.chapterId,
+      messages: group.messages,
+      existingIndex: currentIndex,
+      provider,
+      apiKey,
+      model,
+      signal,
+    });
+
+    processedCount += group.messages.length;
+    onProgress?.(processedCount, pendingMessages.length);
   }
 
-  // Atomically save the completed index
+  // Persist only after every pending chapter batch succeeds. A failed batch
+  // leaves the previously saved index untouched.
   return repository.saveStoryIndex(currentIndex);
 }
 
@@ -270,27 +275,25 @@ export async function rebuildFullStoryIndex(
 
   let processedCount = 0;
   for (const group of groups) {
-    for (const message of group.messages) {
-      if (signal?.aborted) {
-        throw new Error("Re-index operation cancelled.");
-      }
-
-      stagingIndex = await processIndexingBatch({
-        story,
-        playerCharacter,
-        chapterLabel: group.chapterLabel,
-        chapterId: group.chapterId,
-        messages: [message],
-        existingIndex: stagingIndex,
-        provider,
-        apiKey,
-        model,
-        signal,
-      });
-
-      processedCount += 1;
-      onProgress?.(processedCount, allMessages.length);
+    if (signal?.aborted) {
+      throw new Error("Re-index operation cancelled.");
     }
+
+    stagingIndex = await processIndexingBatch({
+      story,
+      playerCharacter,
+      chapterLabel: group.chapterLabel,
+      chapterId: group.chapterId,
+      messages: group.messages,
+      existingIndex: stagingIndex,
+      provider,
+      apiKey,
+      model,
+      signal,
+    });
+
+    processedCount += group.messages.length;
+    onProgress?.(processedCount, allMessages.length);
   }
 
   // Atomically replace previous index with clean rebuilt index

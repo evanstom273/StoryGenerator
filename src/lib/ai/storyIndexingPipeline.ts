@@ -560,26 +560,43 @@ export async function processIndexingBatch(
     newMessages: messages,
   });
 
-  const response = await provider.generateResponse({
-    apiKey: apiKey || "",
-    model,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a narrative indexing engine. Return strict, valid JSON matching the requested extraction schema.",
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-    temperature: 0.2,
-    maxTokens: 4000,
-    signal,
-  });
+  const generateExtractionResponse = (repairInstruction?: string) =>
+    provider.generateResponse({
+      apiKey: apiKey || "",
+      model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a narrative indexing engine. Return strict, valid JSON matching the requested extraction schema.",
+        },
+        {
+          role: "user",
+          content: repairInstruction
+            ? `${prompt}\n\n### JSON Repair Retry\n${repairInstruction}`
+            : prompt,
+        },
+      ],
+      temperature: repairInstruction ? 0 : 0.2,
+      maxTokens: 4000,
+      signal,
+    });
 
-  const extraction = parseAndValidateIndexingExtraction(response.content);
+  let response = await generateExtractionResponse();
+  let extraction: IndexingExtractionResponse;
+  try {
+    extraction = parseAndValidateIndexingExtraction(response.content);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+
+    // A model can occasionally return truncated or malformed JSON even when
+    // explicitly instructed otherwise. Retry once with a stricter repair
+    // instruction instead of failing the whole indexing operation immediately.
+    response = await generateExtractionResponse(
+      "Your previous response was not valid parseable JSON. Regenerate the extraction from the transcript above as ONE complete JSON object only. Do not use markdown fences, commentary, or trailing text. Ensure every string is escaped and every object/array is fully closed.",
+    );
+    extraction = parseAndValidateIndexingExtraction(response.content);
+  }
 
   return applyExtractionToIndex({
     extraction,
