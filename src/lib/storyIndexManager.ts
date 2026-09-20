@@ -82,16 +82,21 @@ export function groupMessagesByChapter(
   const sortedChapters = [...chapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex);
   const groups: ChapterMessageGroup[] = [];
   let currentChapterIdx = 0;
+  let trailingChapterLabel: string | undefined;
 
-  // Walk the complete transcript so chapter state is correct even when the
-  // pending slice starts after one or more already-indexed chapter boundaries.
+  // Persisted chapter end records are authoritative for completed chapters.
+  // A start marker must not temporarily turn its single message into a separate
+  // pseudo-chapter (same label, different ID). Once we move beyond the final
+  // persisted chapter, remember an explicit start label for the whole trailing
+  // current chapter rather than only the boundary message.
   for (const message of sortedAllMessages) {
     const chapter = sortedChapters[currentChapterIdx];
-    const explicitStart = message.chapterBoundary?.kind === "start"
-      ? message.chapterBoundary.label
-      : undefined;
-    const chapterLabel = explicitStart || chapter?.label || `Chapter ${currentChapterIdx + 1}`;
-    const chapterId = explicitStart ? undefined : chapter?.id;
+    if (!chapter && message.chapterBoundary?.kind === "start") {
+      trailingChapterLabel = message.chapterBoundary.label;
+    }
+
+    const chapterLabel = chapter?.label || trailingChapterLabel || `Chapter ${currentChapterIdx + 1}`;
+    const chapterId = chapter?.id;
 
     if (pendingIds.has(message.id)) {
       const lastGroup = groups[groups.length - 1];
@@ -110,6 +115,7 @@ export function groupMessagesByChapter(
       sortedChapters[currentChapterIdx]!.endsAtMessageId === message.id
     ) {
       currentChapterIdx += 1;
+      trailingChapterLabel = undefined;
     }
   }
 
