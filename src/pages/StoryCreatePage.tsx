@@ -36,7 +36,7 @@ const initialFormState = {
   universeId: "",
   universeIds: [] as string[],
   playerCharacterId: "",
-  currentSummary: "",
+	openingPrompt: "",
   importedCharacterIds: [] as string[],
   adultContentMode: resolveNewStoryAdultContentMode(),
   rpMode: true,
@@ -207,7 +207,7 @@ export function StoryCreatePage() {
         universeId: sourceUniverseIds[0] ?? "",
         universeIds: sourceUniverseIds,
         playerCharacterId: current.playerCharacterId || sourceCharacter.id,
-        currentSummary: isBranchMode ? sourceStory.currentSummary : current.currentSummary,
+		openingPrompt: isBranchMode ? (sourceStory.openingPrompt ?? "") : (current.openingPrompt ?? ""),
       };
     });
   }, [
@@ -328,7 +328,7 @@ export function StoryCreatePage() {
             sourceStoryId: sourceStory.id,
             title: formState.title,
             playerCharacterId: resolvedPlayerCharacterId,
-            openingNote: formState.currentSummary.trim() || undefined,
+			openingNote: formState.openingPrompt.trim() || undefined,
           })
         : await createStory({
             ...formState,
@@ -337,7 +337,8 @@ export function StoryCreatePage() {
                 ? formState.universeIds
                 : [formState.universeId],
             playerCharacterId: resolvedPlayerCharacterId,
-            currentSummary: formState.currentSummary.trim(),
+			currentSummary: "",
+			openingPrompt: formState.openingPrompt.trim(),
             importedCharacterIds: normalizeStoryImportedCharacterIds(formState.importedCharacterIds),
             adultContentMode: formState.adultContentMode,
             // Keep older readers in sync while adultContentMode rolls out.
@@ -495,9 +496,9 @@ export function StoryCreatePage() {
               </>
             )}
           </p>
-          {sourceStory.currentSummary.trim() ? (
+			{sourceStory.openingPrompt?.trim() ? (
             <div className="mt-4 rounded-[10px] border border-divider/[0.45] bg-app-elevated px-4 py-3 text-sm leading-7 text-ink-soft">
-              {sourceStory.currentSummary}
+				{sourceStory.openingPrompt}
             </div>
           ) : null}
         </Panel>
@@ -565,7 +566,7 @@ export function StoryCreatePage() {
               {isDerivedMode ? (
                 <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/50 px-4 py-3 text-sm text-ink-muted">
                   {isBranchMode
-                    ? "A branch keeps the same universe and protagonist as the source story so the transcript and indexed state stay consistent."
+					? "A branch keeps the same universe and protagonist as the source story so the transcript stays consistent."
                     : "The sequel stays in the same universes. You can keep the same protagonist or switch to another character from those universes."}
                 </div>
               ) : (
@@ -992,11 +993,11 @@ export function StoryCreatePage() {
                 }
               >
                 <TextAreaInput
-                  value={formState.currentSummary}
+					value={formState.openingPrompt}
                   onChange={(event) =>
                     setFormState((currentState) => ({
                       ...currentState,
-                      currentSummary: event.target.value,
+						openingPrompt: event.target.value,
                     }))
                   }
                   placeholder={
@@ -1165,7 +1166,7 @@ export function StoryCreatePage() {
         title="Plan generated story history"
         description="These chapters become canon backstory before the playable story begins at the next chapter banner."
         submitLabel="Save Story History Plan"
-        initialOverallDirection={formState.currentSummary}
+			initialOverallDirection={formState.openingPrompt}
         resolveChapterLabels={resolveCreateChapterLabels}
         onGeneratePlan={async ({ overallDirection, chapterLabels, chapters }) => {
           const plan = await generateGuidedChapterPlan({
@@ -1174,7 +1175,7 @@ export function StoryCreatePage() {
             chapters,
             universeName: selectedUniverseName || "Universe",
             playerName: selectedPlayerName,
-            currentSituation: formState.currentSummary.trim() || undefined,
+			currentSituation: formState.openingPrompt.trim() || undefined,
           });
           return plan?.chapters ?? null;
         }}

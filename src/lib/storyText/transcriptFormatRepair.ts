@@ -1,4 +1,4 @@
-import { isDeniedSpeakerLabel } from "../relationshipIndex";
+import { isDeniedSpeakerLabel } from "./speakerLabels";
 import { repairNarratorBlocks } from "./narratorBlockRepair";
 import { repairSpeakerLabelArtifacts } from "./exportCleaner";
 import {

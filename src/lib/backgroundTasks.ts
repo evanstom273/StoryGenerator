@@ -3,7 +3,6 @@ import type { AudiobookChapterSynthStatus } from "./ai/storyAudiobookProgress";
 import type { BackgroundJob, BackgroundJobStep, BackgroundJobStepStatus, BackgroundJobType } from "../types/models";
 
 export const BACKGROUND_TASK_JOB_TYPES = [
-	"story_index",
 	"story_audiobook",
 	"ai_document",
 	"podcast_audio",
@@ -30,8 +29,6 @@ export function resolveMaxConcurrentBackgroundTasks(
 
 export function getBackgroundTaskTypeLabel(job: BackgroundJob): string {
 	switch (job.type) {
-		case "story_index":
-			return job.payload?.incremental ? "Update Index" : "Full Re-index";
 		case "story_audiobook":
 			switch (job.payload?.audiobookPurpose) {
 				case "playback":
@@ -352,8 +349,6 @@ export function formatEstimatedRemainingSeconds(totalSeconds: number): string {
 
 function getFallbackTotalSeconds(job: BackgroundJob): number {
 	switch (job.type) {
-		case "story_index":
-			return job.payload?.incremental ? 120 : 300;
 		case "story_audiobook":
 			return isAudiobookListenBackgroundJob(job) ? 90 : 600;
 		case "ai_document":

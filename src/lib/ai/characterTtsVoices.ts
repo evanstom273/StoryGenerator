@@ -210,7 +210,7 @@ export function buildCharacterGenderHintsFromStoryState(
 		applyCharacterGenderHintForName(hints, options.playerName.trim(), playerGender);
 	}
 
-	for (const [canonicalKey, entry] of Object.entries(storyStateData?.characters ?? {})) {
+	for (const [canonicalKey, entry] of Object.entries(storyStateData?.characters ?? {}) as Array<[string, any]>) {
 		const entryNames = [canonicalKey, entry?.canonicalName, entry?.displayName, ...(entry?.aliases ?? [])]
 			.filter((name): name is string => Boolean(name?.trim()))
 			.map((name) => normalizeCharacterTtsKey(name));
@@ -378,3 +378,5 @@ export function registryChanged(
 
 	return false;
 }
+
+

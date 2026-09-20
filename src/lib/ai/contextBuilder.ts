@@ -7,7 +7,6 @@ import type {
   Story,
   StoryMessage,
   StoryState,
-  StorySummary,
   Universe,
   UniverseImport,
 } from "../../types/models";
@@ -15,22 +14,16 @@ import type { AIChatMessage } from "./types";
 import { sortByTimestampAsc } from "../dates";
 import { getSceneWordTarget, inferSceneDepth } from "./sceneSizing";
 import { extractExplicitPlayerStateHint } from "../storyText/playerState";
-import {
-  formatStoryLongTermMemoryForPrompt,
-  formatStorySceneStateForPrompt,
-} from "./storyStateExtractor";
-import { safeParseStoryStateData } from "../storyStateV2";
+import { parseStoryRuntimeState } from "../storyRuntimeState";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { resolveAdultContentMode } from "./adultContentMode";
 import { getAdultContentProviderCapability } from "./providerCapabilities";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
 import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, formatPlayerPrimaryAliasNamingPolicy, isDerivedPlayerSituationCurrent, isPlayerSituationPronounsCompatible, resolveEffectivePlayerIdentity, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, formatPlayerPrimaryAliasNamingPolicy, isDerivedPlayerSituationCurrent, resolveEffectivePlayerIdentity, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
 import { formatHumanNovelistProseGuidance } from "../storyProseGuidance";
 import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
-import { createNarrativeIdentityPromptContext, redactNarrativePromptText, resolveNarrativePromptName } from "../narrativeIdentity";
-import { applyTranscriptPresenceGate } from "../transcriptPresence";
 import {
   formatAuthorDirectiveStateForPrompt,
   isAuthorDirectiveMessage,
@@ -124,7 +117,7 @@ export interface BuildStoryChatContextInput {
   story: Story;
   playerCharacter: PlayerCharacter;
   imports: UniverseImport[];
-  summaries: StorySummary[];
+  summaries?: unknown[];
   storyState?: StoryState | null;
   recentMessages: StoryMessage[];
   latestUserMessage: string;
@@ -159,7 +152,6 @@ export function buildStoryChatContext({
   story,
   playerCharacter,
   imports,
-  summaries,
   storyState,
   recentMessages,
   latestUserMessage,
@@ -177,29 +169,13 @@ export function buildStoryChatContext({
   providerType,
   resolvedParticipants,
 }: BuildStoryChatContextInput): AIChatMessage[] {
-  const parsedStoryState = storyState?.stateJson?.trim()
-    ? safeParseStoryStateData(storyState.stateJson)
-    : null;
-  const gatedStoryState =
-    parsedStoryState && recentMessages.length
-      ? applyTranscriptPresenceGate(parsedStoryState, recentMessages, playerCharacter, {
-          messageCount: recentMessages.length,
-        })
-      : parsedStoryState;
   const playerIdentity =
     playerIdentityOverride ??
     resolveEffectivePlayerIdentity(playerCharacter, {
-      storyState: gatedStoryState,
       recentMessages,
     });
   const playerSceneName = playerIdentity.sceneName;
   const playerPronouns = playerIdentity.pronouns;
-  const narrativeIdentity = createNarrativeIdentityPromptContext({
-    storyState: gatedStoryState,
-    playerCharacter,
-    messages: recentMessages,
-    messageCount: recentMessages.length,
-  });
   const latestMessageIsDirectorNote =
     latestUserMessageSpeakerType === "director" || Boolean(directorStagingNote?.trim());
   const latestMessageIsContinueNote = latestUserMessageSpeakerType === "continue";
@@ -212,12 +188,6 @@ export function buildStoryChatContext({
       : inferSceneDepth(latestUserMessage);
   const wordTarget = getSceneWordTarget(sceneDepth);
   const mostRecentImport = imports[0];
-  const latestSummaryCandidate = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
-  const latestSummary = isPlayerSituationPronounsCompatible(
-    latestSummaryCandidate,
-    playerCharacter,
-    playerIdentity,
-  ) ? latestSummaryCandidate : "";
   const playerStateHint = playerStateHintOverride?.trim() || extractExplicitPlayerStateHint({
     playerName: playerCharacter.name,
     recentMessages,
@@ -226,7 +196,7 @@ export function buildStoryChatContext({
     playerCharacterName: playerCharacter.name,
     latestUserMessage,
     recentMessages,
-    storyState,
+    storyState: undefined,
   });
 
   const universeMode = universe.mode ?? "referenced";
@@ -277,39 +247,12 @@ export function buildStoryChatContext({
 
   const importedCharactersBlock = formatStoryImportedCharactersForPrompt(
     importedStoryCharacters,
-    gatedStoryState ?? parsedStoryState,
+    null,
   );
 
-  const summaryBlock = latestSummary
-    ? normalizeWhitespace(redactNarrativePromptText(latestSummary, narrativeIdentity))
-    : "No story summary is available yet.";
-
-  const storyStateBlock = (() => {
-    const json = storyState?.stateJson?.trim();
-    if (!json) {
-      return { longTerm: "No long-term memory is recorded yet.", scene: "" };
-    }
-
-    const parsed = safeParseStoryStateData(json);
-    if (!parsed) {
-      return { longTerm: "Story state is present but could not be parsed.", scene: "" };
-    }
-
-    return {
-      longTerm:
-        formatStoryLongTermMemoryForPrompt(gatedStoryState ?? parsed, {
-          playerName: playerCharacter.name,
-          playerCharacter,
-          playerIdentity,
-          narrativeIdentity,
-        }) ||
-        "No long-term memory is recorded yet.",
-      scene: formatStorySceneStateForPrompt(gatedStoryState ?? parsed, { narrativeIdentity }),
-    };
-  })();
   const authorDirectiveBlock = formatAuthorDirectiveStateForPrompt(
     storyState?.stateJson?.trim()
-      ? safeParseStoryStateData(storyState.stateJson)?.authorDirectives
+      ? parseStoryRuntimeState(storyState.stateJson)?.authorDirectives
       : undefined,
   );
 
@@ -372,29 +315,29 @@ export function buildStoryChatContext({
       : "Healthy";
     const goldFormatted = rpConfig.currencyDecimals ? rpStats.gold.toFixed(2) : Math.floor(rpStats.gold).toString();
     const debtLine = rpConfig.allowDebt
-      ? "Debt is enabled. Negative balances are a meaningful narrative state — overdraft fees, denied services, creditor pressure, or need to take on work are all appropriate consequences."
+      ? "Debt is enabled. Negative balances are a meaningful narrative state â€” overdraft fees, denied services, creditor pressure, or need to take on work are all appropriate consequences."
       : "";
     return normalizeWhitespace(
       [
-        `HP: ${rpStats.hp} / ${rpConfig.maxHp} — ${hpState}`,
+        `HP: ${rpStats.hp} / ${rpConfig.maxHp} â€” ${hpState}`,
         `${rpConfig.currencyName}: ${goldFormatted}`,
         "HP represents physical condition. Writing tone should reflect the current state:",
         "Healthy: acts freely and without obvious impairment.",
         "Injured: may show strain, wince, or move with care.",
         "Seriously wounded: struggles with effort; pain is present.",
-        "Critical condition: severely impaired — each action carries cost; may slur, stumble, or fail.",
-        "Incapacitated: cannot meaningfully resist events. Reaching 0 HP does not mean automatic death — the consequence (unconsciousness, capture, rescue, treatment, arrest) should fit the scene and context.",
+        "Critical condition: severely impaired â€” each action carries cost; may slur, stumble, or fail.",
+        "Incapacitated: cannot meaningfully resist events. Reaching 0 HP does not mean automatic death â€” the consequence (unconsciousness, capture, rescue, treatment, arrest) should fit the scene and context.",
         "",
-        `The character's ${rpConfig.currencyName} balance represents their total financial position — savings, income, and assets — not just pocket money. Treat it as meaningful characterisation: a teenager may have only a little, a working adult considerably more.`,
+        `The character's ${rpConfig.currencyName} balance represents their total financial position â€” savings, income, and assets â€” not just pocket money. Treat it as meaningful characterisation: a teenager may have only a little, a working adult considerably more.`,
         `Currency rule: if the player attempts a purchase they cannot afford, reflect this naturally in the scene (declined card, putting items back, asking for credit, etc.). Do not let a purchase silently succeed if the character lacks funds.${debtLine ? `\n${debtLine}` : ""}`,
         "",
         ...(rpConfig.diceRollsEnabled ? [
           "",
-          "Dice roll rule: when the player's message contains a result tag like [CHA +1 | 2d6: 4+3 | Total: 8 — SUCCESS] or [STR -1 | 2d6: 1+2 | Total: 2 — FAILURE], treat that outcome as a binding narrative fact. Interpret each result as follows:",
-          "- SUCCESS (total ≥ 7): the character's approach is effective, or circumstances become more favourable. This does not automatically resolve the entire situation — narrate the process and the feel of the success unfolding rather than jumping straight to a final outcome. Unless the action would reasonably conclude the situation on its own, leave threads open.",
-          "- CRITICAL SUCCESS (both dice show 6): the approach lands exceptionally well. Go a step further than a standard success — an unexpected benefit, a warmer-than-expected response, something that earns the character a meaningful advantage or moment of grace.",
-          "- FAILURE (total < 7): the attempt introduces a complication, setback, or obstacle. The character is not made incapable and the worst-case outcome is not automatic — instead, something goes wrong in a way that creates pressure, costs time or goodwill, or makes the next step harder.",
-          "- CRITICAL FAILURE (both dice show 1): the attempt backfires in a real, active way — not just a setback but a genuine negative consequence. Something is lost, broken, or made worse. The character may face embarrassment, danger, or an unexpected cost. This should sting.",
+          "Dice roll rule: when the player's message contains a result tag like [CHA +1 | 2d6: 4+3 | Total: 8 â€” SUCCESS] or [STR -1 | 2d6: 1+2 | Total: 2 â€” FAILURE], treat that outcome as a binding narrative fact. Interpret each result as follows:",
+          "- SUCCESS (total â‰¥ 7): the character's approach is effective, or circumstances become more favourable. This does not automatically resolve the entire situation â€” narrate the process and the feel of the success unfolding rather than jumping straight to a final outcome. Unless the action would reasonably conclude the situation on its own, leave threads open.",
+          "- CRITICAL SUCCESS (both dice show 6): the approach lands exceptionally well. Go a step further than a standard success â€” an unexpected benefit, a warmer-than-expected response, something that earns the character a meaningful advantage or moment of grace.",
+          "- FAILURE (total < 7): the attempt introduces a complication, setback, or obstacle. The character is not made incapable and the worst-case outcome is not automatic â€” instead, something goes wrong in a way that creates pressure, costs time or goodwill, or makes the next step harder.",
+          "- CRITICAL FAILURE (both dice show 1): the attempt backfires in a real, active way â€” not just a setback but a genuine negative consequence. Something is lost, broken, or made worse. The character may face embarrassment, danger, or an unexpected cost. This should sting.",
           "Do not ignore or quietly override the roll result. Narrate the scene so the outcome feels earned and real.",
         ] : []),
         ...(rpConfig.birthdayMonth != null && rpConfig.birthdayDay != null ? [
@@ -418,27 +361,11 @@ export function buildStoryChatContext({
           "",
           `Active conditions: ${rpStats.conditions.map((c) => c.label).join(", ")}`,
         ] : []),
-        ...(() => {
-          const parsed = safeParseStoryStateData(storyState?.stateJson ?? "");
-          const rels = parsed?.indexes?.relationships ?? [];
-          const playerNorm = playerCharacter.name.toLowerCase().trim();
-          const intentions = rels
-            .filter((r) => r.playerIntention?.trim())
-            .map((r) => {
-              const npc = resolveNarrativePromptName(
-                r.a.toLowerCase().trim() === playerNorm ? r.b : r.a,
-                narrativeIdentity,
-              );
-              return `${npc}: ${redactNarrativePromptText(r.playerIntention ?? "", narrativeIdentity)}`;
-            });
-          if (!intentions.length) return [];
-          return ["", "Player's relationship intentions:", ...intentions.map((i) => `- ${i}`)];
-        })(),
         ...(rpStats.timeState ? [
           "",
           `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,
           "The in-story date above is authoritative. Characters must not state, imply, or act as though a different month, season, or year applies. If the in-story date is June, characters cannot say 'it's October' or reference autumn/fall/Christmas season as current.",
-          "Time-of-day awareness: apply realistic schedules — shops and businesses typically open 9am–6pm, restaurants until 10pm, bars/clubs evenings and nights. NPCs follow their own routines and may not be available at all hours.",
+          "Time-of-day awareness: apply realistic schedules â€” shops and businesses typically open 9amâ€“6pm, restaurants until 10pm, bars/clubs evenings and nights. NPCs follow their own routines and may not be available at all hours.",
           ...(rpConfig.recurringEvents?.length ? [
             `Upcoming obligations: ${rpConfig.recurringEvents.map(e => `${e.label} due in ~${Math.round(minutesBetween(rpStats.timeState!, e.nextDue) / 1440)} days`).join(", ")}.`,
           ] : []),
@@ -462,10 +389,10 @@ export function buildStoryChatContext({
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
       matureFictionPolicy,
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
-      "Player identity precedence: the current Player Character Identity block and explicit first-person identity declarations by the user-role player are authoritative. AI-written summaries, Archive/Current Situation fields, character extraction, and assistant dialogue cannot override them. If derived context conflicts, ignore it and follow the current player identity.",
+      "Player identity precedence: the current Player Character Identity block and explicit first-person identity declarations by the user-role player are authoritative.",
       "Continue notes may appear in the transcript as out-of-character instructions to keep the current scene moving without requiring a fresh player action. They are visible in the transcript but are not themselves spoken dialogue or canon events.",
       "Director notes may appear in the transcript as out-of-character production guidance. They are visible in the transcript but are not themselves spoken dialogue or automatic canon facts. Canon comes from what actually happens in the generated scene that follows.",
-      "The player character sheet defines starting identity. When the transcript or Long-Term Memory establishes an in-story identity transition (coming out, stable name change, pronoun change), use the current in-story identity instead of outdated sheet defaults.",
+      "The player character sheet defines starting identity. When the transcript establishes an in-story identity transition, use the current in-story identity instead of outdated sheet defaults.",
       "Stay anchored in the story's premise, player character, and current situation. In ensemble scenes, also track the active group dynamic, shared objective, and who currently holds the conversational or dramatic focus. Recent beats matter, but they should not erase what the story is fundamentally about.",
       "Do not automatically introduce cases, missions, mysteries, assignments, emergencies, villains, or conflicts simply because the story has started.",
       "Character interaction alone is a valid scene.",
@@ -474,7 +401,7 @@ export function buildStoryChatContext({
       "Do not force every conversation back onto the player character. Let side conversations, overlapping reactions, and shifting local focus happen when the scene calls for it.",
       "Scene ownership can belong to the player character, a supporting character, several supporting characters, or the wider cast.",
       "Name resolution rule: treat nicknames, shortened names, last-name references, and informal variants as referring to the same character unless the story explicitly introduces a separate person.",
-      "Narrative identity rule: Long-Term Memory and summaries reflect what the story audience currently knows. Do not reveal hidden identities, undercover aliases, or true names that have not been established in the transcript.",
+      "Narrative identity rule: do not reveal hidden identities, undercover aliases, or true names that have not been established in the transcript.",
       "Use Long-Term Memory name preferences: if a character has a narrative or display name recorded, prefer that for speaker headers and how other characters address them.",
       formatPlayerPrimaryAliasNamingPolicy(playerCharacter, playerSceneName),
       playerPronouns.trim()
@@ -515,7 +442,7 @@ export function buildStoryChatContext({
       ...(universeMode === "referenced"
         ? [
             "This is fan fiction set in a referenced universe. The imported lore is your primary authority for every character's voice.",
-            "Write each character exactly as they appear in canon — their actual vocabulary, speech rhythm, humour register, and emotional baseline.",
+            "Write each character exactly as they appear in canon â€” their actual vocabulary, speech rhythm, humour register, and emotional baseline.",
             "Do NOT amplify, exaggerate, or caricature any trait, even an iconic one. A witty character is witty the way canon shows, not a comedy sketch of that trait.",
           ]
         : []),
@@ -587,27 +514,27 @@ export function buildStoryChatContext({
       "- Write each character block on one line, beginning with the character name and a required colon, followed by any action and dialogue. Example: Morgan: *She leans back in her chair.* \"Do you think she knows?\"",
       "- Never write a name-only header such as 'Morgan:' with the action or dialogue on following lines. Keep the label and all content for that block together on the same line.",
       "- Ensemble scenes may switch speakers multiple times in sequence when several characters react to the same beat. That is valid as long as each turn stays distinct and relationship-aware.",
-      "- In dialogue, use an em dash (—) sparingly for a single mid-sentence interruption or cutoff only. Prefer commas and periods for normal pacing. Never chain multiple em dashes in one sentence.",
-      "- Do not use em dashes as a default pause between clauses. Write: \"I ran as fast as I could, Dad. I tried to catch them, but she's gone.\" NOT: \"I ran — I tried — she's gone —\".",
-      "- Casual filler words (like, well, look) should flow with commas or an occasional single em dash — never a colon mid-sentence: \"Like, I've been watching him his whole life.\" or \"Like — I've been watching him.\" NOT \"Like: I've been watching him.\"",
+      "- In dialogue, use an em dash (â€”) sparingly for a single mid-sentence interruption or cutoff only. Prefer commas and periods for normal pacing. Never chain multiple em dashes in one sentence.",
+      "- Do not use em dashes as a default pause between clauses. Write: \"I ran as fast as I could, Dad. I tried to catch them, but she's gone.\" NOT: \"I ran â€” I tried â€” she's gone â€”\".",
+      "- Casual filler words (like, well, look) should flow with commas or an occasional single em dash â€” never a colon mid-sentence: \"Like, I've been watching him his whole life.\" or \"Like â€” I've been watching him.\" NOT \"Like: I've been watching him.\"",
       "- Write every prose narration block on one line in exactly this form: Narrator: *The refrigerator hums. Neither of them reaches for their coffee.* Never emit plain or unattributed narration.",
       "- Use 'Narrator: *prose*' for scene-setting, ambient sounds, atmosphere, time passing, and any prose that is not a character speaking or acting.",
       "- In Narrator blocks, refer to known characters by name (e.g. Captain Reyes, Alex, Morgan, Ellie), not by age labels like \"four year old\" or \"the child\" when the character's name is already established in the story.",
       "- In Narrator blocks, prefer known character names over titles or ranks (Captain, Sergeant, Detective) unless the scene is explicitly formal.",
       "- Never prefix Narrator blocks with pronoun pseudo-speakers (He:, She:, They:, He narrator:). Use 'Narrator:' only.",
       "- In Narrator blocks, describe characters by name: 'Mac bolts to the entryway' not 'They Mac bolts' or 'They: Mac bolts'.",
-      "- In character blocks, asterisks (*...*) are ONLY for brief physical actions — a gesture, a movement, an expression. Examples: *She leans back.*, *She sets down her mug.*, *He glances toward the door.* They must be short, physical, and contain no colons or complex punctuation.",
+      "- In character blocks, asterisks (*...*) are ONLY for brief physical actions â€” a gesture, a movement, an expression. Examples: *She leans back.*, *She sets down her mug.*, *He glances toward the door.* They must be short, physical, and contain no colons or complex punctuation.",
       "- Character action beats inside *...* should use a subject pronoun (He/She/They) matching the character's pronouns, end with a full stop, and omit the character's name inside the beat. Example: Morgan: *She leans back in her chair.* \"Dialogue.\"",
-      "- Action beats inside a named character block must describe ONLY that character's own physical movement or gesture. The moment prose describes what another character is doing — even in the same sentence — it becomes narrator prose and must go in a Narrator: block, not an asterisk beat inside a character block.",
-      "- NEVER use 'As [Name]:' as a speaker prefix. 'As Riley:' is not a valid format. If you want to describe what Riley is doing from a narrator perspective, write the inline block: Narrator: *Riley flicks the dial…*",
+      "- Action beats inside a named character block must describe ONLY that character's own physical movement or gesture. The moment prose describes what another character is doing â€” even in the same sentence â€” it becomes narrator prose and must go in a Narrator: block, not an asterisk beat inside a character block.",
+      "- NEVER use 'As [Name]:' as a speaker prefix. 'As Riley:' is not a valid format. If you want to describe what Riley is doing from a narrator perspective, write the inline block: Narrator: *Riley flicks the dialâ€¦*",
       "- In character blocks, NEVER use *...* for internal thoughts, emotional asides, or extended narration. Put that kind of prose in its own 'Narrator: *...*' block instead.",
-      "- NEVER use *...* inside a quoted speech line. Do not write: 'He didn't even: *aside*' or 'It gets me — *thought*'. Asterisks must never appear inside quote marks.",
+      "- NEVER use *...* inside a quoted speech line. Do not write: 'He didn't even: *aside*' or 'It gets me â€” *thought*'. Asterisks must never appear inside quote marks.",
       "- NEVER place a colon immediately before *...* action text. Do not write 'He said: *smiles*' or 'She paused: *looks away*'.",
       "- If a character acts between sentences of dialogue, keep the complete turn in one labeled block: Morgan: \"First sentence.\" *She sets down her mug.* \"Second sentence.\"",
-      "- If an action interrupts dialogue mid-sentence, close with an em dash — never a colon — then place the action between the two quoted fragments in the same labeled block.",
+      "- If an action interrupts dialogue mid-sentence, close with an em dash â€” never a colon â€” then place the action between the two quoted fragments in the same labeled block.",
       "- Each character block must be substantial. A character's turn should contain multiple sentences of dialogue before switching speakers. Here is the correct format:",
       "",
-      "Morgan: *She leans back in her chair.* \"Do you think she knows? That we talk about her like this? Because I keep thinking about the way she looked at us last Tuesday — like she was doing math in her head and we were the variables.\"",
+      "Morgan: *She leans back in her chair.* \"Do you think she knows? That we talk about her like this? Because I keep thinking about the way she looked at us last Tuesday â€” like she was doing math in her head and we were the variables.\"",
       "",
       "Alex: *She sets down her mug carefully.* \"I think she suspects there's a conversation. I don't think she has full intelligence on the scope of it. Which is probably good, for everyone involved.\"",
       "",
@@ -648,30 +575,25 @@ export function buildStoryChatContext({
       "Only introduce characters named in the plan for this scene unless the transcript already established them.",
       "Before assigning patrol routes, meeting locations, or schedules, check the continuity ledger and transcript. Do not silently change a route, landmark, or destination already established this chapter.",
       "Guided transcript formatting:",
-      "- Each guided scene is exactly ONE assistant reply. Complete the entire scene in that single message — do not stop mid-sentence or mid-dialogue.",
+      "- Each guided scene is exactly ONE assistant reply. Complete the entire scene in that single message â€” do not stop mid-sentence or mid-dialogue.",
       "- Never start a reply with an ellipsis (...) to continue a prior message. Each scene is self-contained.",
       "- Prefer first names in dialogue headers when familiarity is established (Morgan, Alex, Riley, Casey, Elena).",
       "- Never put quoted nicknames inside speaker labels (wrong: Elena \"Leni\" Reyes:; right: Elena:). Use the first name only in speaker headers.",
       "- Every physical action must appear in the same inline block as its speaker label. Never output a lone *action* line.",
       "- If Casey speaks then acts, write the whole block inline: Casey: \"Dialogue.\" *She nods slowly.* Orphan action lines and name-only headers are invalid.",
-      "- Environmental prose between speakers must use the inline form 'Narrator: *prose*' — never leave orphaned or plain narration between character blocks.",
+      "- Environmental prose between speakers must use the inline form 'Narrator: *prose*' â€” never leave orphaned or plain narration between character blocks.",
       "- Finish each speaker block completely. Do not cut off mid-sentence or mid-thought.",
       guidedChapterContext?.sceneCount === 1 || guidedChapterContext?.scenesPerChapter === 1
-        ? "This chapter is ONE scene only. Deliver the full chapter beat in this single assistant reply — do not stop early or save material for a follow-up turn."
+        ? "This chapter is ONE scene only. Deliver the full chapter beat in this single assistant reply â€” do not stop early or save material for a follow-up turn."
         : "",
       guidedChapterContext?.previousChapterContext?.trim()
-        ? "When prior chapter context is provided, open the new chapter as the immediate next beat — same location, cast, and tension unless the plan explicitly jumps forward."
+        ? "When prior chapter context is provided, open the new chapter as the immediate next beat â€” same location, cast, and tension unless the plan explicitly jumps forward."
         : "",
     ].join("\n\n");
   })();
 
-  const recentWindow =
-    summaryBlock !== "No story summary is available yet." && storyState?.stateJson?.trim()
-      ? 14
-      : MAX_RECENT_MESSAGES;
-
   const chatHistory = sortByTimestampAsc(recentMessages)
-    .slice(-recentWindow)
+    .slice(-MAX_RECENT_MESSAGES)
     .map((message) =>
       formatTimelineMessage(message, playerSceneName),
     );
@@ -681,11 +603,6 @@ export function buildStoryChatContext({
     { role: "system", content: `Imported Lore\n\n${importedLore}` },
     ...(importedCharactersBlock
       ? [{ role: "system" as const, content: `Imported Story Characters\n\n${importedCharactersBlock}` }]
-      : []),
-    { role: "system", content: `Story Summary (derived; never overrides transcript, character sheets, or author declarations)\n\n${summaryBlock}` },
-    { role: "system", content: `Long-Term Memory (derived index; use only when consistent with primary canon)\n\n${storyStateBlock.longTerm}` },
-    ...(storyStateBlock.scene
-      ? [{ role: "system" as const, content: `Current Scene State\n\n${storyStateBlock.scene}` }]
       : []),
     ...(authorDirectiveBlock
       ? [{ role: "system" as const, content: `Author Declarations\n\n${authorDirectiveBlock}` }]
@@ -728,80 +645,5 @@ export function buildStoryChatContext({
               `Player (${playerSceneName}) turn:\n${latestUserMessage}`,
             ),
     },
-  ];
-}
-
-export function buildStorySummaryContext({
-  storyTitle,
-  playerCharacterName,
-  playerCharacter,
-  storyState,
-  messages,
-}: {
-  storyTitle: string;
-  playerCharacterName: string;
-  playerCharacter?: Pick<
-    PlayerCharacter,
-    "id" | "name" | "aliases" | "pronouns" | "gender" | "species" | "age"
-  >;
-  storyState?: StoryState | null;
-  messages: StoryMessage[];
-}): AIChatMessage[] {
-  const parsedStoryState = storyState?.stateJson?.trim()
-    ? safeParseStoryStateData(storyState.stateJson)
-    : null;
-  const playerIdentity = playerCharacter
-    ? resolveEffectivePlayerIdentity(playerCharacter, {
-        storyState: parsedStoryState,
-        recentMessages: messages,
-      })
-    : null;
-  const playerSceneName = playerIdentity?.sceneName ?? playerCharacterName;
-  const narrativeIdentity = createNarrativeIdentityPromptContext({
-    storyState: parsedStoryState,
-    playerCharacter: playerCharacter ?? { name: playerCharacterName, aliases: [] },
-    messages,
-    messageCount: messages.length,
-  });
-  const chatHistory = sortByTimestampAsc(messages)
-    .slice(-MAX_RECENT_MESSAGES)
-    .map((message) => formatTimelineMessage(message, playerSceneName));
-
-  return [
-    {
-      role: "system",
-      content: normalizeWhitespace(
-        [
-          `Conversation transcript for "${storyTitle}".`,
-          playerCharacter && playerIdentity
-            ? `Canonical Player Character identity (binding unless an explicit player-authored in-story change exists):\n${formatPlayerCharacterIdentityForPrompt(playerCharacter, playerIdentity.sceneName, playerIdentity.pronouns)}`
-            : `Canonical Player Character: ${playerCharacterName}. Do not infer or change the protagonist's gender or pronouns from assistant dialogue or AI-generated summaries.`,
-          "Canonical player identity outranks AI-generated summaries and assistant-authored dialogue. A normal user-role player turn may explicitly change identity in first person; Director/Author instructions count only when they explicitly target the protagonist.",
-          "Write the summary from the audience's current knowledge only. Do not reveal hidden identities, undercover aliases, or true names that the transcript has not yet established.",
-          "Use the in-story names characters are known by (for example, a witness name rather than an unrevealed true identity).",
-          "Continue lines are out-of-character continuation notes kept in the transcript for reference.",
-          "They tell the model to keep the current scene moving, but they are not themselves in-universe events to summarize.",
-          "Director lines are out-of-character staging notes kept in the transcript for reference.",
-          "Treat the actual generated scene outcomes as canon. Do not summarize the Director note itself as if it were an in-universe event.",
-          "Canon/Secret/Reveal/Retcon lines are explicit author declarations. Use them as authoritative continuity constraints rather than spoken dialogue.",
-        ].join("\n"),
-      ),
-    },
-    ...(parsedStoryState
-      ? [
-          {
-            role: "system" as const,
-            content: normalizeWhitespace(
-              `Reader knowledge snapshot\n\n${formatStoryLongTermMemoryForPrompt(parsedStoryState, {
-                playerName: playerCharacterName,
-                playerCharacter,
-                playerIdentity,
-                narrativeIdentity,
-              })}`,
-            ),
-          },
-        ]
-      : []),
-    ...chatHistory,
   ];
 }

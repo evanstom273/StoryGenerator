@@ -26,7 +26,7 @@ export interface StorySpeakerAttributionAudit {
   }>;
 }
 export type StoryAuthorDirectiveKind = "canon" | "secret" | "reveal" | "retcon";
-export type ExportFormat = "json" | "markdown" | "txt" | "pdf" | "archive_pdf";
+export type ExportFormat = "json" | "markdown" | "txt" | "pdf";
 export type AIProviderType = "openai" | "gemini" | "openrouter" | "anthropic";
 export type StoryAdultContentMode =
   | "standard"
@@ -34,8 +34,6 @@ export type StoryAdultContentMode =
   | "explicit_consensual_adults";
 export type DeveloperBugStatus = "open" | "in-progress" | "resolved" | "closed";
 export type DeveloperFeaturePriority = "low" | "medium" | "high";
-export type AutoIndexInterval = 5 | 10 | 15 | 20 | "disabled";
-export type AutoIndexMode = "disabled" | "messages" | "chapter";
 export type BackgroundJobStatus =
   | "queued"
   | "running"
@@ -184,10 +182,10 @@ export type RpCalendarConfig = {
 
 export type RpTimeState = {
   year: number;
-  month: number;   // 1–12
-  day: number;     // 1–31
-  hour: number;    // 0–23
-  minute: number;  // 0–59
+  month: number;   // 1â€“12
+  day: number;     // 1â€“31
+  hour: number;    // 0â€“23
+  minute: number;  // 0â€“59
   storyDay: number; // days elapsed since story began (1-indexed)
 };
 
@@ -253,6 +251,12 @@ export type RpEventLogEntry = {
   summary: string;
 };
 
+export type RpCondition = {
+  id: string;
+  label: string;
+  addedAt: number;
+};
+
 export type PendingTransaction = {
   description: string;
   amount: number;
@@ -298,6 +302,10 @@ export interface Story {
   lineageType?: "sequel" | "branch";
   sequelSeedSourceStoryId?: EntityId;
   openingPrompt?: string;
+  /** Legacy fields accepted only while migrating persisted records. */
+  currentSummary: string;
+  autoIndexMode?: "disabled" | "messages" | "chapter";
+  autoIndexInterval?: 5 | 10 | 15 | 20 | "disabled";
   universePackSnapshot?: UniversePackSnapshotV1;
   universePackSnapshots?: UniversePackSnapshotV1[];
   isArchived?: boolean;
@@ -308,11 +316,8 @@ export interface Story {
   matureFictionMode?: boolean;
   rpMode?: boolean;
   rpConfig?: RpConfig;
-  autoIndexMode?: AutoIndexMode;
-  autoIndexInterval?: AutoIndexInterval;
   accentThemeKey?: string;
   accentThemeCustom?: string;
-  currentSummary: string;
   importedCharacterIds?: EntityId[];
   guidedGenerationMeta?: {
     historyChapterCount?: number;
@@ -395,7 +400,7 @@ export interface GeminiNarrationTtsSettings {
   model: string;
 }
 
-export type AIModelRole = "story" | "metachat" | "indexing" | "creation";
+export type AIModelRole = "story" | "metachat" | "creation" | "indexing";
 
 export interface AISettings {
   id: "ai-settings";
@@ -405,13 +410,12 @@ export interface AISettings {
   defaultModels: Partial<Record<AIProviderType, string>>;
   /** MetaChat only */
   metachatModels?: Partial<Record<AIProviderType, string>>;
-  /** Deep indexing, summaries, relationship extraction, memories */
   indexingModels?: Partial<Record<AIProviderType, string>>;
   /** Character/universe generation and related creation tools */
   creationModels?: Partial<Record<AIProviderType, string>>;
   geminiPodcastTts?: GeminiPodcastTtsSettings;
   geminiNarrationTts?: GeminiNarrationTtsSettings;
-  /** Max simultaneous long-running background tasks (index, audiobook, documents, podcast). */
+  /** Max simultaneous long-running background tasks. */
   maxConcurrentBackgroundTasks?: MaxConcurrentBackgroundTasks;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -515,280 +519,26 @@ export interface BackgroundJob {
   };
 }
 
-export interface StorySummary {
-  id: EntityId;
-  storyId: EntityId;
-  summary: string;
-  generatedAt: Timestamp;
-}
-
-export type MemoryArchitectureVersion = "1.0" | "2.0";
-
-export type EvidenceRef = {
-  messageNumbers: number[];
-};
-
-export type IndexedEntity = {
-  id?: string;
-  name: string;
-  aliases?: string[];
-  narrativeName?: string;
-  identityRevealedAtMessage?: number;
-  description?: string;
-  firstSeenMessage?: number;
-  lastSeenMessage?: number;
-  evidence?: EvidenceRef;
-};
-
-export type RelationshipTier =
-  // Close / warm
-  | "stranger"
-  | "acquaintance"
-  | "friend"
-  | "close friend"
-  | "best friend"
-  | "confidant"
-  | "family"
-  | "partner"
-  | "lover"
-  | "devoted"
-  | "mentor"
-  | "mentee"
-  | "caregiver"
-  | "patient"
-  // Professional / contextual
-  | "ally"
-  | "colleague"
-  | "professional"
-  // Complex / difficult
-  | "complicated"
-  | "guarded"
-  | "distant"
-  | "estranged"
-  // Negative
-  | "rival"
-  | "adversary"
-  | "enemy"
-  | "nemesis"
-  | "threat";
-
-export type NpcInnerLife = {
-  emotionalState?: string;
-  howTheyDescribeYou?: string;
-  whatTheyWant?: string;
-  whatTheyreNotSaying?: string;
-};
-
-export type RelationshipArc = {
-  statusPhrase?: string;
-  milestones?: string[];
-  tension?: string;
-};
-
-export type RelationshipHistoryEntry = {
-  summary: string;
-  messageNumber?: number;
-};
-
-export type RelationshipIndexEntry = {
-  a: string;
-  b: string;
-  /** Stable canonical entity identifiers. Names remain denormalized for display/backward compatibility. */
-  aId?: string;
-  bId?: string;
-  friendship?: number;
-  trust?: number;
-  respect?: number;
-  loyalty?: number;
-  comfort?: number;
-  suspicion?: number;
-  fear?: number;
-  affection?: number;
-  tension?: number;
-  hostility?: number;
-  dependency?: number;
-  tier?: RelationshipTier;
-  history?: RelationshipHistoryEntry[];
-  summary?: string;
-  evidence?: EvidenceRef;
-  npcInnerLife?: NpcInnerLife;
-  arc?: RelationshipArc;
-  playerIntention?: string;
-};
-
-export type RpCondition = {
-  id: string;
-  label: string;
-  addedAt: number;
-};
-
-export type StoryIndexesV2 = {
-  messageCount?: number;
-  messageNumberingVersion?: "1.0";
-  characters?: Record<string, IndexedEntity>;
-  locations?: Record<string, IndexedEntity>;
-  items?: Record<string, IndexedEntity>;
-  factions?: Record<string, IndexedEntity>;
-  relationships?: RelationshipIndexEntry[];
-  worldFacts?: Array<{
-    fact: string;
-    evidence?: EvidenceRef;
-    sourceLabel?: string;
-    sourceUrl?: string;
-  }>;
-  significantMemories?: Array<{
-    moment: string;
-    evidence?: EvidenceRef;
-    sourceLabel?: string;
-    sourceUrl?: string;
-  }>;
-  openThreads?: Array<{
-    thread: string;
-    evidence?: EvidenceRef;
-    sourceLabel?: string;
-    sourceUrl?: string;
-  }>;
-};
-
-/**
- * A transcript message that a deep-index run attempted but could not safely index.
- *
- * Diagnostics stored here must remain metadata-only. In particular, callers must
- * never persist the rejected prompt, transcript content, or a raw provider error.
- */
-export type IndexingGap = {
-  messageNumber: number;
-  code: "provider_refusal";
-  provider?: string;
-  model?: string;
-  stage?: "prompt" | "response" | "unknown";
-  reason?: string;
-  diagnosticFingerprint?: string;
-  occurredAt: Timestamp;
-};
-
-export type StorySceneSnapshotV2 = {
-  currentLocation?: string;
-  currentObjective?: string;
-  activeParticipants?: string[];
-  sceneSummary?: string;
-  /**
-   * Explicit scene-scoped capability constraints only.
-   * Do not store derived activity, aliases, modes, or inferred presence.
-   */
-  participantCapabilityOverrides?: SceneParticipantCapabilityOverride[];
-};
-
-export type StoryThreadsV2 = {
-  openThreads?: string[];
-};
-
-export type StoryStateCharacterState = {
-  canonicalName?: string;
-  displayName?: string;
-  narrativeName?: string;
-  identityRevealedAtMessage?: number;
-  aliases?: string[];
-  pronouns?: string;
-  gender?: string;
-  titleOrRank?: string;
-  relationships?: Record<string, string>;
-  status?: string;
-  statusBullets?: string[];
-  strengths?: string[];
-  weaknesses?: string[];
-  characterTraitsPersistent?: string[];
-  characterStateTransient?: string[];
-  notes?: string[];
-};
-
-export type StoryStateData = {
-  updatedAt: Timestamp;
-  characters: Record<string, StoryStateCharacterState>;
-  worldFacts: string[];
-  unresolvedThreads: string[];
-  sceneState?: string[];
-  significantMemories?: string[];
-  relationshipState?: string[];
-  relationships?: Record<
-    string,
-    Record<
-      string,
-      {
-        trust?: "low" | "medium" | "high" | "unknown";
-        respect?: "low" | "medium" | "high" | "unknown";
-        friendship?: "low" | "medium" | "high" | "unknown";
-        loyalty?: "low" | "medium" | "high" | "unknown";
-        fear?: "low" | "medium" | "high" | "unknown";
-        attraction?: "low" | "medium" | "high" | "unknown";
-        rivalry?: "low" | "medium" | "high" | "unknown";
-        hostility?: "low" | "medium" | "high" | "unknown";
-      }
-    >
-  >;
-  npcs?: Record<
-    string,
-    {
-      description?: string;
-      role?: string;
-      firstSeen?: string;
-      lastSeen?: string;
-      significance?: "minor" | "recurring" | "major";
-      memories?: string[];
-    }
-  >;
-  locations?: Record<
-    string,
-    {
-      description?: string;
-      tags?: string[];
-      notes?: string[];
-      lastSeen?: string;
-    }
-  >;
-  summaries?: {
-    premise?: string;
-    protagonistSummary?: string;
-    currentSituation?: string;
-    recentDevelopments?: string[];
-    characterSummaries?: Record<string, string>;
-    relationshipSummary?: string;
-    worldSummary?: string;
-  };
-  playerIdentityOverride?: PlayerIdentityOverride;
-  currentSituationIdentityBasis?: PlayerIdentityBasis;
-  authorDirectives?: StoryAuthorDirectiveState;
-  memoryArchitectureVersion?: MemoryArchitectureVersion;
-  indexedAt?: Timestamp;
-  lastIndexedAt?: Timestamp;
-  lastDeepIndexedAt?: Timestamp;
-  lastAutoDeepIndexedAt?: Timestamp;
-  lastIndexedMessageCount?: number;
-  lastDeepIndexedMessageCount?: number;
-  lastDeepIndexedTranscriptFingerprint?: string;
-  lastDeepIndexAttemptedMessageCount?: number;
-  indexingGaps?: IndexingGap[];
-  lastAutoDeepIndexedMessageCount?: number;
-  messagesSinceDeepIndexUpdate?: number;
-  indexes?: StoryIndexesV2;
-  scene?: StorySceneSnapshotV2;
-  threads?: StoryThreadsV2;
-  rpStats?: RpStats;
-};
-
-export type StoryStateDataV2 = Partial<StoryStateData> & {
-  memoryArchitectureVersion?: MemoryArchitectureVersion;
-  indexedAt?: Timestamp;
-  indexes?: StoryIndexesV2;
-  scene?: StorySceneSnapshotV2;
-  threads?: StoryThreadsV2;
-};
-
 export interface StoryState {
   id: EntityId;
   storyId: EntityId;
   stateJson: string;
   updatedAt: Timestamp;
+}
+
+/** Legacy parse shape accepted only for permissive migration of old records. */
+export type StoryStateCharacterState = any;
+export type StorySceneSnapshotV2 = any;
+export type StoryStateData = any;
+export type StoryStateDataV2 = any;
+export type IndexedEntity = any;
+export type RelationshipIndexEntry = any;
+export type StoryIndexesV2 = any;
+export interface StorySummary {
+  id: EntityId;
+  storyId: EntityId;
+  summary: string;
+  generatedAt: Timestamp;
 }
 
 export interface DeveloperBug {
@@ -871,11 +621,12 @@ export interface StoryDraft {
   matureFictionMode?: boolean;
   rpMode?: boolean;
   rpConfig?: RpConfig;
-  autoIndexMode?: AutoIndexMode;
-  autoIndexInterval?: AutoIndexInterval;
   accentThemeKey?: string;
   accentThemeCustom?: string;
+  openingPrompt?: string;
   currentSummary: string;
+  autoIndexMode?: "disabled" | "messages" | "chapter";
+  autoIndexInterval?: 5 | 10 | 15 | 20 | "disabled";
   importedCharacterIds?: EntityId[];
   guidedStoryHistory?: {
     enabled: boolean;
@@ -986,7 +737,7 @@ export type StoryEngineBackupV1 = {
     stories: Story[];
     messages: StoryMessage[];
     universeImports: UniverseImport[];
-    storySummaries: StorySummary[];
+    storySummaries?: StorySummary[];
     storyStates: StoryState[];
     storyAiConfigs: StoryAIConfig[];
     storyUiStates?: StoryUiState[];

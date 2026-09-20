@@ -32,7 +32,7 @@ export function StoryCard({
         {story.title}
       </h3>
       <p className="mt-3 text-[13px] leading-6 text-ink-muted">
-        {story.currentSummary || "No summary yet."}
+        {story.openingPrompt || "No opening direction yet."}
       </p>
       <dl className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>

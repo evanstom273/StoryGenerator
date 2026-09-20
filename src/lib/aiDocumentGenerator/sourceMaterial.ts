@@ -6,7 +6,7 @@ import { serializeStoryExport } from "../storyExport";
 import type { ChapterSourceSegment } from "./types";
 import { resolveNarrativeProtagonistName } from "../narrativeIdentity";
 import { resolvePlayerCharacterSceneName } from "../playerCharacterPrompt";
-import { safeParseStoryStateData } from "../storyStateV2";
+import { parseStoryRuntimeState } from "../storyRuntimeState";
 
 const MAX_SOURCE_CHARS = 140000;
 const MAX_CHAPTER_SOURCE_CHARS = 32000;
@@ -25,7 +25,7 @@ function resolveSpeakerLabel(
 	playerCharacter: PlayerCharacter,
 	storyStateJson?: string | null,
 ) {
-	const storyState = storyStateJson?.trim() ? safeParseStoryStateData(storyStateJson) : null;
+	const storyState = storyStateJson?.trim() ? parseStoryRuntimeState(storyStateJson) : null;
 	const sceneName = resolvePlayerCharacterSceneName(playerCharacter, { storyState });
 	if (message.role === "user") {
 		return resolveUserTranscriptSpeaker(message, {
@@ -111,13 +111,13 @@ export function buildChapterSegmentedSourceMaterial(bundle: StoryExportBundle) {
 	}
 
 	const storyState = bundle.storyState?.stateJson?.trim()
-		? safeParseStoryStateData(bundle.storyState.stateJson)
+		? parseStoryRuntimeState(bundle.storyState.stateJson)
 		: null;
 	const header = [
 		`Story: ${bundle.story.title}`,
 		`Universe: ${bundle.universe.name}`,
 		`Protagonist: ${resolveNarrativeProtagonistName(bundle.playerCharacter, storyState, bundle.messages)}`,
-		`Summary: ${bundle.story.currentSummary?.trim() || "No summary provided."}`,
+		`Opening direction: ${bundle.story.openingPrompt?.trim() || "No opening direction provided."}`,
 		"",
 		"The transcript below is split by chapter. Cover every chapter in order.",
 	].join("\n");

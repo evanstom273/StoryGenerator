@@ -155,7 +155,7 @@ export function PlayerCharacterDetailPage() {
                   >
                     <div className="text-[13px] font-medium text-ink">{story.title}</div>
                     <div className="mt-1 text-[11px] text-ink-muted">
-                      {story.currentSummary || "No summary yet."}
+                      {story.openingPrompt || "No opening direction yet."}
                     </div>
                   </Link>
                 ))}

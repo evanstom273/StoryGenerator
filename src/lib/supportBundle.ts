@@ -14,7 +14,7 @@ export async function buildStorySupportBundleZip(
   const jsonExport = serializeStoryExport(bundle, "json").content;
   const jsonText = typeof jsonExport === "string" ? jsonExport : JSON.stringify(jsonExport);
 
-  const archivePdf = serializeStoryExport(bundle, "archive_pdf").content;
+  const archivePdf = serializeStoryExport(bundle, "pdf").content;
   const archiveBytes =
     archivePdf instanceof Uint8Array ? archivePdf : new Uint8Array(archivePdf as ArrayBuffer);
 
@@ -36,7 +36,7 @@ export async function buildStorySupportBundleZip(
 
   const files = {
     "story-export.json": strToU8(jsonText),
-    "story-archive.pdf": archiveBytes,
+    "story.pdf": archiveBytes,
     "diagnostics.json": strToU8(JSON.stringify(diagnostics, null, 2)),
   };
 
@@ -47,3 +47,5 @@ export async function buildStorySupportBundleZip(
     mimeType: "application/zip",
   };
 }
+
+

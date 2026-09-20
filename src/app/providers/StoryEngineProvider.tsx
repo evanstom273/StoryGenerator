@@ -28,7 +28,6 @@ import { createAIProvider } from "../../lib/ai/providerFactory";
 import { resolveGeminiMinimalThinkingSettings, resolveGeminiStoryThinkingSettings } from "../../lib/ai/geminiThinking";
 import {
   buildStoryChatContext,
-  buildStorySummaryContext,
 } from "../../lib/ai/contextBuilder";
 import { getValidModel, getAIModelForRole, getCharacterConceptRequestConfig, getIndexingRequestConfig, getModelStreamConfig, getStoryStreamIdleTimeoutMs } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
@@ -105,7 +104,7 @@ import type {
   AIProvider,
   GenerateResponseResult,
 } from "../../lib/ai/types";
-import { buildCanonicalTranscriptFingerprint, getArchiveIndexStatus } from "../../lib/archiveIndexing";
+import { buildCanonicalTranscriptFingerprint } from "../../lib/transcriptFingerprint";
 import {
   createSequelStoryStateData,
   normalizeStoryStateToV2,
@@ -114,11 +113,16 @@ import {
   reconcileStoryIndexes,
   safeParseStoryStateData,
   mergeStoryLocalPlayerIdentityIntoState,
-  withIndexedMetadata,
-} from "../../lib/storyStateV2";
-import { rebuildStoryMemoryAndIndexes } from "../../lib/ai/rebuildMemory";
-import { protectGeneratedSummaryPlayerFacts } from "../../lib/ai/generatedSummaryAuthority";
-import { applyTranscriptPresenceGate, createClearedStoryStateV2 } from "../../lib/transcriptPresence";
+  rebuildStoryMemoryAndIndexes,
+  protectGeneratedSummaryPlayerFacts,
+  applyTranscriptPresenceGate,
+  createClearedStoryStateV2,
+  selectChaptersForArchiveRebuild,
+  getArchiveIndexStatus,
+  formatStoryLongTermMemoryForPrompt,
+  formatStorySceneStateForPrompt,
+  reconcileRelationshipsFromStateJson,
+} from "../../lib/storyRuntimeState";
 import { runGuidedChapterGeneration } from "../../lib/guidedChapterGeneration/runGuidedChapters";
 import {
 	buildChapterPlanPrompt,
@@ -131,14 +135,6 @@ import type {
 	GuidedChapterGenerationEntry,
 	GuidedChapterPlan,
 } from "../../lib/guidedChapterGeneration/types";
-import {
-	buildInitialChapterReviewProgress,
-	selectChaptersForArchiveRebuild,
-} from "../../lib/ai/storyIndexingProgress";
-import {
-  formatStoryLongTermMemoryForPrompt,
-  formatStorySceneStateForPrompt,
-} from "../../lib/ai/storyStateExtractor";
 import { runAutoBackupIfNeeded } from "../../lib/autoBackup";
 import {
   sendJobCompletionNotification,
@@ -230,9 +226,6 @@ import {
 } from "../../lib/backgroundTasks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
-import {
-  reconcileRelationshipsFromStateJson,
-} from "../../lib/storyRelationshipLoad";
 import { applyStatChange, buildRpEventSummary, clampStat, DEFAULT_RP_CONFIG, defaultRpStats, getStatValue } from "../../lib/rpStats";
 import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
@@ -1727,127 +1720,6 @@ async function persistStoryLocalPlayerIdentity(args: {
 	});
 }
 
-async function generateSummaryWithRetry(params: {
-  providerType: string;
-  provider: AIProvider;
-  apiKey: string;
-  model: string;
-  storyTitle: string;
-  messages: AIChatMessage[];
-  existingSummary?: string;
-  signal?: AbortSignal;
-  maxAttempts?: number;
-  debugTrace?: {
-    traceId: string;
-    storyId?: string;
-    stage: string;
-    redactContent?: boolean;
-  };
-}) {
-  const maxAttempts = params.maxAttempts ?? AI_MAX_ATTEMPTS;
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    if (params.signal?.aborted) {
-      throw new Error("Request aborted.");
-    }
-    // #region debug-point A:summary-request
-    reportGenerationAudit({
-      hypothesisId: "A",
-      traceId: params.debugTrace?.traceId,
-      location: "StoryEngineProvider.tsx:generateSummaryWithRetry:start",
-      msg: "summary request attempt started",
-      data: {
-        storyId: params.debugTrace?.storyId,
-        providerType: params.providerType,
-        model: params.model,
-        stage: params.debugTrace?.stage ?? "summary",
-        attempt,
-        maxAttempts,
-        storyTitle: params.storyTitle,
-        messageSummary: summarizeGenerationAuditMessages(
-          params.messages,
-          params.debugTrace?.redactContent,
-        ),
-      },
-    });
-    // #endregion
-    try {
-      const result = await params.provider.generateSummary({
-        apiKey: params.apiKey,
-        model: params.model,
-        storyTitle: params.storyTitle,
-        messages: params.messages,
-        existingSummary: params.existingSummary,
-        signal: params.signal,
-      });
-      // #region debug-point A:summary-response
-      reportGenerationAudit({
-        hypothesisId: "A",
-        traceId: params.debugTrace?.traceId,
-        location: "StoryEngineProvider.tsx:generateSummaryWithRetry:success",
-        msg: "summary request attempt succeeded",
-        data: {
-          storyId: params.debugTrace?.storyId,
-          providerType: params.providerType,
-          model: params.model,
-          attempt,
-          summaryLength: typeof result === "string" ? result.length : 0,
-          rawOutput: formatGenerationAuditText(
-            typeof result === "string" ? result : "",
-            params.debugTrace?.redactContent ?? false,
-            1200,
-          ),
-        },
-      });
-      // #endregion
-      return result;
-    } catch (error) {
-      lastError = error;
-      const classified = classifyAIGenerationError(error);
-      // #region debug-point A:summary-failure
-      reportGenerationAudit({
-        hypothesisId: "A",
-        traceId: params.debugTrace?.traceId,
-        location: "StoryEngineProvider.tsx:generateSummaryWithRetry:failure",
-        msg: "summary request attempt failed",
-        data: {
-          storyId: params.debugTrace?.storyId,
-          providerType: params.providerType,
-          model: params.model,
-          attempt,
-          maxAttempts,
-          classifiedKind: classified.kind,
-          retryable: classified.retryable,
-          diagnostic: classified.diagnostic,
-        },
-      });
-      // #endregion
-      if (attempt >= maxAttempts || !shouldRetryKind(classified.kind)) {
-        throw new GenerationFailureError(
-          createGenerationFailure(error, {
-            providerName: params.providerType,
-            model: params.model,
-            attempts: attempt,
-            maxAttempts,
-          }),
-        );
-      }
-
-      await waitWithSignal(computeRetryDelayMs(classified.kind, attempt), params.signal);
-    }
-  }
-
-  throw new GenerationFailureError(
-    createGenerationFailure(lastError, {
-      providerName: params.providerType,
-      model: params.model,
-      attempts: maxAttempts,
-      maxAttempts,
-    }),
-  );
-}
-
 function rethrowUserFacingGenerationError(error: unknown, providerType: string): never {
   throw new GenerationFailureError(
     createGenerationFailure(error, {
@@ -2184,7 +2056,7 @@ async function rebuildChapterArchiveSummaries(params: {
     return normalizeStoryStateToV2(parsed);
   })();
   const blockedMessageNumbers = new Set(
-    (normalizedState?.indexingGaps ?? []).map((gap) => gap.messageNumber),
+    (normalizedState?.indexingGaps ?? []).map((gap: any) => gap.messageNumber),
   );
 
   for (let chapterIndex = 0; chapterIndex < chaptersToRebuild.length; chapterIndex += 1) {
@@ -2203,8 +2075,8 @@ async function rebuildChapterArchiveSummaries(params: {
       continue;
     }
 
-    const containsIndexingGap = Array.from(blockedMessageNumbers).some(
-      (messageNumber) => messageNumber >= startIndex && messageNumber <= endIndex,
+    const containsIndexingGap = Array.from(blockedMessageNumbers as Set<number>).some(
+      (messageNumber: number) => messageNumber >= startIndex && messageNumber <= endIndex,
     );
     if (containsIndexingGap) {
       params.onProgress?.({
@@ -2395,8 +2267,6 @@ async function syncStoryChaptersFromTranscript(params: {
   return rebuiltChapters;
 }
 
-const StoryEngineContext = createContext<StoryEngineContextValue | null>(null);
-
 function normalizeDuplicateKeyPart(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -2489,6 +2359,11 @@ interface StoryEngineProviderProps {
   children: ReactNode;
   repository?: StoryEngineRepository;
 }
+
+void rebuildChapterArchiveSummaries;
+void syncStoryChaptersFromTranscript;
+
+const StoryEngineContext = createContext<StoryEngineContextValue | null>(null);
 
 export function StoryEngineProvider({
   children,
@@ -3026,7 +2901,7 @@ export function StoryEngineProvider({
             .filter(
               (story) =>
                 story.playerCharacterId === character.id ||
-                story.currentSummary?.toLowerCase().includes(character.name.toLowerCase()),
+                story.openingPrompt?.toLowerCase().includes(character.name.toLowerCase()),
             )
             .slice(0, 8)
             .map((story) => story.title);
@@ -3114,6 +2989,11 @@ export function StoryEngineProvider({
 
   const queueStoryIndexJob = useCallback(
     async (storyId: string, opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean }) => {
+      void storyId;
+      void opts;
+      throw new Error("Story indexing has been removed; generation uses the canonical transcript.");
+      /* legacy index queue retained only for migration of old callers */
+      /*
       const existingJobs = await repository.listBackgroundJobs();
       const existing = existingJobs.find(
         (job) =>
@@ -3160,6 +3040,7 @@ export function StoryEngineProvider({
       await repository.saveBackgroundJob(job);
       await hydrate(false);
       return { job, duplicate: false };
+      */
     },
     [hydrate, repository],
   );
@@ -3640,6 +3521,10 @@ export function StoryEngineProvider({
 
   const runDeepIndexProcess = useCallback(
     async (storyId: string, opts?: { signal?: AbortSignal; trigger?: "manual" | "auto"; incremental?: boolean; jobId?: string; rebuildAllChapterSummaries?: boolean }) => {
+      void storyId;
+      void opts;
+      throw new Error("Story indexing has been removed; generation uses the canonical transcript.");
+      /*
       rebuildAbortRef.current?.abort();
       const controller = new AbortController();
       rebuildAbortRef.current = controller;
@@ -3704,7 +3589,7 @@ export function StoryEngineProvider({
           phase: "extracting",
           processedMessages: 0,
           totalMessages: allMessages.length,
-          message: `Indexing message 0/${allMessages.length}…`,
+          message: `Indexing message 0/${allMessages.length}ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦`,
           startedAtMs: indexingStartedAtMs,
           stage: "messages",
           jobId: opts?.jobId,
@@ -3919,7 +3804,7 @@ export function StoryEngineProvider({
                   stage: "chapter-reviews",
                   processedMessages: 0,
                   totalMessages: chaptersToRebuild.length,
-                  message: `Rebuilding chapter reviews… 0/${chaptersToRebuild.length}`,
+                  message: `Rebuilding chapter reviewsÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ 0/${chaptersToRebuild.length}`,
                   chapterReviews: buildInitialChapterReviewProgress(chaptersToRebuild),
                 }
               : current,
@@ -3975,7 +3860,7 @@ export function StoryEngineProvider({
                   stage: "chapter-reviews",
                   processedMessages: processed,
                   totalMessages: total,
-                  message: `Rebuilding chapter reviews… ${processed}/${total} (${label})`,
+                  message: `Rebuilding chapter reviewsÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ ${processed}/${total} (${label})`,
                   chapterReviews,
                 };
               });
@@ -3999,7 +3884,7 @@ export function StoryEngineProvider({
           });
         }
 
-        if (!story.currentSummary?.trim() && result.summaryText?.trim()) {
+        if (!story.openingPrompt?.trim() && result.summaryText?.trim()) {
           const protectedSummary = protectGeneratedSummaryPlayerFacts(
             result.summaryText,
             playerCharacter,
@@ -4079,6 +3964,7 @@ export function StoryEngineProvider({
           rebuildAbortRef.current = null;
         }
       }
+      */
     },
     [getNormalizedAISettings, getStoryImportedCharacterContext, hydrate, repository, resolveAIProfile, touchStory],
   );
@@ -4247,10 +4133,10 @@ export function StoryEngineProvider({
           label:
             input.progressLabel ??
             (purpose === "chapter_listen"
-              ? "Preparing chapter audio…"
+              ? "Preparing chapter audioÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦"
               : chapterCount > 1
-                ? `Preparing ${chapterCount} chapters…`
-                : "Preparing audiobook…"),
+                ? `Preparing ${chapterCount} chaptersÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦`
+                : "Preparing audiobookÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦"),
         },
       };
 
@@ -4370,7 +4256,7 @@ export function StoryEngineProvider({
       const settings = await getNormalizedAISettings();
       const apiKey = settings?.apiKeys?.gemini?.trim() ?? "";
       if (!apiKey) {
-        throw new Error("Add a Gemini API key in Settings → AI to export audiobook audio.");
+        throw new Error("Add a Gemini API key in Settings ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ AI to export audiobook audio.");
       }
 
       const [story, playerCharacter, messages, chapters, storyState, storyConfig] =
@@ -4436,7 +4322,7 @@ export function StoryEngineProvider({
         jobId: opts.jobId,
         phase: "running",
         startedAtMs,
-        message: "Preparing story audiobook…",
+        message: "Preparing story audiobookÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦",
       });
 
       await updateBackgroundJobProgress(opts.jobId, {
@@ -4658,7 +4544,7 @@ export function StoryEngineProvider({
       if (outputFormat === "gemini-audio-wav" || job.type === "podcast_audio") {
         const geminiApiKey = settings.apiKeys?.gemini?.trim() ?? "";
         if (!geminiApiKey) {
-          throw new Error("Add a Gemini API key in Settings → AI to generate podcast audio.");
+          throw new Error("Add a Gemini API key in Settings ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ AI to generate podcast audio.");
         }
 
         const podcastParentLabel = "Generating Podcast";
@@ -4945,7 +4831,7 @@ export function StoryEngineProvider({
                 phase: "generating",
                 currentChapter: 1,
                 totalChapters: plan.chapters.length,
-                message: "Starting guided chapter generation…",
+                message: "Starting guided chapter generationÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦",
                 chapters: plan.chapters.map((chapter) => ({
                   label: chapter.label,
                   status: "pending",
@@ -4969,7 +4855,7 @@ export function StoryEngineProvider({
             priorChapterContext = buildPriorChapterContinuationContext({
               messages,
               chapters,
-              storySummary: story.currentSummary,
+              storySummary: story.openingPrompt,
               playerName: playerCharacter.name,
               overallDirection: plan.overallDirection,
             });
@@ -5179,7 +5065,7 @@ export function StoryEngineProvider({
               ? "Saved to Media Library"
               : "Already in Media Library";
           } else if (result.markdown) {
-            notificationBody = `${result.filename} is ready — tap Download in Documents or Background Tasks.`;
+            notificationBody = `${result.filename} is ready ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â tap Download in Documents or Background Tasks.`;
           }
           const completedJob: BackgroundJob = {
             ...runningJob,
@@ -5464,7 +5350,7 @@ export function StoryEngineProvider({
           phase: "generating",
           currentChapter: activeGuidedJob.progress?.current ?? 1,
           totalChapters: activeGuidedJob.progress?.total ?? plan?.chapters.length ?? 1,
-          message: activeGuidedJob.progress?.label ?? "Resuming guided chapter generation…",
+          message: activeGuidedJob.progress?.label ?? "Resuming guided chapter generationÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦",
           chapters:
             plan?.chapters.map((chapter, index) => ({
               label: chapter.label,
@@ -5614,7 +5500,7 @@ export function StoryEngineProvider({
         updatedAt: now,
       });
 
-      if (!story.currentSummary?.trim() && rebuilt.summaryText?.trim()) {
+      if (!story.openingPrompt?.trim() && rebuilt.summaryText?.trim()) {
         const protectedSummary = protectGeneratedSummaryPlayerFacts(
           rebuilt.summaryText,
           playerCharacter,
@@ -6002,7 +5888,7 @@ export function StoryEngineProvider({
               ? ({ steps }) => {
                   const runningStep = steps.find((step) => step.status === "running");
                   input.onProgress?.(
-                    runningStep?.label ?? steps[steps.length - 1]?.label ?? "Generating document…",
+                    runningStep?.label ?? steps[steps.length - 1]?.label ?? "Generating documentÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦",
                   );
                 }
               : undefined,
@@ -6026,10 +5912,10 @@ export function StoryEngineProvider({
 
           const geminiApiKey = settings.apiKeys?.gemini?.trim() ?? "";
           if (!geminiApiKey) {
-            throw new Error("Add a Gemini API key in Settings → AI to generate podcast audio.");
+            throw new Error("Add a Gemini API key in Settings ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ AI to generate podcast audio.");
           }
 
-          input.onProgress?.("Generating Gemini podcast audio…");
+          input.onProgress?.("Generating Gemini podcast audioÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦");
           const wavBuffer = await generateGeminiPodcastAudioFromMarkdown({
             apiKey: geminiApiKey,
             markdown,
@@ -6057,7 +5943,7 @@ export function StoryEngineProvider({
         const settings = await getNormalizedAISettings();
         const geminiApiKey = settings?.apiKeys?.gemini?.trim() ?? "";
         if (!geminiApiKey) {
-          throw new Error("Add a Gemini API key in Settings → AI to generate podcast audio.");
+          throw new Error("Add a Gemini API key in Settings ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ AI to generate podcast audio.");
         }
 
         const markdown = input.markdown.trim();
@@ -6065,7 +5951,7 @@ export function StoryEngineProvider({
           throw new Error("The uploaded Markdown file is empty.");
         }
 
-        input.onProgress?.("Generating Gemini podcast audio…");
+        input.onProgress?.("Generating Gemini podcast audioÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦");
         const wavBuffer = await generateGeminiPodcastAudioFromMarkdown({
           apiKey: geminiApiKey,
           markdown,
@@ -6367,7 +6253,7 @@ export function StoryEngineProvider({
           autoIndexInterval: draft.autoIndexInterval ?? 20,
           accentThemeKey: draft.accentThemeKey,
           accentThemeCustom: draft.accentThemeCustom,
-          currentSummary: draft.currentSummary.trim(),
+          currentSummary: draft.openingPrompt?.trim() ?? "",
           importedCharacterIds: normalizeStoryImportedCharacterIds(draft.importedCharacterIds),
           guidedGenerationMeta: useGuidedHistory
             ? {
@@ -6401,7 +6287,7 @@ export function StoryEngineProvider({
         if (useGuidedHistory && guidedHistory.chapters) {
           const labels = resolveUpcomingChapterLabels([], [], guidedHistory.chapters.length);
           const plan: GuidedChapterPlan = {
-            overallDirection: guidedHistory.overallDirection?.trim() || draft.currentSummary.trim(),
+            overallDirection: guidedHistory.overallDirection?.trim() || draft.openingPrompt?.trim() || "",
             chapters: guidedHistory.chapters.map((chapter, index) => ({
               label: chapter.label?.trim() || labels[index] || `Chapter ${index + 1}`,
               overview: chapter.overview.trim(),
@@ -6445,7 +6331,7 @@ export function StoryEngineProvider({
           ? safeParseStoryStateData(sourceStateRecord.stateJson)
           : null;
         const sourceSummary =
-          sourceStory.currentSummary.trim() ||
+          sourceStory.openingPrompt?.trim() ||
           sourceSummaries[0]?.summary?.trim() ||
           parsedSourceState?.summaries?.currentSituation?.trim() ||
           "";
@@ -6664,7 +6550,8 @@ export function StoryEngineProvider({
         const nextStory: Story = {
           ...currentStory,
           title: patch.title?.trim() ?? currentStory.title,
-          currentSummary: patch.currentSummary?.trim() ?? currentStory.currentSummary,
+          openingPrompt: patch.openingPrompt?.trim() ?? currentStory.openingPrompt,
+          currentSummary: currentStory.currentSummary ?? "",
           universeId: patch.universeId ?? currentStory.universeId,
           playerCharacterId:
             patch.playerCharacterId ?? currentStory.playerCharacterId,
@@ -8616,6 +8503,7 @@ export function StoryEngineProvider({
         let pendingCoreStatChanges: RpStatDelta[] | null = null;
         let rpEventSummary: string | null = null;
         let updatedMessages: StoryMessage[] = [];
+        void updatedMessages;
 
         const {
           parsedStoryState: parsedStoryStateForIdentityInitial,
@@ -9335,7 +9223,7 @@ export function StoryEngineProvider({
                   nextStats = { ...nextStats, npcHp: updatedNpcHp };
                 }
 
-                // Apply time advance — player-declared only, exact minutes
+                // Apply time advance ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â player-declared only, exact minutes
                 let timeSummaryPart: string | null = null;
                 const playerMinutes = userMessage.directorIntent ? resolveExactMinutes(userMessage.directorIntent) : null;
                 if (playerMinutes && playerMinutes > 0 && nextStats.timeState) {
@@ -9367,7 +9255,7 @@ export function StoryEngineProvider({
                     const recurringReason = recurringLabels.length === 1
                       ? recurringLabels[0]!
                       : uniqueLabels.length === 1
-                        ? `${uniqueLabels[0]} ×${recurringLabels.length}`
+                        ? `${uniqueLabels[0]} ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â${recurringLabels.length}`
                         : `${recurringLabels.length} recurring events`;
                     applied.push({ ts: Date.now(), field: "gold", from: recurringGoldBefore, to: recurringGoldAfter, reason: recurringReason });
                     // Save updated recurringEvents nextDue values to config
@@ -9375,17 +9263,17 @@ export function StoryEngineProvider({
                   }
                   nextStats = { ...nextStats, timeState: newTime };
                   const timeLabel = formatTimeShort(newTime, story.rpConfig);
-                  timeSummaryPart = (timeSummaryPart ? `${timeSummaryPart} · ` : "") + `Time → ${timeLabel}`;
+                  timeSummaryPart = (timeSummaryPart ? `${timeSummaryPart} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ` : "") + `Time ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ ${timeLabel}`;
                 }
 
-                // Apply absolute time set — e.g. "It's 12pm" in player message
+                // Apply absolute time set ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â e.g. "It's 12pm" in player message
                 const absoluteTime = userMessage.directorIntent?.absoluteTime;
                 if (absoluteTime && !playerMinutes) {
                   if (nextStats.timeState) {
                     const newTime = { ...nextStats.timeState, hour: absoluteTime.hour, minute: absoluteTime.minute };
                     nextStats = { ...nextStats, timeState: newTime };
                     const timeLabel = formatTimeShort(newTime, story.rpConfig);
-                    timeSummaryPart = `Time → ${timeLabel}`;
+                    timeSummaryPart = `Time ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ ${timeLabel}`;
                   } else {
                     const now = new Date();
                     const newTime: RpTimeState = {
@@ -9398,7 +9286,7 @@ export function StoryEngineProvider({
                     };
                     nextStats = { ...nextStats, timeState: newTime };
                     const timeLabel = formatTimeShort(newTime, story.rpConfig);
-                    timeSummaryPart = `Time → ${timeLabel}`;
+                    timeSummaryPart = `Time ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ ${timeLabel}`;
                   }
                 }
 
@@ -9436,8 +9324,8 @@ export function StoryEngineProvider({
                 }
 
                 const playerSummary = applied.length ? buildRpEventSummary(applied, story.rpConfig) : null;
-                const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" · ") : null;
-                const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" · ") || narrative || null;
+                const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ") : null;
+                const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ") || narrative || null;
 
                 if (summary) {
                   const eventEntry: RpEventLogEntry = { ts: Date.now(), summary };
@@ -9488,266 +9376,8 @@ export function StoryEngineProvider({
 
         updatedMessages = await repository.listStoryMessages(storyId);
 
-        if (updatedMessages.length > 0 && updatedMessages.length % 20 === 0) {
-          const summaryContext = buildStorySummaryContext({
-            storyTitle: story.title,
-            playerCharacterName: playerCharacter.name,
-            playerCharacter,
-            storyState: await repository.getStoryState(storyId),
-            messages: updatedMessages,
-          });
-
-          try {
-            const generatedSummaryText = await generateSummaryWithRetry({
-              providerType,
-              provider,
-              apiKey,
-              model,
-              storyTitle: story.title,
-              messages: summaryContext,
-              existingSummary: story.currentSummary,
-              debugTrace: {
-                traceId,
-                storyId,
-                stage: "summary-refresh",
-                redactContent: redactSensitiveContent,
-              },
-            });
-            const summaryText = protectGeneratedSummaryPlayerFacts(
-              generatedSummaryText,
-              playerCharacter,
-              updatedMessages,
-            );
-
-            await repository.saveStorySummary({
-              id: createEntityId("story-summary"),
-              storyId,
-              summary: summaryText,
-              generatedAt: new Date().toISOString(),
-            });
-
-            await repository.saveStory({
-              ...story,
-              currentSummary: summaryText,
-              updatedAt: new Date().toISOString(),
-            });
-          } catch (error) {
-            const classified = classifyAIGenerationError(error);
-            reportGenerationAudit({
-              hypothesisId: "summary-refresh-fallback",
-              traceId,
-              location: "StoryEngineProvider.tsx:sendChatMessage:summary-fallback",
-              msg: "post-save summary refresh failed; retained saved scene and prior summary",
-              runId: "post-fix",
-              data: {
-                storyId,
-                providerType,
-                classifiedKind: classified.kind,
-              },
-            });
-          }
-        }
-
         await touchStory(storyId);
         await hydrate(false);
-
-        if (createdChapter) {
-          void (async () => {
-            try {
-              const [latestChapters, latestStoryState] = await Promise.all([
-                repository.listStoryChapters(storyId),
-                repository.getStoryState(storyId),
-              ]);
-
-              const sortedChapters = [...latestChapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex);
-              const chapterIndex = sortedChapters.findIndex((chapter) => chapter.id === createdChapter.id);
-              const previousChapter = chapterIndex > 0 ? sortedChapters[chapterIndex - 1] : null;
-              const startIndex = (previousChapter?.endsAtIndex ?? 0) + 1;
-              const endIndex = createdChapter.endsAtIndex;
-
-              const slice = updatedMessages.slice(Math.max(0, startIndex - 1), Math.max(0, endIndex));
-              const transcript = slice
-                .map((message, idx) => {
-                  const number = startIndex + idx;
-                  const label = formatTranscriptSpeakerForIndexing(
-                    message,
-                    playerCharacter.name,
-                  );
-                  const content = (message.content ?? "").trim().replace(/\s+/g, " ");
-                  return `[${number}] ${label}: ${content}`;
-                })
-                .join("\n");
-
-              const normalizedState = (() => {
-                const json = latestStoryState?.stateJson?.trim() ?? "";
-                if (!json) return null;
-                const parsed = safeParseStoryStateData(json);
-                return normalizeStoryStateToV2(parsed);
-              })();
-
-              const chapterPrompt = [
-                "Write a chapter summary for the following canon chapter transcript.",
-                "Continue lines are continuation notes preserved in the transcript. They are not on-screen beats; use them only to understand that the scene was intentionally allowed to keep unfolding.",
-                "Director lines are staging notes preserved in the transcript. Use them as context, but summarize what actually happens in the scene, not the note itself.",
-                "Canon/Secret/Reveal/Retcon lines are author declarations preserved in the transcript. Treat them as authoritative continuity constraints, secrecy rules, or retcons, but do not summarize the declaration itself as if it were an on-screen beat.",
-                "This summary is for the archive, not for narration. Do not write prose scenes.",
-                "Keep it compact and spoiler-aware: focus on what actually happened, key reveals, and state changes.",
-                "The Player Character Sheet below is primary canon. Derived summaries are context hints only and must never override it. Do not change age, identity, pronouns, species, or other sheet facts unless this chapter transcript explicitly establishes the change.",
-                "Output format:",
-                "- 1 short paragraph summary",
-                "- Then 3-6 bullet points of major beats",
-              ].join("\n");
-
-              const contextBlock = [
-                `Story title: ${story.title}`,
-                `Chapter: ${createdChapter.label}`,
-                `Player Character Sheet (primary canon):\n${formatPlayerCharacterIdentityForPrompt(playerCharacter)}`,
-                normalizedState?.summaries?.premise?.trim()
-                  ? `Premise: ${normalizedState.summaries.premise.trim()}`
-                  : null,
-                story.currentSummary?.trim() ? `Current summary: ${story.currentSummary.trim()}` : null,
-              ]
-                .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
-                .join("\n");
-
-              const chapterSummaryText = (
-                await generateResponseWithRetry({
-                  providerType,
-                  provider,
-                  apiKey,
-                  model,
-                  messages: [
-                    { role: "system", content: chapterPrompt },
-                    { role: "system", content: `Context:\n${contextBlock}` },
-                    { role: "user", content: transcript.slice(0, 12000) },
-                  ],
-                })
-              ).content;
-
-              const protectedChapterSummary = protectGeneratedSummaryPlayerFacts(
-                chapterSummaryText.trim(),
-                playerCharacter,
-                slice,
-              );
-              await repository.saveStoryChapter({
-                ...createdChapter,
-                summary: protectedChapterSummary,
-              });
-              await hydrate(false);
-            } catch {}
-          })();
-        }
-
-        const totalMessages = updatedMessages.length;
-
-        void (async () => {
-          try {
-            if (opts?.guidedGenerationInternal) {
-              return;
-            }
-
-            const latestStoryState = await repository.getStoryState(storyId);
-            const baseParsed = latestStoryState?.stateJson
-              ? safeParseStoryStateData(latestStoryState.stateJson)
-              : null;
-            const preservedState = latestStoryState?.stateJson?.trim()
-              ? parseStoryStateJson(latestStoryState.stateJson)
-              : normalizeStoryStateToV2(null);
-
-            const baseState = baseParsed ? normalizeStoryStateToV2(baseParsed) : preservedState;
-            const lastDeepMessageCount =
-              baseState.lastDeepIndexedMessageCount ??
-              baseState.lastIndexedMessageCount ??
-              baseState.indexes?.messageCount ??
-              0;
-            const nextDeepCounter = Math.max(0, totalMessages - lastDeepMessageCount);
-            const autoDeepBootstrapAnchor =
-              baseState.lastAutoDeepIndexedMessageCount ?? lastDeepMessageCount;
-            const shouldBootstrapAutoDeepAnchor =
-              baseState.lastAutoDeepIndexedMessageCount === undefined &&
-              autoDeepBootstrapAnchor > 0;
-
-            try {
-              if (
-                baseState.messagesSinceDeepIndexUpdate !== nextDeepCounter ||
-                shouldBootstrapAutoDeepAnchor
-              ) {
-                const now = new Date().toISOString();
-                const reconciledIndexes = reconcileStoryIndexes(baseState.indexes, totalMessages, {
-                  playerName: playerCharacter.name,
-                  playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
-                  universeImportedCharacters: getStoryImportedCharacterContext(story).universeImportedCharacters,
-                });
-
-                const patched = withIndexedMetadata(
-                  {
-                    ...baseState,
-                    memoryArchitectureVersion: "2.0",
-                    messagesSinceDeepIndexUpdate: nextDeepCounter,
-                    ...(shouldBootstrapAutoDeepAnchor
-                      ? { lastAutoDeepIndexedMessageCount: autoDeepBootstrapAnchor }
-                      : {}),
-                    indexes: reconciledIndexes ?? {
-                      messageCount: totalMessages,
-                      messageNumberingVersion: "1.0",
-                    },
-                  },
-                  { indexedAt: now, memoryArchitectureVersion: "2.0" },
-                );
-
-                await repository.saveStoryState({
-                  id: `story-state:${storyId}`,
-                  storyId,
-                  stateJson: JSON.stringify(patched),
-                  updatedAt: now,
-                });
-
-                await touchStory(storyId);
-                await hydrate(false);
-              }
-            } catch {
-              // state-save failure — auto-index runs independently below
-            }
-
-            const autoIndexMode =
-              story.autoIndexMode ??
-              (story.autoIndexInterval === "disabled" ? "disabled" : "messages");
-
-            if (autoIndexMode === "disabled") {
-              return;
-            }
-
-            const lastAutoMessageCount =
-              baseState.lastAutoDeepIndexedMessageCount ?? autoDeepBootstrapAnchor;
-
-            if (autoIndexMode === "messages") {
-              const autoIndexInterval = story.autoIndexInterval ?? 20;
-              if (autoIndexInterval === "disabled") {
-                return;
-              }
-
-              const messagesSinceAutoDeepIndex = Math.max(
-                0,
-                totalMessages - lastAutoMessageCount,
-              );
-              if (messagesSinceAutoDeepIndex < autoIndexInterval) {
-                return;
-              }
-            } else if (autoIndexMode === "chapter") {
-              const chapterBoundaries = await repository.listStoryChapters(storyId);
-              const hasNewChapter =
-                Boolean(createdChapter) ||
-                chapterBoundaries.some(
-                (chapter) => chapter.endsAtIndex > lastAutoMessageCount,
-                );
-              if (!hasNewChapter) {
-                return;
-              }
-            }
-
-            await queueStoryIndexJob(storyId, { trigger: "auto", incremental: true });
-          } catch {}
-        })();
 
         return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary };
       },

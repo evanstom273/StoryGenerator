@@ -102,14 +102,13 @@ export function V2RightSidebar({
     showNotice(null);
 
     const stageLabels: Record<ExportFormat, string[]> = {
-      json: ["Assembling data…", "Saving…"],
-      markdown: ["Refreshing archive…", "Assembling data…", "Formatting…", "Saving…"],
-      txt: ["Assembling data…", "Formatting…", "Saving…"],
-      pdf: ["Assembling data…", "Rendering PDF…", "Saving…"],
-      archive_pdf: ["Refreshing archive…", "Assembling data…", "Rendering PDF…", "Saving…"],
+      json: ["Assembling dataÃ¢â‚¬Â¦", "SavingÃ¢â‚¬Â¦"],
+      markdown: ["Refreshing archiveÃ¢â‚¬Â¦", "Assembling dataÃ¢â‚¬Â¦", "FormattingÃ¢â‚¬Â¦", "SavingÃ¢â‚¬Â¦"],
+      txt: ["Assembling dataÃ¢â‚¬Â¦", "FormattingÃ¢â‚¬Â¦", "SavingÃ¢â‚¬Â¦"],
+      pdf: ["Assembling dataÃ¢â‚¬Â¦", "Rendering PDFÃ¢â‚¬Â¦", "SavingÃ¢â‚¬Â¦"],
     };
 
-    const stages = stageLabels[format] ?? ["Exporting…"];
+    const stages = stageLabels[format] ?? ["ExportingÃ¢â‚¬Â¦"];
     setExportStage(stages[0]);
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
@@ -128,7 +127,7 @@ export function V2RightSidebar({
 
       setExportStage(stages[1] ?? stages[0]);
       const bundle = await exportStory(story.id, {
-        refreshArchiveIfStale: format === "archive_pdf" || format === "markdown",
+        refreshArchiveIfStale: false,
       });
       // #region debug-point archive-pdf-no-op:bundle
       reportArchivePdfDebug({
@@ -202,10 +201,10 @@ export function V2RightSidebar({
 
     setIsExportingSupportBundle(true);
     setPageError(null);
-    setPageNotice("Updating archive…");
+    setPageNotice("Updating archiveÃ¢â‚¬Â¦");
 
     try {
-      setPageNotice("Generating support bundle…");
+      setPageNotice("Generating support bundleÃ¢â‚¬Â¦");
       const bundle = await exportStory(story.id, { refreshArchiveIfStale: true });
 
       if (!bundle) {
@@ -336,15 +335,7 @@ export function V2RightSidebar({
                     <DownloadIcon className="h-4 w-4" />
                     Export PDF
                   </Button>
-                  <Button
-                    variant="secondary"
-                    className="w-full justify-start rounded-2xl"
-                    onClick={() => handleExport("archive_pdf")}
-                    disabled={!!exportStage || isExportingSupportBundle}
-                  >
-                    <DownloadIcon className="h-4 w-4" />
-                    Export Archive PDF
-                  </Button>
+                  
                 </div>
               </Panel>
 
@@ -421,3 +412,7 @@ export function V2RightSidebar({
     </aside>
   );
 }
+
+
+
+

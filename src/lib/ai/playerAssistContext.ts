@@ -144,11 +144,9 @@ function buildAssistImportedLore(imports: UniverseImport[]) {
 }
 
 function buildAssistSummaryBlock(story: Story, summaries: StorySummary[]) {
-  const latestSummary = story.currentSummary.trim() || summaries[0]?.summary?.trim() || "";
-
-  return latestSummary
-    ? normalizeWhitespace(latestSummary)
-    : "No story summary is available yet.";
+  void story;
+  void summaries;
+  return "Use the canonical transcript and character sheets; no derived story summary is available.";
 }
 
 export function buildPlayerAssistContext({

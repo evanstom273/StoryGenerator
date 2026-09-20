@@ -1,14 +1,6 @@
-import type {
-  ExportFormat,
-  PlayerCharacter,
-  StoryExportBundle,
-  StoryMessage,
-  StoryStateData,
-} from "../types/models";
+import type { ExportFormat, PlayerCharacter, StoryExportBundle, StoryMessage } from "../types/models";
 import { formatDateTime } from "./dates";
 import { serializeStoryExportPdf } from "./storyExportPdf";
-import { serializeStoryArchivePdf } from "./storyArchivePdf";
-import { serializeStoryArchiveMarkdown } from "./storyArchiveMarkdown";
 import { parseActionSegments } from "./storyText/parseActionSegments";
 import { parseSceneBlocks } from "./storyText/parseSceneBlocks";
 import {
@@ -17,45 +9,6 @@ import {
   resolvePlayerCharacterSceneName,
 } from "./playerCharacterPrompt";
 import { resolveUserTranscriptSpeaker } from "./storyText/directorMode";
-import { safeParseStoryStateData } from "./storyStateV2";
-
-function resolveCurrentSummary(bundle: StoryExportBundle) {
-  const direct = bundle.story.currentSummary?.trim();
-  if (direct) {
-    return direct;
-  }
-
-  const stateJson = bundle.storyState?.stateJson;
-  if (!stateJson) {
-    return "";
-  }
-
-  try {
-    const parsed = JSON.parse(stateJson) as StoryStateData;
-    const worldSummary = parsed?.summaries?.worldSummary;
-    if (typeof worldSummary === "string" && worldSummary.trim()) {
-      return worldSummary.trim();
-    }
-  } catch {}
-
-  return "";
-}
-
-function normalizeBundleForExport(bundle: StoryExportBundle) {
-  const resolvedSummary = resolveCurrentSummary(bundle);
-
-  if (resolvedSummary && bundle.story.currentSummary !== resolvedSummary) {
-    return {
-      ...bundle,
-      story: {
-        ...bundle.story,
-        currentSummary: resolvedSummary,
-      },
-    };
-  }
-
-  return bundle;
-}
 
 function resolveSpeakerLabel(
   message: StoryMessage,
@@ -85,11 +38,7 @@ function resolveSpeakerLabel(
 }
 
 function buildTranscriptLines(bundle: StoryExportBundle) {
-  const storyState = bundle.storyState?.stateJson?.trim()
-    ? safeParseStoryStateData(bundle.storyState.stateJson)
-    : null;
   const playerSceneName = resolvePlayerCharacterSceneName(bundle.playerCharacter, {
-    storyState,
     recentMessages: bundle.messages,
   });
 
@@ -128,7 +77,7 @@ function toJson(bundle: StoryExportBundle) {
 }
 
 function toMarkdown(bundle: StoryExportBundle) {
-  return serializeStoryArchiveMarkdown(bundle);
+  return toText(bundle);
 }
 
 function toText(bundle: StoryExportBundle) {
@@ -139,9 +88,6 @@ Story
 - Player Character: ${bundle.playerCharacter.name}
 - Created: ${formatDateTime(bundle.story.createdAt)}
 - Updated: ${formatDateTime(bundle.story.updatedAt)}
-
-Current Summary
-${bundle.story.currentSummary || "No summary yet."}
 
 Universe
 - Name: ${bundle.universe.name}
@@ -171,7 +117,6 @@ export function serializeStoryExport(
   bundle: StoryExportBundle,
   format: ExportFormat,
 ) {
-  const normalizedBundle = normalizeBundleForExport(bundle);
   const exporters: Record<
     ExportFormat,
     { serialize: (data: StoryExportBundle) => BlobPart; mimeType: string }
@@ -180,12 +125,8 @@ export function serializeStoryExport(
     markdown: { serialize: toMarkdown, mimeType: "text/markdown" },
     txt: { serialize: toText, mimeType: "text/plain" },
     pdf: { serialize: serializeStoryExportPdf, mimeType: "application/pdf" },
-    archive_pdf: {
-      serialize: (data) => serializeStoryArchivePdf(data).content as unknown as BlobPart,
-      mimeType: "application/pdf",
-    },
   };
 
   const exporter = exporters[format] ?? exporters.txt;
-  return { content: exporter.serialize(normalizedBundle), mimeType: exporter.mimeType };
+  return { content: exporter.serialize(bundle), mimeType: exporter.mimeType };
 }

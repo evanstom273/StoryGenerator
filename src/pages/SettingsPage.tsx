@@ -63,13 +63,7 @@ const MODEL_ROLE_OPTIONS = [
     role: "metachat" as const,
     label: "MetaChat Model",
     hint: "MetaChat only",
-    help: "Powers MetaChat — out-of-character planning and questions without changing the story transcript.",
-  },
-  {
-    role: "indexing" as const,
-    label: "Indexing Model",
-    hint: "Indexing, archive rebuilding, summaries, relationships, world facts, and memories",
-    help: "Extracts canon state from messages: summaries, relationships, world facts, and archive rebuilds.",
+    help: "Powers MetaChat â€” out-of-character planning and questions without changing the story transcript.",
   },
   {
     role: "creation" as const,
@@ -104,7 +98,7 @@ function buildRoleModelMaps(settings: AISettings | null): RoleModelMaps {
   return {
     story: readRole("story"),
     metachat: readRole("metachat"),
-    indexing: readRole("indexing"),
+    indexing: readRole("story"),
     creation: readRole("creation"),
   };
 }
@@ -325,7 +319,6 @@ export function SettingsPage() {
         activeProviderType,
         defaultModels: roleModels.story,
         metachatModels: roleModels.metachat,
-        indexingModels: roleModels.indexing,
         creationModels: roleModels.creation,
       }).catch(() => {});
     },
@@ -358,7 +351,6 @@ export function SettingsPage() {
         },
         defaultModels: roleModels.story,
         metachatModels: roleModels.metachat,
-        indexingModels: roleModels.indexing,
         creationModels: roleModels.creation,
       })
         .then(() => {
@@ -414,7 +406,6 @@ export function SettingsPage() {
         },
         defaultModels: roleModels.story,
         metachatModels: roleModels.metachat,
-        indexingModels: roleModels.indexing,
         creationModels: roleModels.creation,
         maxConcurrentBackgroundTasks,
       });
@@ -788,8 +779,8 @@ export function SettingsPage() {
               Design Document
             </div>
             <p className="mt-2 text-[13px] leading-6 text-ink-muted">
-              The complete technical architecture and design reference for Story Engine — architecture,
-              data models, AI pipeline, story text rules, audiobook, indexing, and more.
+              The complete technical architecture and design reference for Story Engine â€” architecture,
+              data models, AI pipeline, story text rules, audiobook, and more.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button variant="secondary" size="sm" onClick={() => void handleExportDesignDocument("markdown")}>
@@ -988,7 +979,7 @@ export function SettingsPage() {
                   onChange={(event) => setBackupFile(event.target.files?.[0] ?? null)}
                 />
                 <div className="text-[11px] text-ink-muted">
-                  Android file pickers can mislabel JSON files — file filtering is disabled. The app validates contents during import.
+                  Android file pickers can mislabel JSON files â€” file filtering is disabled. The app validates contents during import.
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="ghost" onClick={handleImportBackup} disabled={!backupFile}>
@@ -1094,7 +1085,7 @@ export function SettingsPage() {
             <div className="mt-3 space-y-3">
               <Field
                 label="Type"
-                help="What kind of item to export — a full story (with format options), a universe, or a player character."
+                help="What kind of item to export â€” a full story (with format options), a universe, or a player character."
               >
                 <SelectInput
                   value={itemExportType}
@@ -1267,7 +1258,7 @@ export function SettingsPage() {
                     }
                   }}
                 >
-                  {dangerZoneLoading === "stories" ? "Deleting…" : "Delete All Stories"}
+                  {dangerZoneLoading === "stories" ? "Deletingâ€¦" : "Delete All Stories"}
                 </Button>
               </div>
 
@@ -1302,7 +1293,7 @@ export function SettingsPage() {
                     }
                   }}
                 >
-                  {dangerZoneLoading === "characters" ? "Deleting…" : "Delete All Characters"}
+                  {dangerZoneLoading === "characters" ? "Deletingâ€¦" : "Delete All Characters"}
                 </Button>
               </div>
 
@@ -1337,7 +1328,7 @@ export function SettingsPage() {
                     }
                   }}
                 >
-                  {dangerZoneLoading === "universes" ? "Deleting…" : "Delete All Universes"}
+                  {dangerZoneLoading === "universes" ? "Deletingâ€¦" : "Delete All Universes"}
                 </Button>
               </div>
             </div>

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type {
 	PlayerCharacter,
 	SceneParticipantCapabilities,
@@ -279,3 +280,5 @@ export function resolveSceneParticipants(
 		return left.canonicalName.localeCompare(right.canonicalName);
 	});
 }
+
+

@@ -3,11 +3,9 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
-import { StoryArchiveView } from "../components/story/StoryArchiveView";
 import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
 import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
 import { StoryAudioPlayerBar } from "../components/story/StoryAudioPlayerBar";
-import { StoryIndexingProgressBar } from "../components/story/StoryIndexingProgressBar";
 import { GuidedChapterProgressBar } from "../components/story/GuidedChapterProgressBar";
 import { StoryWorkspaceViewportPortal } from "../components/story/StoryWorkspaceViewportPortal";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
@@ -15,7 +13,6 @@ import { useGeminiTtsPlayback } from "../app/providers/GeminiTtsPlaybackProvider
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
 import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
 import { RPCharacterSheetOverlay } from "../components/story/RPCharacterSheetOverlay";
-import { RelationshipsOverlay } from "../components/story/RelationshipsOverlay";
 import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
@@ -36,7 +33,6 @@ import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
 import { formatTimeCompact } from "../lib/rpTime";
 import { mergeDirectorIntents, parseSlashParticipateCommand, parseSlashTimeCommand } from "../lib/storyText/directorIntent";
 import { normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity } from "../lib/playerCharacterPrompt";
-import { buildStoryImportedCharacterAllowlist } from "../lib/storyImportedCharacters";
 import { buildCharacterGenderHintsFromStoryState } from "../lib/ai/characterTtsVoices";
 import {
   countGeneratedChapters,
@@ -45,7 +41,7 @@ import {
 } from "../lib/storyText/chapterNavigation";
 import { canGenerateGuidedChaptersAtWorkspace, isStoryEligibleForGuidedGeneration } from "../lib/guidedChapterGeneration/eligibility";
 import { resolveUpcomingChapterLabels } from "../lib/guidedChapterGeneration/chapterLabels";
-import { safeParseStoryStateData } from "../lib/storyStateV2";
+import { safeParseStoryStateData } from "../lib/storyRuntimeState";
 import { resolveSceneParticipants } from "../lib/sceneParticipation";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
@@ -164,7 +160,6 @@ export function StoryWorkspacePage() {
     getMessagesForStory,
     getParentStory,
     getPlayerCharacterById,
-    playerCharacters,
     getStoryById,
     getUniverseById,
     generateGuidedChapterPlan,
@@ -186,10 +181,6 @@ export function StoryWorkspacePage() {
   const playerCharacter = story
     ? getPlayerCharacterById(story.playerCharacterId)
     : undefined;
-  const universeImportedCharacters = useMemo(
-    () => (story ? buildStoryImportedCharacterAllowlist(story, playerCharacters) : []),
-    [playerCharacters, story],
-  );
   const parentStory = story ? getParentStory(story.id) : undefined;
   const childStories = useMemo(
     () =>
@@ -360,7 +351,6 @@ export function StoryWorkspacePage() {
   const [isGeneratingAssist, setIsGeneratingAssist] = useState(false);
   const [assistError, setAssistError] = useState<string | null>(null);
   const [manualMode, setManualMode] = useState(false);
-  const [archiveMode, setArchiveMode] = useState(false);
   const [metaChatOpen, setMetaChatOpen] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [assistantEditMessage, setAssistantEditMessage] = useState<StoryMessage | null>(null);
@@ -368,7 +358,6 @@ export function StoryWorkspacePage() {
   const [assistantEditError, setAssistantEditError] = useState<string | null>(null);
   const [isAssistantEditSaving, setIsAssistantEditSaving] = useState(false);
   const [rpSheetOpen, setRpSheetOpen] = useState(false);
-  const [relationshipsOpen, setRelationshipsOpen] = useState(false);
 
   interface VariantCandidate {
     id: string;
@@ -386,7 +375,6 @@ export function StoryWorkspacePage() {
 
   const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
   const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
-  const [relationshipsRefreshKey, setRelationshipsRefreshKey] = useState(0);
   const [taskbarGold, setTaskbarGold] = useState<number | null>(null);
   const [taskbarTime, setTaskbarTime] = useState<RpTimeState | null>(null);
   const [showZeroHpModal, setShowZeroHpModal] = useState(false);
@@ -455,14 +443,12 @@ export function StoryWorkspacePage() {
     setIsGeneratingAssist(false);
     setAssistError(null);
     setManualMode(false);
-    setArchiveMode(false);
     setMetaChatOpen(false);
     setAssistantEditMessage(null);
     setAssistantEditContent("");
     setAssistantEditError(null);
     setIsAssistantEditSaving(false);
     setRpSheetOpen(false);
-    setRelationshipsOpen(false);
     setRpToasts([]);
     setShowZeroHpModal(false);
     setZeroHpConsequenceChoice("");
@@ -555,7 +541,7 @@ export function StoryWorkspacePage() {
   }, [readerMode]);
 
   useEffect(() => {
-    if (archiveMode || readerMode || !story) {
+    if (readerMode || !story) {
       return;
     }
 
@@ -600,7 +586,7 @@ export function StoryWorkspacePage() {
       }
       transcript.scrollTo({ top: transcript.scrollHeight, behavior: "smooth" });
     });
-  }, [archiveMode, messages, readerMode, story, streamingDraft]);
+  }, [messages, readerMode, story, streamingDraft]);
 
   const latestAssistantMessage = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -648,7 +634,6 @@ export function StoryWorkspacePage() {
   const activePlayerCharacter = playerCharacter;
   const showLatestChapterJumpButton =
     !readerMode &&
-    !archiveMode &&
     countGeneratedChapters(messages, storyChapters) > 1;
 
   function ensureChatComposerVisible(behavior: ScrollBehavior = "smooth") {
@@ -1437,7 +1422,7 @@ export function StoryWorkspacePage() {
           title="Generate chapters"
           description="Plan upcoming chapters, then Story Engine will stage Director beats, narrate scenes, end each chapter, and index incrementally."
           submitLabel="Generate Chapters"
-          initialOverallDirection={activeStory.currentSummary}
+              initialOverallDirection={activeStory.openingPrompt ?? ""}
           resolveChapterLabels={resolveWorkspaceChapterLabels}
           onGeneratePlan={async ({ overallDirection, chapterLabels, chapters }) => {
             const plan = await generateGuidedChapterPlan({
@@ -1447,7 +1432,7 @@ export function StoryWorkspacePage() {
               chapters,
               universeName: universe.name,
               playerName: playerCharacter.name,
-              currentSituation: activeStory.currentSummary,
+              currentSituation: activeStory.openingPrompt ?? "",
             });
             return plan?.chapters ?? null;
           }}
@@ -1657,9 +1642,9 @@ export function StoryWorkspacePage() {
             .
           </div>
         ) : null}
-        {!readerMode && activeStory.currentSummary ? (
+        {!readerMode && activeStory.openingPrompt ? (
           <p className="mt-1.5 line-clamp-2 text-[13px] leading-6 text-ink-muted">
-            {activeStory.currentSummary}
+            {activeStory.openingPrompt}
           </p>
         ) : null}
       </div>
@@ -1667,7 +1652,6 @@ export function StoryWorkspacePage() {
       <StoryWorkspaceViewportPortal>
         <div className="fixed bottom-10 left-0 right-0 z-50 flex flex-col lg:left-[266px]">
           <GuidedChapterProgressBar storyId={storyId} />
-          <StoryIndexingProgressBar storyId={storyId} />
           <StoryAudioPlayerBar className="relative border-t-0 shadow-none" />
         </div>
         <div
@@ -1705,13 +1689,6 @@ export function StoryWorkspacePage() {
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
             />
             <WorkspaceIconBtn
-              label="Archive"
-              active={archiveMode}
-              onClick={() => setArchiveMode((c) => !c)}
-              disabled={isGenerating}
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>}
-            />
-            <WorkspaceIconBtn
               label="Reader mode"
               active={readerMode}
               onClick={() => setReaderMode(!readerMode)}
@@ -1730,13 +1707,7 @@ export function StoryWorkspacePage() {
               onClick={() => setRpSheetOpen((c) => !c)}
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M12 11v2"/><path d="M10 13h4"/></svg>}
             />
-            <WorkspaceIconBtn
-              label="Relationships"
-              active={relationshipsOpen}
-              onClick={() => setRelationshipsOpen((c) => !c)}
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="8" r="2.5"/><path d="M3 21v-2a5 5 0 0 1 5-5h2"/><path d="M13 21v-1.5a3.5 3.5 0 0 1 7 0V21"/></svg>}
-            />
-            {readerMode || archiveMode ? null : (
+            {!readerMode ? (
               <WorkspaceIconBtn
                 label="Manual entry"
                 active={manualMode}
@@ -1744,20 +1715,13 @@ export function StoryWorkspacePage() {
                 disabled={isGenerating || isReadOnly}
                 icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
               />
-            )}
+            ) : null}
           </div>
         </div>
       </StoryWorkspaceViewportPortal>
 
       <div ref={transcriptScrollRef} className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
-        {archiveMode ? (
-          <StoryArchiveView
-            storyId={activeStory.id}
-            playerName={activePlayerCharacter?.name}
-            playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter?.aliases)}
-            relationshipsRefreshKey={relationshipsRefreshKey}
-          />
-        ) : messages.length ? (
+        {messages.length ? (
           showChrome && !readerMode ? (
             <div className="space-y-1">
               {(() => {
@@ -1840,7 +1804,7 @@ export function StoryWorkspacePage() {
         </div>
       ) : null}
 
-      {readerMode || archiveMode ? null : (
+      {!readerMode ? (
         latestAssistantMessage && messages[messages.length - 1]?.id === latestAssistantMessage.id ? (
           <Panel variant="flat" className="mt-4" padding="sm">
             {latestDirectorIntentMessage?.directorIntent ? (
@@ -1910,7 +1874,7 @@ export function StoryWorkspacePage() {
             </div>
           </Panel>
         ) : null
-      )}
+      ) : null}
 
       {readerMode ? null : (
         <div ref={chatComposerRef}>
@@ -2213,19 +2177,6 @@ export function StoryWorkspacePage() {
           onCancel={handleDiceCancel}
         />
       )}
-
-      {storyId && relationshipsOpen ? (
-        <RelationshipsOverlay
-          open={relationshipsOpen}
-          storyId={storyId}
-          playerName={activePlayerCharacter?.name}
-          playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter?.aliases)}
-          universeImportedCharacters={universeImportedCharacters}
-          onClose={() => setRelationshipsOpen(false)}
-          refreshKey={relationshipsRefreshKey}
-          onRelationshipsChange={() => setRelationshipsRefreshKey((key) => key + 1)}
-        />
-      ) : null}
 
       {showLatestChapterJumpButton ? (
         <StoryWorkspaceViewportPortal>

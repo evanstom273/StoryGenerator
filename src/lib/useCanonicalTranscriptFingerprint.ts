@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { StoryMessage } from "../types/models";
-import { buildCanonicalTranscriptFingerprint } from "./archiveIndexing";
+import { buildCanonicalTranscriptFingerprint } from "./transcriptFingerprint";
 
 export function useCanonicalTranscriptFingerprint(messages: readonly StoryMessage[]) {
 	const [fingerprint, setFingerprint] = useState<string | null>(null);

@@ -1,6 +1,5 @@
 import type { PlayerCharacter, PlayerCharacterDraft, PlayerIdentityBasis, StoryMessage, StoryStateData, StoryStateDataV2 } from "../types/models";
-import { isDeniedSpeakerLabel } from "./relationshipIndex";
-import { safeParseStoryStateData } from "./storyStateV2";
+import { isDeniedSpeakerLabel } from "./storyText/speakerLabels";
 import {
 	detectEstablishedPlayerIdentityFromMessages,
 } from "./storyText/playerSceneName";
@@ -376,12 +375,11 @@ export function resolveEffectivePlayerIdentity(
 
 export function resolvePlayerCharacterSceneNameFromStateJson(
 	character: Pick<PlayerCharacter, "name" | "aliases">,
-	storyStateJson?: string | null,
+  _storyStateJson?: string | null,
 	recentMessages?: StoryMessage[],
 ): string {
-	const parsed = storyStateJson?.trim() ? safeParseStoryStateData(storyStateJson) : null;
-	return resolvePlayerCharacterSceneName(character, {
-		storyState: parsed,
+  return resolvePlayerCharacterSceneName(character, {
+    storyState: null,
 		recentMessages,
 	});
 }
@@ -416,7 +414,7 @@ export function getPlayerCharacterNameVariants(
 
 export function buildPlayerNameForValidation(
 	character: Pick<PlayerCharacter, "name" | "aliases">,
-	storyStateJson?: string | null,
+  _storyStateJson?: string | null,
 ): string {
 	const base = character.name.trim();
 	const aliases = new Set<string>();
@@ -424,37 +422,6 @@ export function buildPlayerNameForValidation(
 	for (const alias of normalizePlayerCharacterAliases(character.aliases)) {
 		if (alias.toLowerCase() !== base.toLowerCase()) {
 			aliases.add(alias);
-		}
-	}
-
-	const json = storyStateJson?.trim() ?? "";
-	if (base && json) {
-		const parsed = safeParseStoryStateData(json);
-		if (parsed) {
-			const candidates = Object.entries(parsed.characters ?? {});
-			const match = candidates.find(([key, entry]) => {
-				if (key === base) return true;
-				if (!entry) return false;
-				if (entry.canonicalName === base) return true;
-				if (entry.displayName === base) return true;
-				if (entry.aliases?.includes(base)) return true;
-				return false;
-			});
-
-			if (match) {
-				const [key, entry] = match;
-				if (key && key.toLowerCase() !== base.toLowerCase()) {
-					aliases.add(key);
-				}
-				if (entry?.displayName && entry.displayName.toLowerCase() !== base.toLowerCase()) {
-					aliases.add(entry.displayName);
-				}
-				for (const alias of entry?.aliases ?? []) {
-					if (alias && alias.toLowerCase() !== base.toLowerCase()) {
-						aliases.add(alias);
-					}
-				}
-			}
 		}
 	}
 

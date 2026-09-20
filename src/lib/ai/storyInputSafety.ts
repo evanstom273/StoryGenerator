@@ -1,5 +1,4 @@
 import type { StoryMessage, StoryState } from "../../types/models";
-import { safeParseStoryStateData } from "../storyStateV2";
 import { extractSpeakerPrefix } from "../storyText/extractSpeakerPrefix";
 
 function normalizeWhitespace(value: string) {
@@ -52,31 +51,8 @@ function collectMatchedLabels(
 }
 
 function buildStoryStateContextText(storyState?: StoryState | null) {
-  const json = storyState?.stateJson?.trim() ?? "";
-  if (!json) {
-    return "";
-  }
-
-  const parsed = safeParseStoryStateData(json);
-  if (!parsed) {
-    return "";
-  }
-
-  const summaries = parsed.summaries ?? {};
-
-  return [
-    summaries.premise ?? "",
-    summaries.protagonistSummary ?? "",
-    summaries.currentSituation ?? "",
-    ...(summaries.recentDevelopments ?? []),
-    ...(parsed.sceneState ?? []),
-    ...(parsed.significantMemories ?? []),
-    ...(parsed.relationshipState ?? []),
-    ...(parsed.worldFacts ?? []),
-    ...(parsed.unresolvedThreads ?? []),
-  ]
-    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-    .join("\n");
+  void storyState;
+  return "";
 }
 
 export interface StoryInputSafetyAnalysis {

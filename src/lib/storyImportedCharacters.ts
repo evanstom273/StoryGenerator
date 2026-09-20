@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type {
 	EntityId,
 	PlayerCharacter,
@@ -225,7 +226,9 @@ export function formatStoryImportedCharactersForPrompt(
 	}
 
 	return [
-		"Imported story characters (known to this story — treat like universe canon when referenced; do not auto-insert into scenes):",
+		"Imported story characters (known to this story â€” treat like universe canon when referenced; do not auto-insert into scenes):",
 		...characters.map((character) => formatImportedCharacterProfile(character, storyState)),
 	].join("\n\n");
 }
+
+

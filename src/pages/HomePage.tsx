@@ -94,9 +94,9 @@ export function HomePage() {
                   </span>
                 </div>
 
-                {heroStory.currentSummary && (
+                {heroStory.openingPrompt && (
                   <p className="mb-5 max-w-[560px] text-[13px] leading-[1.72] text-ink-muted/[0.7]">
-                    {heroStory.currentSummary}
+                    {heroStory.openingPrompt}
                   </p>
                 )}
 

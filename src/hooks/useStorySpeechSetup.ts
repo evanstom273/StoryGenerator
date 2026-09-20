@@ -9,7 +9,7 @@ import {
 	type CharacterTtsRegistry,
 } from "../lib/ai/characterTtsVoices";
 import { buildCharacterTtsRegistryForStory } from "../lib/storyText/messageSpeechText";
-import { safeParseStoryStateData } from "../lib/storyStateV2";
+import { parseStoryRuntimeState } from "../lib/storyRuntimeState";
 import {
 	clampAudiobookParallelChapters,
 	DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS,
@@ -85,7 +85,7 @@ export function useStorySpeechSetup(messages: StoryMessage[], playerCharacterNam
 				return;
 			}
 
-			const parsed = storyState?.stateJson ? safeParseStoryStateData(storyState.stateJson) : null;
+			const parsed = storyState?.stateJson ? parseStoryRuntimeState(storyState.stateJson) : null;
 			setCharacterGenders(
 				buildCharacterGenderHintsFromStoryState(parsed, {
 					playerName: playerCharacterName,

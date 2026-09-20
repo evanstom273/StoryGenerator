@@ -38,6 +38,22 @@ import {
 } from "./dates";
 import { createEntityId } from "./ids";
 import { getPrimaryUniverseWikiUrl } from "./universeSources";
+import { parseStoryRuntimeState, serializeStoryRuntimeState } from "./storyRuntimeState";
+
+async function normalizeStoryRecord(story: Story): Promise<Story> {
+  const messages = await getAllByIndex<StoryMessage>("messages", "storyId", story.id);
+  const hasTranscript = messages.length > 0;
+  const openingPrompt = story.openingPrompt?.trim()
+    ? story.openingPrompt
+    : !hasTranscript && story.currentSummary?.trim()
+      ? story.currentSummary.trim()
+      : story.openingPrompt ?? "";
+  return { ...story, openingPrompt, currentSummary: "" };
+}
+
+async function sanitizeStoryStateRecord(record: StoryState): Promise<StoryState> {
+  return { ...record, stateJson: serializeStoryRuntimeState(parseStoryRuntimeState(record.stateJson)) };
+}
 
 export interface StoryEngineRepository {
   listUniverses(): Promise<Universe[]>;
@@ -151,13 +167,14 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     },
     async listStories() {
       const stories = await getAllFromStore<Story>("stories");
-      return sortByUpdatedAtDesc(stories);
+      return sortByUpdatedAtDesc(await Promise.all(stories.map(normalizeStoryRecord)));
     },
-    getStory(id) {
-      return getFromStore<Story>("stories", id);
+    async getStory(id) {
+      const story = await getFromStore<Story>("stories", id);
+      return story ? normalizeStoryRecord(story) : null;
     },
-    saveStory(story) {
-      return putInStore("stories", story);
+    async saveStory(story) {
+      return putInStore("stories", { ...story, currentSummary: "" });
     },
     async deleteStory(id) {
       await deleteFromStore("stories", id);
@@ -604,11 +621,12 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     saveStorySummary(record) {
       return putInStore("storySummaries", record);
     },
-    getStoryState(storyId) {
-      return getFromStore<StoryState>("storyStates", `story-state:${storyId}`);
+    async getStoryState(storyId) {
+      const record = await getFromStore<StoryState>("storyStates", `story-state:${storyId}`);
+      return record ? sanitizeStoryStateRecord(record) : null;
     },
-    saveStoryState(record) {
-      return putInStore("storyStates", record);
+    async saveStoryState(record) {
+      return putInStore("storyStates", await sanitizeStoryStateRecord(record));
     },
     async listDeveloperBugs() {
       const bugs = await getAllFromStore<DeveloperBug>("developerBugs");

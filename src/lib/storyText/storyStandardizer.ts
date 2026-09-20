@@ -150,7 +150,7 @@ function looksLikeDialogue(value: string) {
   return false;
 }
 
-import { isDeniedSpeakerLabel } from "../relationshipIndex";
+import { isDeniedSpeakerLabel } from "./speakerLabels";
 import { looksLikeNarrationContinuation } from "./parseSceneBlocks";
 
 // Words that start sentences but are never character names (shared with parseSceneBlocks).

@@ -21,13 +21,13 @@ export function sanitizeExportSlug(value: string, maxLength = 80): string {
 export function createStoryExportFilename(title: string, format: ExportFormat, exportedAt = new Date()) {
 	const slug = sanitizeExportSlug(title) || "story-engine-story";
 	const timestamp = formatLocalExportTimestamp(exportedAt);
-	const archiveSuffix = format === "archive_pdf" || format === "markdown" ? "-archive" : "";
+	const archiveSuffix = format === "markdown" ? "-archive" : "";
 	const extension =
 		format === "json"
 			? "json"
 			: format === "markdown"
 				? "md"
-				: format === "pdf" || format === "archive_pdf"
+				: format === "pdf"
 					? "pdf"
 					: "txt";
 
@@ -50,3 +50,5 @@ export function buildStoryAudiobookFilename(storyTitle: string, exportedAt = new
 	const timestamp = formatLocalExportTimestamp(exportedAt);
 	return `${slug}-story-audiobook-${timestamp}.wav`;
 }
+
+

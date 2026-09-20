@@ -56,7 +56,7 @@ export function StoryListRow({
             ) : null}
           </div>
           <div className="mt-1.5 truncate text-xs text-ink-soft">
-            {story.currentSummary || "No summary yet."}
+            {story.openingPrompt || "No opening direction yet."}
           </div>
         </Link>
         <div className="shrink-0 space-y-2 text-right">

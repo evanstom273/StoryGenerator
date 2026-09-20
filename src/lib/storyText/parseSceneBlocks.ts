@@ -1,5 +1,5 @@
 import { parseActionSegments, type StoryTextSegment } from "./parseActionSegments";
-import { isDeniedSpeakerLabel, isPossessiveSpeakerLabel } from "../relationshipIndex";
+import { isDeniedSpeakerLabel, isPossessiveSpeakerLabel } from "./speakerLabels";
 import { findSpeakerColonIndex, looksLikeClockTimeFragment, repairClockTimeColonCorruption } from "./clockTimeInProse";
 import { sanitizeNarratorInnerContent } from "./narratorBlockRepair";
 
