@@ -8,6 +8,7 @@ import { cn } from "../../utils/cn";
 import { formatDateTime } from "../../lib/dates";
 import { calculatePendingMessages } from "../../lib/storyIndexManager";
 import type {
+  IndexingCadence,
   StoryIndex,
   StoryIndexCharacter,
 } from "../../types/models";
@@ -18,6 +19,10 @@ interface StoryIndexSectionProps {
 
 export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
   const {
+    storyIndexes,
+    stories,
+    updateStory,
+    aiSettings,
     getStoryIndex,
     messages,
     updateStoryIndex,
@@ -27,12 +32,27 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
     backgroundJobs,
   } = useStoryEngine();
 
-  const [index, setIndex] = useState<StoryIndex | null>(null);
+  const story = useMemo(
+    () => stories.find((s) => s.id === storyId),
+    [stories, storyId],
+  );
+
+  const providerIndex = useMemo(
+    () => storyIndexes.find((i) => i.storyId === storyId) ?? null,
+    [storyIndexes, storyId],
+  );
+
+  const [localIndex, setLocalIndex] = useState<StoryIndex | null>(null);
+  const index = providerIndex ?? localIndex;
+
   const [activeTab, setActiveTab] = useState<"characters" | "relationships" | "chapters">("characters");
   const [confirmFullReindex, setConfirmFullReindex] = useState(false);
   const [confirmClearIndex, setConfirmClearIndex] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const currentCadence: IndexingCadence =
+    story?.indexingCadence ?? aiSettings?.indexingCadence ?? "every_5_messages";
 
   const storyMessages = useMemo(
     () => messages.filter((m) => m.storyId === storyId),
@@ -42,7 +62,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
   const refreshIndex = async () => {
     try {
       const idx = await getStoryIndex(storyId);
-      setIndex(idx);
+      setLocalIndex(idx);
     } catch {
       // ignore
     }
@@ -57,8 +77,40 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
     [storyMessages, index],
   );
 
+  const cadenceProgressText = useMemo(() => {
+    const count = pendingMessages.length;
+    switch (currentCadence) {
+      case "every_message":
+        return count > 0 ? `${count} pending (triggers after each message)` : "Triggers after each message";
+      case "every_5_messages": {
+        const remaining = Math.max(0, 5 - count);
+        return `${count} / 5 unindexed (${remaining === 0 ? "Ready to index" : `${remaining} more until auto-index`})`;
+      }
+      case "every_10_messages": {
+        const remaining = Math.max(0, 10 - count);
+        return `${count} / 10 unindexed (${remaining === 0 ? "Ready to index" : `${remaining} more until auto-index`})`;
+      }
+      case "every_15_messages": {
+        const remaining = Math.max(0, 15 - count);
+        return `${count} / 15 unindexed (${remaining === 0 ? "Ready to index" : `${remaining} more until auto-index`})`;
+      }
+      case "every_20_messages": {
+        const remaining = Math.max(0, 20 - count);
+        return `${count} / 20 unindexed (${remaining === 0 ? "Ready to index" : `${remaining} more until auto-index`})`;
+      }
+      case "every_chapter":
+        return `${count} pending unindexed (triggers at chapter boundary)`;
+      default:
+        return `${count} pending unindexed`;
+    }
+  }, [pendingMessages.length, currentCadence]);
+
   const isIndexingActive = useMemo(() => {
-    if (rebuildStatus && rebuildStatus.storyId === storyId && (rebuildStatus.phase === "loading" || rebuildStatus.phase === "extracting")) {
+    if (
+      rebuildStatus &&
+      rebuildStatus.storyId === storyId &&
+      (rebuildStatus.phase === "loading" || rebuildStatus.phase === "extracting")
+    ) {
       return true;
     }
     const bgJob = backgroundJobs.find(
@@ -78,12 +130,18 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
     return map;
   }, [index?.characters]);
 
+  async function handleCadenceChange(nextCadence: IndexingCadence) {
+    if (story) {
+      await updateStory(story.id, { indexingCadence: nextCadence });
+    }
+  }
+
   async function handleUpdateIndex() {
     setActionError(null);
     setIsProcessing(true);
     try {
       const updated = await updateStoryIndex(storyId);
-      setIndex(updated);
+      setLocalIndex(updated);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to update index.");
     } finally {
@@ -97,7 +155,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
     setIsProcessing(true);
     try {
       const updated = await fullReindexStory(storyId);
-      setIndex(updated);
+      setLocalIndex(updated);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to rebuild index.");
     } finally {
@@ -111,7 +169,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
     setIsProcessing(true);
     try {
       await clearStoryIndex(storyId);
-      setIndex(null);
+      setLocalIndex(null);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to clear index.");
     } finally {
@@ -132,14 +190,16 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
             <div className="text-xs font-semibold text-ink">Story Index Status</div>
             <div className="text-[11px] text-ink-muted">
               {index?.updatedAt
-                ? `Last indexed: ${formatDateTime(index.updatedAt)}`
+                ? `Last indexed: ${formatDateTime(index.updatedAt)} (${index.indexedMessageCount} messages)`
                 : "No index built yet for this story."}
             </div>
           </div>
           <div className="flex items-center gap-2">
             {isIndexingActive ? (
               <Badge variant="accent" className="animate-pulse">
-                Indexing in progress…
+                {rebuildStatus?.storyId === storyId && rebuildStatus.totalMessages > 0
+                  ? `Indexing (${rebuildStatus.processedMessages}/${rebuildStatus.totalMessages})`
+                  : "Indexing in progress…"}
               </Badge>
             ) : pendingMessages.length > 0 ? (
               <Badge variant="warning">{pendingMessages.length} pending unindexed</Badge>
@@ -149,11 +209,65 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
           </div>
         </div>
 
-        {rebuildStatus?.storyId === storyId && rebuildStatus.message && (
-          <div className="rounded-[8px] border border-accent/20 bg-accent/5 p-2 text-xs text-accent-soft">
-            {rebuildStatus.message}
+        {/* Cadence Selector & Live Progress */}
+        <div className="rounded-[8px] border border-divider/[0.2] bg-panel-muted/30 p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="space-y-0.5">
+            <div className="font-medium text-ink">Automatic Indexing Cadence</div>
+            <div className="text-[11px] text-ink-muted">{cadenceProgressText}</div>
           </div>
-        )}
+          <select
+            className="rounded-[6px] border border-divider/60 bg-panel px-2.5 py-1 text-xs text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            value={currentCadence}
+            onChange={(e) => void handleCadenceChange(e.target.value as IndexingCadence)}
+            title="Configure how frequently unindexed messages trigger an automatic index update"
+          >
+            <option value="every_message">Every message</option>
+            <option value="every_5_messages">Every 5 messages</option>
+            <option value="every_10_messages">Every 10 messages</option>
+            <option value="every_15_messages">Every 15 messages</option>
+            <option value="every_20_messages">Every 20 messages</option>
+            <option value="every_chapter">Every chapter</option>
+          </select>
+        </div>
+
+        {/* Live indexing progress bar */}
+        {rebuildStatus?.storyId === storyId &&
+          (rebuildStatus.phase === "extracting" || rebuildStatus.phase === "loading") && (
+            <div className="rounded-[8px] border border-accent/20 bg-accent/5 p-2.5 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-accent-soft font-medium">
+                <span>{rebuildStatus.message || "Indexing in progress..."}</span>
+                {rebuildStatus.totalMessages > 0 && (
+                  <span>
+                    {rebuildStatus.processedMessages} / {rebuildStatus.totalMessages} (
+                    {Math.round((rebuildStatus.processedMessages / rebuildStatus.totalMessages) * 100)}%)
+                  </span>
+                )}
+              </div>
+              {rebuildStatus.totalMessages > 0 && (
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-panel-muted/80">
+                  <div
+                    className="h-full bg-accent transition-all duration-300 rounded-full"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round(
+                          (rebuildStatus.processedMessages / rebuildStatus.totalMessages) * 100,
+                        ),
+                      )}%`,
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+        {rebuildStatus?.storyId === storyId &&
+          rebuildStatus.phase === "done" &&
+          rebuildStatus.message && (
+            <div className="rounded-[8px] border border-emerald-500/20 bg-emerald-500/5 p-2 text-xs text-emerald-300">
+              {rebuildStatus.message}
+            </div>
+          )}
 
         {actionError && (
           <div className="rounded-[8px] border border-rose-500/30 bg-rose-500/10 p-2 text-xs text-rose-300">

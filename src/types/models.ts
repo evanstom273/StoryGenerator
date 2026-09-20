@@ -306,6 +306,7 @@ export interface Story {
   currentSummary: string;
   autoIndexMode?: "disabled" | "messages" | "chapter";
   autoIndexInterval?: 5 | 10 | 15 | 20 | "disabled";
+  indexingCadence?: IndexingCadence;
   universePackSnapshot?: UniversePackSnapshotV1;
   universePackSnapshots?: UniversePackSnapshotV1[];
   isArchived?: boolean;
@@ -679,6 +680,7 @@ export interface StoryDraft {
   currentSummary: string;
   autoIndexMode?: "disabled" | "messages" | "chapter";
   autoIndexInterval?: 5 | 10 | 15 | 20 | "disabled";
+  indexingCadence?: IndexingCadence;
   importedCharacterIds?: EntityId[];
   guidedStoryHistory?: {
     enabled: boolean;

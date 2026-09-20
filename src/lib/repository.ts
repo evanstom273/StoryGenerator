@@ -114,6 +114,7 @@ export interface StoryEngineRepository {
   getStoryState(storyId: EntityId): Promise<StoryState | null>;
   saveStoryState(record: StoryState): Promise<StoryState>;
   getStoryIndex(storyId: EntityId): Promise<StoryIndex | null>;
+  listAllStoryIndexes(): Promise<StoryIndex[]>;
   saveStoryIndex(index: StoryIndex): Promise<StoryIndex>;
   deleteStoryIndex(storyId: EntityId): Promise<void>;
   listDeveloperBugs(): Promise<DeveloperBug[]>;
@@ -648,6 +649,9 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     },
     async deleteStoryIndex(storyId) {
       await deleteFromStore("storyIndexes", storyId);
+    },
+    async listAllStoryIndexes() {
+      return getAllFromStore<StoryIndex>("storyIndexes");
     },
     async listDeveloperBugs() {
       const bugs = await getAllFromStore<DeveloperBug>("developerBugs");

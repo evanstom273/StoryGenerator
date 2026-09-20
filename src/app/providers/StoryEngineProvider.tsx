@@ -337,6 +337,7 @@ interface StoryEngineContextValue {
   developerBugs: DeveloperBug[];
   developerFeatureRequests: DeveloperFeatureRequest[];
   developerTestingNotes: DeveloperTestingNote[];
+  storyIndexes: StoryIndex[];
   rebuildStatus?: {
     storyId: string;
     phase: "idle" | "loading" | "extracting" | "saving" | "done" | "error";
@@ -2397,6 +2398,7 @@ export function StoryEngineProvider({
   const [developerTestingNotes, setDeveloperTestingNotes] = useState<
     DeveloperTestingNote[]
   >([]);
+  const [storyIndexes, setStoryIndexes] = useState<StoryIndex[]>([]);
   const [rebuildStatus, setRebuildStatus] = useState<StoryEngineContextValue["rebuildStatus"]>();
   const [audiobookExportStatus, setAudiobookExportStatus] =
     useState<StoryEngineContextValue["audiobookExportStatus"]>();
@@ -2514,6 +2516,7 @@ export function StoryEngineProvider({
           nextDeveloperBugs,
           nextDeveloperFeatureRequests,
           nextDeveloperTestingNotes,
+          nextStoryIndexes,
         ] = await Promise.all([
           repository.listUniverses(),
           repository.listPlayerCharacters(),
@@ -2527,6 +2530,7 @@ export function StoryEngineProvider({
           repository.listDeveloperBugs(),
           repository.listDeveloperFeatureRequests(),
           repository.listDeveloperTestingNotes(),
+          repository.listAllStoryIndexes(),
         ]);
 
         const terminalCandidates = nextBackgroundJobs.filter(
@@ -2613,6 +2617,7 @@ export function StoryEngineProvider({
         );
         setDeveloperFeatureRequests(sortByCreatedAtDesc(nextDeveloperFeatureRequests));
         setDeveloperTestingNotes(sortByCreatedAtDesc(nextDeveloperTestingNotes));
+        setStoryIndexes(nextStoryIndexes);
         setErrorMessage(null);
       } catch (error) {
         setErrorMessage(
@@ -3473,6 +3478,7 @@ export function StoryEngineProvider({
     async (storyId: string) => {
       await cancelStoryIndexing(storyId);
       await clearStoryIndexRecord({ storyId, repository });
+      setStoryIndexes((current) => current.filter((item) => item.storyId !== storyId));
       setRebuildStatus((current) => (current?.storyId === storyId ? undefined : current));
       await hydrate(false);
     },
@@ -3485,16 +3491,12 @@ export function StoryEngineProvider({
       if (!story) throw new Error("Story not found.");
       const playerCharacter = await repository.getPlayerCharacter(story.playerCharacterId);
       if (!playerCharacter) throw new Error("Player character not found.");
-      const aiSettings = await getNormalizedAISettings();
-      if (!aiSettings) throw new Error("AI settings not configured.");
-      const providerType = aiSettings.activeProviderType ?? "gemini";
-      const apiKey = aiSettings.apiKeys?.[providerType];
-      if (!apiKey) throw new Error(`API key not configured for ${providerType}.`);
+      const settings = await getNormalizedAISettings();
+      if (!settings) throw new Error("Configure an AI provider in Settings before indexing.");
+      const storyConfig = await repository.getStoryAIConfig(storyId);
+      const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+      const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "indexing");
       const provider = createAIProvider(providerType);
-      const model = getValidModel(
-        providerType,
-        getAIModelForRole(aiSettings, providerType, "indexing"),
-      );
 
       setRebuildStatus({
         storyId,
@@ -3530,6 +3532,10 @@ export function StoryEngineProvider({
           totalMessages: result.indexedMessageCount,
           message: "Story index updated.",
         });
+        setStoryIndexes((current) => {
+          const others = current.filter((item) => item.storyId !== storyId);
+          return [...others, result];
+        });
         await hydrate(false);
         return result;
       } catch (err) {
@@ -3543,7 +3549,7 @@ export function StoryEngineProvider({
         throw err;
       }
     },
-    [getNormalizedAISettings, hydrate, repository],
+    [getNormalizedAISettings, hydrate, repository, resolveAIProfile],
   );
 
   const fullReindexStory = useCallback(
@@ -3552,16 +3558,12 @@ export function StoryEngineProvider({
       if (!story) throw new Error("Story not found.");
       const playerCharacter = await repository.getPlayerCharacter(story.playerCharacterId);
       if (!playerCharacter) throw new Error("Player character not found.");
-      const aiSettings = await getNormalizedAISettings();
-      if (!aiSettings) throw new Error("AI settings not configured.");
-      const providerType = aiSettings.activeProviderType ?? "gemini";
-      const apiKey = aiSettings.apiKeys?.[providerType];
-      if (!apiKey) throw new Error(`API key not configured for ${providerType}.`);
+      const settings = await getNormalizedAISettings();
+      if (!settings) throw new Error("Configure an AI provider in Settings before indexing.");
+      const storyConfig = await repository.getStoryAIConfig(storyId);
+      const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+      const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "indexing");
       const provider = createAIProvider(providerType);
-      const model = getValidModel(
-        providerType,
-        getAIModelForRole(aiSettings, providerType, "indexing"),
-      );
 
       setRebuildStatus({
         storyId,
@@ -3597,6 +3599,10 @@ export function StoryEngineProvider({
           totalMessages: result.indexedMessageCount,
           message: "Full re-index complete.",
         });
+        setStoryIndexes((current) => {
+          const others = current.filter((item) => item.storyId !== storyId);
+          return [...others, result];
+        });
         await hydrate(false);
         return result;
       } catch (err) {
@@ -3610,7 +3616,7 @@ export function StoryEngineProvider({
         throw err;
       }
     },
-    [getNormalizedAISettings, hydrate, repository],
+    [getNormalizedAISettings, hydrate, repository, resolveAIProfile],
   );
 
   const cancelGuidedChapterGeneration = useCallback(
@@ -4448,15 +4454,11 @@ export function StoryEngineProvider({
           const playerCharacter = await repository.getPlayerCharacter(story.playerCharacterId);
           if (!playerCharacter) throw new Error("Player character not found.");
           const settings = await getNormalizedAISettings();
-          if (!settings) throw new Error("AI settings not configured.");
-          const providerType = settings.activeProviderType ?? "gemini";
-          const apiKey = settings.apiKeys?.[providerType];
-          if (!apiKey) throw new Error(`API key not configured for ${providerType}.`);
+          if (!settings) throw new Error("Configure an AI provider in Settings before indexing.");
+          const storyConfig = await repository.getStoryAIConfig(storyId);
+          const providerType = storyConfig?.providerType ?? settings.activeProviderType;
+          const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "indexing");
           const provider = createAIProvider(providerType);
-          const model = getValidModel(
-            providerType,
-            getAIModelForRole(settings, providerType, "indexing"),
-          );
 
           const onProgress = (processed: number, total: number) => {
             setRebuildStatus({
@@ -4508,6 +4510,10 @@ export function StoryEngineProvider({
             totalMessages: resultIndex.indexedMessageCount,
             message: "Indexing complete.",
             jobId: job.id,
+          });
+          setStoryIndexes((current) => {
+            const others = current.filter((item) => item.storyId !== storyId);
+            return [...others, resultIndex];
           });
 
           const summaryLine = `Indexed ${resultIndex.indexedMessageCount} messages (${resultIndex.characters.length} characters, ${resultIndex.relationships.length} relationships, ${resultIndex.chapterSummaries.length} chapter summaries).`;
@@ -5308,6 +5314,7 @@ export function StoryEngineProvider({
       developerBugs,
       developerFeatureRequests,
       developerTestingNotes,
+      storyIndexes,
       rebuildStatus,
       audiobookExportStatus,
       guidedGenerationStatus,
@@ -6008,6 +6015,7 @@ export function StoryEngineProvider({
           rpConfig: draft.rpConfig ?? (rpMode ? DEFAULT_RP_CONFIG : undefined),
           autoIndexMode: draft.autoIndexMode ?? "chapter",
           autoIndexInterval: draft.autoIndexInterval ?? 20,
+          indexingCadence: draft.indexingCadence ?? "every_5_messages",
           accentThemeKey: draft.accentThemeKey,
           accentThemeCustom: draft.accentThemeCustom,
           currentSummary: draft.openingPrompt?.trim() ?? "",
@@ -6319,6 +6327,7 @@ export function StoryEngineProvider({
           rpConfig: patch.rpConfig ?? currentStory.rpConfig,
           autoIndexMode: patch.autoIndexMode ?? currentStory.autoIndexMode,
           autoIndexInterval: patch.autoIndexInterval ?? currentStory.autoIndexInterval,
+          indexingCadence: patch.indexingCadence ?? currentStory.indexingCadence,
           updatedAt: new Date().toISOString(),
         };
 
@@ -9145,10 +9154,11 @@ export function StoryEngineProvider({
         updatedMessages = await repository.listStoryMessages(storyId);
 
         // Check automatic indexing cadence
+        const cadence = story.indexingCadence ?? settings.indexingCadence ?? "every_5_messages";
         const pendingCount = calculatePendingMessages(updatedMessages, storyIndex).length;
         if (
           shouldTriggerAutomaticIndexing(
-            settings.indexingCadence,
+            cadence,
             pendingCount,
             Boolean(createdChapter),
           )
@@ -9180,6 +9190,7 @@ export function StoryEngineProvider({
     developerBugs,
     developerFeatureRequests,
     developerTestingNotes,
+    storyIndexes,
     backgroundJobs,
     queueGuidedChapterJob,
     rebuildStatus,
