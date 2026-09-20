@@ -76,6 +76,11 @@ describe("storyIndexingPipeline", () => {
       },
     ];
 
+    it("matches by canonical character ID", () => {
+      const match = matchExistingCharacter("char-merlin", existingChars);
+      expect(match?.id).toBe("char-merlin");
+    });
+
     it("matches by exact canonical name", () => {
       const match = matchExistingCharacter("Merlin Ambrosius", existingChars);
       expect(match?.id).toBe("char-merlin");
@@ -217,6 +222,58 @@ describe("storyIndexingPipeline", () => {
         timestamp: "2026-01-01T01:00:00Z",
       },
     ];
+
+    it("keeps relationships when the model returns canonical character IDs", async () => {
+      const provider = makeMockProvider(JSON.stringify({
+        chapterSummary: "Arthur confronts Merlin.",
+        characters: [
+          { name: "Merlin Ambrosius", description: "Court wizard" },
+        ],
+        relationships: [
+          {
+            characterA: "player-1",
+            characterB: "char-merlin-fixed",
+            nature: "Adversaries",
+            state: "Hostile",
+            developments: ["A serious confrontation established open hostility."],
+          },
+        ],
+      }));
+
+      const existingIndex: StoryIndex = {
+        storyId: mockStory.id,
+        chapterSummaries: [],
+        characters: [{
+          id: "char-merlin-fixed",
+          canonicalName: "Merlin Ambrosius",
+          aliases: ["Merlin"],
+          description: "Court wizard",
+          status: "active",
+          developments: [],
+          provenance: [],
+          updatedAt: "1",
+        }],
+        relationships: [],
+        indexedMessageCount: 0,
+        updatedAt: "1",
+      };
+
+      const result = await processIndexingBatch({
+        story: mockStory,
+        playerCharacter: mockPlayerCharacter,
+        chapterLabel: "Chapter 1",
+        messages,
+        existingIndex,
+        provider,
+        model: "gemini-2.5-flash",
+      });
+
+      expect(result.relationships).toHaveLength(1);
+      expect(result.relationships[0]?.nature).toBe("Adversaries");
+      expect(new Set([result.relationships[0]?.characterIdA, result.relationships[0]?.characterIdB])).toEqual(
+        new Set(["player-1", "char-merlin-fixed"]),
+      );
+    });
 
     it("creates canonical character and maintains stable identity across aliases", async () => {
       const mockExtraction = {
