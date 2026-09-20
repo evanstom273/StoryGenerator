@@ -92,11 +92,7 @@ export function buildRelationshipPairKey(idA: string, idB: string): string {
 
 function replaceIdentityWord(text: string, from: string, to: string): string {
   if (!from.trim() || normalizeNameKey(from) === normalizeNameKey(to)) return text;
-  const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\export function buildRelationshipPairKey(idA: string, idB: string): string {
-  return [idA, idB].sort().join("::");
-}
-
-function tryParseJson");
+  const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return text.replace(new RegExp(`\\b${escaped}\\b`, "gi"), (match) =>
     match[0] === match[0]?.toUpperCase() ? to.toUpperCase() : to,
   );
