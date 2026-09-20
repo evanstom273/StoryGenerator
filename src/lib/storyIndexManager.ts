@@ -82,35 +82,27 @@ export function groupMessagesByChapter(
   const sortedChapters = [...chapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex);
   const groups: ChapterMessageGroup[] = [];
   let currentChapterIdx = 0;
-  let currentGroup: ChapterMessageGroup | null = null;
-
-  const ensureGroup = (message: StoryMessage): ChapterMessageGroup => {
-    const explicitStart = message.chapterBoundary?.kind === "start"
-      ? message.chapterBoundary.label
-      : undefined;
-    const chapter = sortedChapters[currentChapterIdx];
-    const label = explicitStart || chapter?.label || `Chapter ${currentChapterIdx + 1}`;
-    const chapterId = explicitStart ? undefined : chapter?.id;
-
-    if (
-      !currentGroup ||
-      currentGroup.chapterLabel !== label ||
-      currentGroup.chapterId !== chapterId
-    ) {
-      if (currentGroup?.messages.length) {
-        groups.push(currentGroup);
-      }
-      currentGroup = { chapterLabel: label, chapterId, messages: [] };
-    }
-
-    return currentGroup;
-  };
 
   // Walk the complete transcript so chapter state is correct even when the
   // pending slice starts after one or more already-indexed chapter boundaries.
   for (const message of sortedAllMessages) {
+    const chapter = sortedChapters[currentChapterIdx];
+    const explicitStart = message.chapterBoundary?.kind === "start"
+      ? message.chapterBoundary.label
+      : undefined;
+    const chapterLabel = explicitStart || chapter?.label || `Chapter ${currentChapterIdx + 1}`;
+    const chapterId = explicitStart ? undefined : chapter?.id;
+
     if (pendingIds.has(message.id)) {
-      ensureGroup(message).messages.push(message);
+      const lastGroup = groups[groups.length - 1];
+      if (
+        !lastGroup ||
+        lastGroup.chapterLabel !== chapterLabel ||
+        lastGroup.chapterId !== chapterId
+      ) {
+        groups.push({ chapterLabel, chapterId, messages: [] });
+      }
+      groups[groups.length - 1]!.messages.push(message);
     }
 
     if (
@@ -118,15 +110,7 @@ export function groupMessagesByChapter(
       sortedChapters[currentChapterIdx]!.endsAtMessageId === message.id
     ) {
       currentChapterIdx += 1;
-      if (currentGroup?.messages.length) {
-        groups.push(currentGroup);
-      }
-      currentGroup = null;
     }
-  }
-
-  if (currentGroup?.messages.length) {
-    groups.push(currentGroup);
   }
 
   return groups;
