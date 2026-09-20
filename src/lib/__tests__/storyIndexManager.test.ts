@@ -290,10 +290,42 @@ describe("storyIndexManager", () => {
       expect(result.lastIndexedMessageId).toBe("m2");
       expect(result.chapterSummaries).toHaveLength(1);
       expect(result.chapterSummaries[0].summary).toBe("Explored the eastern cave.");
-      expect(progressCalls).toEqual([[2, 2]]);
+      expect(progressCalls).toEqual([[1, 1]]);
 
       const saved = await repository.getStoryIndex("story-1");
       expect(saved?.lastIndexedMessageId).toBe("m2");
+    });
+
+    it("reports progress in chapter batches rather than messages", async () => {
+      const chapteredMessages: StoryMessage[] = [
+        { id: "m1", storyId: "story-1", role: "user", content: "One", timestamp: "1" },
+        { id: "m2", storyId: "story-1", role: "assistant", content: "Two", timestamp: "2" },
+        { id: "m3", storyId: "story-1", role: "user", content: "Three", timestamp: "3" },
+      ];
+      const chapters: StoryChapter[] = [
+        {
+          id: "ch-1",
+          storyId: "story-1",
+          label: "Chapter 1",
+          endsAtMessageId: "m2",
+          endsAtIndex: 2,
+          createdAt: "1",
+        },
+      ];
+      const repository = createMockRepository({ messages: chapteredMessages, chapters });
+      const progressCalls: Array<[number, number]> = [];
+
+      await updateStoryIndexToCurrent({
+        storyId: "story-1",
+        repository,
+        playerCharacter: { id: "player-1", name: "Hero", createdAt: "1", updatedAt: "1" },
+        story: { id: "story-1", universeId: "u1", playerCharacterId: "player-1", title: "Story", createdAt: "1", updatedAt: "1" },
+        provider: makeMockProvider(mockExtraction),
+        model: "gemini-2.5-flash",
+        onProgress: (processed, total) => progressCalls.push([processed, total]),
+      });
+
+      expect(progressCalls).toEqual([[1, 2], [2, 2]]);
     });
 
     it("keeps an existing saved index untouched when a later chapter batch fails", async () => {
