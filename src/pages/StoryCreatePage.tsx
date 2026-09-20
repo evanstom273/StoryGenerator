@@ -606,29 +606,51 @@ export function StoryCreatePage() {
               hint="Required"
               help="Pick a saved protagonist from your library. They must belong to at least one of the selected universes."
             >
-              <SelectInput
-                value={formState.playerCharacterId}
-                onChange={(event) =>
-                  setFormState((currentState) => ({
-                    ...currentState,
-                    playerCharacterId: event.target.value,
-                  }))
-                }
-                disabled={isBranchMode || !hasSelectedUniverses || !selectableCharacters.length}
-              >
-                <option value="">
+              {hasSelectedUniverses && selectableCharacters.length ? (
+                <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                  {selectableCharacters.map((character) => {
+                    const selected = formState.playerCharacterId === character.id;
+                    const details = [character.age ? `Age ${character.age}` : "", character.gender?.trim() ?? ""]
+                      .filter(Boolean)
+                      .join(" · ");
+                    const concept = character.characterConcept?.trim() || "No character concept written yet.";
+
+                    return (
+                      <button
+                        key={character.id}
+                        type="button"
+                        disabled={isBranchMode}
+                        aria-pressed={selected}
+                        onClick={() =>
+                          setFormState((currentState) => ({
+                            ...currentState,
+                            playerCharacterId: character.id,
+                          }))
+                        }
+                        className={`w-full rounded-[10px] border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          selected
+                            ? "border-accent/50 bg-accent/[0.10]"
+                            : "border-divider/[0.45] bg-panel-muted/40 hover:border-accent/[0.35] hover:bg-panel-muted/70"
+                        }`}
+                      >
+                        <span className="block text-sm font-semibold text-ink">{character.name}</span>
+                        {details ? (
+                          <span className="mt-1 block text-xs font-medium text-accent-soft">{details}</span>
+                        ) : null}
+                        <span className="mt-1.5 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                          {concept}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/40 px-4 py-3 text-sm text-ink-muted">
                   {hasSelectedUniverses
-                    ? selectableCharacters.length
-                      ? "Select a player character"
-                      : "No player characters in these universes yet"
+                    ? "No player characters in these universes yet"
                     : "Select universes first"}
-                </option>
-                {selectableCharacters.map((character) => (
-                  <option key={character.id} value={character.id}>
-                    {character.name}
-                  </option>
-                ))}
-              </SelectInput>
+                </div>
+              )}
             </Field>
           ) : null}
 

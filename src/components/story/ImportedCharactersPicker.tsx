@@ -17,6 +17,16 @@ function getCharacterInitials(name: string) {
 	return `${tokens[0]!.charAt(0)}${tokens[tokens.length - 1]!.charAt(0)}`.toUpperCase();
 }
 
+function getCharacterDetails(character: PlayerCharacter) {
+	return [character.age ? `Age ${character.age}` : "", character.gender?.trim() ?? ""]
+		.filter(Boolean)
+		.join(" · ");
+}
+
+function getCharacterConcept(character: PlayerCharacter) {
+	return character.characterConcept?.trim() || "No character concept written yet.";
+}
+
 function CharacterAvatar({ name }: { name: string }) {
 	return (
 		<div
@@ -147,10 +157,13 @@ export function ImportedCharactersPicker({
 												<h4 className="text-sm font-semibold text-ink">{character.name}</h4>
 												<Badge>{universeName}</Badge>
 											</div>
-											<p className="mt-1 text-xs text-ink-muted">
-												{character.characterConcept?.trim() ||
-													character.background.trim() ||
-													"No concept written yet."}
+											{getCharacterDetails(character) ? (
+												<p className="mt-1 text-xs font-medium text-accent-soft">
+													{getCharacterDetails(character)}
+												</p>
+											) : null}
+											<p className="mt-1 overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+												{getCharacterConcept(character)}
 											</p>
 										</div>
 										<button
@@ -191,10 +204,13 @@ export function ImportedCharactersPicker({
 											<span className="text-sm font-semibold text-ink">{character.name}</span>
 											<Badge>{universeName}</Badge>
 										</span>
-										<span className="mt-1 block text-xs text-ink-muted">
-											{character.characterConcept?.trim() ||
-												character.background.trim() ||
-												"No concept written yet."}
+										{getCharacterDetails(character) ? (
+											<span className="mt-1 block text-xs font-medium text-accent-soft">
+												{getCharacterDetails(character)}
+											</span>
+										) : null}
+										<span className="mt-1 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+											{getCharacterConcept(character)}
 										</span>
 									</span>
 									<span className="shrink-0 text-xs font-medium text-accent-soft">Add</span>
