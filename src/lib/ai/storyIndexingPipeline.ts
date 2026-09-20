@@ -62,6 +62,9 @@ export function matchExistingCharacter(
   if (!key) return null;
 
   for (const char of characters) {
+    if (char.id === name.trim()) {
+      return char;
+    }
     if (normalizeNameKey(char.canonicalName) === key) {
       return char;
     }
@@ -590,7 +593,8 @@ export async function processIndexingBatch(
         },
       ],
       temperature: repairInstruction ? 0 : 0.2,
-      maxTokens: 4000,
+      maxTokens: 8000,
+      jsonMode: true,
       signal,
     });
 
@@ -605,7 +609,7 @@ export async function processIndexingBatch(
     // explicitly instructed otherwise. Retry once with a stricter repair
     // instruction instead of failing the whole indexing operation immediately.
     response = await generateExtractionResponse(
-      "Your previous response was not valid parseable JSON. Regenerate the extraction from the transcript above as ONE complete JSON object only. Do not use markdown fences, commentary, or trailing text. Ensure every string is escaped and every object/array is fully closed.",
+      "Your previous response was not valid parseable JSON. Regenerate the extraction from the transcript above as ONE complete, concise JSON object only. Preserve the important chapter facts and meaningful relationships, but keep descriptions and development lists compact enough to finish the entire object. Do not use markdown fences, commentary, or trailing text. Ensure every string is escaped and every object/array is fully closed.",
     );
     extraction = parseAndValidateIndexingExtraction(response.content);
   }

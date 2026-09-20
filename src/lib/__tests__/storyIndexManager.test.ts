@@ -233,6 +233,33 @@ describe("storyIndexManager", () => {
       expect(groups[1].messages.map((m) => m.id)).toEqual(["m3"]);
     });
 
+    it("does not split chapter start markers into duplicate pseudo-chapters", () => {
+      const messages: StoryMessage[] = [
+        { id: "m1", storyId: "s1", role: "user", content: "1", timestamp: "1", chapterBoundary: { kind: "start", label: "Chapter I" } },
+        { id: "m2", storyId: "s1", role: "assistant", content: "2", timestamp: "2" },
+        { id: "m3", storyId: "s1", role: "user", content: "3", timestamp: "3", chapterBoundary: { kind: "start", label: "Chapter II" } },
+        { id: "m4", storyId: "s1", role: "assistant", content: "4", timestamp: "4" },
+      ];
+      const chapters: StoryChapter[] = [
+        {
+          id: "ch-1",
+          storyId: "s1",
+          label: "Chapter I",
+          endsAtMessageId: "m2",
+          endsAtIndex: 2,
+          createdAt: "1",
+        },
+      ];
+
+      const groups = groupMessagesByChapter(messages, chapters);
+      expect(groups).toHaveLength(2);
+      expect(groups[0].chapterLabel).toBe("Chapter I");
+      expect(groups[0].chapterId).toBe("ch-1");
+      expect(groups[0].messages.map((m) => m.id)).toEqual(["m1", "m2"]);
+      expect(groups[1].chapterLabel).toBe("Chapter II");
+      expect(groups[1].messages.map((m) => m.id)).toEqual(["m3", "m4"]);
+    });
+
     it("assigns a pending slice to the correct later chapter using the full transcript", () => {
       const allMessages: StoryMessage[] = [
         { id: "m1", storyId: "s1", role: "user", content: "1", timestamp: "1" },
