@@ -125,7 +125,7 @@ export interface IndexManagerUpdateParams {
   apiKey?: string;
   model: string;
   signal?: AbortSignal;
-  onProgress?: (processedMessages: number, totalPending: number) => void;
+  onProgress?: (processedChapters: number, totalChapters: number) => void;
 }
 
 /**
@@ -198,8 +198,8 @@ export async function updateStoryIndexToCurrent(
       signal,
     });
 
-    processedCount += group.messages.length;
-    onProgress?.(processedCount, pendingMessages.length);
+    processedCount += 1;
+    onProgress?.(processedCount, groups.length);
   }
 
   // Persist only after every pending chapter batch succeeds. A failed batch
@@ -276,8 +276,8 @@ export async function rebuildFullStoryIndex(
       signal,
     });
 
-    processedCount += group.messages.length;
-    onProgress?.(processedCount, allMessages.length);
+    processedCount += 1;
+    onProgress?.(processedCount, groups.length);
   }
 
   // Atomically replace previous index with clean rebuilt index
