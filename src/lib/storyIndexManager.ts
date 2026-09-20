@@ -92,18 +92,19 @@ export function groupMessagesByChapter(
     const label = explicitStart || chapter?.label || `Chapter ${currentChapterIdx + 1}`;
     const chapterId = explicitStart ? undefined : chapter?.id;
 
+    const existingGroup = currentGroup;
     if (
-      !currentGroup ||
-      currentGroup.chapterLabel !== label ||
-      currentGroup.chapterId !== chapterId
+      !existingGroup ||
+      existingGroup.chapterLabel !== label ||
+      existingGroup.chapterId !== chapterId
     ) {
-      if (currentGroup?.messages.length) {
-        groups.push(currentGroup);
+      if (existingGroup && existingGroup.messages.length > 0) {
+        groups.push(existingGroup);
       }
       currentGroup = { chapterLabel: label, chapterId, messages: [] };
     }
 
-    return currentGroup;
+    return currentGroup!;
   };
 
   // Walk the complete transcript so chapter state is correct even when the
@@ -118,15 +119,17 @@ export function groupMessagesByChapter(
       sortedChapters[currentChapterIdx]!.endsAtMessageId === message.id
     ) {
       currentChapterIdx += 1;
-      if (currentGroup?.messages.length) {
-        groups.push(currentGroup);
+      const completedGroup = currentGroup;
+      if (completedGroup && completedGroup.messages.length > 0) {
+        groups.push(completedGroup);
       }
       currentGroup = null;
     }
   }
 
-  if (currentGroup?.messages.length) {
-    groups.push(currentGroup);
+  const finalGroup = currentGroup;
+  if (finalGroup && finalGroup.messages.length > 0) {
+    groups.push(finalGroup);
   }
 
   return groups;
