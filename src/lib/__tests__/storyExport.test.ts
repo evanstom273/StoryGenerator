@@ -108,4 +108,60 @@ describe("storyExport markdown", () => {
     expect(content).toContain("Gareth demanded proof of identity");
     expect(content).toContain("## Transcript");
   });
+  it("uses the current indexed protagonist name in relationship headings while preserving the character sheet name", () => {
+    const bundle: StoryExportBundle = {
+      exportedAt: "2026-09-21T00:00:00.000Z",
+      story: {
+        id: "story-identity", title: "Identity Story", universeId: "uni-1",
+        playerCharacterId: "pc-1", createdAt: "2026-09-20T00:00:00.000Z",
+        updatedAt: "2026-09-21T00:00:00.000Z", currentSummary: "",
+      },
+      universe: {
+        id: "uni-1", name: "Test Universe", description: "", wikiUrl: "",
+        createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z",
+      },
+      playerCharacter: {
+        id: "pc-1", name: "James Peralta", age: "15", gender: "Male",
+        species: "Human", pronouns: "he/him", appearance: "", personality: "",
+        background: "", goals: "", aliases: [], knownTies: [], notes: "",
+        createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z",
+      },
+      messages: [],
+      storyIndex: {
+        storyId: "story-identity", indexedMessageCount: 1,
+        updatedAt: "2026-09-21T00:00:00.000Z", chapterSummaries: [],
+        characters: [
+          {
+            id: "pc-1", canonicalName: "Lyra Peralta", aliases: ["James Peralta", "Jamie"],
+            pronouns: "she/her", description: "Current indexed identity.", status: "active",
+            developments: [], provenance: ["msg-1"], updatedAt: "2026-09-21T00:00:00.000Z",
+          },
+          {
+            id: "jake-1", canonicalName: "Jake Peralta", aliases: [],
+            description: "", status: "active", developments: [], provenance: ["msg-1"],
+            updatedAt: "2026-09-21T00:00:00.000Z",
+          },
+        ],
+        relationships: [
+          {
+            id: "rel-identity", characterIdA: "pc-1", characterIdB: "jake-1",
+            nature: "father and daughter", state: "supportive", developments: [],
+            provenance: ["msg-1"], updatedAt: "2026-09-21T00:00:00.000Z",
+          },
+        ],
+      },
+    };
+
+    for (const format of ["markdown", "txt"] as const) {
+      const content = String(serializeStoryExport(bundle, format).content);
+      expect(content).toContain("Name: James Peralta");
+      expect(content).toContain("Lyra Peralta & Jake Peralta");
+      expect(content).not.toContain("James Peralta & Jake Peralta");
+    }
+
+    const json = JSON.parse(String(serializeStoryExport(bundle, "json").content));
+    expect(json.playerCharacter.name).toBe("James Peralta");
+    expect(json.storyIndex.characters.find((character: { id: string }) => character.id === "pc-1").canonicalName).toBe("Lyra Peralta");
+  });
+
 });
