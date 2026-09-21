@@ -73,7 +73,9 @@ function buildTranscriptLines(bundle: StoryExportBundle) {
 }
 
 function toJson(bundle: StoryExportBundle) {
-  return JSON.stringify(bundle, null, 2);
+  // Story Index is derived/rebuildable narrative memory, not portable story content.
+  const { storyIndex: _storyIndex, ...portableBundle } = bundle;
+  return JSON.stringify(portableBundle, null, 2);
 }
 
 function toMarkdown(bundle: StoryExportBundle) {
@@ -115,77 +117,6 @@ function toMarkdown(bundle: StoryExportBundle) {
   lines.push(`- **Notes:** ${bundle.playerCharacter.notes || "Not specified"}`);
   lines.push("");
 
-  if (bundle.storyIndex) {
-    const idx = bundle.storyIndex;
-    lines.push("## Story Index");
-    lines.push("");
-
-    lines.push("### Chapter Summaries");
-    lines.push("");
-    if (idx.chapterSummaries.length === 0) {
-      lines.push("*No chapter summaries indexed.*");
-      lines.push("");
-    } else {
-      for (const ch of idx.chapterSummaries) {
-        lines.push(`#### ${ch.chapterLabel}`);
-        lines.push(`*Source messages: ${ch.sourceMessageIds.length}*`);
-        lines.push("");
-        lines.push(ch.summary.trim());
-        lines.push("");
-      }
-    }
-
-    lines.push("### Characters");
-    lines.push("");
-    if (idx.characters.length === 0) {
-      lines.push("*No characters indexed.*");
-      lines.push("");
-    } else {
-      for (const char of idx.characters) {
-        const status = char.status ? ` (${char.status})` : "";
-        lines.push(`#### ${char.canonicalName}${status}`);
-        lines.push(`- **Aliases:** ${char.aliases.length ? char.aliases.join(", ") : "None"}`);
-        if (char.description) {
-          lines.push(`- **Description:** ${char.description}`);
-        }
-        if (char.developments.length) {
-          lines.push("- **Key Developments:**");
-          for (const dev of char.developments) {
-            lines.push(`  - ${dev}`);
-          }
-        }
-        lines.push(`- **Provenance:** ${char.provenance.length} source message${char.provenance.length === 1 ? "" : "s"}`);
-        lines.push("");
-      }
-    }
-
-    lines.push("### Relationships");
-    lines.push("");
-    if (idx.relationships.length === 0) {
-      lines.push("*No relationships indexed.*");
-      lines.push("");
-    } else {
-      const charMap = new Map(idx.characters.map((c) => [c.id, c.canonicalName]));
-      if (bundle.playerCharacter) {
-        charMap.set(bundle.playerCharacter.id, bundle.playerCharacter.name);
-      }
-      for (const rel of idx.relationships) {
-        const nameA = charMap.get(rel.characterIdA) || rel.characterIdA;
-        const nameB = charMap.get(rel.characterIdB) || rel.characterIdB;
-        const state = rel.state ? ` (${rel.state})` : "";
-        lines.push(`#### ${nameA} & ${nameB}${state}`);
-        lines.push(`- **Nature:** ${rel.nature}`);
-        if (rel.developments.length) {
-          lines.push("- **Key Developments:**");
-          for (const dev of rel.developments) {
-            lines.push(`  - ${dev}`);
-          }
-        }
-        lines.push(`- **Provenance:** ${rel.provenance.length} source message${rel.provenance.length === 1 ? "" : "s"}`);
-        lines.push("");
-      }
-    }
-  }
 
   lines.push("## Transcript");
   lines.push("");
@@ -225,29 +156,6 @@ ${normalizePlayerCharacterKnownTies(bundle.playerCharacter.knownTies).length ? `
 - Notes: ${bundle.playerCharacter.notes || "Not specified"}
 `;
 
-  if (bundle.storyIndex) {
-    const idx = bundle.storyIndex;
-    text += `
-Story Index
-
-Chapter Summaries:
-${idx.chapterSummaries.length ? idx.chapterSummaries.map((ch) => `[${ch.chapterLabel}] (${ch.sourceMessageIds.length} messages):\n${ch.summary}`).join("\n\n") : "No chapter summaries indexed."}
-
-Characters:
-${idx.characters.length ? idx.characters.map((c) => `- ${c.canonicalName}${c.status ? ` (${c.status})` : ""}\n  Aliases: ${c.aliases.join(", ") || "None"}\n  Description: ${c.description || "None"}\n  Developments: ${c.developments.join("; ") || "None"}\n  Provenance: ${c.provenance.length} messages`).join("\n\n") : "No characters indexed."}
-
-Relationships:
-${idx.relationships.length ? idx.relationships.map((r) => {
-  const charMap = new Map(idx.characters.map((c) => [c.id, c.canonicalName]));
-  if (bundle.playerCharacter) {
-    charMap.set(bundle.playerCharacter.id, bundle.playerCharacter.name);
-  }
-  const nameA = charMap.get(r.characterIdA) || r.characterIdA;
-  const nameB = charMap.get(r.characterIdB) || r.characterIdB;
-  return `- ${nameA} & ${nameB}${r.state ? ` (${r.state})` : ""}\n  Nature: ${r.nature}\n  Developments: ${r.developments.join("; ") || "None"}\n  Provenance: ${r.provenance.length} messages`;
-}).join("\n\n") : "No relationships indexed."}
-`;
-  }
 
   text += `
 Transcript
