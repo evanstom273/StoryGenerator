@@ -91,7 +91,11 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
 
     y = heading(doc, y, "Relationships", 12, pageH);
     const characterNames = new Map(idx.characters.map((character) => [character.id, character.canonicalName]));
-    characterNames.set(bundle.playerCharacter.id, bundle.playerCharacter.name);
+    // Prefer the Story Index's current canonical identity. The character sheet
+    // name is only a fallback for stories where the protagonist is not indexed.
+    if (!characterNames.has(bundle.playerCharacter.id)) {
+      characterNames.set(bundle.playerCharacter.id, bundle.playerCharacter.name);
+    }
     if (idx.relationships.length === 0) {
       y = speakerLine(doc, y, "", "No relationships indexed.", pageH);
     } else {
