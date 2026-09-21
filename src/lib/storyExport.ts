@@ -166,7 +166,10 @@ function toMarkdown(bundle: StoryExportBundle) {
       lines.push("");
     } else {
       const charMap = new Map(idx.characters.map((c) => [c.id, c.canonicalName]));
-      if (bundle.playerCharacter) {
+      // Prefer the Story Index's current canonical identity. Only fall back to
+      // the original player-character sheet name if the protagonist has no
+      // indexed character record yet.
+      if (bundle.playerCharacter && !charMap.has(bundle.playerCharacter.id)) {
         charMap.set(bundle.playerCharacter.id, bundle.playerCharacter.name);
       }
       for (const rel of idx.relationships) {
@@ -239,7 +242,10 @@ ${idx.characters.length ? idx.characters.map((c) => `- ${c.canonicalName}${c.sta
 Relationships:
 ${idx.relationships.length ? idx.relationships.map((r) => {
   const charMap = new Map(idx.characters.map((c) => [c.id, c.canonicalName]));
-  if (bundle.playerCharacter) {
+  // Prefer the Story Index's current canonical identity. Only fall back to
+  // the original player-character sheet name if the protagonist has no
+  // indexed character record yet.
+  if (bundle.playerCharacter && !charMap.has(bundle.playerCharacter.id)) {
     charMap.set(bundle.playerCharacter.id, bundle.playerCharacter.name);
   }
   const nameA = charMap.get(r.characterIdA) || r.characterIdA;
