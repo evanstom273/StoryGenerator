@@ -7,9 +7,37 @@ export type ChangelogEntry = {
 };
 
 export const APP_NAME = "Story Engine";
-export const APP_VERSION = "3.5.0";
+export const APP_VERSION = "4.0.0";
 
 export const CHANGELOG: Record<string, ChangelogEntry> = {
+  "4.0.0": {
+    title: "Story Index Rebuilt",
+    releasedAt: "2026-09-21T00:00:00+00:00",
+    added: [
+      "Rebuilt Story Index around three focused forms of long-term narrative memory: Detailed Chapter Summaries, Characters, and Relationships",
+      "Chapter-aware indexing processes transcript chapters as coherent units instead of rebuilding memory one message at a time",
+      "Character records use stable IDs with canonical names, aliases, current pronouns, descriptions, status, developments, and transcript provenance",
+      "Explicit in-story identity evolution can update a character's current preferred name and pronouns while preserving former names as aliases and keeping the original player character sheet as the story's starting baseline",
+      "Relationship memory is stored against stable character IDs so renames and aliases do not split one person into multiple relationship records",
+      "Relationship extraction preserves narratively significant connections and consequential one-off interactions such as betrayals, rescues, captures, attacks, major disclosures, and meaningful cooperation",
+      "Detailed chapter summaries record message ranges and provenance so indexed memory stays traceable to the transcript that produced it",
+      "Full Re-index reconstructs the complete Story Index from the authoritative transcript in a staging buffer and replaces the live index only after the rebuild succeeds",
+      "Clear Index removes derived Story Index memory without deleting the transcript, chapters, player character, universe, or other story data",
+      "Indexing progress is reported by chapter, matching the unit the new indexing pipeline actually processes",
+      "Story Index data is included in JSON, Markdown, TXT, and PDF story exports from both Story Settings and global Settings",
+    ],
+    fixed: [
+      "Alias resolution now matches stable character IDs, canonical names, and known aliases instead of relying on fragile name-only reconciliation",
+      "Player-character identity changes no longer fight an immutable character-sheet name or pronoun rule; the sheet remains the initial baseline while explicit story-established identity becomes the current indexed identity",
+      "Current indexed character names are used for Story Index relationship headings in the app and exports, while historical transcript wording and past developments remain unchanged",
+      "Relationship extraction no longer silently drops valid relationships when the indexing model returns character IDs instead of names",
+      "Persisted chapter boundaries are authoritative during full re-index, preventing explicit chapter markers from creating duplicate pseudo-chapters",
+      "Malformed indexing JSON receives a focused repair retry, JSON-mode generation, and a larger output budget to reduce incomplete index responses",
+      "Index rebuilds persist atomically only after all pending chapter batches succeed, preventing partial failed runs from corrupting the live index",
+      "Story Index exports now resolve evolved protagonist identities from the current index instead of overwriting them with the original player-character sheet name",
+    ],
+    knownIssues: [],
+  },
   "3.5.0": {
     title: "Transcript Integrity & Character Identity",
     releasedAt: "2026-09-14T00:00:00+00:00",
