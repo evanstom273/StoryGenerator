@@ -46,7 +46,79 @@ export function serializeStoryExportPdf(bundle: StoryExportBundle): ArrayBuffer 
   y = metaLine(doc, y, "Exported", formatDateTime(bundle.exportedAt), pageH);
   y += 16;
 
-  // ── Summary ──────────────────────────────────────────────────────────────
+  // ── Story Index ──────────────────────────────────────────────────────────
+  if (bundle.storyIndex) {
+    const idx = bundle.storyIndex;
+    y = rule(doc, y, pageW);
+    y += 12;
+    y = heading(doc, y, "Story Index", 14, pageH);
+
+    y = heading(doc, y, "Chapter Summaries", 12, pageH);
+    if (idx.chapterSummaries.length === 0) {
+      y = speakerLine(doc, y, "", "No chapter summaries indexed.", pageH);
+    } else {
+      for (const chapter of idx.chapterSummaries) {
+        y = speakerLine(
+          doc,
+          y,
+          chapter.chapterLabel,
+          `${chapter.summary}\nSource messages: ${chapter.sourceMessageIds.length}`,
+          pageH,
+        );
+      }
+    }
+
+    y = heading(doc, y, "Characters", 12, pageH);
+    if (idx.characters.length === 0) {
+      y = speakerLine(doc, y, "", "No characters indexed.", pageH);
+    } else {
+      for (const character of idx.characters) {
+        const details = [
+          character.aliases.length ? `Aliases: ${character.aliases.join(", ")}` : "Aliases: None",
+          character.description ? `Description: ${character.description}` : "",
+          character.developments.length ? `Key developments: ${character.developments.join("; ")}` : "",
+          `Provenance: ${character.provenance.length} source message${character.provenance.length === 1 ? "" : "s"}`,
+        ].filter(Boolean).join("\n");
+        y = speakerLine(
+          doc,
+          y,
+          `${character.canonicalName}${character.status ? ` (${character.status})` : ""}`,
+          details,
+          pageH,
+        );
+      }
+    }
+
+    y = heading(doc, y, "Relationships", 12, pageH);
+    const characterNames = new Map(idx.characters.map((character) => [character.id, character.canonicalName]));
+    // Prefer the Story Index's current canonical identity. The character sheet
+    // name is only a fallback for stories where the protagonist is not indexed.
+    if (!characterNames.has(bundle.playerCharacter.id)) {
+      characterNames.set(bundle.playerCharacter.id, bundle.playerCharacter.name);
+    }
+    if (idx.relationships.length === 0) {
+      y = speakerLine(doc, y, "", "No relationships indexed.", pageH);
+    } else {
+      for (const relationship of idx.relationships) {
+        const nameA = characterNames.get(relationship.characterIdA) || relationship.characterIdA;
+        const nameB = characterNames.get(relationship.characterIdB) || relationship.characterIdB;
+        const details = [
+          `Nature: ${relationship.nature}`,
+          relationship.developments.length ? `Key developments: ${relationship.developments.join("; ")}` : "",
+          `Provenance: ${relationship.provenance.length} source message${relationship.provenance.length === 1 ? "" : "s"}`,
+        ].filter(Boolean).join("\n");
+        y = speakerLine(
+          doc,
+          y,
+          `${nameA} & ${nameB}${relationship.state ? ` (${relationship.state})` : ""}`,
+          details,
+          pageH,
+        );
+      }
+    }
+    y += 8;
+  }
+
   // ── Transcript ───────────────────────────────────────────────────────────
   y = rule(doc, y, pageW);
   y += 12;
