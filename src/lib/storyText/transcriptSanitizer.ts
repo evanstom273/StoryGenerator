@@ -1439,6 +1439,8 @@ export function validateAssistantTranscriptForSave(args: {
 	if (!args.allowDirectedPlayerControl) {
 		const violation = getPlayerCharacterAuthorshipViolation({
 			playerName: playerName ?? "",
+			playerSceneName: args.playerSceneName,
+			playerAliases: args.playerAliases,
 			text: candidateText,
 		});
 		if (violation) {

@@ -128,12 +128,22 @@ export type PlayerOwnershipViolation = {
 
 export function getPlayerCharacterAuthorshipViolation({
   playerName,
+  playerSceneName,
+  playerAliases,
   text,
 }: {
   playerName: string;
+  playerSceneName?: string | null;
+  playerAliases?: string[] | null;
   text: string;
 }) {
-  const variants = getPlayerNameVariants(playerName);
+  const variants = Array.from(
+    new Set(
+      [playerName, playerSceneName ?? "", ...(playerAliases ?? [])]
+        .flatMap((name) => getPlayerNameVariants(name))
+        .filter(Boolean),
+    ),
+  );
   if (!variants.length) {
     return null;
   }
@@ -307,10 +317,21 @@ export function getPlayerCharacterAuthorshipViolation({
 
 export function detectPlayerCharacterAuthorshipViolation({
   playerName,
+  playerSceneName,
+  playerAliases,
   text,
 }: {
   playerName: string;
+  playerSceneName?: string | null;
+  playerAliases?: string[] | null;
   text: string;
 }) {
-  return Boolean(getPlayerCharacterAuthorshipViolation({ playerName, text }));
+  return Boolean(
+    getPlayerCharacterAuthorshipViolation({
+      playerName,
+      playerSceneName,
+      playerAliases,
+      text,
+    }),
+  );
 }
