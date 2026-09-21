@@ -44,6 +44,26 @@ describe("validateAssistantTranscriptForSave", () => {
 		expect(["speaker_attribution", "ownership"]).toContain(result.stage);
 	});
 
+	it("rejects dialogue under an effective in-story player name", () => {
+		const result = validateAssistantTranscriptForSave({
+			text: `Narrator: *The bathroom door clicks shut while Claude lowers his voice.*
+
+Lyra: *She folds her arms and looks at the mirror.* "Right. Talk me through this."
+
+Claude: *His voice remains perfectly calm.* "Of course, Miss Lyra."`,
+			playerName: "James Diaz (Jamie, Jay)",
+			playerSceneName: "Lyra",
+			playerAliases: ["Jamie", "Jay"],
+			latestUserMessage: "I close and lock the bathroom door.",
+			repairSpeakerAttribution: false,
+			hiddenDialoguePattern: HIDDEN_DIALOGUE_PATTERN,
+		});
+
+		expect(result.valid).toBe(false);
+		expect(result.stage).toBe("ownership");
+		expect(result.diagnostic).toContain("Lyra");
+	});
+
 	it("rejects insubstantial streamed output", () => {
 		const result = validateAssistantTranscriptForSave({
 			text: "Jake: hi",
