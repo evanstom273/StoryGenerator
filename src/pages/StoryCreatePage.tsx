@@ -224,14 +224,7 @@ export function StoryCreatePage() {
               hint="Required"
               help="The character you control. Everyone else is played by the AI."
             >
-              {isDerivedMode ? (
-                <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/50 px-4 py-3 text-sm text-ink-muted">
-                  {isBranchMode
-					? "A branch keeps the same universe and protagonist as the source story so the transcript stays consistent."
-                    : "The sequel stays in the same universes. You can keep the same protagonist or switch to another character from those universes."}
-                </div>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-3">
+                              <div className="grid gap-2 sm:grid-cols-3">
                   <Button
                     type="button"
                     variant={protagonistMode === "existing" ? "secondary" : "ghost"}
@@ -309,7 +302,6 @@ export function StoryCreatePage() {
                     ? "No player characters in these universes yet"
                     : "Select universes first"}
                 </div>
-              )}
             </Field>
           ) : null}
 
