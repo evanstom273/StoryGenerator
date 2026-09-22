@@ -162,6 +162,32 @@ describe("contextBuilder assistant history serialization", () => {
   });
 });
 
+describe("contextBuilder latest player turn authority", () => {
+  it("preserves the typed player speaker name and marks the latest turn as authoritative canon", () => {
+    const context = buildStoryChatContext({
+      universe,
+      story,
+      playerCharacter: { ...playerCharacter, name: "Alastor Blackwood", aliases: [] },
+      imports: [],
+      summaries: [],
+      recentMessages: [],
+      latestUserMessage: '"Man, that was fun though." I say, collapsing into a chair by the fire.',
+      latestUserMessageSpeakerType: "player",
+      latestUserMessageSpeakerName: "Allie",
+    });
+    const latest = context[context.length - 1];
+
+    expect(latest).toEqual({
+      role: "user",
+      content: [
+        "Player (Allie) turn:",
+        "AUTHORITATIVE LATEST TURN: Everything below is already canon. Continue from its immediate aftermath; do not replace it with a different event, conversation, location, or action.",
+        '"Man, that was fun though." I say, collapsing into a chair by the fire.',
+      ].join("\n"),
+    });
+  });
+});
+
 describe("contextBuilder scene grammar", () => {
   it("teaches one inline grammar for character and narrator blocks", () => {
     const sceneDirection = buildContext().find(
