@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
 import { Field, MultiUniversePicker, SelectInput, TextAreaInput, TextInput, AliasesInput, KnownTiesInput } from "../components/forms/Fields";
-import { getUniverseIds } from "../lib/universeIds";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { SparklesIcon } from "../components/icons";
 import { Panel } from "../components/ui/Panel";
