@@ -282,14 +282,6 @@ function storyMatchesFeatures(story: Story, storyFeatures: LibrarySearchStoryFea
 			return Boolean(story.currentSummary?.trim());
 		case "no-summary":
 			return !story.currentSummary?.trim();
-		case "prequel":
-			return story.readOnlyReason === "sequel_prequel";
-		case "playable":
-			return story.readOnlyReason !== "sequel_prequel";
-		case "sequel":
-			return story.lineageType === "sequel";
-		case "branch":
-			return story.lineageType === "branch";
 		case "guided-history":
 			return Boolean(story.guidedGenerationMeta?.historyChapterCount);
 		case "no-guided-history":
@@ -358,7 +350,6 @@ function searchStories(
 			const chapterCount = metrics.storyChapterCounts.get(story.id) ?? context.getChaptersForStory(story.id).length;
 			const score = scoreValues(query, [story.title], 40)
 				+ scoreValues(query, [story.currentSummary, universeNames, characterName, story.openingPrompt], 12)
-				+ scoreValues(query, [story.readOnlyReason, story.lineageType], 4)
 				+ (query && String(messageCount).includes(query) ? 8 : 0)
 				+ (query && String(chapterCount).includes(query) ? 6 : 0);
 
@@ -374,15 +365,6 @@ function searchStories(
 				badges.push("Explicit adults");
 			} else if (adultContentMode === "mature_non_graphic") {
 				badges.push("Mature");
-			}
-			if (story.readOnlyReason === "sequel_prequel") {
-				badges.push("Prequel");
-			}
-			if (story.lineageType === "sequel") {
-				badges.push("Sequel");
-			}
-			if (story.lineageType === "branch") {
-				badges.push("Branch");
 			}
 			if (story.guidedGenerationMeta?.historyChapterCount) {
 				badges.push("Guided history");
