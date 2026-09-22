@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
@@ -135,7 +135,6 @@ const initialComposerState: MessageComposerState = {
 
 export function StoryWorkspacePage() {
   const { storyId } = useParams();
-  const navigate = useNavigate();
   const {
     readerMode,
     setReaderMode,
@@ -441,8 +440,6 @@ export function StoryWorkspacePage() {
     setZeroHpCustom("");
     setPendingZeroHpConsequence(null);
     setVariantSession(null);
-    setShowSequelPrompt(false);
-    setDismissedSequelPromptMessageId(null);
   }, [storyId]);
 
   useEffect(() => {
@@ -760,9 +757,6 @@ export function StoryWorkspacePage() {
         const lastGoldChange = allGoldChanges?.at(-1);
         if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
         setRpStatsRefreshKey((k) => k + 1);
-      }
-      if (isStoryEndingMarker) {
-        setShowSequelPrompt(true);
       }
     } catch (error) {
       const currentDraft = streamingDraftRef.current;
