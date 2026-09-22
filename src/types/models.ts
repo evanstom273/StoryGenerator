@@ -296,11 +296,6 @@ export interface Story {
   universeId: EntityId;
   universeIds?: EntityId[];
   playerCharacterId: EntityId;
-  parentStoryId?: EntityId;
-  rootStoryId?: EntityId;
-  lineageDepth?: number;
-  lineageType?: "sequel" | "branch";
-  sequelSeedSourceStoryId?: EntityId;
   openingPrompt?: string;
   /** Legacy fields accepted only while migrating persisted records. */
   currentSummary: string;
@@ -310,8 +305,6 @@ export interface Story {
   universePackSnapshot?: UniversePackSnapshotV1;
   universePackSnapshots?: UniversePackSnapshotV1[];
   isArchived?: boolean;
-  readOnlyReason?: "sequel_prequel";
-  readOnlyLockedAt?: Timestamp;
   adultContentMode?: StoryAdultContentMode;
   /** Legacy compatibility flag. Prefer adultContentMode for new writes. */
   matureFictionMode?: boolean;
@@ -665,11 +658,6 @@ export interface StoryDraft {
   universeId: EntityId;
   universeIds?: EntityId[];
   playerCharacterId: EntityId;
-  parentStoryId?: EntityId;
-  rootStoryId?: EntityId;
-  lineageDepth?: number;
-  lineageType?: "sequel" | "branch";
-  sequelSeedSourceStoryId?: EntityId;
   isArchived?: boolean;
   adultContentMode?: StoryAdultContentMode;
   /** Legacy compatibility flag. Prefer adultContentMode for new writes. */
