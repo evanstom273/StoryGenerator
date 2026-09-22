@@ -1119,11 +1119,6 @@ export function StoryWorkspacePage() {
   }
 
   async function handleSaveAssistantEdit() {
-    if (isReadOnly) {
-      setAssistantEditError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
-
     if (!assistantEditMessage) {
       return;
     }
