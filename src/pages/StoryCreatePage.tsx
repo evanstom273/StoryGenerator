@@ -402,57 +402,16 @@ export function StoryCreatePage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow={isBranchMode ? "Branch Story" : isSequelMode ? "Create Sequel" : "Create Story"}
-        title={
-          isBranchMode
-            ? "Fork the current story into an editable branch"
-            : isSequelMode
-            ? "Start a new sequel from an existing story"
-            : "Create a story from a universe and a player character"
-        }
-        description={
-          isBranchMode
-            ? "The branch copies the current transcript, context, index, and story state so you can continue from the same point without locking the original."
-            : isSequelMode
-            ? "The predecessor stays canon and becomes read-only. The sequel starts fresh at message 1 while inheriting distilled story state."
-            : "Choose the fictional universe, select the player character, then set a title and optional summary."
-        }
+        eyebrow="Create Story"
+        title="Create a story from a universe and a player character"
+        description="Choose the fictional universe, select the player character, then set a title and optional summary."
       />
-
-      {isDerivedMode && sourceStory && sourceUniverses.length && sourceCharacter ? (
-        <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]" padding="lg">
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-            {isBranchMode ? "Branch Source" : "Sequel Source"}
-          </div>
-          <div className="mt-3 text-lg font-semibold text-ink">{sourceStory.title}</div>
-          <p className="mt-2 text-sm leading-7 text-ink-muted">
-            Universes: {sourceUniverses.map((universe) => universe.name).join(", ")} · Default
-            protagonist: {sourceCharacter.name}
-          </p>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            {isBranchMode ? (
-              <>
-                This branch keeps the current transcript, context, index, and canon state intact so you can split the story into an alternate path without locking the source story.
-              </>
-            ) : (
-              <>
-                This new story inherits the predecessor&apos;s distilled canon state, relationships, and world facts. The old story becomes a locked prequel and the new transcript begins with <span className="font-semibold text-ink-soft">Chapter I.</span>
-              </>
-            )}
-          </p>
-			{sourceStory.openingPrompt?.trim() ? (
-            <div className="mt-4 rounded-[10px] border border-divider/[0.45] bg-app-elevated px-4 py-3 text-sm leading-7 text-ink-soft">
-				{sourceStory.openingPrompt}
-            </div>
-          ) : null}
-        </Panel>
-      ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
         {[
-          ["Step 1", isDerivedMode ? "Confirm Source" : "Select Universe"],
+          ["Step 1", "Select Universe"],
           ["Step 2", "Select Player Character"],
-          ["Step 3", isBranchMode ? "Branch Details" : isSequelMode ? "Sequel Details" : "Story Details"],
+          ["Step 3", "Story Details"],
         ].map(([step, title]) => (
           <Panel variant="flat" key={step}>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
@@ -480,7 +439,6 @@ export function StoryCreatePage() {
                       ? [formState.universeId]
                       : []
                 }
-                disabled={isDerivedMode}
                 onChange={(universeIds) =>
                   setFormState((currentState) => {
                     const previousIds =
@@ -507,14 +465,7 @@ export function StoryCreatePage() {
               hint="Required"
               help="The character you control. Everyone else is played by the AI."
             >
-              {isDerivedMode ? (
-                <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/50 px-4 py-3 text-sm text-ink-muted">
-                  {isBranchMode
-					? "A branch keeps the same universe and protagonist as the source story so the transcript stays consistent."
-                    : "The sequel stays in the same universes. You can keep the same protagonist or switch to another character from those universes."}
-                </div>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-3">
+                              <div className="grid gap-2 sm:grid-cols-3">
                   <Button
                     type="button"
                     variant={protagonistMode === "existing" ? "secondary" : "ghost"}
@@ -540,7 +491,6 @@ export function StoryCreatePage() {
                     Quick
                   </Button>
                 </div>
-              )}
             </Field>
           </div>
 
