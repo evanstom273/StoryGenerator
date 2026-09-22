@@ -125,6 +125,7 @@ export interface BuildStoryChatContextInput {
   recentMessages: StoryMessage[];
   latestUserMessage: string;
   latestUserMessageSpeakerType?: StoryMessage["speakerType"];
+  latestUserMessageSpeakerName?: string | null;
   allowDirectedPlayerControl?: boolean;
   directorIntent?: DirectorIntent | null;
   directorStagingNote?: string | null;
@@ -160,6 +161,7 @@ export function buildStoryChatContext({
   recentMessages,
   latestUserMessage,
   latestUserMessageSpeakerType,
+  latestUserMessageSpeakerName,
   allowDirectedPlayerControl = false,
   directorIntent,
   directorStagingNote,
@@ -180,6 +182,9 @@ export function buildStoryChatContext({
     });
   const playerSceneName = playerIdentity.sceneName;
   const playerPronouns = playerIdentity.pronouns;
+  const latestPlayerSpeakerName = latestUserMessageSpeakerType === "player"
+    ? latestUserMessageSpeakerName?.trim() || playerSceneName
+    : playerSceneName;
   const latestMessageIsDirectorNote =
     latestUserMessageSpeakerType === "director" || Boolean(directorStagingNote?.trim());
   const latestMessageIsContinueNote = latestUserMessageSpeakerType === "continue";
@@ -657,7 +662,11 @@ export function buildStoryChatContext({
               ].join("\n"),
             )
           : normalizeWhitespace(
-              `Player (${playerSceneName}) turn:\n${latestUserMessage}`,
+              [
+                `Player (${latestPlayerSpeakerName}) turn:`,
+                "AUTHORITATIVE LATEST TURN: Everything below is already canon. Continue from its immediate aftermath; do not replace it with a different event, conversation, location, or action.",
+                latestUserMessage,
+              ].join("\n"),
             ),
     },
   ];
