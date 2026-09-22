@@ -157,9 +157,7 @@ export function StoryWorkspacePage() {
     createMessage,
     deleteMessage,
     fetchStoryState,
-    getChildStories,
     getMessagesForStory,
-    getParentStory,
     getPlayerCharacterById,
     getStoryById,
     getUniverseById,
@@ -182,18 +180,6 @@ export function StoryWorkspacePage() {
   const playerCharacter = story
     ? getPlayerCharacterById(story.playerCharacterId)
     : undefined;
-  const parentStory = story ? getParentStory(story.id) : undefined;
-  const childStories = useMemo(
-    () =>
-      story
-        ? [...getChildStories(story.id)].sort(
-            (left, right) =>
-              new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
-          )
-        : [],
-    [getChildStories, story],
-  );
-  const isReadOnly = story?.readOnlyReason === "sequel_prequel";
   const messages = useMemo(
     () => (story ? getMessagesForStory(story.id) : []),
     [getMessagesForStory, story],
@@ -272,7 +258,7 @@ export function StoryWorkspacePage() {
     ? canGenerateGuidedChaptersAtWorkspace(messages, storyChapters)
     : { ok: false as const, reason: "Story not loaded." };
   const canOfferGenerateChapters = Boolean(
-    story && !isReadOnly && isStoryEligibleForGuidedGeneration(story),
+    story && isStoryEligibleForGuidedGeneration(story),
   );
   const canShowGenerateChapters = Boolean(
     canOfferGenerateChapters && workspaceGuidedEligibility.ok && !guidedGenerationActive,
@@ -295,8 +281,6 @@ export function StoryWorkspacePage() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [generationFailure, setGenerationFailure] = useState<GenerationFailure | null>(null);
   const [generationFailureOpen, setGenerationFailureOpen] = useState(false);
-  const [showSequelPrompt, setShowSequelPrompt] = useState(false);
-  const [dismissedSequelPromptMessageId, setDismissedSequelPromptMessageId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationAttempt, setGenerationAttempt] = useState<number | null>(null);
   const [generationMaxAttempts, setGenerationMaxAttempts] = useState(
@@ -476,20 +460,6 @@ export function StoryWorkspacePage() {
       setStoryThemeOverride(null);
     };
   }, [setStoryThemeOverride, story?.accentThemeCustom, story?.accentThemeKey]);
-
-  useEffect(() => {
-    const lastMessage = messages.at(-1);
-    if (
-      !lastMessage ||
-      lastMessage.role !== "user" ||
-      !isStoryEndingText(lastMessage.content) ||
-      lastMessage.id === dismissedSequelPromptMessageId
-    ) {
-      return;
-    }
-
-    setShowSequelPrompt(true);
-  }, [dismissedSequelPromptMessageId, messages]);
 
 
   useEffect(() => {
@@ -693,10 +663,6 @@ export function StoryWorkspacePage() {
   const ROLL_TAG_RE = /\[roll(?:\s+(str|dex|con|int|wis|cha))?\]/i;
 
   async function handleSendChat() {
-    if (isReadOnly) {
-      setChatError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
 
     if (!chatInput.trim()) {
       setChatError("Message content is required.");
@@ -874,10 +840,6 @@ export function StoryWorkspacePage() {
   }
 
   async function sendChatMessageWithContent(content: string) {
-    if (isReadOnly) {
-      setChatError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
 
     setIsGenerating(true);
     setChatError(null);
@@ -950,10 +912,6 @@ export function StoryWorkspacePage() {
   }
 
   async function handleRetryChat() {
-    if (isReadOnly) {
-      setChatError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
 
     if (!lastChatContent) {
       return;
@@ -990,10 +948,6 @@ export function StoryWorkspacePage() {
   }
 
   async function handleRegenerateLastAssistant() {
-    if (isReadOnly) {
-      setChatError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
 
     if (!latestAssistantMessage || !messages.length || messages[messages.length - 1]?.id !== latestAssistantMessage.id) {
       return;
@@ -1087,10 +1041,6 @@ export function StoryWorkspacePage() {
   }
 
   async function handleSelectVariant(index: number) {
-    if (isReadOnly) {
-      setChatError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
     if (!variantSession || !latestAssistantMessage || isSwitchingVariant) return;
     const candidate = variantSession.candidates[index];
     if (!candidate || index === variantSession.selectedIndex) return;
@@ -1140,10 +1090,6 @@ export function StoryWorkspacePage() {
   }
 
   async function handleUndoDirectorIntent() {
-    if (isReadOnly) {
-      setChatError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
     if (!latestDirectorIntentMessage) {
       return;
     }
@@ -1163,10 +1109,6 @@ export function StoryWorkspacePage() {
   }
 
   function handleOpenAssistantEdit() {
-    if (isReadOnly) {
-      setChatError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
     if (!latestAssistantMessage || !messages.length || messages[messages.length - 1]?.id !== latestAssistantMessage.id) {
       return;
     }
@@ -1177,11 +1119,6 @@ export function StoryWorkspacePage() {
   }
 
   async function handleSaveAssistantEdit() {
-    if (isReadOnly) {
-      setAssistantEditError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
-
     if (!assistantEditMessage) {
       return;
     }
@@ -1226,10 +1163,6 @@ export function StoryWorkspacePage() {
   }
 
   async function handleGeneratePlayerAssist() {
-    if (isReadOnly) {
-      setAssistError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
 
     setIsGeneratingAssist(true);
     setAssistError(null);
@@ -1293,10 +1226,6 @@ export function StoryWorkspacePage() {
   }
 
   function populateComposerFromMessage(message: StoryMessage) {
-    if (isReadOnly) {
-      setPageError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
 
     setEditingMessage(message);
     setComposerState({
@@ -1315,11 +1244,6 @@ export function StoryWorkspacePage() {
 
   async function handleSubmitMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (isReadOnly) {
-      setPageError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
 
     if (!composerState.content.trim()) {
       setPageError("Message content is required.");
@@ -1386,10 +1310,6 @@ export function StoryWorkspacePage() {
   }
 
   async function handleDeleteMessage(message: StoryMessage) {
-    if (isReadOnly) {
-      setPageError("This story is locked as a prequel. Create or open a sequel to continue canon.");
-      return;
-    }
 
     const confirmed = window.confirm("Delete this message from the timeline?");
 
@@ -1448,41 +1368,6 @@ export function StoryWorkspacePage() {
             }
           }}
         />
-      ) : null}
-
-      {showSequelPrompt && activeStory ? (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-[18px] border border-divider bg-app px-5 py-5 shadow-hero">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent-soft">
-              Story Complete
-            </div>
-            <div className="mt-2 text-xl font-semibold text-ink">Create a sequel?</div>
-            <div className="mt-2 text-sm leading-6 text-ink-muted">
-              <span className="font-medium text-ink-soft">The End</span> has been saved as a final chapter break for{" "}
-              <span className="font-medium text-ink-soft">{activeStory.title}</span>. Do you want to start a sequel now?
-            </div>
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowSequelPrompt(false);
-                  const lastMessage = messages.at(-1);
-                  setDismissedSequelPromptMessageId(lastMessage?.id ?? null);
-                }}
-              >
-                Not Yet
-              </Button>
-              <Button
-                onClick={() => {
-                  setShowSequelPrompt(false);
-                  navigate(`/stories/new?sequelTo=${activeStory.id}`);
-                }}
-              >
-                Create Sequel
-              </Button>
-            </div>
-          </div>
-        </div>
       ) : null}
 
       {showZeroHpModal && (
@@ -1607,43 +1492,6 @@ export function StoryWorkspacePage() {
         <h1 className="mt-2 text-[22px] font-extrabold leading-tight tracking-[-0.02em] text-ink">
           {activeStory.title}
         </h1>
-        {parentStory || childStories.length ? (
-          <div className="mt-3 rounded-[10px] border border-divider/[0.35] bg-panel-muted/40 px-3 py-3 text-sm text-ink-muted">
-            {parentStory ? (
-              <div>
-                {activeStory.lineageType === "branch" ? "Branched from: " : "Prequel: "}
-                <Link to={`/stories/${parentStory.id}`} className="font-semibold text-ink-soft hover:text-accent">
-                  {parentStory.title}
-                </Link>
-              </div>
-            ) : null}
-            {childStories.length ? (
-              <div className={parentStory ? "mt-2" : ""}>
-                Follow-ups:{" "}
-                {childStories.map((childStory, index) => (
-                  <span key={childStory.id}>
-                    {index > 0 ? " · " : ""}
-                    <Link to={`/stories/${childStory.id}`} className="font-semibold text-ink-soft hover:text-accent">
-                      {childStory.title}
-                    </Link>
-                    <span className="text-[11px] text-ink-muted">
-                      {childStory.lineageType === "branch" ? " (branch)" : " (sequel)"}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {isReadOnly ? (
-          <div className="mt-3 rounded-[10px] border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
-            This story is a locked prequel. It remains canon and read-only. Start a new season with{" "}
-            <Link to={`/stories/new?sequelTo=${activeStory.id}`} className="font-semibold underline underline-offset-2">
-              Create Sequel
-            </Link>
-            .
-          </div>
-        ) : null}
         {!readerMode && activeStory.openingPrompt ? (
           <p className="mt-1.5 line-clamp-2 text-[13px] leading-6 text-ink-muted">
             {activeStory.openingPrompt}
@@ -1706,7 +1554,6 @@ export function StoryWorkspacePage() {
               label="MetaChat"
               active={metaChatOpen}
               onClick={() => setMetaChatOpen((c) => !c)}
-              disabled={isReadOnly}
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18.5h6"/><path d="M12 2v6"/><path d="M8.5 8V5"/><path d="M15.5 8V5"/></svg>}
             />
             <WorkspaceIconBtn
@@ -1720,7 +1567,7 @@ export function StoryWorkspacePage() {
                 label="Manual entry"
                 active={manualMode}
                 onClick={() => setManualMode((c) => !c)}
-                disabled={isGenerating || isReadOnly}
+                disabled={isGenerating}
                 icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
               />
             ) : null}
@@ -1751,8 +1598,8 @@ export function StoryWorkspacePage() {
                       playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter.aliases)}
                       characterGenders={characterGenders}
                       onEdit={populateComposerFromMessage}
-                      onQuickEdit={isReadOnly ? undefined : handleOpenAssistantEdit}
-                      onRegenerate={isReadOnly ? undefined : handleRegenerateLastAssistant}
+                      onQuickEdit={handleOpenAssistantEdit}
+                      onRegenerate={handleRegenerateLastAssistant}
                       isLatestAssistant={message.id === latestAssistantMessage?.id}
                       onDelete={handleDeleteMessage}
                       highlighted={highlightedMessageId === message.id}
@@ -1827,7 +1674,7 @@ export function StoryWorkspacePage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => void handleUndoDirectorIntent()}
-                  disabled={isGenerating || isGeneratingAssist || isReadOnly}
+                  disabled={isGenerating || isGeneratingAssist}
                 >
                   Undo
                 </Button>
@@ -1846,7 +1693,7 @@ export function StoryWorkspacePage() {
                     variant="secondary"
                     size="sm"
                     onClick={() => void handleSelectVariant(variantSession.selectedIndex - 1)}
-                  disabled={isGenerating || isSwitchingVariant || isReadOnly || variantSession.selectedIndex === 0}
+                  disabled={isGenerating || isSwitchingVariant || variantSession.selectedIndex === 0}
                   >
                     ← Previous
                   </Button>
@@ -1854,7 +1701,7 @@ export function StoryWorkspacePage() {
                     variant="secondary"
                     size="sm"
                     onClick={() => void handleSelectVariant(variantSession.selectedIndex + 1)}
-                  disabled={isGenerating || isSwitchingVariant || isReadOnly || variantSession.selectedIndex === variantSession.candidates.length - 1}
+                  disabled={isGenerating || isSwitchingVariant || variantSession.selectedIndex === variantSession.candidates.length - 1}
                   >
                     Next →
                   </Button>
@@ -1867,14 +1714,14 @@ export function StoryWorkspacePage() {
                 <Button
                   variant="secondary"
                   onClick={handleOpenAssistantEdit}
-                  disabled={isGenerating || isGeneratingAssist || isReadOnly}
+                  disabled={isGenerating || isGeneratingAssist}
                 >
                   Edit
                 </Button>
                 <Button
                   variant="ghost"
                   onClick={handleRegenerateLastAssistant}
-                  disabled={isGenerating || isGeneratingAssist || isReadOnly}
+                  disabled={isGenerating || isGeneratingAssist}
                 >
                   Regenerate
                 </Button>
@@ -1902,7 +1749,7 @@ export function StoryWorkspacePage() {
                   variant="secondary"
                   size="sm"
                   onClick={handleRetryChat}
-                  disabled={isGenerating || isGeneratingAssist || !lastChatContent || isReadOnly}
+                  disabled={isGenerating || isGeneratingAssist || !lastChatContent}
                 >
                   Retry
                 </Button>
@@ -1925,7 +1772,7 @@ export function StoryWorkspacePage() {
                 onChange={(event) => setChatInput(event.target.value)}
                 onFocus={handleChatInputFocus}
                 onBlur={handleChatInputBlur}
-                disabled={isReadOnly || guidedGenerationActive}
+                disabled={guidedGenerationActive}
                 placeholder={
                   assistDefaultsToDirector
                     ? `Write a Director note (${formatDirectorNoteComposerHint()}) or your character's next action.`
@@ -1947,7 +1794,7 @@ export function StoryWorkspacePage() {
             ) : null}
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Button onClick={handleSendChat} disabled={isGenerating || diceStatLoading || isReadOnly || guidedGenerationActive}>
+              <Button onClick={handleSendChat} disabled={isGenerating || diceStatLoading || guidedGenerationActive}>
                 {diceStatLoading ? "Selecting stat…" : isGenerating ? "Generating Scene..." : guidedGenerationActive ? "Generating chapters…" : "Send"}
               </Button>
               {isGenerating ? (
@@ -1958,7 +1805,7 @@ export function StoryWorkspacePage() {
               <Button
                 variant="secondary"
                 onClick={handleGeneratePlayerAssist}
-                disabled={isGenerating || isGeneratingAssist || isReadOnly}
+                disabled={isGenerating || isGeneratingAssist}
               >
                 {isGeneratingAssist
                   ? assistDefaultsToDirector
@@ -2053,7 +1900,6 @@ export function StoryWorkspacePage() {
                     speakerName: role === "assistant" ? currentState.speakerName : "",
                   }));
                 }}
-                disabled={isReadOnly}
               >
                 <option value="user">user</option>
                 <option value="assistant">assistant</option>
@@ -2074,7 +1920,7 @@ export function StoryWorkspacePage() {
                     speakerName: event.target.value === "canon" ? currentState.speakerName : "",
                   }))
                 }
-                disabled={composerState.role !== "assistant" || isReadOnly}
+                disabled={composerState.role !== "assistant"}
               >
                 {composerState.role === "assistant" ? (
                   <>
@@ -2109,7 +1955,6 @@ export function StoryWorkspacePage() {
                     speakerName: event.target.value,
                   }))
                 }
-                disabled={isReadOnly}
                 placeholder="Example: Captain Reyes"
               />
             </Field>
@@ -2130,7 +1975,6 @@ export function StoryWorkspacePage() {
                   content: event.target.value,
                 }))
               }
-              disabled={isReadOnly}
               placeholder="Write the next user turn, narrator beat, canon line, or system note."
             />
           </Field>
@@ -2142,14 +1986,13 @@ export function StoryWorkspacePage() {
           ) : null}
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button type="submit" disabled={isSavingMessage || isReadOnly}>
+            <Button type="submit" disabled={isSavingMessage}>
               {isSavingMessage ? "Saving..." : editingMessage ? "Save Entry" : "Add Entry"}
             </Button>
             <Button
               type="button"
               variant="secondary"
               onClick={() => applyComposerPreset("assistant", "narrator")}
-              disabled={isReadOnly}
             >
               Narrator Preset
             </Button>

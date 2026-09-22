@@ -113,7 +113,6 @@ import type {
 } from "../../lib/ai/types";
 import { buildCanonicalTranscriptFingerprint } from "../../lib/transcriptFingerprint";
 import {
-  createSequelStoryStateData,
   normalizeStoryStateToV2,
   parseStoryStateJson,
   reconcileStoryIndexes,
@@ -402,8 +401,6 @@ interface StoryEngineContextValue {
   getPlayerCharactersForUniverse: (universeIdOrIds: string | string[]) => PlayerCharacter[];
   getStoriesForUniverse: (universeId: string) => Story[];
   getStoriesForPlayerCharacter: (playerCharacterId: string) => Story[];
-  getParentStory: (storyId: string) => Story | undefined;
-  getChildStories: (storyId: string) => Story[];
   createUniverse: (draft: UniverseDraft) => Promise<Universe>;
   updateUniverse: (id: string, draft: UniverseDraft) => Promise<Universe | null>;
   generateUniverseBlueprint: (input: {
@@ -462,16 +459,6 @@ interface StoryEngineContextValue {
   ) => Promise<PlayerCharacter | null>;
   deletePlayerCharacter: (id: string) => Promise<GuardedDeleteResult>;
   createStory: (draft: StoryDraft) => Promise<Story>;
-  createSequel: (input: {
-    sourceStoryId: string;
-    title: string;
-    playerCharacterId: string;
-    openingNote?: string;
-  }) => Promise<Story>;
-  createBranch: (input: {
-    sourceStoryId: string;
-    title: string;
-  }) => Promise<Story>;
   updateStory: (id: string, patch: Partial<StoryDraft>) => Promise<Story | null>;
   deleteStory: (id: string) => Promise<void>;
   deleteAllStories: () => Promise<void>;
@@ -837,67 +824,6 @@ function summarizeGenerationAuditMessages(
       redactContent,
     ),
   };
-}
-
-function isStoryReadOnly(story: Pick<Story, "readOnlyReason"> | null | undefined) {
-  return story?.readOnlyReason === "sequel_prequel";
-}
-
-function trimSequelLines(values: Array<string | undefined>, maxItems: number) {
-  return values
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .map((value) => value.trim())
-    .filter((value, index, array) => array.findIndex((candidate) => candidate === value) === index)
-    .slice(0, maxItems);
-}
-
-function buildSequelSummaryText(args: {
-  sourceStory: Story;
-  sourceSummary: string;
-  sourceState: StoryStateData | null;
-  openingNote?: string;
-}) {
-  const parsed = args.sourceState;
-  const relationshipLines = trimSequelLines(
-    [
-      ...(parsed?.relationshipState ?? []),
-      ...((parsed?.indexes?.relationships ?? [])
-        .map((entry: RelationshipIndexEntry) => entry.summary)
-        .filter((value: string | undefined): value is string => typeof value === "string")),
-      parsed?.summaries?.relationshipSummary,
-    ],
-    5,
-  );
-  const worldLines = trimSequelLines(
-    [
-      parsed?.summaries?.currentSituation,
-      parsed?.summaries?.worldSummary,
-      ...(parsed?.worldFacts ?? []),
-      ...((parsed?.indexes?.worldFacts ?? []).map((entry: NonNullable<StoryIndexesV2["worldFacts"]>[number]) => entry.fact)),
-      ...(parsed?.unresolvedThreads ?? []),
-      ...((parsed?.threads?.openThreads ?? [])),
-    ],
-    7,
-  );
-
-  return [
-    "Story Context",
-    "",
-    `This story is a direct sequel to ${args.sourceStory.title}.`,
-    "Previous events are canon.",
-    "",
-    "Current state:",
-    args.sourceSummary || "Canon continues from the predecessor story.",
-    ...(relationshipLines.length
-      ? ["", "Relationships:", ...relationshipLines]
-      : []),
-    ...(worldLines.length
-      ? ["", "Active world state:", ...worldLines]
-      : []),
-    ...(args.openingNote?.trim()
-      ? ["", "Sequel setup note:", args.openingNote.trim()]
-      : []),
-  ].join("\n");
 }
 
 function buildUniversePackSnapshot(
@@ -2790,12 +2716,6 @@ export function StoryEngineProvider({
 
       if (!currentStory) {
         throw new Error("Story not found.");
-      }
-
-      if (isStoryReadOnly(currentStory)) {
-        throw new Error(
-          "This story is locked as a prequel. Create or open a sequel to continue canon.",
-        );
       }
 
       return currentStory;
@@ -5395,14 +5315,6 @@ export function StoryEngineProvider({
         sortByUpdatedAtDesc(
           stories.filter((story) => story.playerCharacterId === playerCharacterId),
         ),
-      getParentStory: (storyId) => {
-        const currentStory = stories.find((story) => story.id === storyId);
-        return currentStory?.parentStoryId
-          ? stories.find((story) => story.id === currentStory.parentStoryId)
-          : undefined;
-      },
-      getChildStories: (storyId) =>
-        sortByCreatedAtDesc(stories.filter((story) => story.parentStoryId === storyId)),
       async createUniverse(draft) {
         const mode = draft.mode ?? "referenced";
         const concept = (draft.concept ?? "").trim();
@@ -6005,17 +5917,10 @@ export function StoryEngineProvider({
           universeId: universeIds[0] ?? draft.universeId,
           universeIds,
           playerCharacterId: draft.playerCharacterId,
-          parentStoryId: draft.parentStoryId,
-          rootStoryId: draft.rootStoryId ?? storyId,
-          lineageDepth: draft.lineageDepth ?? 0,
-          lineageType: draft.lineageType,
-          sequelSeedSourceStoryId: draft.sequelSeedSourceStoryId,
           universePackSnapshot,
           universePackSnapshots:
             universePackSnapshots.length > 1 ? universePackSnapshots : undefined,
           isArchived: draft.isArchived,
-          readOnlyReason: undefined,
-          readOnlyLockedAt: undefined,
           adultContentMode,
           matureFictionMode: adultContentModeToLegacyMatureFictionMode(adultContentMode),
           rpMode,
@@ -6069,243 +5974,6 @@ export function StoryEngineProvider({
           await queueGuidedChapterJob(storyId, { entry: "story_history", plan });
         }
 
-        return nextStory;
-      },
-      async createSequel(input) {
-        const now = new Date().toISOString();
-        const sourceStory = await repository.getStory(input.sourceStoryId);
-
-        if (!sourceStory) {
-          throw new Error("Source story not found.");
-        }
-
-        const [playerCharacter, universePackSnapshots, sourceStateRecord, sourceSummaries, sourceAiConfig] =
-          await Promise.all([
-            repository.getPlayerCharacter(input.playerCharacterId),
-            buildUniversePackSnapshotsForIds(repository, getUniverseIds(sourceStory)),
-            repository.getStoryState(sourceStory.id),
-            repository.listStorySummaries(sourceStory.id),
-            repository.getStoryAIConfig(sourceStory.id),
-          ]);
-
-        if (!playerCharacter) {
-          throw new Error("Player character not found.");
-        }
-
-        if (!characterMatchesUniverses(playerCharacter, getUniverseIds(sourceStory))) {
-          throw new Error(
-            "Sequel protagonists must belong to at least one universe from the source story.",
-          );
-        }
-
-        const storyId = createEntityId("story");
-        const parsedSourceState = sourceStateRecord?.stateJson?.trim()
-          ? safeParseStoryStateData(sourceStateRecord.stateJson)
-          : null;
-        const sourceSummary =
-          sourceStory.openingPrompt?.trim() ||
-          sourceSummaries[0]?.summary?.trim() ||
-          parsedSourceState?.summaries?.currentSituation?.trim() ||
-          "";
-        const sequelSummary = buildSequelSummaryText({
-          sourceStory,
-          sourceSummary,
-          sourceState: parsedSourceState,
-          openingNote: input.openingNote,
-        });
-        const sequelState = createSequelStoryStateData({
-          sourceState: parsedSourceState,
-          sourceSummary: sequelSummary,
-          now,
-        });
-        const universePackSnapshot = universePackSnapshots[0];
-        const adultContentMode = resolveAdultContentMode(sourceStory);
-        const nextStory: Story = {
-          id: storyId,
-          title: input.title.trim(),
-          universeId: sourceStory.universeId,
-          universeIds: getUniverseIds(sourceStory),
-          playerCharacterId: input.playerCharacterId,
-          parentStoryId: sourceStory.id,
-          rootStoryId: sourceStory.rootStoryId ?? sourceStory.id,
-          lineageDepth: (sourceStory.lineageDepth ?? 0) + 1,
-          lineageType: "sequel",
-          sequelSeedSourceStoryId: sourceStory.id,
-          universePackSnapshot,
-          universePackSnapshots:
-            universePackSnapshots.length > 1 ? universePackSnapshots : undefined,
-          isArchived: false,
-          adultContentMode,
-          matureFictionMode: adultContentModeToLegacyMatureFictionMode(adultContentMode),
-          rpMode: sourceStory.rpMode,
-          rpConfig: sourceStory.rpConfig,
-          autoIndexMode: sourceStory.autoIndexMode,
-          autoIndexInterval: sourceStory.autoIndexInterval ?? 20,
-          accentThemeKey: sourceStory.accentThemeKey,
-          accentThemeCustom: sourceStory.accentThemeCustom,
-          currentSummary: sequelSummary.trim(),
-          importedCharacterIds: normalizeStoryImportedCharacterIds(sourceStory.importedCharacterIds),
-          createdAt: now,
-          updatedAt: now,
-        };
-
-        await repository.saveStory(nextStory);
-        await repository.saveStoryState({
-          id: `story-state:${storyId}`,
-          storyId,
-          stateJson: JSON.stringify(sequelState),
-          updatedAt: now,
-        });
-        await repository.saveStoryMessage({
-          id: createEntityId("story-message"),
-          storyId,
-          role: "system",
-          content: "Chapter I.",
-          timestamp: now,
-          speakerType: "system",
-          chapterBoundary: {
-            kind: "start",
-            label: "Chapter I",
-          },
-        });
-        await repository.saveStory({
-          ...sourceStory,
-          readOnlyReason: "sequel_prequel",
-          readOnlyLockedAt: sourceStory.readOnlyLockedAt ?? now,
-          updatedAt: now,
-        });
-
-        if (sourceAiConfig) {
-          await repository.saveStoryAIConfig({
-            ...sourceAiConfig,
-            id: createEntityId("story-ai-config"),
-            storyId,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-
-        await hydrate(false);
-        return nextStory;
-      },
-      async createBranch(input) {
-        const now = new Date().toISOString();
-        const sourceStory = await repository.getStory(input.sourceStoryId);
-
-        if (!sourceStory) {
-          throw new Error("Source story not found.");
-        }
-
-        const [
-          universePack,
-          sourceMessages,
-          sourceMetaMessages,
-          sourceChapters,
-          sourceSummaries,
-          sourceStateRecord,
-          sourceAiConfig,
-        ] = await Promise.all([
-          repository.getUniverseExportBundle(sourceStory.universeId),
-          repository.listStoryMessages(sourceStory.id),
-          repository.listStoryMetaMessages(sourceStory.id),
-          repository.listStoryChapters(sourceStory.id),
-          repository.listStorySummaries(sourceStory.id),
-          repository.getStoryState(sourceStory.id),
-          repository.getStoryAIConfig(sourceStory.id),
-        ]);
-
-        const storyId = createEntityId("story");
-        const adultContentMode = resolveAdultContentMode(sourceStory);
-        const nextStory: Story = {
-          ...sourceStory,
-          id: storyId,
-          title: input.title.trim(),
-          parentStoryId: sourceStory.id,
-          rootStoryId: sourceStory.rootStoryId ?? sourceStory.id,
-          lineageDepth: (sourceStory.lineageDepth ?? 0) + 1,
-          lineageType: "branch",
-          sequelSeedSourceStoryId: undefined,
-          universePackSnapshot: buildUniversePackSnapshot(universePack),
-          readOnlyReason: undefined,
-          readOnlyLockedAt: undefined,
-          adultContentMode,
-          matureFictionMode: adultContentModeToLegacyMatureFictionMode(adultContentMode),
-          createdAt: now,
-          updatedAt: now,
-        };
-
-        const messageIdMap = new Map<string, string>();
-        const clonedMessages = sourceMessages.map((message) => {
-          const nextId = createEntityId("story-message");
-          messageIdMap.set(message.id, nextId);
-          return {
-            ...message,
-            id: nextId,
-            storyId,
-          };
-        });
-        const clonedMetaMessages = sourceMetaMessages.map((message) => ({
-          ...message,
-          id: createEntityId("story-meta-message"),
-          storyId,
-        }));
-        const clonedChapters = sourceChapters.map((chapter) => ({
-          ...chapter,
-          id: createEntityId("story-chapter"),
-          storyId,
-          endsAtMessageId: messageIdMap.get(chapter.endsAtMessageId) ?? chapter.endsAtMessageId,
-        }));
-        const clonedSummaries = sourceSummaries.map((summary) => ({
-          ...summary,
-          id: createEntityId("story-summary"),
-          storyId,
-        }));
-        const clonedState = (() => {
-          if (!sourceStateRecord) {
-            return null;
-          }
-
-          let stateJson = sourceStateRecord.stateJson;
-          try {
-            const parsed = JSON.parse(sourceStateRecord.stateJson) as Record<string, unknown>;
-            stateJson = JSON.stringify({
-              ...parsed,
-              updatedAt: now,
-            });
-          } catch {}
-
-          return {
-            ...sourceStateRecord,
-            id: `story-state:${storyId}`,
-            storyId,
-            stateJson,
-            updatedAt: now,
-          };
-        })();
-
-        await repository.saveStory(nextStory);
-        await Promise.all(clonedMessages.map((message) => repository.saveStoryMessage(message)));
-        await Promise.all(
-          clonedMetaMessages.map((message) => repository.saveStoryMetaMessage(message)),
-        );
-        await Promise.all(clonedChapters.map((chapter) => repository.saveStoryChapter(chapter)));
-        await Promise.all(clonedSummaries.map((summary) => repository.saveStorySummary(summary)));
-
-        if (clonedState) {
-          await repository.saveStoryState(clonedState);
-        }
-
-        if (sourceAiConfig) {
-          await repository.saveStoryAIConfig({
-            ...sourceAiConfig,
-            id: createEntityId("story-ai-config"),
-            storyId,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-
-        await hydrate(false);
         return nextStory;
       },
       async updateStory(id, patch) {

@@ -106,10 +106,6 @@ export function mergeStoryLocalPlayerIdentityIntoState<T>(state: T, ..._args: an
   return state;
 }
 
-export function createSequelStoryStateData(..._args: any[]): StoryRuntimeState {
-  return {};
-}
-
 export function applyTranscriptPresenceGate<T>(state: T, ..._args: any[]): T {
   return state;
 }

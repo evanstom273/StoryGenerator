@@ -11,8 +11,6 @@ interface StoryListRowProps {
   to: string;
   active?: boolean;
   className?: string;
-  lineageLabel?: string;
-  readOnly?: boolean;
   actions?: ReactNode;
 }
 
@@ -23,8 +21,6 @@ export function StoryListRow({
   to,
   active = false,
   className,
-  lineageLabel,
-  readOnly,
   actions,
 }: StoryListRowProps) {
   return (
@@ -42,18 +38,6 @@ export function StoryListRow({
           <div className="truncate text-sm font-semibold text-ink">{story.title}</div>
           <div className="mt-0.5 truncate text-xs text-ink-muted">
             {universeName} · {playerCharacterName}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            {lineageLabel ? (
-              <span className="rounded-full border border-divider/[0.5] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
-                {lineageLabel}
-              </span>
-            ) : null}
-            {readOnly ? (
-              <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200">
-                Prequel Locked
-              </span>
-            ) : null}
           </div>
           <div className="mt-1.5 truncate text-xs text-ink-soft">
             {story.openingPrompt || "No opening direction yet."}
