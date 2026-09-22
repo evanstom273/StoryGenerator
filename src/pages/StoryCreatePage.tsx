@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EmptyState } from "../components/EmptyState";
 import { Field, MultiUniversePicker, SelectInput, TextAreaInput, TextInput, AliasesInput, KnownTiesInput } from "../components/forms/Fields";
@@ -62,19 +62,14 @@ const initialQuickCharacterState: PlayerCharacterDraft = {
 
 export function StoryCreatePage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const {
     aiSettings,
-    createBranch,
     createPlayerCharacter,
-    createSequel,
     createStory,
     generatePlayerCharacterDraft,
     generatePlayerCharacterConcept,
     generateStoryTitle,
     getPlayerCharacterById,
-    getStoryAIConfig,
-    getStoryById,
     getUniverseById,
     generateGuidedChapterPlan,
     universes,
@@ -82,8 +77,6 @@ export function StoryCreatePage() {
     saveStoryAIConfig,
     updatePlayerCharacter,
   } = useStoryEngine();
-  const sequelToId = searchParams.get("sequelTo")?.trim() ?? "";
-  const branchFromId = searchParams.get("branchFrom")?.trim() ?? "";
   const [formState, setFormState] = useState(initialFormState);
   const [protagonistMode, setProtagonistMode] = useState<
     "existing" | "newPermanent" | "quick"
@@ -132,23 +125,6 @@ export function StoryCreatePage() {
     }
     return getPlayerCharacterById(formState.playerCharacterId)?.name ?? "Player";
   }, [formState.playerCharacterId, getPlayerCharacterById, protagonistMode, quickCharacterState.name]);
-  const sourceMode = branchFromId ? "branch" : sequelToId ? "sequel" : null;
-  const sourceStory = sourceMode
-    ? getStoryById(sourceMode === "branch" ? branchFromId : sequelToId)
-    : undefined;
-  const sourceUniverseIds = sourceStory ? getUniverseIds(sourceStory) : [];
-  const sourceUniverses = sourceUniverseIds
-    .map((universeId) => getUniverseById(universeId))
-    .filter((universe): universe is NonNullable<typeof universe> => Boolean(universe));
-  const sourceCharacter = sourceStory
-    ? getPlayerCharacterById(sourceStory.playerCharacterId)
-    : undefined;
-  const seededSourceKeyRef = useRef<string | null>(null);
-  const isSequelMode =
-    sourceMode === "sequel" && Boolean(sourceStory && sourceUniverses.length && sourceCharacter);
-  const isBranchMode =
-    sourceMode === "branch" && Boolean(sourceStory && sourceUniverses.length && sourceCharacter);
-  const isDerivedMode = isSequelMode || isBranchMode;
   const hasSelectedUniverses = formState.universeIds.length > 0 || Boolean(formState.universeId);
 
   const availableCharacters = useMemo(
@@ -164,15 +140,7 @@ export function StoryCreatePage() {
     [formState.universeId, formState.universeIds, getPlayerCharactersForUniverse],
   );
 
-  const selectableCharacters = useMemo(() => {
-    if (!isDerivedMode || !sourceCharacter) {
-      return availableCharacters;
-    }
-
-    return availableCharacters.some((character) => character.id === sourceCharacter.id)
-      ? availableCharacters
-      : [sourceCharacter, ...availableCharacters];
-  }, [availableCharacters, isDerivedMode, sourceCharacter]);
+  const selectableCharacters = availableCharacters;
 
   useEffect(() => {
     setQuickCharacterState((current) => ({
@@ -188,372 +156,21 @@ export function StoryCreatePage() {
     }));
   }, [formState.universeId, formState.universeIds]);
 
-  useEffect(() => {
-    if (!isDerivedMode || !sourceStory || !sourceUniverses.length || !sourceCharacter) {
-      return;
-    }
-
-    const nextSeedKey = `${sourceMode}:${sourceStory.id}`;
-    if (seededSourceKeyRef.current === nextSeedKey) {
-      return;
-    }
-
-    seededSourceKeyRef.current = nextSeedKey;
-    setProtagonistMode("existing");
-    setFormState((current) => {
-      const nextTitle = isBranchMode
-        ? `${sourceStory.title} (Branch)`
-        : `${sourceStory.title} II`;
-      return {
-        ...current,
-        title: current.title || nextTitle,
-        universeId: sourceUniverseIds[0] ?? "",
-        universeIds: sourceUniverseIds,
-        playerCharacterId: current.playerCharacterId || sourceCharacter.id,
-		openingPrompt: isBranchMode ? (sourceStory.openingPrompt ?? "") : (current.openingPrompt ?? ""),
-      };
-    });
-  }, [
-    isBranchMode,
-    isDerivedMode,
-    sourceCharacter,
-    sourceMode,
-    sourceStory,
-    sourceUniverseIds,
-    sourceUniverses.length,
-  ]);
-
-  useEffect(() => {
-    if (!isDerivedMode || !sourceStory) {
-      return;
-    }
-
-    let cancelled = false;
-    void getStoryAIConfig(sourceStory.id)
-      .then((config) => {
-        if (cancelled || !config) {
-          return;
-        }
-        setStoryProviderType(config.providerType);
-        setStoryModel(
-          config.model?.trim() || getProviderDefaultModel(config.providerType),
-        );
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [getStoryAIConfig, isDerivedMode, sourceStory]);
 
   if (!universes.length) {
     return (
       <div className="space-y-8">
         <PageHeader
-          eyebrow="Create Story"
-          title="Create a story from a universe and a player character"
-          description="Stories require a universe first, so start by adding the fictional world you want to play in."
-        />
-        <EmptyState
-          title="You need a universe first"
-          description="Create or import a universe, then come back to build a story campaign."
-          action={
-            <Link to="/universes/new" className={buttonClasses()}>
-              Create Universe
-            </Link>
-          }
-        />
-      </div>
-    );
-  }
-
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!hasSelectedUniverses) {
-      setErrorMessage("Select at least one universe before creating the story.");
-      return;
-    }
-
-    if (!formState.title.trim()) {
-      setErrorMessage("Enter a story title.");
-      return;
-    }
-
-    if (storyHistoryEnabled && !storyHistoryPlan) {
-      setErrorMessage("Configure the generated story history plan before creating the story.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setErrorMessage(null);
-
-    try {
-      let resolvedPlayerCharacterId = formState.playerCharacterId;
-
-      if (protagonistMode === "existing") {
-        if (!resolvedPlayerCharacterId) {
-          setErrorMessage("Select the player character the user will play.");
-          return;
-        }
-      }
-
-      if (protagonistMode === "newPermanent") {
-        setErrorMessage("Create a player character for this universe before creating the story.");
-        return;
-      }
-
-      if (protagonistMode === "quick") {
-        if (!quickCharacterState.name.trim()) {
-          setErrorMessage("Enter a quick character name.");
-          return;
-        }
-
-        const createdCharacter = await createPlayerCharacter({
-          ...quickCharacterState,
-          universeId: formState.universeId,
-          universeIds:
-            formState.universeIds.length > 0
-              ? formState.universeIds
-              : [formState.universeId],
-          scope: "story",
-        });
-        resolvedPlayerCharacterId = createdCharacter.id;
-      }
-
-      const story = isBranchMode && sourceStory
-        ? await createBranch({
-            sourceStoryId: sourceStory.id,
-            title: formState.title,
-          })
-        : isSequelMode && sourceStory
-        ? await createSequel({
-            sourceStoryId: sourceStory.id,
-            title: formState.title,
-            playerCharacterId: resolvedPlayerCharacterId,
-			openingNote: formState.openingPrompt.trim() || undefined,
-          })
-        : await createStory({
-            ...formState,
-            universeIds:
-              formState.universeIds.length > 0
-                ? formState.universeIds
-                : [formState.universeId],
-            playerCharacterId: resolvedPlayerCharacterId,
-			currentSummary: "",
-			openingPrompt: formState.openingPrompt.trim(),
-            importedCharacterIds: normalizeStoryImportedCharacterIds(formState.importedCharacterIds),
-            adultContentMode: formState.adultContentMode,
-            // Keep older readers in sync while adultContentMode rolls out.
-            matureFictionMode: adultContentModeToLegacyMatureFictionMode(
-              formState.adultContentMode,
-            ),
-            rpMode: formState.rpMode,
-            guidedStoryHistory:
-              storyHistoryEnabled && storyHistoryPlan
-                ? {
-                    enabled: true,
-                    overallDirection: storyHistoryPlan.overallDirection,
-                    chapterCount: storyHistoryPlan.chapters.length,
-                    chapters: storyHistoryPlan.chapters.map((chapter) => ({
-                      label: chapter.label,
-                      overview: chapter.overview,
-                      scenesPerChapter: chapter.scenesPerChapter,
-                    })),
-                  }
-                : undefined,
-          });
-
-      if (!isDerivedMode && protagonistMode === "quick") {
-        await updatePlayerCharacter(resolvedPlayerCharacterId, {
-          ...quickCharacterState,
-          universeId: formState.universeId,
-          universeIds:
-            formState.universeIds.length > 0
-              ? formState.universeIds
-              : [formState.universeId],
-          scope: "story",
-          storyId: story.id,
-        }).catch(() => null);
-      }
-
-      await saveStoryAIConfig({
-        storyId: story.id,
-        providerType: storyProviderType,
-        model: storyModel,
-      }).catch(() => null);
-
-      navigate(`/stories/${story.id}`);
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Unable to create the story.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function handleGenerateStoryTitle() {
-    if (!hasSelectedUniverses) {
-      setStoryTitleError("Select at least one universe first.");
-      return;
-    }
-
-    const playerCharacter =
-      protagonistMode === "quick"
-        ? quickCharacterState
-        : getPlayerCharacterById(formState.playerCharacterId);
-
-    if (!playerCharacter?.name?.trim()) {
-      setStoryTitleError("Select or create a protagonist first.");
-      return;
-    }
-
-    setIsGeneratingTitle(true);
-    setStoryTitleError(null);
-
-    try {
-      const title = await generateStoryTitle({
-        universeIds:
-          formState.universeIds.length > 0
-            ? formState.universeIds
-            : formState.universeId
-              ? [formState.universeId]
-              : [],
-        playerCharacter,
-        importedCharacterIds: formState.importedCharacterIds,
-        openingPrompt: formState.openingPrompt,
-        existingTitle: formState.title,
-      });
-      setFormState((currentState) => ({ ...currentState, title }));
-    } catch (error) {
-      setStoryTitleError(
-        error instanceof Error ? error.message : "Unable to generate a story title.",
-      );
-    } finally {
-      setIsGeneratingTitle(false);
-    }
-  }
-
-  async function handleRandomizeQuickCharacterConcept() {
-    setIsQuickGeneratingConcept(true);
-    setQuickCharacterError(null);
-
-    try {
-      const universeId = formState.universeIds[0] ?? formState.universeId ?? "";
-      const concept = await generatePlayerCharacterConcept(
-        universeId || undefined,
-        quickCharacterState,
-      );
-      setQuickCharacterState((current) => ({ ...current, characterConcept: concept }));
-    } catch (error) {
-      setQuickCharacterError(
-        error instanceof Error ? error.message : "Unable to generate a character concept.",
-      );
-    } finally {
-      setIsQuickGeneratingConcept(false);
-    }
-  }
-
-  async function handleGenerateQuickCharacterDetails(mode: "overwrite" | "fillEmpty") {
-    if (!hasSelectedUniverses) {
-      setQuickCharacterError("Select at least one universe before generating a character.");
-      return;
-    }
-
-    const candidateFields: Array<keyof PlayerCharacterDraft> = [
-      "appearance",
-      "personality",
-      "background",
-      "notes",
-    ];
-
-    const fields =
-      mode === "fillEmpty"
-        ? candidateFields.filter((field) => {
-            const value = quickCharacterState[field];
-            return typeof value === "string" && !value.trim();
-          })
-        : candidateFields;
-
-    if (!fields.length) {
-      setQuickCharacterError("No fields to generate.");
-      return;
-    }
-
-    setIsQuickGenerating(true);
-    setQuickCharacterError(null);
-
-    try {
-      const patch = await generatePlayerCharacterDraft(
-        formState.universeId,
-        fields,
-        quickCharacterState,
-      );
-      setQuickCharacterState((current) => ({ ...current, ...patch }));
-    } catch (error) {
-      setQuickCharacterError(
-        error instanceof Error ? error.message : "Unable to generate character fields.",
-      );
-    } finally {
-      setIsQuickGenerating(false);
-    }
-  }
-
-  return (
-    <div className="space-y-8">
-      <PageHeader
-        eyebrow={isBranchMode ? "Branch Story" : isSequelMode ? "Create Sequel" : "Create Story"}
-        title={
-          isBranchMode
-            ? "Fork the current story into an editable branch"
-            : isSequelMode
-            ? "Start a new sequel from an existing story"
-            : "Create a story from a universe and a player character"
-        }
-        description={
-          isBranchMode
-            ? "The branch copies the current transcript, context, index, and story state so you can continue from the same point without locking the original."
-            : isSequelMode
-            ? "The predecessor stays canon and becomes read-only. The sequel starts fresh at message 1 while inheriting distilled story state."
-            : "Choose the fictional universe, select the player character, then set a title and optional summary."
-        }
+        eyebrow="Create Story"
+        title="Create a story from a universe and a player character"
+        description="Choose the fictional universe, select the player character, then set a title and optional summary."
       />
-
-      {isDerivedMode && sourceStory && sourceUniverses.length && sourceCharacter ? (
-        <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]" padding="lg">
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-            {isBranchMode ? "Branch Source" : "Sequel Source"}
-          </div>
-          <div className="mt-3 text-lg font-semibold text-ink">{sourceStory.title}</div>
-          <p className="mt-2 text-sm leading-7 text-ink-muted">
-            Universes: {sourceUniverses.map((universe) => universe.name).join(", ")} · Default
-            protagonist: {sourceCharacter.name}
-          </p>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            {isBranchMode ? (
-              <>
-                This branch keeps the current transcript, context, index, and canon state intact so you can split the story into an alternate path without locking the source story.
-              </>
-            ) : (
-              <>
-                This new story inherits the predecessor&apos;s distilled canon state, relationships, and world facts. The old story becomes a locked prequel and the new transcript begins with <span className="font-semibold text-ink-soft">Chapter I.</span>
-              </>
-            )}
-          </p>
-			{sourceStory.openingPrompt?.trim() ? (
-            <div className="mt-4 rounded-[10px] border border-divider/[0.45] bg-app-elevated px-4 py-3 text-sm leading-7 text-ink-soft">
-				{sourceStory.openingPrompt}
-            </div>
-          ) : null}
-        </Panel>
-      ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
         {[
-          ["Step 1", isDerivedMode ? "Confirm Source" : "Select Universe"],
+          ["Step 1", "Select Universe"],
           ["Step 2", "Select Player Character"],
-          ["Step 3", isBranchMode ? "Branch Details" : isSequelMode ? "Sequel Details" : "Story Details"],
+          ["Step 3", "Story Details"],
         ].map(([step, title]) => (
           <Panel variant="flat" key={step}>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
@@ -581,7 +198,6 @@ export function StoryCreatePage() {
                       ? [formState.universeId]
                       : []
                 }
-                disabled={isDerivedMode}
                 onChange={(universeIds) =>
                   setFormState((currentState) => {
                     const previousIds =
@@ -641,7 +257,6 @@ export function StoryCreatePage() {
                     Quick
                   </Button>
                 </div>
-              )}
             </Field>
           </div>
 
@@ -664,7 +279,6 @@ export function StoryCreatePage() {
                       <button
                         key={character.id}
                         type="button"
-                        disabled={isBranchMode}
                         aria-pressed={selected}
                         onClick={() =>
                           setFormState((currentState) => ({
@@ -699,7 +313,7 @@ export function StoryCreatePage() {
             </Field>
           ) : null}
 
-          {!isDerivedMode && protagonistMode === "newPermanent" ? (
+          {protagonistMode === "newPermanent" ? (
             <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]">
               <h2 className="text-lg font-semibold text-ink">Create a permanent player character</h2>
               <p className="mt-2 text-sm leading-7 text-ink-muted">
@@ -720,7 +334,7 @@ export function StoryCreatePage() {
             </Panel>
           ) : null}
 
-          {!isDerivedMode && protagonistMode === "quick" ? (
+          {protagonistMode === "quick" ? (
             <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]" padding="lg">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
                 Quick Story Character
@@ -1005,7 +619,7 @@ export function StoryCreatePage() {
             </p>
           </Panel>
 
-          {hasSelectedUniverses && !selectableCharacters.length && protagonistMode === "existing" && !isDerivedMode ? (
+          {hasSelectedUniverses && !selectableCharacters.length && protagonistMode === "existing" ? (
             <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]">
               <h2 className="text-lg font-semibold text-ink">
                 These universes need a player character
@@ -1056,28 +670,17 @@ export function StoryCreatePage() {
                     title: event.target.value,
                   }));
                 }}
-                placeholder={
-                  isBranchMode
-                    ? "Example: Starfall Saga (Branch)"
-                    : isSequelMode
-                    ? "Example: Starfall Saga II"
-                    : "Example: The Harbor Job: Alex Rivera"
-                }
+                placeholder="Example: The Harbor Job: Alex Rivera"
               />
               {storyTitleError ? (
                 <p className="mt-2 text-sm text-rose-200">{storyTitleError}</p>
               ) : null}
             </Field>
 
-            {isBranchMode ? null : (
-              <Field
-                label={isSequelMode ? "Sequel Setup Note" : "Current Summary"}
+            <Field
+                label="Current Summary"
                 hint="Optional"
-                help={
-                  isSequelMode
-                    ? "Optional notes added on top of canon inherited from the previous story."
-                    : "A short overview of where the story begins. The AI uses this for context before you write the first scene."
-                }
+                help="A short overview of where the story begins. The AI uses this for context before you write the first scene."
               >
                 <TextAreaInput
 					value={formState.openingPrompt}
@@ -1087,17 +690,11 @@ export function StoryCreatePage() {
 						openingPrompt: event.target.value,
                     }))
                   }
-                  placeholder={
-                    isSequelMode
-                      ? "Optional extra setup to add on top of the inherited canon state."
-                      : "Leave blank for now or add a short story overview."
-                  }
+                  placeholder="Leave blank for now or add a short story overview."
                 />
               </Field>
-            )}
 
-            {!isDerivedMode ? (
-              <Field
+            <Field
                 label="Imported Characters"
                 hint="Optional supporting cast"
                 help="Library characters the AI should know in this story. They are not auto-spawned into scenes — only used when you reference them or when it makes narrative sense."
@@ -1112,130 +709,7 @@ export function StoryCreatePage() {
                         ? [formState.universeId]
                         : []
                   }
-                  disabled={isSubmitting}
-                  getPlayerCharactersForUniverse={getPlayerCharactersForUniverse}
-                  getUniverseById={getUniverseById}
-                  getPlayerCharacterById={getPlayerCharacterById}
-                  onChange={(importedCharacterIds) =>
-                    setFormState((currentState) => ({
-                      ...currentState,
-                      importedCharacterIds,
-                    }))
-                  }
-                />
-              </Field>
-            ) : null}
-
-            {!isDerivedMode ? (
-              <div className="grid gap-6 md:grid-cols-2">
-                <Field
-                  label="Adult content mode"
-                  hint="Defaults to mature, non-graphic fiction"
-                  help="Choose the intended content boundary. Explicit mode is only for fictional, confirmed adults whose participation is consensual; providers may still filter individual requests."
-                >
-                  <SelectInput
-                    value={formState.adultContentMode}
-                    onChange={(event) => {
-                      const mode = event.target.value;
-                      if (!isAdultContentMode(mode)) {
-                        return;
-                      }
-                      setFormState((currentState) => ({
-                        ...currentState,
-                        adultContentMode: mode,
-                      }));
-                    }}
-                  >
-                    <option value="standard">Standard</option>
-                    <option value="mature_non_graphic">Mature fiction (non-graphic)</option>
-                    <option value="explicit_consensual_adults">
-                      Explicit fiction (consenting adults)
-                    </option>
-                  </SelectInput>
-                  <p className="mt-2 text-xs leading-5 text-ink-muted">
-                    {formState.adultContentMode === "explicit_consensual_adults"
-                      ? getAdultContentProviderProfile(storyProviderType).explanation
-                      : formState.adultContentMode === "mature_non_graphic"
-                        ? "Allows serious adult themes and non-graphic intimacy without enabling explicit sexual detail."
-                        : "Uses the standard story boundary without mature-fiction prompt guidance."}
-                  </p>
-                </Field>
-                <Field
-                  label="RP mode"
-                  hint="Track HP, currency, and core stats"
-                  help="Turns on health, currency, dice rolls, and a character sheet overlay for tabletop-style play."
-                >
-                  <SelectInput
-                    value={formState.rpMode ? "on" : "off"}
-                    onChange={(event) =>
-                      setFormState((currentState) => ({
-                        ...currentState,
-                        rpMode: event.target.value === "on",
-                      }))
-                    }
-                  >
-                    <option value="on">On</option>
-                    <option value="off">Off</option>
-                  </SelectInput>
-                </Field>
-              </div>
-            ) : null}
-
-            {!isDerivedMode ? (
-              <Panel variant="flat" className="border-dashed border-white/12 bg-white/[0.03]" padding="lg">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                  Story History
-                </div>
-                <p className="mt-3 text-sm leading-7 text-ink-muted">
-                  Optionally generate backstory chapters before play begins. Story Engine stages Director beats,
-                  narrates scenes, indexes each chapter, then inserts a divider and opens the playable chapter.
-                </p>
-                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Button
-                    type="button"
-                    variant={storyHistoryEnabled ? "secondary" : "ghost"}
-                    onClick={() => {
-                      setStoryHistoryEnabled((current) => {
-                        if (current) {
-                          setStoryHistoryPlan(null);
-                        }
-                        return !current;
-                      });
-                    }}
-                  >
-                    {storyHistoryEnabled ? "Story history enabled" : "Enable story history"}
-                  </Button>
-                  {storyHistoryEnabled ? (
-                    <Button type="button" variant="secondary" onClick={() => setShowStoryHistoryModal(true)}>
-                      {storyHistoryPlan
-                        ? `Plan ready · ${storyHistoryPlan.chapters.length} chapters`
-                        : "Configure Story History"}
-                    </Button>
-                  ) : null}
-                </div>
-              </Panel>
-            ) : null}
-          </div>
-
-          {errorMessage ? (
-            <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
-              {errorMessage}
-            </div>
-          ) : null}
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button type="submit" size="lg" disabled={isSubmitting}>
-              {isSubmitting
-                ? isBranchMode
-                  ? "Creating Branch..."
-                  : isSequelMode
-                  ? "Creating Sequel..."
-                  : "Creating Story..."
-                : isBranchMode
-                  ? "Create Branch"
-                  : isSequelMode
-                  ? "Create Sequel"
-                  : "Create Story"}
+                  disabled={isSubmitting ? "Creating Story..." : "Create Story"}
             </Button>
             <Link
               to="/stories"
