@@ -260,6 +260,39 @@ describe("storyIndexManager", () => {
       expect(groups[1].messages.map((m) => m.id)).toEqual(["m3", "m4"]);
     });
 
+    it("keeps explicit transcript chapter starts authoritative when persisted chapter metadata is stale", () => {
+      const messages: StoryMessage[] = [
+        { id: "m1", storyId: "s1", role: "user", content: "Chapter II.", timestamp: "1", chapterBoundary: { kind: "start", label: "Chapter II" } },
+        { id: "m2", storyId: "s1", role: "assistant", content: "Chapter two scene.", timestamp: "2" },
+        { id: "m3", storyId: "s1", role: "user", content: "End of Chapter II.", timestamp: "3", chapterBoundary: { kind: "end", label: "Chapter II" } },
+        { id: "m4", storyId: "s1", role: "user", content: "Chapter III.", timestamp: "4", chapterBoundary: { kind: "start", label: "Chapter III" } },
+        { id: "m5", storyId: "s1", role: "assistant", content: "Chapter three scene.", timestamp: "5" },
+        { id: "m6", storyId: "s1", role: "user", content: "End of Chapter III.", timestamp: "6", chapterBoundary: { kind: "end", label: "Chapter III" } },
+      ];
+      const chapters: StoryChapter[] = [
+        {
+          id: "ch-2",
+          storyId: "s1",
+          label: "Chapter II",
+          // Deliberately stale: persisted metadata incorrectly says Chapter II
+          // continues through Chapter III.
+          endsAtMessageId: "m6",
+          endsAtIndex: 6,
+          createdAt: "1",
+        },
+      ];
+
+      const groups = groupMessagesByChapter(messages, chapters);
+
+      expect(groups).toHaveLength(2);
+      expect(groups[0].chapterLabel).toBe("Chapter II");
+      expect(groups[0].chapterId).toBe("ch-2");
+      expect(groups[0].messages.map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
+      expect(groups[1].chapterLabel).toBe("Chapter III");
+      expect(groups[1].chapterId).toBeUndefined();
+      expect(groups[1].messages.map((m) => m.id)).toEqual(["m4", "m5", "m6"]);
+    });
+
     it("assigns a pending slice to the correct later chapter using the full transcript", () => {
       const allMessages: StoryMessage[] = [
         { id: "m1", storyId: "s1", role: "user", content: "1", timestamp: "1" },
