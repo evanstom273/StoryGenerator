@@ -6030,6 +6030,7 @@ export function StoryEngineProvider({
             createInheritedStoryIndex({
               parentIndex,
               parentStoryId: parentStory.id,
+              parentStoryTitle: parentStory.title,
               childStoryId: storyId,
               inheritedAt: now,
             }),
