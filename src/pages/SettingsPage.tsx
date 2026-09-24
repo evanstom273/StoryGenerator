@@ -495,7 +495,7 @@ export function SettingsPage() {
         }
         if (itemExportCharacterIds.length === 1) {
           const [filename, bytes] = Object.entries(files)[0]!;
-          await downloadFile(filename, bytes, "application/json");
+          await downloadFile(filename, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, "application/json");
           setItemExportStatus("Player character exported.");
         } else {
           await downloadFile(
@@ -537,7 +537,7 @@ export function SettingsPage() {
           : itemExportStoryFormat === "markdown" ? "text/markdown"
           : itemExportStoryFormat === "pdf" ? "application/pdf"
           : "text/plain";
-        await downloadFile(filename, bytes, mimeType);
+        await downloadFile(filename, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, mimeType);
         setItemExportStatus("Story exported.");
       } else {
         await downloadFile(
