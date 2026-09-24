@@ -51,22 +51,6 @@ function parseUnitString(raw: string): TimeUnit {
 }
 
 /** Convert a time skip to exact minutes. */
-export function timeSkipToMinutes(skip: NonNullable<DirectorIntent["timeSkip"]>): number {
-  switch (skip.unit) {
-    case "hours": return skip.amount * 60;
-    case "days": return skip.amount * 1440;
-    case "weeks": return skip.amount * 10080;
-    case "months": return skip.amount * 43200;
-  }
-}
-
-/** Resolve exact minutes from a DirectorIntent — prefers exactMinutes, falls back to timeSkip conversion. */
-export function resolveExactMinutes(intent: DirectorIntent): number | null {
-  if (intent.exactMinutes != null && intent.exactMinutes > 0) return intent.exactMinutes;
-  if (intent.timeSkip) return timeSkipToMinutes(intent.timeSkip);
-  return null;
-}
-
 function parseTimeSkip(text: string): DirectorIntent["timeSkip"] | null {
   const normalized = text.trim().toLowerCase();
 
@@ -115,33 +99,6 @@ function parseSceneCut(text: string): { sceneCut: true; target?: string } | null
   const cutTo = normalized.match(/\b(?:the\s+scene\s+cuts\s+to|scene\s+cuts\s+to|cut\s+to)\s+(.+?)(?:[.!?]|$)/i);
   if (cutTo?.[1]?.trim()) {
     return { sceneCut: true, target: cutTo[1].trim() };
-  }
-
-  return null;
-}
-
-function detectAbsoluteTime(text: string): { hour: number; minute: number } | null {
-  const normalized = text.toLowerCase();
-
-  if (/\bit'?s\s+noon\b/.test(normalized) || /\bit\s+is\s+noon\b/.test(normalized)) {
-    return { hour: 12, minute: 0 };
-  }
-  if (/\bit'?s\s+midnight\b/.test(normalized) || /\bit\s+is\s+midnight\b/.test(normalized)) {
-    return { hour: 0, minute: 0 };
-  }
-
-  const match =
-    normalized.match(/\bit'?s\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/) ??
-    normalized.match(/\bit\s+is\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
-  if (match) {
-    let hour = parseInt(match[1] ?? "0", 10);
-    const minute = parseInt(match[2] ?? "0", 10);
-    const ampm = match[3];
-    if (ampm === "pm" && hour !== 12) hour += 12;
-    if (ampm === "am" && hour === 12) hour = 0;
-    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-      return { hour, minute };
-    }
   }
 
   return null;
@@ -251,15 +208,13 @@ export function detectDirectorIntent(text: string): DirectorIntent | null {
 
   const timeSkip = parseTimeSkip(trimmed);
   const sceneCut = parseSceneCut(trimmed);
-  const absoluteTime = !timeSkip ? detectAbsoluteTime(trimmed) : null;
   const participation = parseParticipantCapabilityDirective(trimmed);
 
-  if (!timeSkip && !sceneCut && !absoluteTime && !participation) return null;
+  if (!timeSkip && !sceneCut && !participation) return null;
 
   return {
     ...(timeSkip ? { timeSkip } : {}),
     ...(sceneCut ? { sceneCut: true, ...(sceneCut.target ? { target: sceneCut.target } : {}) } : {}),
-    ...(absoluteTime ? { absoluteTime } : {}),
     ...(participation ?? {}),
   };
 }
@@ -268,54 +223,6 @@ export function detectDirectorIntent(text: string): DirectorIntent | null {
  * Parse a /time slash command from a message and strip it from the text.
  * Supported: /time +2h · /time +30m · /time +3d · /time +1w
  * Also accepts without the plus sign: /time 2h
- */
-export function parseSlashTimeCommand(text: string): { intent: DirectorIntent; strippedText: string } | null {
-  const re = /(?:^|(?<=\s))\/time\s*\+?(\d+(?:\.\d+)?)\s*(h|hr|hrs|hours?|m|min|mins|minutes?|d|days?|w|wks?|weeks?)(?=\s|$)/i;
-  const match = text.match(re);
-  if (!match) return null;
-
-  const rawAmount = parseFloat(match[1] ?? "0");
-  if (!rawAmount || !Number.isFinite(rawAmount) || rawAmount <= 0) return null;
-
-  const unitRaw = (match[2] ?? "").toLowerCase();
-  let exactMinutes: number;
-  let unit: TimeUnit;
-
-  if (unitRaw.startsWith("m")) {
-    exactMinutes = Math.round(rawAmount);
-    unit = "hours";
-  } else if (unitRaw.startsWith("h")) {
-    exactMinutes = Math.round(rawAmount * 60);
-    unit = "hours";
-  } else if (unitRaw.startsWith("d")) {
-    exactMinutes = Math.round(rawAmount * 1440);
-    unit = "days";
-  } else if (unitRaw.startsWith("w")) {
-    exactMinutes = Math.round(rawAmount * 10080);
-    unit = "weeks";
-  } else {
-    return null;
-  }
-
-  if (exactMinutes <= 0) return null;
-
-  const strippedText = text.replace(re, "").trim();
-
-  const intent: DirectorIntent = {
-    timeSkip: { unit, amount: Math.round(rawAmount) },
-    exactMinutes,
-  };
-
-  return { intent, strippedText };
-}
-
-/**
- * Parse a /participate slash command and strip it from the text.
- * Supported:
- *   /participate Rosa canSpeak=true canPerformPhysicalActions=false
- *   /participate "Rosa Diaz" canBeAddressed=true
- *   /participate Rosa clear
- *   /participate clear
  */
 export function parseSlashParticipateCommand(
   text: string,
@@ -342,10 +249,8 @@ export function mergeDirectorIntents(
   for (const intent of intents) {
     if (!intent) continue;
     if (intent.timeSkip) merged.timeSkip = intent.timeSkip;
-    if (intent.exactMinutes != null) merged.exactMinutes = intent.exactMinutes;
     if (intent.sceneCut) merged.sceneCut = true;
     if (intent.target?.trim()) merged.target = intent.target.trim();
-    if (intent.absoluteTime) merged.absoluteTime = intent.absoluteTime;
     if (intent.clearParticipantCapabilityOverrides) {
       merged.clearParticipantCapabilityOverrides = true;
     }

@@ -12,7 +12,6 @@ import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanMod
 import { useGeminiTtsPlayback } from "../app/providers/GeminiTtsPlaybackProvider";
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
 import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
-import { RPCharacterSheetOverlay } from "../components/story/RPCharacterSheetOverlay";
 import { StoryIndexDrawer } from "../components/story/StoryIndexDrawer";
 import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { Button, buttonClasses } from "../components/ui/Button";
@@ -26,13 +25,7 @@ import { type AccentThemeKey, isAccentThemeKey } from "../app/theming/themes";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
 import { storyHasGeneratedScenes } from "../lib/ai/playerAssistContext";
 import { formatDirectorNoteComposerHint } from "../lib/storyText/directorSyntax";
-import { createAIProvider } from "../lib/ai/providerFactory";
-import { getProviderDefaultModel } from "../lib/ai/models";
-import { selectDiceStat } from "../lib/ai/diceStatSelector";
-import { DiceRollModal, type DiceRollResult } from "../components/story/DiceRollModal";
-import { DEFAULT_DICE_MODIFIERS } from "../lib/rpStats";
-import { formatTimeCompact } from "../lib/rpTime";
-import { mergeDirectorIntents, parseSlashParticipateCommand, parseSlashTimeCommand } from "../lib/storyText/directorIntent";
+import { parseSlashParticipateCommand } from "../lib/storyText/directorIntent";
 import { normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity } from "../lib/playerCharacterPrompt";
 import { buildCharacterGenderHintsFromStoryState } from "../lib/ai/characterTtsVoices";
 import {
@@ -47,7 +40,6 @@ import { resolveSceneParticipants } from "../lib/sceneParticipation";
 import { isGenerationFailureError, type GenerationFailure } from "../lib/ai/errors";
 import { STORY_NAVIGATION_EVENT, type StoryNavigationDetail } from "../lib/events/storyNavigation";
 import type {
-  RpTimeState,
   StoryMessage,
   StoryMessageRole,
   StoryMessageSpeakerType,
@@ -151,7 +143,6 @@ export function StoryWorkspacePage() {
       ttsPlaybackStatus === "playing" ||
       ttsPlaybackStatus === "error");
   const {
-    aiSettings,
     chapters: engineChapters,
     createMessage,
     deleteMessage,
@@ -171,7 +162,6 @@ export function StoryWorkspacePage() {
     sendChatMessage,
     setMessageDirectorIntent,
     updateMessage,
-    updateRpStats,
   } = useStoryEngine();
   const { setStoryThemeOverride } = useTheme();
   const story = storyId ? getStoryById(storyId) : undefined;
@@ -341,7 +331,6 @@ export function StoryWorkspacePage() {
   const [assistantEditContent, setAssistantEditContent] = useState("");
   const [assistantEditError, setAssistantEditError] = useState<string | null>(null);
   const [isAssistantEditSaving, setIsAssistantEditSaving] = useState(false);
-  const [rpSheetOpen, setRpSheetOpen] = useState(false);
   const [storyIndexOpen, setStoryIndexOpen] = useState(false);
 
   interface VariantCandidate {
@@ -358,17 +347,6 @@ export function StoryWorkspacePage() {
   const [variantSession, setVariantSession] = useState<VariantSession | null>(null);
   const [isSwitchingVariant, setIsSwitchingVariant] = useState(false);
 
-  const [rpToasts, setRpToasts] = useState<Array<{ id: string; summary: string }>>([]);
-  const [rpStatsRefreshKey, setRpStatsRefreshKey] = useState(0);
-  const [taskbarGold, setTaskbarGold] = useState<number | null>(null);
-  const [taskbarTime, setTaskbarTime] = useState<RpTimeState | null>(null);
-  const [showZeroHpModal, setShowZeroHpModal] = useState(false);
-  const [zeroHpConsequenceChoice, setZeroHpConsequenceChoice] = useState<string>("");
-  const [zeroHpCustom, setZeroHpCustom] = useState("");
-  const [pendingZeroHpConsequence, setPendingZeroHpConsequence] = useState<string | null>(null);
-  const [diceRollPending, setDiceRollPending] = useState<{ stat: string; modifier: number; resolvedMessage: string } | null>(null);
-  const [diceStatLoading, setDiceStatLoading] = useState(false);
-  const pendingDiceEventRef = useRef<{ ts: number; summary: string } | null>(null);
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
   const chatComposerRef = useRef<HTMLDivElement | null>(null);
   const chatInputPinnedRef = useRef(false);
@@ -388,35 +366,7 @@ export function StoryWorkspacePage() {
     fetchStoryState(storyId).then((state) => {
       setStoryStateJson(state?.stateJson ?? null);
     });
-  }, [fetchStoryState, messages.length, rpStatsRefreshKey, storyId]);
-
-  useEffect(() => {
-    if (!storyId || !story?.rpMode) {
-      setTaskbarGold(null);
-      return;
-    }
-
-    fetchStoryState(storyId).then((state) => {
-      if (!state) {
-        return;
-      }
-      const parsed = safeParseStoryStateData(state.stateJson);
-      const g = parsed?.rpStats?.gold;
-      if (typeof g === "number") {
-        setTaskbarGold(g);
-      }
-    });
-  }, [fetchStoryState, story?.rpMode, storyId]);
-
-  // Load/refresh in-story time from state — updates whenever rpStatsRefreshKey changes
-  useEffect(() => {
-    if (!storyId || !story?.rpMode) { setTaskbarTime(null); return; }
-    fetchStoryState(storyId).then((state) => {
-      if (!state) return;
-      const parsed = safeParseStoryStateData(state.stateJson);
-      setTaskbarTime(parsed?.rpStats?.timeState ?? null);
-    });
-  }, [storyId, story?.rpMode, rpStatsRefreshKey]);
+  }, [fetchStoryState, messages.length, storyId]);
 
   useEffect(() => {
     setEditingMessage(null);
@@ -433,12 +383,6 @@ export function StoryWorkspacePage() {
     setAssistantEditContent("");
     setAssistantEditError(null);
     setIsAssistantEditSaving(false);
-    setRpSheetOpen(false);
-    setRpToasts([]);
-    setShowZeroHpModal(false);
-    setZeroHpConsequenceChoice("");
-    setZeroHpCustom("");
-    setPendingZeroHpConsequence(null);
     setVariantSession(null);
   }, [storyId]);
 
@@ -657,8 +601,6 @@ export function StoryWorkspacePage() {
     }, 1500);
   }
 
-  const ROLL_TAG_RE = /\[roll(?:\s+(str|dex|con|int|wis|cha))?\]/i;
-
   async function handleSendChat() {
 
     if (!chatInput.trim()) {
@@ -666,50 +608,10 @@ export function StoryWorkspacePage() {
       return;
     }
 
-    // Intercept [roll] / [roll stat] tags when dice rolls are enabled
-    const rpConfig = activeStory?.rpConfig;
-    if (activeStory?.rpMode && rpConfig?.diceRollsEnabled) {
-      const rollMatch = ROLL_TAG_RE.exec(chatInput);
-      if (rollMatch) {
-        const specifiedStat = rollMatch[1]?.toLowerCase() as "str" | "dex" | "con" | "int" | "wis" | "cha" | undefined;
-        const modifiers = rpConfig.diceModifiers ?? DEFAULT_DICE_MODIFIERS;
-
-        if (specifiedStat) {
-          const modifier = modifiers[specifiedStat];
-          setDiceRollPending({ stat: specifiedStat, modifier, resolvedMessage: chatInput });
-          return;
-        }
-
-        // No stat specified — ask AI to pick one
-        if (!aiSettings) {
-          setChatError("Configure an AI provider in Settings before using dice rolls.");
-          return;
-        }
-        const providerType = aiSettings.activeProviderType;
-        const apiKey = aiSettings.apiKeys?.[providerType]?.trim() ?? "";
-        const model = aiSettings.defaultModels?.[providerType]?.trim() || getProviderDefaultModel(providerType);
-        const provider = createAIProvider(providerType);
-
-        setDiceStatLoading(true);
-        try {
-          const resolvedStat = await selectDiceStat(chatInput, provider, apiKey, model);
-          const modifier = modifiers[resolvedStat];
-          setDiceRollPending({ stat: resolvedStat, modifier, resolvedMessage: chatInput });
-        } catch {
-          setChatError("Failed to select a stat for the dice roll. Try specifying one: [roll str]");
-        } finally {
-          setDiceStatLoading(false);
-        }
-        return;
-      }
-    }
-
-    // Parse explicit Director slash commands and strip them from the message
-    const slashTime = parseSlashTimeCommand(chatInput);
-    const afterTime = slashTime ? slashTime.strippedText || "." : chatInput;
-    const slashParticipate = parseSlashParticipateCommand(afterTime);
-    const content = slashParticipate ? slashParticipate.strippedText || "." : afterTime;
-    const directorIntentOverride = mergeDirectorIntents(slashTime?.intent, slashParticipate?.intent);
+    // Parse explicit Director participation commands and strip them from the message
+    const slashParticipate = parseSlashParticipateCommand(chatInput);
+    const content = slashParticipate ? slashParticipate.strippedText || "." : chatInput;
+    const directorIntentOverride = slashParticipate?.intent;
     const isStoryEndingMarker = isStoryEndingText(content);
 
     setIsGenerating(true);
@@ -724,13 +626,10 @@ export function StoryWorkspacePage() {
     streamingAbortRef.current = abortController;
 
     try {
-      const consequence = pendingZeroHpConsequence;
-      if (consequence) setPendingZeroHpConsequence(null);
-      const result = await sendChatMessage(
+      await sendChatMessage(
         activeStory.id,
         content,
         {
-          ...(consequence ? { zeroHpConsequence: consequence } : {}),
           ...(directorIntentOverride ? { directorIntentOverride } : {}),
           ...(isStoryEndingMarker ? { skipAssistantResponse: true } : {}),
           signal: abortController.signal,
@@ -739,25 +638,6 @@ export function StoryWorkspacePage() {
       );
       // User sent a new message — lock the selected candidate, discard the rest
       setVariantSession(null);
-      if (result.appliedRpChanges?.length) {
-        const hpZero = result.appliedRpChanges.some((c) => c.field === "hp" && c.to === 0);
-        if (hpZero) {
-          setZeroHpConsequenceChoice("Unconscious / collapsed");
-          setZeroHpCustom("");
-          setShowZeroHpModal(true);
-        }
-      }
-      if (result.rpEventSummary) {
-        const id = `${Date.now()}-${Math.random()}`;
-        setRpToasts((prev) => [{ id, summary: result.rpEventSummary! }, ...prev]);
-        setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
-      }
-      if (activeStory.rpMode) {
-        const allGoldChanges = result.appliedRpChanges?.filter((c) => c.field === "gold");
-        const lastGoldChange = allGoldChanges?.at(-1);
-        if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
-        setRpStatsRefreshKey((k) => k + 1);
-      }
     } catch (error) {
       const currentDraft = streamingDraftRef.current;
       const capturedDraft = currentDraft && currentDraft.trim() ? currentDraft : undefined;
@@ -797,112 +677,6 @@ export function StoryWorkspacePage() {
 
   function handleCancelGeneration() {
     streamingAbortRef.current?.abort();
-  }
-
-  function handleDiceConfirm(result: DiceRollResult) {
-    if (!diceRollPending) return;
-    const statLabel = result.stat.toUpperCase();
-    const modLabel = result.modifier > 0 ? `+${result.modifier}` : result.modifier < 0 ? `${result.modifier}` : "±0";
-    const resultTag = `[${statLabel} ${modLabel} | 2d6: ${result.dice[0]}+${result.dice[1]} | Total: ${result.total} — ${result.outcome}]`;
-    const substituted = diceRollPending.resolvedMessage.replace(ROLL_TAG_RE, resultTag);
-
-    // Toast
-    const toastId = `dice-${Date.now()}-${Math.random()}`;
-    setRpToasts((prev) => [{ id: toastId, summary: `🎲 ${resultTag}` }, ...prev]);
-    setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== toastId)), 6000);
-
-    // Store event log entry to be written after sendChatMessage completes
-    const actionText = diceRollPending.resolvedMessage.replace(ROLL_TAG_RE, "").trim();
-    const truncated = actionText.length > 120 ? actionText.slice(0, 117) + "…" : actionText;
-    pendingDiceEventRef.current = {
-      ts: Date.now(),
-      summary: truncated ? `${resultTag}\n"${truncated}"` : resultTag,
-    };
-
-    setDiceRollPending(null);
-    setChatInput(substituted);
-    setTimeout(() => {
-      void sendChatMessageWithContent(substituted);
-    }, 0);
-  }
-
-  function handleDiceCancel() {
-    if (diceRollPending) {
-      setChatInput(diceRollPending.resolvedMessage);
-    }
-    setDiceRollPending(null);
-  }
-
-  async function sendChatMessageWithContent(content: string) {
-
-    setIsGenerating(true);
-    setChatError(null);
-    setLastChatContent(content);
-    setChatInput("");
-
-    try {
-      const consequence = pendingZeroHpConsequence;
-      if (consequence) setPendingZeroHpConsequence(null);
-      const result = await sendChatMessage(activeStory.id, content, consequence ? { zeroHpConsequence: consequence } : undefined);
-      if (result.appliedRpChanges?.length) {
-        const hpZero = result.appliedRpChanges.some((c) => c.field === "hp" && c.to === 0);
-        if (hpZero) {
-          setZeroHpConsequenceChoice("Unconscious / collapsed");
-          setZeroHpCustom("");
-          setShowZeroHpModal(true);
-        }
-      }
-      if (result.rpEventSummary) {
-        const id = `${Date.now()}-${Math.random()}`;
-        setRpToasts((prev) => [{ id, summary: result.rpEventSummary! }, ...prev]);
-        setTimeout(() => setRpToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
-      }
-      if (activeStory.rpMode) {
-        const allGoldChanges = result.appliedRpChanges?.filter((c) => c.field === "gold");
-        const lastGoldChange = allGoldChanges?.at(-1);
-        if (lastGoldChange !== undefined) setTaskbarGold(lastGoldChange.to);
-        setRpStatsRefreshKey((k) => k + 1);
-      }
-
-      // Write dice roll to eventLog after extractor has already saved rpStats
-      const diceEntry = pendingDiceEventRef.current;
-      if (diceEntry && storyId) {
-        pendingDiceEventRef.current = null;
-        const stateSnapshot = await fetchStoryState(storyId);
-        const parsedRpStats = stateSnapshot?.stateJson
-          ? safeParseStoryStateData(stateSnapshot.stateJson)?.rpStats
-          : null;
-        if (parsedRpStats) {
-          await updateRpStats(storyId, {
-            ...parsedRpStats,
-            eventLog: [diceEntry, ...(parsedRpStats.eventLog ?? [])],
-          });
-          setRpStatsRefreshKey((k) => k + 1);
-        }
-      }
-    } catch (error) {
-      pendingDiceEventRef.current = null;
-      reportWorkspaceUiAudit({
-        msg: "Story workspace displayed generation error (dice)",
-        data: {
-          storyId: activeStory.id,
-          originalUserText: content,
-          failureKind: isGenerationFailureError(error) ? error.failure.kind : null,
-          failureStage: isGenerationFailureError(error) ? error.failure.stage : null,
-          errorMessage: error instanceof Error ? error.message : "Unable to generate a response.",
-        },
-      });
-      if (isGenerationFailureError(error)) {
-        setGenerationFailure(error.failure);
-        setGenerationFailureOpen(true);
-        setChatError(error.failure.summaryMessage);
-      } else {
-        setChatError(error instanceof Error ? error.message : "Unable to generate a response.");
-      }
-      setChatInput(content);
-    } finally {
-      setIsGenerating(false);
-    }
   }
 
   async function handleRetryChat() {
@@ -1364,68 +1138,6 @@ export function StoryWorkspacePage() {
         />
       ) : null}
 
-      {showZeroHpModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-sm rounded-[14px] border border-divider bg-panel p-5 shadow-xl">
-            <h2 className="mb-1 text-base font-semibold text-ink">Character Incapacitated</h2>
-            <p className="mb-4 text-sm text-ink-muted">HP has reached 0. Choose what happens next — this will guide the story's next beat.</p>
-            <div className="mb-4 space-y-2">
-              {["Unconscious / collapsed", "Captured", "Rescued or helped by someone nearby", "Receiving medical treatment", "Arrested"].map((opt) => (
-                <label key={opt} className="flex cursor-pointer items-center gap-3 rounded-[8px] border border-divider px-3 py-2 hover:bg-panel-muted/50">
-                  <input
-                    type="radio"
-                    name="zeroHpConsequence"
-                    value={opt}
-                    checked={zeroHpConsequenceChoice === opt}
-                    onChange={() => { setZeroHpConsequenceChoice(opt); setZeroHpCustom(""); }}
-                    className="accent-accent"
-                  />
-                  <span className="text-sm text-ink">{opt}</span>
-                </label>
-              ))}
-              <label className="flex cursor-pointer items-center gap-3 rounded-[8px] border border-divider px-3 py-2 hover:bg-panel-muted/50">
-                <input
-                  type="radio"
-                  name="zeroHpConsequence"
-                  value="custom"
-                  checked={zeroHpConsequenceChoice === "custom"}
-                  onChange={() => setZeroHpConsequenceChoice("custom")}
-                  className="accent-accent"
-                />
-                <span className="text-sm text-ink">Custom…</span>
-              </label>
-              {zeroHpConsequenceChoice === "custom" && (
-                <input
-                  autoFocus
-                  className="mt-1 w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent/[0.4]"
-                  placeholder="Describe what happens…"
-                  value={zeroHpCustom}
-                  onChange={(e) => setZeroHpCustom(e.target.value)}
-                />
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                className="flex-1"
-                onClick={() => {
-                  const consequence = zeroHpConsequenceChoice === "custom" ? zeroHpCustom.trim() : zeroHpConsequenceChoice;
-                  if (!consequence) return;
-                  setPendingZeroHpConsequence(`The player character is incapacitated (HP reached 0). Consequence: ${consequence}`);
-                  setShowZeroHpModal(false);
-                }}
-                disabled={!zeroHpConsequenceChoice || (zeroHpConsequenceChoice === "custom" && !zeroHpCustom.trim())}
-              >
-                Set consequence
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => setShowZeroHpModal(false)}>
-                Skip
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
       <div
         className={[
           "fixed inset-0 z-[70]",
@@ -1508,16 +1220,6 @@ export function StoryWorkspacePage() {
             <span className="shrink-0 text-[11px] text-white/30">
               {messages.length} {messages.length === 1 ? "entry" : "entries"}
             </span>
-            {activeStory?.rpMode && activeStory.rpConfig && taskbarGold !== null && (
-              <span className="shrink-0 text-[11px] text-white/40">
-                💰 {activeStory.rpConfig.currencyDecimals ? taskbarGold.toFixed(2) : Math.floor(taskbarGold)}
-              </span>
-            )}
-            {activeStory?.rpMode && activeStory.rpConfig && taskbarTime && (
-              <span className="shrink-0 text-[11px] text-white/30">
-                {formatTimeCompact(taskbarTime)}
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-0.5">
             <WorkspaceIconBtn
@@ -1526,7 +1228,7 @@ export function StoryWorkspacePage() {
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>}
             />
             <WorkspaceIconBtn
-              label="Story Index"
+              label="Story State"
               active={storyIndexOpen}
               onClick={() => setStoryIndexOpen((c) => !c)}
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8M8 11h6"/></svg>}
@@ -1543,12 +1245,6 @@ export function StoryWorkspacePage() {
               active={readerMode}
               onClick={() => setReaderMode(!readerMode)}
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>}
-            />
-            <WorkspaceIconBtn
-              label="Character Sheet"
-              active={rpSheetOpen}
-              onClick={() => setRpSheetOpen((c) => !c)}
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M12 11v2"/><path d="M10 13h4"/></svg>}
             />
             {!readerMode ? (
               <WorkspaceIconBtn
@@ -1609,7 +1305,6 @@ export function StoryWorkspacePage() {
               storyTitle={activeStory.title}
               chapters={storyChapters}
               highlightedMessageId={highlightedMessageId}
-              rpConfig={activeStory.rpMode && activeStory.rpConfig ? activeStory.rpConfig : undefined}
               resolvedParticipants={resolvedParticipants}
               className={[
                 readerMode ? "pb-8" : "",
@@ -1782,8 +1477,8 @@ export function StoryWorkspacePage() {
             ) : null}
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Button onClick={handleSendChat} disabled={isGenerating || diceStatLoading || guidedGenerationActive}>
-                {diceStatLoading ? "Selecting stat…" : isGenerating ? "Generating Scene..." : guidedGenerationActive ? "Generating chapters…" : "Send"}
+              <Button onClick={handleSendChat} disabled={isGenerating || guidedGenerationActive}>
+                {isGenerating ? "Generating Scene..." : guidedGenerationActive ? "Generating chapters…" : "Send"}
               </Button>
               {isGenerating ? (
                 <Button variant="secondary" onClick={handleCancelGeneration}>
@@ -1996,16 +1691,6 @@ export function StoryWorkspacePage() {
           onClose={() => setMetaChatOpen(false)}
         />
       ) : null}
-      {activeStory && rpSheetOpen ? (
-        <RPCharacterSheetOverlay
-          open={rpSheetOpen}
-          story={activeStory}
-          onClose={() => setRpSheetOpen(false)}
-          refreshKey={rpStatsRefreshKey}
-          onGoldChange={(g) => setTaskbarGold(g)}
-          universeLore={activeUniverse?.description ?? undefined}
-        />
-      ) : null}
       {storyId && storyIndexOpen ? (
         <StoryIndexDrawer
           open={storyIndexOpen}
@@ -2013,16 +1698,6 @@ export function StoryWorkspacePage() {
           onClose={() => setStoryIndexOpen(false)}
         />
       ) : null}
-
-      {diceRollPending && (
-        <DiceRollModal
-          stat={diceRollPending.stat}
-          modifier={diceRollPending.modifier}
-          actionText={diceRollPending.resolvedMessage}
-          onConfirm={handleDiceConfirm}
-          onCancel={handleDiceCancel}
-        />
-      )}
 
       {showLatestChapterJumpButton ? (
         <StoryWorkspaceViewportPortal>
@@ -2039,28 +1714,6 @@ export function StoryWorkspacePage() {
         </StoryWorkspaceViewportPortal>
       ) : null}
 
-      {/* RP event toasts */}
-      {rpToasts.length > 0 && (
-        <StoryWorkspaceViewportPortal>
-          <div className="fixed bottom-20 right-4 z-50 flex flex-col-reverse gap-2 pointer-events-none">
-            {rpToasts.map((toast) => (
-              <div
-                key={toast.id}
-                className="pointer-events-auto flex max-w-xs items-start gap-2 rounded-[10px] border border-divider bg-panel px-3 py-2.5 shadow-lg"
-              >
-                <span className="mt-0.5 shrink-0 text-sm">🎲</span>
-                <span className="flex-1 text-xs leading-relaxed text-ink-soft">{toast.summary}</span>
-                <button
-                  className="ml-1 shrink-0 text-ink-muted transition hover:text-ink"
-                  onClick={() => setRpToasts((prev) => prev.filter((t) => t.id !== toast.id))}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        </StoryWorkspaceViewportPortal>
-      )}
     </div>
   );
 }

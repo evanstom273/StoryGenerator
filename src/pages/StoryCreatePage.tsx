@@ -38,7 +38,6 @@ const initialFormState = {
 	openingPrompt: "",
   importedCharacterIds: [] as string[],
   adultContentMode: resolveNewStoryAdultContentMode(),
-  rpMode: true,
 };
 
 const initialQuickCharacterState: PlayerCharacterDraft = {
@@ -251,7 +250,6 @@ export function StoryCreatePage() {
             matureFictionMode: adultContentModeToLegacyMatureFictionMode(
               formState.adultContentMode,
             ),
-            rpMode: formState.rpMode,
             guidedStoryHistory:
               storyHistoryEnabled && storyHistoryPlan
                 ? {
@@ -1054,24 +1052,6 @@ export function StoryCreatePage() {
                         ? "Allows serious adult themes and non-graphic intimacy without enabling explicit sexual detail."
                         : "Uses the standard story boundary without mature-fiction prompt guidance."}
                   </p>
-                </Field>
-                <Field
-                  label="RP mode"
-                  hint="Track HP, currency, and core stats"
-                  help="Turns on health, currency, dice rolls, and a character sheet overlay for tabletop-style play."
-                >
-                  <SelectInput
-                    value={formState.rpMode ? "on" : "off"}
-                    onChange={(event) =>
-                      setFormState((currentState) => ({
-                        ...currentState,
-                        rpMode: event.target.value === "on",
-                      }))
-                    }
-                  >
-                    <option value="on">On</option>
-                    <option value="off">Off</option>
-                  </SelectInput>
                 </Field>
               </div>
 

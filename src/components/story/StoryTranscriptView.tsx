@@ -1,6 +1,5 @@
 import { Fragment } from "react";
-import type { RpConfig, RpTimeState, StoryChapter, StoryMessage } from "../../types/models";
-import { formatTimeShort, timesDiffer } from "../../lib/rpTime";
+import type { StoryChapter, StoryMessage } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
@@ -24,7 +23,6 @@ type StoryTranscriptViewProps = {
   chapters?: StoryChapter[];
   className?: string;
   highlightedMessageId?: string | null;
-  rpConfig?: RpConfig;
   /** Retained for callers; assistant speaker styling is never identity-derived. */
   resolvedParticipants?: readonly ResolvedSceneParticipant[];
 };
@@ -182,10 +180,8 @@ export function StoryTranscriptView({
   chapters,
   className,
   highlightedMessageId,
-  rpConfig,
 }: StoryTranscriptViewProps) {
   const effectiveSceneName = playerSceneName?.trim() || playerCharacterName;
-  let prevStoryTime: RpTimeState | undefined = undefined;
   const chapterEndByMessageId = new Map<string, string>();
   const sortedChapters = [...(chapters ?? [])].sort((left, right) => left.endsAtIndex - right.endsAtIndex);
   for (const chapter of sortedChapters) {
@@ -313,16 +309,8 @@ export function StoryTranscriptView({
         // parse its structure, but must never semantically rewrite its wording.
         const sanitized = message.content;
         const blocks = isAssistantTranscript ? parseSceneBlocks(sanitized) : [];
-        const showTimeChip = rpConfig && message.storyTime &&
-          (!prevStoryTime || timesDiffer(prevStoryTime, message.storyTime));
-        if (message.storyTime) prevStoryTime = message.storyTime;
         return (
           <Fragment key={message.id}>
-            {showTimeChip && rpConfig && message.storyTime ? (
-              <div className="select-none py-1 text-center text-[10px] text-white/25">
-                {formatTimeShort(message.storyTime, rpConfig)}
-              </div>
-            ) : null}
             <div
               id={`story-message-${message.id}`}
               className={cn(

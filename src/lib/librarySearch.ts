@@ -6,8 +6,6 @@ export type LibrarySearchContentType = "all" | "story" | "universe" | "character
 export type LibrarySearchStoryStatus = "active" | "archived" | "all";
 export type LibrarySearchStoryFeatures =
 	| "all"
-	| "rp"
-	| "non-rp"
 	| "mature"
 	| "non-mature"
 	| "has-summary"
@@ -270,10 +268,6 @@ function storyMatchesFeatures(story: Story, storyFeatures: LibrarySearchStoryFea
 	switch (storyFeatures) {
 		case "all":
 			return true;
-		case "rp":
-			return Boolean(story.rpMode);
-		case "non-rp":
-			return !story.rpMode;
 		case "mature":
 			return resolveAdultContentMode(story) !== "standard";
 		case "non-mature":
@@ -356,9 +350,6 @@ function searchStories(
 			const badges: string[] = ["Story"];
 			if (story.isArchived) {
 				badges.push("Archived");
-			}
-			if (story.rpMode) {
-				badges.push("RP");
 			}
 			const adultContentMode = resolveAdultContentMode(story);
 			if (adultContentMode === "explicit_consensual_adults") {
