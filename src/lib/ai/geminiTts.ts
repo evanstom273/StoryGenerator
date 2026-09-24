@@ -196,7 +196,7 @@ export function decodeGeminiGenerateContentAudioToPcm(payload: GeminiGenerateCon
 	return null;
 }
 
-function buildSpeechConfig(speakers: Array<{ name: string; voice: string }>) {
+export interface GeminiTtsTurn {\n\ttext: string;\n\tspeaker?: string;\n\tstyle?: string;\n}\n\nfunction buildSpeechConfig(speakers: Array<{ name: string; voice: string }>) {
 	if (speakers.length <= 1) {
 		const voice = speakers[0]?.voice ?? GEMINI_TTS_VOICES.hostA;
 		return {
@@ -238,7 +238,7 @@ async function requestGeminiTtsGenerateContent(params: {
 				"x-goog-api-key": params.apiKey,
 			},
 			body: JSON.stringify({
-				contents: [{ parts: [{ text: params.input }] }],
+				contents: [{\n\t\t\t\t\tparts: params.turns.map((turn) => ({\n\t\t\t\t\t\ttext: turn.text,\n\t\t\t\t\t\t...(turn.speaker || turn.style\n\t\t\t\t\t\t\t? {\n\t\t\t\t\t\t\t\tspeech_metadata: {\n\t\t\t\t\t\t\t\t\t...(turn.speaker ? { speaker: turn.speaker } : {}),\n\t\t\t\t\t\t\t\t\t...(turn.style ? { style: turn.style } : {}),\n\t\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\t  }\n\t\t\t\t\t\t\t: {}),\n\t\t\t\t\t})),\n\t\t\t\t}],
 				generationConfig: {
 					responseModalities: ["AUDIO"],
 					speechConfig: buildSpeechConfig(params.speakers),
@@ -290,15 +290,10 @@ export async function generateGeminiMultiSpeakerAudio(params: {
 		}
 	}
 
-	const timeoutMs = resolveTtsRequestTimeoutMs(params.input.length);
+	const turns = params.turns?.filter((turn) => turn.text.trim()) ?? (params.input ? [{ text: params.input }] : []);\n\tif (!turns.length) {\n\t\tthrow new Error("Gemini TTS requires at least one non-empty transcript turn.");\n\t}\n\tconst inputLength = turns.reduce((total, turn) => total + turn.text.length, 0);\n\tconst timeoutMs = resolveTtsRequestTimeoutMs(inputLength);
 	const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 	const safeKey = params.apiKey.replace(/[^\x00-\xFF]/g, "");
-	const primaryModel = params.model ?? GEMINI_TTS_MODEL;
-	const models =
-		primaryModel === GEMINI_TTS_FALLBACK_MODEL
-			? [primaryModel]
-			: [primaryModel, GEMINI_TTS_FALLBACK_MODEL];
-	let lastErrorMessage = "Gemini TTS returned no audio data.";
+	const model = params.model ?? GEMINI_TTS_MODEL;\n\tlet lastErrorMessage = "Gemini TTS returned no audio data.";
 
 	try {
 		for (const model of models) {
@@ -306,7 +301,7 @@ export async function generateGeminiMultiSpeakerAudio(params: {
 				const result = await requestGeminiTtsGenerateContent({
 					apiKey: safeKey,
 					model,
-					input: params.input,
+					turns,
 					speakers: params.speakers,
 					signal: controller.signal,
 				});
@@ -321,10 +316,7 @@ export async function generateGeminiMultiSpeakerAudio(params: {
 					if (retryable && attempt < TTS_ATTEMPTS_PER_MODEL - 1) {
 						continue;
 					}
-					if (model === models[models.length - 1]) {
-						throw new Error(apiMessage);
-					}
-					break;
+					throw new Error(apiMessage);
 				}
 
 				if (!result.payload) {
