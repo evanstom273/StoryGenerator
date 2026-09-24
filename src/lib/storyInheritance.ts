@@ -12,6 +12,7 @@ export function createInheritedStoryIndex(params: {
   parentIndex: StoryIndex;
   parentStoryId: EntityId;
   childStoryId: EntityId;
+  parentStoryTitle?: string;
   inheritedAt?: string;
 }): StoryIndex {
   const { parentIndex, parentStoryId, childStoryId } = params;
@@ -23,6 +24,7 @@ export function createInheritedStoryIndex(params: {
     chapterSummaries: parentIndex.chapterSummaries.map((summary) => ({
       ...summary,
       originStoryId: summary.originStoryId ?? parentStoryId,
+      originStoryTitle: summary.originStoryTitle ?? params.parentStoryTitle,
       sourceMessageIds: [...summary.sourceMessageIds],
     })),
     characters: parentIndex.characters.map((character) => ({
