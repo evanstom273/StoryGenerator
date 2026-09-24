@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { planGeminiPodcastTtsChunks } from "../aiDocumentGenerator/geminiAudio";
 import {
+	buildGeminiTtsInput,
 	normalizePodcastScript,
 	resolvePodcastHosts,
 } from "../aiDocumentGenerator/podcastScript";
@@ -59,5 +60,11 @@ describe("podcastScript host consistency", () => {
 		expect(normalizePodcastScript(script, "Sam", "Alex")).toBe(
 			"Sam: hello\nAlex: hi there",
 		);
+	});
+	it("builds Gemini 3.8 turns without speaking host labels", () => {
+		expect(buildGeminiTtsInput("Sam: hello\nAlex: hi there", "Sam", "Alex")).toEqual([
+			expect.objectContaining({ speaker: "Sam", text: "hello" }),
+			expect.objectContaining({ speaker: "Alex", text: "hi there" }),
+		]);
 	});
 });

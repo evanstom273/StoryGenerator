@@ -43,9 +43,7 @@ function splitTextByLength(text: string, maxChars: number) {
 	return chunks.filter(Boolean);
 }
 
-function buildNarrationTtsInput(text: string) {
-	return `Read the following passage aloud with a clear, natural, emotive narration voice:\n\n${text}`;
-}
+const NARRATION_STYLE = "Clear, natural, emotive audiobook narration with consistent pacing and character-aware delivery.";
 
 function resolveVoiceForSpeaker(
 	speaker: string,
@@ -126,11 +124,11 @@ async function synthesizeScriptLineGroups(params: {
 
 		const text = group.texts.join("\n\n");
 		const voice = resolveVoiceForSpeaker(group.speaker, params.plan.speakers);
-		const input = buildNarrationTtsInput(text);
+		const turns = [{ text, speaker: NARRATOR_SPEAKER_ALIAS, style: NARRATION_STYLE }];
 
 		const pcm = await generateGeminiMultiSpeakerAudio({
 			apiKey: params.apiKey,
-			input,
+			turns,
 			speakers: [{ name: NARRATOR_SPEAKER_ALIAS, voice }],
 			model: params.model,
 			signal: params.signal,
@@ -168,11 +166,11 @@ export async function synthesizeGeminiSpeechPlan(params: {
 		);
 
 		const voice = params.plan.speakers[0]?.voice ?? "Iapetus";
-		const input = buildNarrationTtsInput(chunk);
+		const turns = [{ text: chunk, speaker: NARRATOR_SPEAKER_ALIAS, style: NARRATION_STYLE }];
 
 		const pcm = await generateGeminiMultiSpeakerAudio({
 			apiKey: params.apiKey,
-			input,
+			turns,
 			speakers: [{ name: NARRATOR_SPEAKER_ALIAS, voice }],
 			model: params.model,
 			signal: params.signal,

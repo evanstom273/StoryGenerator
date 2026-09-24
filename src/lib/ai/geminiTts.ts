@@ -2,12 +2,10 @@ import { normalizeAIError } from "./errors";
 import {
 	DEFAULT_GEMINI_PODCAST_HOST_ONE_VOICE,
 	DEFAULT_GEMINI_PODCAST_HOST_TWO_VOICE,
-	GEMINI_TTS_MODEL_FALLBACK,
 	GEMINI_TTS_MODEL_PRIMARY,
 } from "./geminiTtsVoices";
 
 const GEMINI_TTS_MODEL = GEMINI_TTS_MODEL_PRIMARY;
-const GEMINI_TTS_FALLBACK_MODEL = GEMINI_TTS_MODEL_FALLBACK;
 const TTS_REQUEST_TIMEOUT_MS = 300_000;
 const TTS_REQUEST_TIMEOUT_BASE_MS = 120_000;
 const TTS_REQUEST_TIMEOUT_PER_CHAR_MS = 12;
@@ -196,6 +194,12 @@ export function decodeGeminiGenerateContentAudioToPcm(payload: GeminiGenerateCon
 	return null;
 }
 
+export interface GeminiTtsTurn {
+	text: string;
+	speaker?: string;
+	style?: string;
+}
+
 function buildSpeechConfig(speakers: Array<{ name: string; voice: string }>) {
 	if (speakers.length <= 1) {
 		const voice = speakers[0]?.voice ?? GEMINI_TTS_VOICES.hostA;
@@ -225,7 +229,7 @@ function buildSpeechConfig(speakers: Array<{ name: string; voice: string }>) {
 async function requestGeminiTtsGenerateContent(params: {
 	apiKey: string;
 	model: string;
-	input: string;
+	turns: GeminiTtsTurn[];
 	speakers: Array<{ name: string; voice: string }>;
 	signal?: AbortSignal;
 }) {
@@ -238,7 +242,19 @@ async function requestGeminiTtsGenerateContent(params: {
 				"x-goog-api-key": params.apiKey,
 			},
 			body: JSON.stringify({
-				contents: [{ parts: [{ text: params.input }] }],
+				contents: [{
+					parts: params.turns.map((turn) => ({
+						text: turn.text,
+						...(turn.speaker || turn.style
+							? {
+								speech_metadata: {
+									...(turn.speaker ? { speaker: turn.speaker } : {}),
+									...(turn.style ? { style: turn.style } : {}),
+								},
+							}
+							: {}),
+					})),
+				}],
 				generationConfig: {
 					responseModalities: ["AUDIO"],
 					speechConfig: buildSpeechConfig(params.speakers),
@@ -275,7 +291,8 @@ function resolveTtsRequestTimeoutMs(inputLength: number) {
 
 export async function generateGeminiMultiSpeakerAudio(params: {
 	apiKey: string;
-	input: string;
+	input?: string;
+	turns?: GeminiTtsTurn[];
 	speakers: Array<{ name: string; voice: string }>;
 	signal?: AbortSignal;
 	model?: string;
@@ -290,60 +307,59 @@ export async function generateGeminiMultiSpeakerAudio(params: {
 		}
 	}
 
-	const timeoutMs = resolveTtsRequestTimeoutMs(params.input.length);
+	const turns =
+		params.turns?.filter((turn) => turn.text.trim()) ??
+		(params.input?.trim() ? [{ text: params.input }] : []);
+	if (!turns.length) {
+		throw new Error("Gemini TTS requires at least one non-empty transcript turn.");
+	}
+
+	const inputLength = turns.reduce((total, turn) => total + turn.text.length, 0);
+	const timeoutMs = resolveTtsRequestTimeoutMs(inputLength);
 	const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 	const safeKey = params.apiKey.replace(/[^\x00-\xFF]/g, "");
-	const primaryModel = params.model ?? GEMINI_TTS_MODEL;
-	const models =
-		primaryModel === GEMINI_TTS_FALLBACK_MODEL
-			? [primaryModel]
-			: [primaryModel, GEMINI_TTS_FALLBACK_MODEL];
+	const model = params.model ?? GEMINI_TTS_MODEL;
 	let lastErrorMessage = "Gemini TTS returned no audio data.";
 
 	try {
-		for (const model of models) {
-			for (let attempt = 0; attempt < TTS_ATTEMPTS_PER_MODEL; attempt += 1) {
-				const result = await requestGeminiTtsGenerateContent({
-					apiKey: safeKey,
-					model,
-					input: params.input,
-					speakers: params.speakers,
-					signal: controller.signal,
-				});
+		for (let attempt = 0; attempt < TTS_ATTEMPTS_PER_MODEL; attempt += 1) {
+			const result = await requestGeminiTtsGenerateContent({
+				apiKey: safeKey,
+				model,
+				turns,
+				speakers: params.speakers,
+				signal: controller.signal,
+			});
 
-				if (!result.ok) {
-					const apiMessage =
-						result.payload?.error?.message?.trim() ||
-						result.responseText.trim() ||
-						`Gemini TTS request failed (${result.status}).`;
-					lastErrorMessage = apiMessage;
-					const retryable = result.status >= 500 || result.status === 429;
-					if (retryable && attempt < TTS_ATTEMPTS_PER_MODEL - 1) {
-						continue;
-					}
-					if (model === models[models.length - 1]) {
-						throw new Error(apiMessage);
-					}
-					break;
+			if (!result.ok) {
+				const apiMessage =
+					result.payload?.error?.message?.trim() ||
+					result.responseText.trim() ||
+					`Gemini TTS request failed (${result.status}).`;
+				lastErrorMessage = apiMessage;
+				const retryable = result.status >= 500 || result.status === 429;
+				if (retryable && attempt < TTS_ATTEMPTS_PER_MODEL - 1) {
+					continue;
 				}
+				throw new Error(apiMessage);
+			}
 
-				if (!result.payload) {
-					lastErrorMessage = "Gemini TTS returned an unreadable response.";
-					if (attempt < TTS_ATTEMPTS_PER_MODEL - 1) {
-						continue;
-					}
-					break;
-				}
-
-				const pcm = decodeGeminiGenerateContentAudioToPcm(result.payload);
-				if (pcm?.byteLength) {
-					return pcm;
-				}
-
-				lastErrorMessage = "Gemini TTS returned no audio data.";
+			if (!result.payload) {
+				lastErrorMessage = "Gemini TTS returned an unreadable response.";
 				if (attempt < TTS_ATTEMPTS_PER_MODEL - 1) {
 					continue;
 				}
+				break;
+			}
+
+			const pcm = decodeGeminiGenerateContentAudioToPcm(result.payload);
+			if (pcm?.byteLength) {
+				return pcm;
+			}
+
+			lastErrorMessage = "Gemini TTS returned no audio data.";
+			if (attempt < TTS_ATTEMPTS_PER_MODEL - 1) {
+				continue;
 			}
 		}
 

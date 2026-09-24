@@ -1,5 +1,5 @@
-export const GEMINI_TTS_MODEL_PRIMARY = "gemini-3.1-flash-tts-preview";
-export const GEMINI_TTS_MODEL_FALLBACK = "gemini-2.5-flash-preview-tts";
+export const GEMINI_TTS_MODEL_PRIMARY = "gemini-3.8-flash-lite-tts";
+export const GEMINI_TTS_MODEL_FALLBACK = "gemini-3.8-flash-tts";
 
 export type GeminiTtsModelId =
 	| typeof GEMINI_TTS_MODEL_PRIMARY
@@ -75,13 +75,13 @@ export const GEMINI_TTS_MODEL_OPTIONS: Array<{
 }> = [
 	{
 		id: GEMINI_TTS_MODEL_PRIMARY,
-		label: "Gemini 3.1 Flash TTS (preview)",
-		description: "Latest preview — best quality",
+		label: "Gemini 3.8 Flash-Lite TTS",
+		description: "Fast, cost-efficient — recommended default",
 	},
 	{
 		id: GEMINI_TTS_MODEL_FALLBACK,
-		label: "Gemini 2.5 Flash TTS (preview)",
-		description: "Fallback if 3.1 is unavailable",
+		label: "Gemini 3.8 Flash TTS",
+		description: "Maximum fidelity — audiobooks and expressive dialogue",
 	},
 ];
 

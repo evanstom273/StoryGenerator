@@ -1,6 +1,6 @@
 import { PODCAST_HOST_ONE, PODCAST_HOST_TWO } from "./podcastPrompt";
 
-function parseSpeakerLine(line: string) {
+export function parsePodcastSpeakerLine(line: string) {
 	const boldMatch = line.match(/^\*\*(.+?):\*\*\s*(.*)$/);
 	if (boldMatch) {
 		return { speaker: boldMatch[1]!.trim(), text: boldMatch[2]!.trim() };
@@ -31,7 +31,7 @@ function collectSpeakerNames(markdown: string) {
 			continue;
 		}
 
-		const parsed = parseSpeakerLine(trimmed);
+		const parsed = parsePodcastSpeakerLine(trimmed);
 		if (!parsed?.text) {
 			continue;
 		}
@@ -72,7 +72,7 @@ export function normalizePodcastScript(script: string, hostOne: string, hostTwo:
 	return script
 		.split("\n")
 		.map((line) => {
-			const parsed = parseSpeakerLine(line);
+			const parsed = parsePodcastSpeakerLine(line);
 			if (!parsed) {
 				return line;
 			}
@@ -116,7 +116,7 @@ export function extractPodcastDialogueFromMarkdown(markdown: string) {
 			continue;
 		}
 
-		const parsed = parseSpeakerLine(trimmed);
+		const parsed = parsePodcastSpeakerLine(trimmed);
 		if (!parsed || !parsed.text) {
 			continue;
 		}
@@ -145,5 +145,14 @@ export function extractPodcastDialogueFromMarkdown(markdown: string) {
 }
 
 export function buildGeminiTtsInput(script: string, hostOne: string, hostTwo: string) {
-	return `TTS the following podcast conversation between ${hostOne} and ${hostTwo}:\n\n${script}`;
+	return script
+		.split("\n")
+		.map((line) => parsePodcastSpeakerLine(line.trim()))
+		.filter((turn): turn is { speaker: string; text: string } => Boolean(turn?.text))
+		.map((turn) => ({
+			text: turn.text,
+			speaker: equalsIgnoreCase(turn.speaker, hostOne) ? hostOne : hostTwo,
+			style:
+				"Natural conversational podcast delivery; engaged, responsive, and expressive without sounding scripted.",
+		}));
 }
