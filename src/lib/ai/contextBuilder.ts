@@ -342,6 +342,7 @@ export function buildStoryChatContext({
       "Name resolution rule: treat nicknames, shortened names, last-name references, and informal variants as referring to the same character unless the story explicitly introduces a separate person.",
       "Narrative identity rule: do not reveal hidden identities, undercover aliases, or true names that have not been established in the transcript.",
       "Use Long-Term Memory name preferences: if a character has a narrative or display name recorded, prefer that for speaker headers and how other characters address them.",
+      "Speaker header naming rule: use the character's established short scene/display name for speaker labels (normally their first name, e.g. 'Allison:' and 'Robert:'), not an unnecessarily expanded full legal name such as 'Allison Cameron:' or 'Robert Chase:'. Keep that label consistent throughout the response.",
       formatPlayerPrimaryAliasNamingPolicy(playerCharacter, playerSceneName),
       playerPronouns.trim()
         ? `Player character pronouns: ${playerPronouns.trim()}. Never infer different pronouns from name or gender.`
