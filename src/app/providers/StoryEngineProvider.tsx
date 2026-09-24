@@ -6004,6 +6004,7 @@ export function StoryEngineProvider({
           parentStoryId: parentStory.id,
           lineageKind: "sequel",
           isArchived: false,
+          openingPrompt: "",
           currentSummary: "",
           guidedGenerationMeta: undefined,
           createdAt: now,
