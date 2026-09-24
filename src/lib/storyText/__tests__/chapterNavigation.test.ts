@@ -82,6 +82,23 @@ describe("chapterNavigation", () => {
     expect(getLatestChapterStartMessage(messages, [])?.id).toBe("m5");
   });
 
+  it("does not infer chapter boundaries from assistant narration", () => {
+    const assistantMessage = {
+      ...makeMessage(
+        "m-assistant",
+        2,
+        undefined,
+        "Narrator: *End of Chapter III.*\n\nNarrator: *Chapter IV.*\n\nThe scene continues.",
+      ),
+      role: "assistant" as const,
+      speakerType: "narrator" as const,
+      speakerName: undefined,
+    };
+
+    expect(countGeneratedChapters([makeMessage("m1", 0), assistantMessage], [])).toBe(0);
+    expect(getLatestChapterStartMessage([makeMessage("m1", 0), assistantMessage], [])).toBeNull();
+  });
+
   it("counts many chapters from transcript markers alone", () => {
     const messages = [
       makeMessage("m1", 0),

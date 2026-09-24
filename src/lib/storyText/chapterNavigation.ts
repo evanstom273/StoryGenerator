@@ -12,6 +12,15 @@ export function resolveMessageChapterBoundary(message: StoryMessage) {
   if (message.chapterBoundary?.kind && message.chapterBoundary.label?.trim()) {
     return message.chapterBoundary;
   }
+  // Only infer chapter boundaries from user/system control messages.
+  // Assistant prose can legitimately contain lines such as
+  // "Narrator: *End of Chapter III.*" before continuing with more scene text;
+  // treating that as structural metadata hides the rest of the response behind
+  // a chapter-end banner.
+  if (message.role === "assistant") {
+    return null;
+  }
+
   const detected = detectChapterBoundary(message.content ?? "");
   if (detected.detected && detected.kind && detected.label) {
     return {
