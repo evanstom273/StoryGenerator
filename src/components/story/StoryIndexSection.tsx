@@ -56,9 +56,9 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
     relationships: boolean;
     chapters: boolean;
   }>({
-    characters: true,
-    relationships: true,
-    chapters: true,
+    characters: false,
+    relationships: false,
+    chapters: false,
   });
 
   const toggleSection = (section: "characters" | "relationships" | "chapters") => {
