@@ -1,5 +1,4 @@
 import type {
-  RpStats,
   SceneParticipantCapabilityOverride,
   StoryAuthorDirectiveState,
   StoryState,
@@ -11,7 +10,6 @@ import type {
  * the record is written again.
  */
 export type StoryRuntimeState = {
-  rpStats?: RpStats;
   authorDirectives?: StoryAuthorDirectiveState;
   participantCapabilityOverrides?: SceneParticipantCapabilityOverride[];
   characters?: Record<string, any>;
@@ -38,7 +36,6 @@ export function sanitizeStoryRuntimeState(value: unknown): StoryRuntimeState {
   if (!isRecord(value)) return {};
 
   const next: StoryRuntimeState = {};
-  if (isRecord(value.rpStats)) next.rpStats = value.rpStats as RpStats;
   if (isRecord(value.authorDirectives)) {
     next.authorDirectives = value.authorDirectives as StoryAuthorDirectiveState;
   }
@@ -78,7 +75,6 @@ export function mergeStoryRuntimeState(
   patch: Partial<StoryRuntimeState>,
 ): StoryRuntimeState {
   const next: StoryRuntimeState = { ...current };
-  if ("rpStats" in patch) next.rpStats = patch.rpStats ?? undefined;
   if ("authorDirectives" in patch) next.authorDirectives = patch.authorDirectives ?? undefined;
   if ("participantCapabilityOverrides" in patch) {
     next.participantCapabilityOverrides = patch.participantCapabilityOverrides ?? undefined;
