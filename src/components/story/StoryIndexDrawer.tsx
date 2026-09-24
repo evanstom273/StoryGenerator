@@ -41,7 +41,7 @@ export function StoryIndexDrawer({ open, onClose, storyId }: StoryIndexDrawerPro
         <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-divider bg-app/95 px-5 py-4 backdrop-blur">
           <div>
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
-              Story Index
+              Story State
             </div>
             <div className="mt-1 text-xl font-bold text-ink">
               {story?.title ?? "Story Memory"}
