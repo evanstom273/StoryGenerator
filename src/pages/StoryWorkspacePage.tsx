@@ -133,6 +133,7 @@ export function StoryWorkspacePage() {
     showChrome,
     setShowChrome,
     textSize,
+    storySettingsOpen,
     setStorySettingsOpen,
   } = useUiPrefs();
   const { status: ttsPlaybackStatus, activeId: ttsActiveId } = useGeminiTtsPlayback();
@@ -547,6 +548,12 @@ export function StoryWorkspacePage() {
   const activePlayerCharacter = playerCharacter;
   const showLatestChapterJumpButton =
     !readerMode &&
+    !storyIndexOpen &&
+    !storySettingsOpen &&
+    !metaChatOpen &&
+    !showGuidedPlanModal &&
+    !generationFailureOpen &&
+    !assistantEditMessage &&
     countGeneratedChapters(messages, storyChapters) > 1;
 
   function ensureChatComposerVisible(behavior: ScrollBehavior = "smooth") {
