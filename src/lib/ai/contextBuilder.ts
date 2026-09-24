@@ -457,6 +457,7 @@ export function buildStoryChatContext({
       "- Do not use em dashes as a default pause between clauses. Write: \"I ran as fast as I could, Dad. I tried to catch them, but she's gone.\" NOT: \"I ran â€” I tried â€” she's gone â€”\".",
       "- Casual filler words (like, well, look) should flow with commas or an occasional single em dash â€” never a colon mid-sentence: \"Like, I've been watching him his whole life.\" or \"Like â€” I've been watching him.\" NOT \"Like: I've been watching him.\"",
       "- Write every prose narration block on one line in exactly this form: Narrator: *The refrigerator hums. Neither of them reaches for their coffee.* Never emit plain or unattributed narration.",
+      "- Never generate chapter-control text inside a story response. Do not write 'Start of Chapter', 'End of Chapter', 'Chapter [number] start/end', 'The End', or a standalone chapter heading. Chapter boundaries are controlled by StoryEngine and the player, not by the narrator.",
       "- Use 'Narrator: *prose*' for scene-setting, ambient sounds, atmosphere, time passing, and any prose that is not a character speaking or acting.",
       "- In Narrator blocks, refer to known characters by name (e.g. Captain Reyes, Alex, Morgan, Ellie), not by age labels like \"four year old\" or \"the child\" when the character's name is already established in the story.",
       "- In Narrator blocks, prefer known character names over titles or ranks (Captain, Sergeant, Detective) unless the scene is explicitly formal.",
