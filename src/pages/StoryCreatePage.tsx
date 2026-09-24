@@ -65,6 +65,7 @@ export function StoryCreatePage() {
     aiSettings,
     createPlayerCharacter,
     createStory,
+    createSequel,
     generatePlayerCharacterDraft,
     generatePlayerCharacterConcept,
     generateStoryTitle,
@@ -72,11 +73,15 @@ export function StoryCreatePage() {
     getUniverseById,
     generateGuidedChapterPlan,
     universes,
+    stories,
     getPlayerCharactersForUniverse,
     saveStoryAIConfig,
     updatePlayerCharacter,
   } = useStoryEngine();
   const [formState, setFormState] = useState(initialFormState);
+  const [creationMode, setCreationMode] = useState<"new" | "sequel">("new");
+  const [sequelParentStoryId, setSequelParentStoryId] = useState("");
+  const [sequelTitle, setSequelTitle] = useState("");
   const [protagonistMode, setProtagonistMode] = useState<
     "existing" | "newPermanent" | "quick"
   >("existing");
@@ -398,6 +403,64 @@ export function StoryCreatePage() {
     }
   }
 
+  if (creationMode === "sequel") {
+    const availableParentStories = stories.filter((story) => !story.isArchived);
+    async function handleCreateSequel(event: React.FormEvent<HTMLFormElement>) {
+      event.preventDefault();
+      if (!sequelParentStoryId) {
+        setErrorMessage("Choose the story this sequel should inherit from.");
+        return;
+      }
+      if (!sequelTitle.trim()) {
+        setErrorMessage("Enter a title for the sequel.");
+        return;
+      }
+      setIsSubmitting(true);
+      setErrorMessage(null);
+      try {
+        const sequel = await createSequel(sequelParentStoryId, sequelTitle.trim());
+        navigate(`/stories/${sequel.id}`);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Unable to create the sequel.");
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+
+    return (
+      <div className="space-y-8">
+        <PageHeader
+          eyebrow="Create Story"
+          title="Create a sequel"
+          description="Start a new story while inheriting the selected story's indexed continuity."
+        />
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" onClick={() => setCreationMode("new")}>New Story</Button>
+          <Button type="button" variant="secondary">Create Sequel</Button>
+        </div>
+        <Panel variant="flat" padding="lg">
+          <form className="space-y-6" onSubmit={handleCreateSequel}>
+            <Field label="Inherit from" hint="Required" help="The original story remains unchanged. Its indexed chapters, characters and relationships become prior canon for the sequel.">
+              <select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={sequelParentStoryId} onChange={(event) => setSequelParentStoryId(event.target.value)}>
+                <option value="">Choose a story…</option>
+                {availableParentStories.map((story) => <option key={story.id} value={story.id}>{story.title}</option>)}
+              </select>
+            </Field>
+            <Field label="Sequel title" hint="Required">
+              <TextInput value={sequelTitle} onChange={(event) => setSequelTitle(event.target.value)} placeholder="Name the sequel" />
+            </Field>
+            {sequelParentStoryId ? <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/40 px-4 py-3 text-sm text-ink-muted">Inheriting from <span className="font-semibold text-ink">{stories.find((story) => story.id === sequelParentStoryId)?.title}</span>. The parent story will not be modified.</div> : null}
+            {errorMessage ? <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{errorMessage}</div> : null}
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="ghost" onClick={() => setCreationMode("new")}>Back</Button>
+              <Button type="submit" disabled={isSubmitting || !sequelParentStoryId || !sequelTitle.trim()}>{isSubmitting ? "Creating…" : "Create Sequel"}</Button>
+            </div>
+          </form>
+        </Panel>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -405,6 +468,10 @@ export function StoryCreatePage() {
         title="Create a story from a universe and a player character"
         description="Choose the fictional universe, select the player character, then set a title and optional summary."
       />
+      <div className="flex gap-2">
+        <Button type="button" variant="secondary">New Story</Button>
+        <Button type="button" variant="ghost" onClick={() => { setCreationMode("sequel"); setErrorMessage(null); }}>Create Sequel</Button>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         {[
