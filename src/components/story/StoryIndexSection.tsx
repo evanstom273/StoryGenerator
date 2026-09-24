@@ -411,17 +411,17 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                         type="button"
                         onClick={() => toggleRecord(recordKey)}
                         aria-expanded={isOpen}
-                        className="flex w-full items-center justify-between gap-3 p-3 text-left transition hover:bg-panel-muted/30"
+                        className="flex w-full items-start justify-between gap-3 p-3 text-left transition hover:bg-panel-muted/30"
                       >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="font-semibold text-ink text-sm truncate">{char.canonicalName}</span>
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="font-semibold text-ink text-sm">{char.canonicalName}</div>
                           {char.status && (
-                            <Badge variant="neutral" className="text-[10px] shrink-0">
+                            <div className="text-[11px] leading-snug text-ink-muted line-clamp-2">
                               {char.status}
-                            </Badge>
+                            </div>
                           )}
                         </div>
-                        <span className={cn("shrink-0 text-xs text-ink-muted transition-transform duration-200", isOpen ? "rotate-0" : "-rotate-90")}>
+                        <span className={cn("mt-0.5 shrink-0 text-xs text-ink-muted transition-transform duration-200", isOpen ? "rotate-0" : "-rotate-90")}>
                           ▼
                         </span>
                       </button>
@@ -519,19 +519,19 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                         type="button"
                         onClick={() => toggleRecord(recordKey)}
                         aria-expanded={isOpen}
-                        className="flex w-full items-center justify-between gap-3 p-3 text-left transition hover:bg-panel-muted/30"
+                        className="flex w-full items-start justify-between gap-3 p-3 text-left transition hover:bg-panel-muted/30"
                       >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="font-semibold text-ink truncate">
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="font-semibold text-ink">
                             {nameA} & {nameB}
-                          </span>
+                          </div>
                           {rel.state && (
-                            <Badge variant="neutral" className="text-[10px] shrink-0">
+                            <div className="text-[11px] leading-snug text-ink-muted line-clamp-2">
                               {rel.state}
-                            </Badge>
+                            </div>
                           )}
                         </div>
-                        <span className={cn("shrink-0 text-xs text-ink-muted transition-transform duration-200", isOpen ? "rotate-0" : "-rotate-90")}>
+                        <span className={cn("mt-0.5 shrink-0 text-xs text-ink-muted transition-transform duration-200", isOpen ? "rotate-0" : "-rotate-90")}>
                           ▼
                         </span>
                       </button>
