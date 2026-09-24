@@ -542,25 +542,30 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                   No chapter summaries indexed yet.
                 </div>
               ) : (
-                chapterSummaries.map((summary) => (
-                  <div
-                    key={summary.chapterId}
-                    className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-2 text-xs transition hover:border-divider/50"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-ink text-sm">
-                        {summary.chapterLabel}
-                      </span>
-                      <span className="text-[10px] text-ink-muted">
-                        {summary.sourceMessageIds.length} message{summary.sourceMessageIds.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
+                chapterSummaries.map((summary) => {
+                  const originStory = summary.originStoryId
+                    ? stories.find((candidate) => candidate.id === summary.originStoryId)
+                    : story;
+                  return (
+                    <div
+                      key={`${summary.originStoryId ?? storyId}:${summary.chapterId}`}
+                      className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-2 text-xs transition hover:border-divider/50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-ink text-sm">
+                          {originStory?.title ? `${originStory.title} · ` : ""}{summary.chapterLabel}
+                        </span>
+                        <span className="text-[10px] text-ink-muted">
+                          {summary.sourceMessageIds.length} message{summary.sourceMessageIds.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
 
-                    <p className="text-ink/90 text-[11px] leading-relaxed whitespace-pre-wrap">
-                      {summary.summary}
-                    </p>
-                  </div>
-                ))
+                      <p className="text-ink/90 text-[11px] leading-relaxed whitespace-pre-wrap">
+                        {summary.summary}
+                      </p>
+                    </div>
+                  );
+                })
               )}
             </div>
           )}
