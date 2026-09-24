@@ -181,7 +181,9 @@ describe("contextBuilder latest player turn authority", () => {
       role: "user",
       content: [
         "Player (Allie) turn:",
-        "AUTHORITATIVE LATEST TURN: Everything below is already canon. Continue from its immediate aftermath; do not replace it with a different event, conversation, location, or action.",
+        "AUTHORITATIVE LATEST TURN: Everything below is already canon and is the exact current scene state. Continue from its immediate next beat only; do not replace, reinterpret, skip past, or fast-forward beyond it.",
+        "SCENE HANDOFF RULE: Treat the final physical position, location, activity, possessions, and sensory state explicitly established in this player turn as binding at the instant your reply begins. Do not relocate characters, complete a pending transition, equip/use an item, start travel, or assume an intermediate action happened unless this player turn already established it.",
+        "If earlier Director-controlled prose was moving toward a future beat, that future beat is not permission to jump there after the player resumes control. The newest player turn supersedes that momentum. React to what the player just did first and advance only the immediate surrounding beat.",
         '"Man, that was fun though." I say, collapsing into a chair by the fire.',
       ].join("\n"),
     });
