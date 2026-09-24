@@ -173,7 +173,10 @@ export function formatChapterSummariesForDirector(
         s.summary.length > maxSummaryChars
           ? `${s.summary.slice(0, maxSummaryChars).trim()}…`
           : s.summary;
-      return `### ${s.chapterLabel}\n${truncated}`;
+      const originPrefix = s.originStoryId
+        ? `${s.originStoryTitle?.trim() || "Previous Story"} · `
+        : "";
+      return `### ${originPrefix}${s.chapterLabel}\n${truncated}`;
     })
     .join("\n\n");
 }
