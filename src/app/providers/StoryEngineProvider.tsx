@@ -1537,6 +1537,7 @@ function applyStoryLocalIdentityToSavedAssistantText(args: {
 function resolveStoryPlayerIdentityForGeneration(args: {
 	playerCharacter: PlayerCharacter;
 	storyState: StoryState | null | undefined;
+	storyIndex?: StoryIndex | null;
 	recentMessages: StoryMessage[];
 }): {
 	parsedStoryState: StoryStateData | StoryStateDataV2 | null;
@@ -1556,6 +1557,7 @@ function resolveStoryPlayerIdentityForGeneration(args: {
 	const playerIdentity = resolveEffectivePlayerIdentity(args.playerCharacter, {
 		storyState: parsedStoryState,
 		recentMessages: args.recentMessages,
+		storyIndex: args.storyIndex,
 	});
 
 	return {
@@ -6406,6 +6408,7 @@ export function StoryEngineProvider({
         } = resolveStoryPlayerIdentityForGeneration({
           playerCharacter,
           storyState,
+          storyIndex,
           recentMessages: [...sanitizedHistoryMessages, previousMessage],
         });
         const { participants: resolvedParticipants, speakerRegistry } =
@@ -8121,6 +8124,7 @@ export function StoryEngineProvider({
         } = resolveStoryPlayerIdentityForGeneration({
           playerCharacter,
           storyState,
+          storyIndex,
           recentMessages: [...sanitizedHistoryMessages, userMessage],
         });
         let parsedStoryStateForIdentity = parsedStoryStateForIdentityInitial;
