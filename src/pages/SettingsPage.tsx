@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { strToU8, zipSync } from "fflate";
 import { useSearchParams } from "react-router-dom";
 import { cn } from "../utils/cn";
 import { PageHeader } from "../components/PageHeader";
@@ -202,8 +203,8 @@ export function SettingsPage() {
     "universe" | "playerCharacter" | "story"
   >("story");
   const [itemExportUniverseId, setItemExportUniverseId] = useState<string>("");
-  const [itemExportCharacterId, setItemExportCharacterId] = useState<string>("");
-  const [itemExportStoryId, setItemExportStoryId] = useState<string>("");
+  const [itemExportCharacterIds, setItemExportCharacterIds] = useState<string[]>([]);
+  const [itemExportStoryIds, setItemExportStoryIds] = useState<string[]>([]);
   const [itemExportStoryFormat, setItemExportStoryFormat] = useState<
     "json" | "markdown" | "txt" | "pdf"
   >("json");
@@ -293,19 +294,11 @@ export function SettingsPage() {
     if (!itemExportUniverseId && universes[0]?.id) {
       setItemExportUniverseId(universes[0].id);
     }
-    if (!itemExportCharacterId && playerCharacters[0]?.id) {
-      setItemExportCharacterId(playerCharacters[0].id);
-    }
-    if (!itemExportStoryId && stories[0]?.id) {
-      setItemExportStoryId(stories[0].id);
-    }
     if (!itemImportUniverseId && universes[0]?.id) {
       setItemImportUniverseId(universes[0].id);
     }
   }, [
     itemExportUniverseId,
-    itemExportCharacterId,
-    itemExportStoryId,
     itemImportUniverseId,
     universes,
     playerCharacters,
@@ -476,15 +469,9 @@ export function SettingsPage() {
 
     try {
       if (itemExportType === "universe") {
-        if (!itemExportUniverseId) {
-          throw new Error("Select a universe first.");
-        }
-
+        if (!itemExportUniverseId) throw new Error("Select a universe first.");
         const bundle = await exportUniverse(itemExportUniverseId);
-        if (!bundle) {
-          throw new Error("Unable to assemble export data for this universe.");
-        }
-
+        if (!bundle) throw new Error("Unable to assemble export data for this universe.");
         const filename = `${sanitizeFileStem(bundle.universe.name) || "story-engine-universe"}.json`;
         await downloadFile(filename, JSON.stringify(bundle, null, 2), "application/json");
         setItemExportStatus("Universe exported.");
@@ -492,47 +479,74 @@ export function SettingsPage() {
       }
 
       if (itemExportType === "playerCharacter") {
-        if (!itemExportCharacterId) {
-          throw new Error("Select a player character first.");
+        if (!itemExportCharacterIds.length) throw new Error("Select at least one player character.");
+        const files: Record<string, Uint8Array> = {};
+        const usedNames = new Set<string>();
+        for (const characterId of itemExportCharacterIds) {
+          const bundle = await exportPlayerCharacter(characterId);
+          if (!bundle) throw new Error("Unable to assemble export data for one of the selected player characters.");
+          const baseStem = sanitizeFileStem(bundle.playerCharacter.name) || "story-engine-character";
+          let stem = baseStem;
+          let suffix = 2;
+          while (usedNames.has(`${stem}.json`)) stem = `${baseStem}-${suffix++}`;
+          const filename = `${stem}.json`;
+          usedNames.add(filename);
+          files[filename] = strToU8(JSON.stringify(bundle, null, 2));
         }
-
-        const bundle = await exportPlayerCharacter(itemExportCharacterId);
-        if (!bundle) {
-          throw new Error("Unable to assemble export data for this player character.");
+        if (itemExportCharacterIds.length === 1) {
+          const [filename, bytes] = Object.entries(files)[0]!;
+          await downloadFile(filename, bytes, "application/json");
+          setItemExportStatus("Player character exported.");
+        } else {
+          await downloadFile(
+            `story-engine-characters-${itemExportCharacterIds.length}.zip`,
+            zipSync(files, { level: 6 }),
+            "application/zip",
+          );
+          setItemExportStatus(`${itemExportCharacterIds.length} player characters exported as ZIP.`);
         }
-
-        const filename = `${sanitizeFileStem(bundle.playerCharacter.name) || "story-engine-character"}.json`;
-        await downloadFile(filename, JSON.stringify(bundle, null, 2), "application/json");
-        setItemExportStatus("Player character exported.");
         return;
       }
 
-      if (!itemExportStoryId) {
-        throw new Error("Select a story first.");
+      if (!itemExportStoryIds.length) throw new Error("Select at least one story.");
+      const files: Record<string, Uint8Array> = {};
+      const usedNames = new Set<string>();
+      for (const storyId of itemExportStoryIds) {
+        try { await refreshStoryState(storyId); } catch {}
+        const bundle = await exportStory(storyId);
+        if (!bundle) throw new Error("Unable to assemble export data for one of the selected stories.");
+        const baseStem = sanitizeFileStem(bundle.story.title) || "story-engine-story";
+        const extension =
+          itemExportStoryFormat === "json" ? "json"
+          : itemExportStoryFormat === "markdown" ? "md"
+          : itemExportStoryFormat === "pdf" ? "pdf"
+          : "txt";
+        let stem = baseStem;
+        let suffix = 2;
+        while (usedNames.has(`${stem}.${extension}`)) stem = `${baseStem}-${suffix++}`;
+        const filename = `${stem}.${extension}`;
+        usedNames.add(filename);
+        const { content } = serializeStoryExport(bundle, itemExportStoryFormat);
+        files[filename] = new Uint8Array(await new Blob([content]).arrayBuffer());
       }
 
-      try {
-        await refreshStoryState(itemExportStoryId);
-      } catch {}
-
-      const bundle = await exportStory(itemExportStoryId);
-      if (!bundle) {
-        throw new Error("Unable to assemble export data for this story.");
+      if (itemExportStoryIds.length === 1) {
+        const [filename, bytes] = Object.entries(files)[0]!;
+        const mimeType =
+          itemExportStoryFormat === "json" ? "application/json"
+          : itemExportStoryFormat === "markdown" ? "text/markdown"
+          : itemExportStoryFormat === "pdf" ? "application/pdf"
+          : "text/plain";
+        await downloadFile(filename, bytes, mimeType);
+        setItemExportStatus("Story exported.");
+      } else {
+        await downloadFile(
+          `story-engine-stories-${itemExportStoryIds.length}.zip`,
+          zipSync(files, { level: 6 }),
+          "application/zip",
+        );
+        setItemExportStatus(`${itemExportStoryIds.length} stories exported as ZIP.`);
       }
-
-      const stem = sanitizeFileStem(bundle.story.title) || "story-engine-story";
-      const extension =
-        itemExportStoryFormat === "json"
-          ? "json"
-          : itemExportStoryFormat === "markdown"
-            ? "md"
-            : itemExportStoryFormat === "pdf"
-              ? "pdf"
-              : "txt";
-      const filename = `${stem}.${extension}`;
-      const { content, mimeType } = serializeStoryExport(bundle, itemExportStoryFormat);
-      await downloadFile(filename, content, mimeType);
-      setItemExportStatus("Story exported.");
     } catch (error) {
       setItemExportError(error instanceof Error ? error.message : "Unable to export item.");
     }
@@ -1160,21 +1174,97 @@ export function SettingsPage() {
               ) : itemExportType === "playerCharacter" ? (
                 <Field
                   label="Player Character"
-                  help="Exports the character sheet as JSON, including aliases and ties."
+                  help="Select one or more character sheets. Multiple selections are packaged into a ZIP."
                 >
-                  <SelectInput value={itemExportCharacterId} onChange={(event) => setItemExportCharacterId(event.target.value)}>
-                    {playerCharacters.length ? playerCharacters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>) : <option value="">No characters</option>}
-                  </SelectInput>
+                  {playerCharacters.length ? (
+                    <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                      {playerCharacters.map((character) => {
+                        const selected = itemExportCharacterIds.includes(character.id);
+                        const details = [
+                          character.age ? `Age ${character.age}` : "",
+                          character.gender?.trim() ?? "",
+                          character.pronouns?.trim() ?? "",
+                        ].filter(Boolean).join(" · ");
+                        const concept = character.characterConcept?.trim() || "No character concept written yet.";
+                        return (
+                          <button
+                            key={character.id}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => setItemExportCharacterIds((current) =>
+                              selected ? current.filter((id) => id !== character.id) : [...current, character.id]
+                            )}
+                            className={cn(
+                              "w-full rounded-[10px] border px-4 py-3 text-left transition",
+                              selected
+                                ? "border-accent/50 bg-accent/[0.10]"
+                                : "border-divider/[0.45] bg-panel-muted/40 hover:border-accent/[0.35] hover:bg-panel-muted/70",
+                            )}
+                          >
+                            <span className="block text-sm font-semibold text-ink">{character.name}</span>
+                            {details ? <span className="mt-1 block text-xs font-medium text-accent-soft">{details}</span> : null}
+                            <span className="mt-1.5 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{concept}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/40 px-4 py-3 text-sm text-ink-muted">No player characters</div>
+                  )}
+                  <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-ink-muted">
+                    <span>{itemExportCharacterIds.length} selected</span>
+                    <div className="flex gap-2">
+                      <button type="button" className="hover:text-ink" onClick={() => setItemExportCharacterIds(playerCharacters.map((character) => character.id))}>Select all</button>
+                      <button type="button" className="hover:text-ink" onClick={() => setItemExportCharacterIds([])}>Clear</button>
+                    </div>
+                  </div>
                 </Field>
               ) : (
                 <>
                   <Field
                     label="Story"
-                    help="Pick which saved story to export."
+                    help="Pick one or more saved stories. Multiple selections are packaged into a ZIP."
                   >
-                    <SelectInput value={itemExportStoryId} onChange={(event) => setItemExportStoryId(event.target.value)}>
-                      {stories.length ? stories.map((s) => <option key={s.id} value={s.id}>{s.title}</option>) : <option value="">No stories</option>}
-                    </SelectInput>
+                    {stories.length ? (
+                      <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+                        {stories.map((story) => {
+                          const selected = itemExportStoryIds.includes(story.id);
+                          const universe = universes.find((entry) => entry.id === story.universeId);
+                          const character = playerCharacters.find((entry) => entry.id === story.playerCharacterId);
+                          const details = [universe?.name, character?.name ? `Player: ${character.name}` : ""].filter(Boolean).join(" · ");
+                          const summary = story.currentSummary?.trim() || story.openingPrompt?.trim() || "No story summary written yet.";
+                          return (
+                            <button
+                              key={story.id}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => setItemExportStoryIds((current) =>
+                                selected ? current.filter((id) => id !== story.id) : [...current, story.id]
+                              )}
+                              className={cn(
+                                "w-full rounded-[10px] border px-4 py-3 text-left transition",
+                                selected
+                                  ? "border-accent/50 bg-accent/[0.10]"
+                                  : "border-divider/[0.45] bg-panel-muted/40 hover:border-accent/[0.35] hover:bg-panel-muted/70",
+                              )}
+                            >
+                              <span className="block text-sm font-semibold text-ink">{story.title}</span>
+                              {details ? <span className="mt-1 block text-xs font-medium text-accent-soft">{details}</span> : null}
+                              <span className="mt-1.5 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{summary}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/40 px-4 py-3 text-sm text-ink-muted">No stories</div>
+                    )}
+                    <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-ink-muted">
+                      <span>{itemExportStoryIds.length} selected</span>
+                      <div className="flex gap-2">
+                        <button type="button" className="hover:text-ink" onClick={() => setItemExportStoryIds(stories.map((story) => story.id))}>Select all</button>
+                        <button type="button" className="hover:text-ink" onClick={() => setItemExportStoryIds([])}>Clear</button>
+                      </div>
+                    </div>
                   </Field>
                   <Field
                     label="Format"
@@ -1189,8 +1279,22 @@ export function SettingsPage() {
                   </Field>
                 </>
               )}
-              <Button variant="secondary" onClick={handleExportItem} disabled={itemExportType === "universe" ? !universes.length : itemExportType === "playerCharacter" ? !playerCharacters.length : !stories.length}>
-                Export
+              <Button
+                variant="secondary"
+                onClick={handleExportItem}
+                disabled={
+                  itemExportType === "universe"
+                    ? !universes.length
+                    : itemExportType === "playerCharacter"
+                      ? !itemExportCharacterIds.length
+                      : !itemExportStoryIds.length
+                }
+              >
+                {itemExportType === "universe"
+                  ? "Export"
+                  : itemExportType === "playerCharacter"
+                    ? `Export selected (${itemExportCharacterIds.length})`
+                    : `Export selected (${itemExportStoryIds.length})`}
               </Button>
               {itemExportStatus ? <div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">{itemExportStatus}</div> : null}
               {itemExportError ? <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">{itemExportError}</div> : null}
