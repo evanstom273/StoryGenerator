@@ -170,7 +170,7 @@ export async function synthesizeGeminiSpeechPlan(params: {
 
 		const pcm = await generateGeminiMultiSpeakerAudio({
 			apiKey: params.apiKey,
-			input,
+			turns,
 			speakers: [{ name: NARRATOR_SPEAKER_ALIAS, voice }],
 			model: params.model,
 			signal: params.signal,
