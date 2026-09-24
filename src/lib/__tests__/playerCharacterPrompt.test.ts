@@ -160,6 +160,75 @@ describe("resolveEffectivePlayerIdentity", () => {
 		expect(identity.hasInStoryTransition).toBe(true);
 	});
 
+	it("uses inherited Story Index identity when a sequel transcript starts fresh", () => {
+		const identity = resolveEffectivePlayerIdentity(
+			{ ...jamieCharacter, id: "player-1" },
+			{
+				storyIndex: {
+					storyId: "sequel-1",
+					chapterSummaries: [],
+					characters: [{
+						id: "indexed-lyra",
+						canonicalName: "Lyra",
+						aliases: ["Jamie", "James Peralta"],
+						pronouns: "she/her",
+						description: "",
+						status: "Living openly as Lyra.",
+						developments: ["Came out as transgender and chose the name Lyra."],
+						provenance: [],
+						updatedAt: "2026-09-24T00:00:00.000Z",
+					}],
+					relationships: [],
+					indexedMessageCount: 0,
+					inheritedFromStoryId: "parent-1",
+					updatedAt: "2026-09-24T00:00:00.000Z",
+				},
+				recentMessages: [],
+			},
+		);
+
+		expect(identity.sceneName).toBe("Lyra");
+		expect(identity.pronouns).toBe("she/her");
+		expect(identity.hasInStoryTransition).toBe(true);
+	});
+
+	it("keeps an explicit sequel identity change above inherited Story Index identity", () => {
+		const identity = resolveEffectivePlayerIdentity(
+			{ ...jamieCharacter, id: "player-1" },
+			{
+				storyIndex: {
+					storyId: "sequel-1",
+					chapterSummaries: [],
+					characters: [{
+						id: "indexed-lyra",
+						canonicalName: "Lyra",
+						aliases: ["Jamie", "James Peralta"],
+						pronouns: "she/her",
+						description: "",
+						status: "",
+						developments: [],
+						provenance: [],
+						updatedAt: "2026-09-24T00:00:00.000Z",
+					}],
+					relationships: [],
+					indexedMessageCount: 0,
+					updatedAt: "2026-09-24T00:00:00.000Z",
+				},
+				recentMessages: [{
+					id: "sequel-message",
+					storyId: "sequel-1",
+					role: "user",
+					speakerType: "player",
+					content: "Call me Lucy now. I use they/them.",
+					timestamp: "2026-09-24T01:00:00.000Z",
+				}],
+			},
+		);
+
+		expect(identity.sceneName).toBe("Lucy");
+		expect(identity.pronouns).toBe("they/them");
+	});
+
 	it("uses a provenance-tagged story-local identity override for long histories", () => {
 		const identity = resolveEffectivePlayerIdentity(
 			{ ...jamieCharacter, id: "player-1" },
