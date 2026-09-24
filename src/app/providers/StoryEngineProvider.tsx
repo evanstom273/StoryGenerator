@@ -6031,6 +6031,7 @@ export function StoryEngineProvider({
               parentIndex,
               parentStoryId: parentStory.id,
               childStoryId: storyId,
+              parentStoryTitle: parentStory.title,
               inheritedAt: now,
             }),
           );
