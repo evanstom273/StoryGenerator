@@ -144,4 +144,15 @@ export function extractPodcastDialogueFromMarkdown(markdown: string) {
 	};
 }
 
-export function buildGeminiTtsInput(script: string, hostOne: string, hostTwo: string) {\n\treturn script\n\t\t.split("\\n")\n\t\t.map((line) => parsePodcastSpeakerLine(line.trim()))\n\t\t.filter((turn): turn is { speaker: string; text: string } => Boolean(turn?.text))\n\t\t.map((turn) => ({\n\t\t\ttext: turn.text,\n\t\t\tspeaker: equalsIgnoreCase(turn.speaker, hostOne) ? hostOne : hostTwo,\n\t\t\tstyle: "Natural conversational podcast delivery; engaged, responsive, and expressive without sounding scripted.",\n\t\t}));\n}\n
+export function buildGeminiTtsInput(script: string, hostOne: string, hostTwo: string) {
+	return script
+		.split("\n")
+		.map((line) => parsePodcastSpeakerLine(line.trim()))
+		.filter((turn): turn is { speaker: string; text: string } => Boolean(turn?.text))
+		.map((turn) => ({
+			text: turn.text,
+			speaker: equalsIgnoreCase(turn.speaker, hostOne) ? hostOne : hostTwo,
+			style:
+				"Natural conversational podcast delivery; engaged, responsive, and expressive without sounding scripted.",
+		}));
+}
