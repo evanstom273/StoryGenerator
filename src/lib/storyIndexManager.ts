@@ -241,10 +241,11 @@ export async function rebuildFullStoryIndex(
     onProgress,
   } = params;
 
-  const [allMessages, existingChapters, parentIndex] = await Promise.all([
+  const [allMessages, existingChapters, parentIndex, parentStory] = await Promise.all([
     repository.listStoryMessages(storyId),
     repository.listStoryChapters(storyId),
     story.parentStoryId ? repository.getStoryIndex(story.parentStoryId) : Promise.resolve(null),
+    story.parentStoryId ? repository.getStory(story.parentStoryId) : Promise.resolve(null),
   ]);
 
   const freshIndex = (): StoryIndex =>
@@ -253,6 +254,7 @@ export async function rebuildFullStoryIndex(
           parentIndex,
           parentStoryId: story.parentStoryId,
           childStoryId: storyId,
+          parentStoryTitle: parentStory?.title,
         })
       : {
           id: `story-index:${storyId}`,
