@@ -10,6 +10,7 @@ import type { StoryEngineRepository } from "./repository";
 import type { AIProvider } from "./ai/types";
 import { processIndexingBatch } from "./ai/storyIndexingPipeline";
 import { sortByTimestampAsc } from "./dates";
+import { createInheritedStoryIndex } from "./storyInheritance";
 
 export function calculatePendingMessages(
   allMessages: StoryMessage[],
@@ -240,36 +241,38 @@ export async function rebuildFullStoryIndex(
     onProgress,
   } = params;
 
-  const [allMessages, existingChapters] = await Promise.all([
+  const [allMessages, existingChapters, parentIndex] = await Promise.all([
     repository.listStoryMessages(storyId),
     repository.listStoryChapters(storyId),
+    story.parentStoryId ? repository.getStoryIndex(story.parentStoryId) : Promise.resolve(null),
   ]);
 
+  const freshIndex = (): StoryIndex =>
+    parentIndex && story.parentStoryId
+      ? createInheritedStoryIndex({
+          parentIndex,
+          parentStoryId: story.parentStoryId,
+          childStoryId: storyId,
+        })
+      : {
+          id: `story-index:${storyId}`,
+          storyId,
+          chapterSummaries: [],
+          characters: [],
+          relationships: [],
+          indexedMessageCount: 0,
+          updatedAt: new Date().toISOString(),
+        };
+
   if (!allMessages.length) {
-    const emptyIndex: StoryIndex = {
-      id: `story-index:${storyId}`,
-      storyId,
-      chapterSummaries: [],
-      characters: [],
-      relationships: [],
-      indexedMessageCount: 0,
-      updatedAt: new Date().toISOString(),
-    };
-    return repository.saveStoryIndex(emptyIndex);
+    return repository.saveStoryIndex(freshIndex());
   }
 
   const groups = groupMessagesByChapter(allMessages, existingChapters);
 
-  // Staging buffer starts completely clean
-  let stagingIndex: StoryIndex = {
-    id: `story-index:${storyId}`,
-    storyId,
-    chapterSummaries: [],
-    characters: [],
-    relationships: [],
-    indexedMessageCount: 0,
-    updatedAt: new Date().toISOString(),
-  };
+  // A sequel rebuild starts from its parent's index, then reconstructs only
+  // this story's contribution. Standalone stories still start completely clean.
+  let stagingIndex: StoryIndex = freshIndex();
 
   let processedCount = 0;
   for (const group of groups) {
