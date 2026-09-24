@@ -101,12 +101,8 @@ export type SceneParticipantCapabilityOverride = {
 
 export type DirectorIntent = {
   timeSkip?: { unit: "hours" | "days" | "weeks" | "months"; amount: number };
-  /** Exact minutes to advance, bypasses unit/amount conversion. Set by slash commands. */
-  exactMinutes?: number;
   sceneCut?: boolean;
   target?: string;
-  /** Absolute time-of-day set, e.g. from "It's 12pm". Sets clock to this hour:minute without advancing. */
-  absoluteTime?: { hour: number; minute: number };
   /** Structured participation directives only. Never inferred from free text. */
   participantCapabilityOverrides?: SceneParticipantCapabilityOverride[];
   /** Explicit Director clear of all current-scene capability overrides. */
@@ -174,94 +170,6 @@ export interface PlayerCharacter {
   createdAt: Timestamp;
 }
 
-export type RpCalendarConfig = {
-  monthNames?: string[];    // 12 names; default Gregorian
-  weekdayNames?: string[];  // 7 names starting Sunday; default English
-  yearSuffix?: string;      // e.g. "CE", "3E", "BBY"
-};
-
-export type RpTimeState = {
-  year: number;
-  month: number;   // 1â€“12
-  day: number;     // 1â€“31
-  hour: number;    // 0â€“23
-  minute: number;  // 0â€“59
-  storyDay: number; // days elapsed since story began (1-indexed)
-};
-
-export type RpRecurringFrequency = "weekly" | "monthly" | "annually";
-
-export type RpRecurringEvent = {
-  id: string;
-  label: string;
-  amount: number;              // positive = income, negative = expense
-  amountMin?: number;          // when both set, a random integer in [amountMin, amountMax] is applied
-  amountMax?: number;
-  frequency: RpRecurringFrequency;
-  dayOfWeek?: number;          // 0=Sun..6=Sat, used for weekly
-  dayOfMonth?: number;         // 1-31, used for monthly/annually
-  month?: number;              // 1-12, used for annually
-  nextDue: RpTimeState;
-};
-
-export type RpDiceModifiers = {
-  str: number; // -2 to +2
-  dex: number;
-  con: number;
-  int: number;
-  wis: number;
-  cha: number;
-};
-
-export type RpConfig = {
-  currencyName: string;
-  currencyDecimals: boolean;
-  maxHp: number;
-  startingGold: number;
-  allowDebt?: boolean;
-  creditLimit?: number | null;
-  calendarConfig?: RpCalendarConfig;
-  recurringEvents?: RpRecurringEvent[];
-  diceRollsEnabled?: boolean;
-  diceModifiers?: RpDiceModifiers;
-  birthdayMonth?: number;  // 1-12
-  birthdayDay?: number;    // 1-31
-};
-
-export type RpNpcHpEntry = {
-  name: string;
-  current: number;
-  max: number;
-};
-
-export type RpTransactionType = "income" | "expense" | "adjustment" | "recurring";
-
-export type RpChangelogEntry = {
-  ts: number;
-  field: string;
-  from: number;
-  to: number;
-  reason: string;
-  storyTime?: RpTimeState;
-  transactionType?: RpTransactionType;
-};
-
-export type RpEventLogEntry = {
-  ts: number;
-  summary: string;
-};
-
-export type RpCondition = {
-  id: string;
-  label: string;
-  addedAt: number;
-};
-
-export type PendingTransaction = {
-  description: string;
-  amount: number;
-};
-
 export type PlayerIdentityBasis = {
   playerCharacterId: EntityId;
   sceneName: string;
@@ -274,20 +182,6 @@ export type PlayerIdentityOverride = {
   source: "player_turn" | "director_instruction" | "author_instruction";
   sceneName?: string;
   pronouns?: string;
-};
-
-export type RpStats = {
-  hp: number;
-  gold: number;
-  npcHp: Record<string, RpNpcHpEntry>;
-  changelog: RpChangelogEntry[];
-  eventLog?: RpEventLogEntry[];
-  timeState?: RpTimeState;
-  pendingTransaction?: PendingTransaction;
-  conditions?: RpCondition[];
-  characterState?: string;
-  characterStateIdentityBasis?: PlayerIdentityBasis;
-  pendingConditionSuggestion?: string;
 };
 
 export interface Story {
@@ -308,8 +202,6 @@ export interface Story {
   adultContentMode?: StoryAdultContentMode;
   /** Legacy compatibility flag. Prefer adultContentMode for new writes. */
   matureFictionMode?: boolean;
-  rpMode?: boolean;
-  rpConfig?: RpConfig;
   accentThemeKey?: string;
   accentThemeCustom?: string;
   importedCharacterIds?: EntityId[];
@@ -356,7 +248,6 @@ export interface StoryMessage {
   editedAt?: Timestamp;
   regeneratedAt?: Timestamp;
   revision?: number;
-  storyTime?: RpTimeState;
 }
 
 export interface StoryMetaMessage {
@@ -671,8 +562,6 @@ export interface StoryDraft {
   adultContentMode?: StoryAdultContentMode;
   /** Legacy compatibility flag. Prefer adultContentMode for new writes. */
   matureFictionMode?: boolean;
-  rpMode?: boolean;
-  rpConfig?: RpConfig;
   accentThemeKey?: string;
   accentThemeCustom?: string;
   openingPrompt?: string;
