@@ -1220,8 +1220,6 @@ export function StoryWorkspacePage() {
             <span className="shrink-0 text-[11px] text-white/30">
               {messages.length} {messages.length === 1 ? "entry" : "entries"}
             </span>
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-0.5">
             <WorkspaceIconBtn
