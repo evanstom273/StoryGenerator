@@ -196,6 +196,15 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           </Section>
           <Section title="Story actions">
             <div className="grid gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setStorySettingsOpen(false);
+                  navigate(`/stories/new?sequelTo=${encodeURIComponent(story.id)}`);
+                }}
+              >
+                Create Sequel
+              </Button>
               <Button variant="secondary" onClick={() => void updateStory(story.id, { isArchived: !story.isArchived })}>{story.isArchived ? "Restore Story" : "Archive Story"}</Button>
               {playerCharacter ? <Button variant="secondary" onClick={() => void promote()} disabled={promoting}>{promoting ? "Saving…" : "Save Player Character"}</Button> : null}
               <Button variant="secondary" onClick={() => setCleanupOpen(true)}>Cleanup Duplicate Characters</Button>
