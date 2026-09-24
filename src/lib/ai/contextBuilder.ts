@@ -2,8 +2,6 @@ import type {
   AIProviderType,
   DirectorIntent,
   PlayerCharacter,
-  RpConfig,
-  RpStats,
   Story,
   StoryIndex,
   StoryMessage,
@@ -20,9 +18,8 @@ import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
 import { resolveAdultContentMode } from "./adultContentMode";
 import { getAdultContentProviderCapability } from "./providerCapabilities";
 import { analyzeStoryInputSafety } from "./storyInputSafety";
-import { formatTime, minutesBetween } from "../rpTime";
 import { formatUniverseWikiSources } from "../universeSources";
-import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, formatPlayerPrimaryAliasNamingPolicy, isDerivedPlayerSituationCurrent, resolveEffectivePlayerIdentity, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
+import { formatPlayerCharacterIdentityForPrompt, formatPlayerCharacterKnownTiesForPrompt, formatPlayerPrimaryAliasNamingPolicy, resolveEffectivePlayerIdentity, type EffectivePlayerIdentity } from "../playerCharacterPrompt";
 import { formatHumanNovelistProseGuidance } from "../storyProseGuidance";
 import { formatStoryImportedCharactersForPrompt } from "../storyImportedCharacters";
 import { buildDirectorIndexedMemory } from "./storyIndexRetrieval";
@@ -140,8 +137,6 @@ export interface BuildStoryChatContextInput {
     continuityNotes?: string;
     previousChapterContext?: string;
   };
-  rpStats?: RpStats | null;
-  rpConfig?: RpConfig | null;
   playerStateHintOverride?: string | null;
   importedStoryCharacters?: PlayerCharacter[];
   /** When set, used for prompt identity instead of re-resolving from recentMessages alone. */
@@ -167,8 +162,6 @@ export function buildStoryChatContext({
   directorStagingNote,
   guidedDirectedScene = false,
   guidedChapterContext,
-  rpStats,
-  rpConfig,
   playerStateHintOverride,
   importedStoryCharacters = [],
   playerIdentity: playerIdentityOverride,
@@ -316,77 +309,6 @@ export function buildStoryChatContext({
         "- Relationships: trust/loyalty/comfort/suspicion/fear/affection shift based on events and contact (or lack of it).",
         "- Reputation/resources: rumours travel, resources change, obligations accrue, deadlines approach or pass.",
         "Stay consistent with Long-Term Memory and the transcript. Prefer 'Yes, and...' consequences over resetting the scene.",
-      ].join("\n"),
-    );
-  })();
-
-  const rpStatsBlock = (() => {
-    if (!story.rpMode || !rpStats || !rpConfig) return "";
-    const hpPct = rpConfig.maxHp > 0 ? rpStats.hp / rpConfig.maxHp : 0;
-    const hpState =
-      rpStats.hp <= 0 ? "Incapacitated"
-      : hpPct <= 0.05 ? "Incapacitated"
-      : hpPct <= 0.25 ? "Critical condition"
-      : hpPct <= 0.50 ? "Seriously wounded"
-      : hpPct <= 0.75 ? "Injured"
-      : "Healthy";
-    const goldFormatted = rpConfig.currencyDecimals ? rpStats.gold.toFixed(2) : Math.floor(rpStats.gold).toString();
-    const debtLine = rpConfig.allowDebt
-      ? "Debt is enabled. Negative balances are a meaningful narrative state â€” overdraft fees, denied services, creditor pressure, or need to take on work are all appropriate consequences."
-      : "";
-    return normalizeWhitespace(
-      [
-        `HP: ${rpStats.hp} / ${rpConfig.maxHp} â€” ${hpState}`,
-        `${rpConfig.currencyName}: ${goldFormatted}`,
-        "HP represents physical condition. Writing tone should reflect the current state:",
-        "Healthy: acts freely and without obvious impairment.",
-        "Injured: may show strain, wince, or move with care.",
-        "Seriously wounded: struggles with effort; pain is present.",
-        "Critical condition: severely impaired â€” each action carries cost; may slur, stumble, or fail.",
-        "Incapacitated: cannot meaningfully resist events. Reaching 0 HP does not mean automatic death â€” the consequence (unconsciousness, capture, rescue, treatment, arrest) should fit the scene and context.",
-        "",
-        `The character's ${rpConfig.currencyName} balance represents their total financial position â€” savings, income, and assets â€” not just pocket money. Treat it as meaningful characterisation: a teenager may have only a little, a working adult considerably more.`,
-        `Currency rule: if the player attempts a purchase they cannot afford, reflect this naturally in the scene (declined card, putting items back, asking for credit, etc.). Do not let a purchase silently succeed if the character lacks funds.${debtLine ? `\n${debtLine}` : ""}`,
-        "",
-        ...(rpConfig.diceRollsEnabled ? [
-          "",
-          "Dice roll rule: when the player's message contains a result tag like [CHA +1 | 2d6: 4+3 | Total: 8 â€” SUCCESS] or [STR -1 | 2d6: 1+2 | Total: 2 â€” FAILURE], treat that outcome as a binding narrative fact. Interpret each result as follows:",
-          "- SUCCESS (total â‰¥ 7): the character's approach is effective, or circumstances become more favourable. This does not automatically resolve the entire situation â€” narrate the process and the feel of the success unfolding rather than jumping straight to a final outcome. Unless the action would reasonably conclude the situation on its own, leave threads open.",
-          "- CRITICAL SUCCESS (both dice show 6): the approach lands exceptionally well. Go a step further than a standard success â€” an unexpected benefit, a warmer-than-expected response, something that earns the character a meaningful advantage or moment of grace.",
-          "- FAILURE (total < 7): the attempt introduces a complication, setback, or obstacle. The character is not made incapable and the worst-case outcome is not automatic â€” instead, something goes wrong in a way that creates pressure, costs time or goodwill, or makes the next step harder.",
-          "- CRITICAL FAILURE (both dice show 1): the attempt backfires in a real, active way â€” not just a setback but a genuine negative consequence. Something is lost, broken, or made worse. The character may face embarrassment, danger, or an unexpected cost. This should sting.",
-          "Do not ignore or quietly override the roll result. Narrate the scene so the outcome feels earned and real.",
-        ] : []),
-        ...(rpConfig.birthdayMonth != null && rpConfig.birthdayDay != null ? [
-          "",
-          (() => {
-            const names = rpConfig.calendarConfig?.monthNames;
-            const mName = names ? (names[rpConfig.birthdayMonth! - 1] ?? String(rpConfig.birthdayMonth)) : String(rpConfig.birthdayMonth);
-            return `Player character birthday: ${rpConfig.birthdayDay} ${mName}. When the in-story date reaches this each year, the character has turned a year older.`;
-          })(),
-        ] : []),
-        ...(isDerivedPlayerSituationCurrent(
-          rpStats.characterState,
-          rpStats.characterStateIdentityBasis,
-          playerCharacter,
-          playerIdentity,
-        ) ? [
-          "",
-          `Current player situation: ${rpStats.characterState}`,
-        ] : []),
-        ...(rpStats.conditions?.length ? [
-          "",
-          `Active conditions: ${rpStats.conditions.map((c) => c.label).join(", ")}`,
-        ] : []),
-        ...(rpStats.timeState ? [
-          "",
-          `Current in-story time: ${formatTime(rpStats.timeState, rpConfig)}`,
-          "The in-story date above is authoritative. Characters must not state, imply, or act as though a different month, season, or year applies. If the in-story date is June, characters cannot say 'it's October' or reference autumn/fall/Christmas season as current.",
-          "Time-of-day awareness: apply realistic schedules â€” shops and businesses typically open 9amâ€“6pm, restaurants until 10pm, bars/clubs evenings and nights. NPCs follow their own routines and may not be available at all hours.",
-          ...(rpConfig.recurringEvents?.length ? [
-            `Upcoming obligations: ${rpConfig.recurringEvents.map(e => `${e.label} due in ~${Math.round(minutesBetween(rpStats.timeState!, e.nextDue) / 1440)} days`).join(", ")}.`,
-          ] : []),
-        ] : []),
       ].join("\n"),
     );
   })();
@@ -635,9 +557,6 @@ export function buildStoryChatContext({
       : []),
     ...(inputSafetyAnalysis.systemMessage
       ? [{ role: "system" as const, content: inputSafetyAnalysis.systemMessage }]
-      : []),
-    ...(rpStatsBlock
-      ? [{ role: "system" as const, content: `RP Character Sheet\n\n${rpStatsBlock}` }]
       : []),
     ...(guidedChapterBlock
       ? [{ role: "system" as const, content: guidedChapterBlock }]
