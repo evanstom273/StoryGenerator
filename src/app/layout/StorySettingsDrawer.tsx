@@ -42,7 +42,7 @@ function Section({ title, children, defaultOpen = false }: { title: string; chil
 export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const navigate = useNavigate();
   const { storySettingsOpen, setStorySettingsOpen } = useUiPrefs();
-  const { aiSettings, getStoryById, getUniverseById, getPlayerCharacterById, getPlayerCharactersForUniverse, exportStory, promoteStoryPlayerCharacter, cleanupDuplicatePlayerCharacters, updateStory, deleteStory, getStoryAIConfig, saveStoryAIConfig, queueAudiobookJob, backgroundJobs, dismissJobNotice, jobNotice, audiobookExportStatus } = useStoryEngine();
+  const { aiSettings, getStoryById, getUniverseById, getPlayerCharacterById, getPlayerCharactersForUniverse, exportStory, promoteStoryPlayerCharacter, cleanupDuplicatePlayerCharacters, createSequel, updateStory, deleteStory, getStoryAIConfig, saveStoryAIConfig, queueAudiobookJob, backgroundJobs, dismissJobNotice, jobNotice, audiobookExportStatus } = useStoryEngine();
   const story = storyId ? getStoryById(storyId) : undefined;
   const playerCharacter = story ? getPlayerCharacterById(story.playerCharacterId) : undefined;
   const [fields, setFields] = useState({ title: story?.title ?? "", adultContentMode: resolveAdultContentMode(story), accentThemeKey: (story?.accentThemeKey ?? null) as AccentThemeKey | null, accentThemeCustom: story?.accentThemeCustom ?? themes.custom.accent, importedCharacterIds: normalizeStoryImportedCharacterIds(story?.importedCharacterIds) });
@@ -58,6 +58,8 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [sequelTitle, setSequelTitle] = useState("");
+  const [creatingSequel, setCreatingSequel] = useState(false);
 
   useEffect(() => {
     if (!story) return;
@@ -132,6 +134,20 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     finally { setPromoting(false); }
   }
 
+  async function createStorySequel() {
+    if (!story || !sequelTitle.trim()) return;
+    setCreatingSequel(true); setError(null);
+    try {
+      const sequel = await createSequel(story.id, sequelTitle.trim());
+      setStorySettingsOpen(false);
+      navigate(`/stories/${sequel.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to create sequel.");
+    } finally {
+      setCreatingSequel(false);
+    }
+  }
+
   async function cleanup() {
     setCleaning(true); setError(null);
     try { const result = await cleanupDuplicatePlayerCharacters(); setNotice(`Merged ${result.mergedDuplicates} duplicates; updated ${result.updatedStories} stories.`); }
@@ -192,6 +208,13 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               {(["json", "markdown", "txt", "pdf"] as const).map((format) => <Button key={format} variant="secondary" onClick={() => void exportAs(format)} disabled={Boolean(exportStage)}><DownloadIcon className="h-4 w-4" />Export {format.toUpperCase()}</Button>)}
               <Button variant="secondary" onClick={() => void exportSupport()} disabled={Boolean(exportStage)}><DownloadIcon className="h-4 w-4" />Export Support Bundle</Button>
               <Button variant="secondary" onClick={() => void saveAudiobook()} disabled={Boolean(activeAudiobookJob)}>Save Story Audiobook</Button>
+            </div>
+          </Section>
+          <Section title="Create Sequel">
+            <div className="space-y-3">
+              <FieldLabel label="Sequel title" help="Creates a new story that inherits this story's indexed chapters, characters, relationships, and ending state. This story is not modified." labelClassName="text-xs text-ink-muted" />
+              <input className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={sequelTitle} onChange={(e) => setSequelTitle(e.target.value)} placeholder="Name the sequel" />
+              <Button className="w-full" onClick={() => void createStorySequel()} disabled={creatingSequel || !sequelTitle.trim()}>{creatingSequel ? "Creating…" : "Create Sequel"}</Button>
             </div>
           </Section>
           <Section title="Story actions">
