@@ -180,7 +180,7 @@ import {
 	getStreamValidationAttemptLimit,
 } from "../../lib/storyText/streamValidationPolicy";
 import { extractSpeakerPrefix } from "../../lib/storyText/extractSpeakerPrefix";
-import { detectDirectorIntent, resolveExactMinutes } from "../../lib/storyText/directorIntent";
+import { detectDirectorIntent } from "../../lib/storyText/directorIntent";
 import {
   applyAuthorDirectivesToStoryState,
   isAuthorDirectiveMessage,
@@ -229,9 +229,6 @@ import {
 	setBackgroundJobStepStatus,
 } from "../../lib/backgroundTasks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
-import { extractRpStatChanges, type RpStatDelta } from "../../lib/ai/rpStatsExtractor";
-import { applyStatChange, buildRpEventSummary, clampStat, DEFAULT_RP_CONFIG, defaultRpStats, getStatValue } from "../../lib/rpStats";
-import { advanceTime, checkRecurringEvents, formatTimeShort } from "../../lib/rpTime";
 import {
   formatUniverseWikiSources,
   getPrimaryUniverseWikiUrl,
@@ -257,7 +254,6 @@ import {
   resolvePlayerCharacterSceneName,
   resolvePlayerCharacterPreferredSceneName,
   formatPlayerCharacterIdentityForPrompt,
-  isPlayerSituationPronounsCompatible,
 } from "../../lib/playerCharacterPrompt";
 import {
   buildPlayerIdentityAuditSnapshot,
@@ -292,10 +288,6 @@ import type {
   PlayerCharacter,
   PlayerCharacterDraft,
   RelationshipIndexEntry,
-  RpChangelogEntry,
-  RpEventLogEntry,
-  RpStats,
-  RpTimeState,
   StorageStatus,
   Story,
   StoryAIConfig,
@@ -516,7 +508,6 @@ interface StoryEngineContextValue {
     characterId: string,
   ) => Promise<PlayerCharacterExportBundleV1 | null>;
   fetchStoryState: (storyId: string) => Promise<StoryState | null>;
-  updateRpStats: (storyId: string, rpStats: RpStats | null) => Promise<void>;
   updateRelationshipsIndex: (storyId: string, relationships: RelationshipIndexEntry[]) => Promise<void>;
   loadStoryRelationships: (storyId: string) => Promise<RelationshipIndexEntry[]>;
   refreshStoryState: (storyId: string, opts?: { force?: boolean }) => Promise<void>;
@@ -658,7 +649,7 @@ interface StoryEngineContextValue {
     openingPrompt?: string;
     existingTitle?: string;
   }) => Promise<string>;
-  sendChatMessage: (storyId: string, content: string, opts?: { zeroHpConsequence?: string; directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string; previousChapterContext?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void; onGenerationAttempt?: (attempt: number, maxAttempts: number) => void }) => Promise<{ message: StoryMessage | null; appliedRpChanges: RpChangelogEntry[] | null; pendingCoreStatChanges: RpStatDelta[] | null; rpEventSummary: string | null }>;
+  sendChatMessage: (storyId: string, content: string, opts?: { directorIntentOverride?: DirectorIntent; skipAssistantResponse?: boolean; signal?: AbortSignal; guidedGenerationInternal?: boolean; directorStagingNote?: string; guidedDirectedScene?: boolean; guidedChapterContext?: { overallDirection?: string; chapterOverview?: string; chapterLabel?: string; sceneOverview?: string; continuityNotes?: string; previousChapterContext?: string }; onChunk?: (chunk: string) => void; onChunkReset?: () => void; onGenerationAttempt?: (attempt: number, maxAttempts: number) => void }) => Promise<{ message: StoryMessage | null }>;
   editAssistantMessage: (messageId: string, content: string) => Promise<StoryMessage | null>;
   selectAssistantMessageCandidate: (
     messageId: string,
@@ -5905,7 +5896,6 @@ export function StoryEngineProvider({
         const universePackSnapshots = await buildUniversePackSnapshotsForIds(repository, universeIds);
         const storyId = createEntityId("story");
         const universePackSnapshot = universePackSnapshots[0];
-        const rpMode = draft.rpMode ?? true;
         const guidedHistory = draft.guidedStoryHistory;
         const useGuidedHistory =
           guidedHistory?.enabled &&
@@ -5925,8 +5915,6 @@ export function StoryEngineProvider({
           isArchived: draft.isArchived,
           adultContentMode,
           matureFictionMode: adultContentModeToLegacyMatureFictionMode(adultContentMode),
-          rpMode,
-          rpConfig: draft.rpConfig ?? (rpMode ? DEFAULT_RP_CONFIG : undefined),
           autoIndexMode: draft.autoIndexMode ?? "chapter",
           autoIndexInterval: draft.autoIndexInterval ?? 20,
           indexingCadence: draft.indexingCadence ?? "every_5_messages",
@@ -6038,10 +6026,12 @@ export function StoryEngineProvider({
         }
 
         if (parentState) {
+          const parentRuntimeState = safeParseStoryStateData(parentState.stateJson);
           await repository.saveStoryState({
             ...parentState,
             id: `story-state:${storyId}`,
             storyId,
+            stateJson: JSON.stringify(parentRuntimeState),
             updatedAt: now,
           });
         }
@@ -6081,8 +6071,6 @@ export function StoryEngineProvider({
           isArchived: patch.isArchived ?? currentStory.isArchived,
           adultContentMode,
           matureFictionMode: adultContentModeToLegacyMatureFictionMode(adultContentMode),
-          rpMode: patch.rpMode ?? currentStory.rpMode,
-          rpConfig: patch.rpConfig ?? currentStory.rpConfig,
           autoIndexMode: patch.autoIndexMode ?? currentStory.autoIndexMode,
           autoIndexInterval: patch.autoIndexInterval ?? currentStory.autoIndexInterval,
           indexingCadence: patch.indexingCadence ?? currentStory.indexingCadence,
@@ -7234,21 +7222,6 @@ export function StoryEngineProvider({
 
         return relationships;
       },
-      async updateRpStats(storyId, rpStats) {
-        const existing = await repository.getStoryState(storyId);
-        const parsed = existing?.stateJson
-          ? (() => { try { return JSON.parse(existing.stateJson); } catch { return {}; } })()
-          : {};
-        const next = rpStats === null
-          ? { ...parsed, rpStats: undefined }
-          : { ...parsed, rpStats };
-        await repository.saveStoryState({
-          id: `story-state:${storyId}`,
-          storyId,
-          stateJson: JSON.stringify(next),
-          updatedAt: new Date().toISOString(),
-        });
-      },
       refreshStoryState: refreshStoryStateInternal,
       async updateIndexesDeep(storyId, opts) {
         await runDeepIndexProcess(storyId, {
@@ -8067,12 +8040,7 @@ export function StoryEngineProvider({
           }
           await touchStory(storyId);
           await hydrate(false);
-          return {
-            message: userMessage,
-            appliedRpChanges: null,
-            pendingCoreStatChanges: null,
-            rpEventSummary: null,
-          };
+          return { message: userMessage };
         }
 
         const settings = await getNormalizedAISettings();
@@ -8143,9 +8111,6 @@ export function StoryEngineProvider({
           );
         })();
         let assistantMessage: StoryMessage | null = null;
-        let appliedRpChanges: RpChangelogEntry[] | null = null;
-        let pendingCoreStatChanges: RpStatDelta[] | null = null;
-        let rpEventSummary: string | null = null;
         let updatedMessages: StoryMessage[] = [];
         void updatedMessages;
 
@@ -8195,18 +8160,6 @@ export function StoryEngineProvider({
           if (adultContentProviderCapability === "unsupported") {
             throw new Error(formatUnsupportedExplicitProviderMessage(providerType));
           }
-          const currentRpStats = (() => {
-            if (!storyState?.stateJson) return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
-            const v2 = safeParseStoryStateData(storyState.stateJson);
-            if (v2?.rpStats) return v2.rpStats;
-            try {
-              const raw = JSON.parse(storyState.stateJson) as unknown;
-              if (raw && typeof raw === "object" && "rpStats" in raw && (raw as Record<string, unknown>).rpStats && typeof (raw as Record<string, unknown>).rpStats === "object") {
-                return (raw as Record<string, unknown>).rpStats as RpStats;
-              }
-            } catch {}
-            return story.rpMode && story.rpConfig ? defaultRpStats(story.rpConfig) : null;
-          })();
           const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
 
           const { participants: resolvedParticipants, speakerRegistry } =
@@ -8245,9 +8198,6 @@ export function StoryEngineProvider({
               directorStagingNote: opts?.directorStagingNote,
               guidedDirectedScene: opts?.guidedDirectedScene ?? false,
               guidedChapterContext: opts?.guidedChapterContext,
-              rpStats: currentRpStats,
-              rpConfig: story.rpConfig ?? null,
-              playerStateHintOverride: opts?.zeroHpConsequence ?? null,
               importedStoryCharacters,
               playerIdentity,
               resolvedParticipants,
@@ -8410,9 +8360,6 @@ export function StoryEngineProvider({
                     directorStagingNote: opts?.directorStagingNote,
                     guidedDirectedScene: opts?.guidedDirectedScene ?? false,
                     guidedChapterContext: opts?.guidedChapterContext,
-                    rpStats: currentRpStats,
-                    rpConfig: story.rpConfig ?? null,
-                    playerStateHintOverride: opts?.zeroHpConsequence ?? null,
                     importedStoryCharacters,
                     playerIdentity,
                     resolvedParticipants,
@@ -8793,7 +8740,6 @@ export function StoryEngineProvider({
             timestamp: new Date().toISOString(),
             speakerType: "narrator",
             speakerAttribution: buildSpeakerAttributionAudit(speakerResolutionChanges),
-            ...(currentRpStats?.timeState ? { storyTime: currentRpStats.timeState } : {}),
           };
 
           await repository.saveStoryMessage(assistantMessage);
@@ -8815,198 +8761,6 @@ export function StoryEngineProvider({
           });
           // #endregion
 
-          if (story.rpMode && story.rpConfig && currentRpStats) {
-            try {
-              const extracted = await extractRpStatChanges(
-                finalStreamText,
-                currentRpStats,
-                story.rpConfig,
-                provider,
-                apiKey,
-                model,
-                {
-                  characterBackground: playerCharacter.background ?? undefined,
-                  universeLore: effectiveUniverse.description ?? undefined,
-                  playerMessage: trimmed,
-                  pendingTransaction: currentRpStats.pendingTransaction,
-                  playerName: playerCharacter.name,
-                  playerSceneName: playerIdentity.sceneName,
-                  playerPronouns: playerIdentity.pronouns,
-                },
-              );
-              if (extracted) {
-                const { deltas: autoDeltas, narrative, npcHpChanges, pendingTransaction: extractedPendingTx, suggestedCondition, characterStateSummary } = extracted;
-
-                let nextStats = currentRpStats;
-                const applied: RpChangelogEntry[] = [];
-                for (const d of autoDeltas) {
-                  const from = getStatValue(nextStats, story.rpConfig, d.field);
-                  const to = clampStat(d.field, from + d.delta, story.rpConfig);
-                  if (to === from) continue;
-                  nextStats = applyStatChange(nextStats, {
-                    field: d.field, from, to, reason: d.reason,
-                    storyTime: nextStats.timeState,
-                    transactionType: d.field === "gold" ? (to > from ? "income" : "expense") : undefined,
-                  });
-                  applied.push({ ts: Date.now(), field: d.field, from, to, reason: d.reason });
-                }
-
-                // Apply NPC HP changes
-                const npcSummaryParts: string[] = [];
-                if (npcHpChanges?.length) {
-                  let updatedNpcHp = { ...nextStats.npcHp };
-                  for (const change of npcHpChanges) {
-                    const existing = updatedNpcHp[change.npcKey];
-                    const maxHp = existing?.max ?? change.maxHp ?? 100;
-                    const currentHp = existing?.current ?? maxHp;
-                    const newHp = Math.max(0, Math.min(maxHp, currentHp + change.delta));
-                    if (newHp === currentHp) continue;
-                    updatedNpcHp = {
-                      ...updatedNpcHp,
-                      [change.npcKey]: { name: change.name, current: newHp, max: maxHp },
-                    };
-                    const sign = newHp - currentHp > 0 ? "+" : "";
-                    npcSummaryParts.push(`${change.name} HP ${sign}${newHp - currentHp} (${change.reason})`);
-                  }
-                  nextStats = { ...nextStats, npcHp: updatedNpcHp };
-                }
-
-                // Apply time advance ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â player-declared only, exact minutes
-                let timeSummaryPart: string | null = null;
-                const playerMinutes = userMessage.directorIntent ? resolveExactMinutes(userMessage.directorIntent) : null;
-                if (playerMinutes && playerMinutes > 0 && nextStats.timeState) {
-                  const prevTime = nextStats.timeState;
-                  const newTime = advanceTime(prevTime, playerMinutes);
-                  // Check and apply recurring events
-                  const { triggered, updated } = checkRecurringEvents(prevTime, newTime, story.rpConfig.recurringEvents ?? []);
-                  if (triggered.length) {
-                    const recurringGoldBefore = getStatValue(nextStats, story.rpConfig, "gold");
-                    const recurringLabels: string[] = [];
-                    for (const event of triggered) {
-                      const resolvedAmount = (event.amountMin != null && event.amountMax != null)
-                        ? Math.round(event.amountMin + Math.random() * (event.amountMax - event.amountMin))
-                        : event.amount;
-                      const from = getStatValue(nextStats, story.rpConfig, "gold");
-                      const to = clampStat("gold", from + resolvedAmount, story.rpConfig);
-                      if (to !== from) {
-                        nextStats = applyStatChange(nextStats, {
-                          field: "gold", from, to, reason: event.label,
-                          storyTime: event.nextDue,
-                          transactionType: "recurring",
-                        });
-                        recurringLabels.push(event.label);
-                      }
-                    }
-                    // Push one summary entry to applied for toolbar gold tracking
-                    const recurringGoldAfter = getStatValue(nextStats, story.rpConfig, "gold");
-                    const uniqueLabels = [...new Set(recurringLabels)];
-                    const recurringReason = recurringLabels.length === 1
-                      ? recurringLabels[0]!
-                      : uniqueLabels.length === 1
-                        ? `${uniqueLabels[0]} ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â${recurringLabels.length}`
-                        : `${recurringLabels.length} recurring events`;
-                    applied.push({ ts: Date.now(), field: "gold", from: recurringGoldBefore, to: recurringGoldAfter, reason: recurringReason });
-                    // Save updated recurringEvents nextDue values to config
-                    await repository.saveStory({ ...story, rpConfig: { ...story.rpConfig, recurringEvents: updated } });
-                  }
-                  nextStats = { ...nextStats, timeState: newTime };
-                  const timeLabel = formatTimeShort(newTime, story.rpConfig);
-                  timeSummaryPart = (timeSummaryPart ? `${timeSummaryPart} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ` : "") + `Time ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ ${timeLabel}`;
-                }
-
-                // Apply absolute time set ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â e.g. "It's 12pm" in player message
-                const absoluteTime = userMessage.directorIntent?.absoluteTime;
-                if (absoluteTime && !playerMinutes) {
-                  if (nextStats.timeState) {
-                    const newTime = { ...nextStats.timeState, hour: absoluteTime.hour, minute: absoluteTime.minute };
-                    nextStats = { ...nextStats, timeState: newTime };
-                    const timeLabel = formatTimeShort(newTime, story.rpConfig);
-                    timeSummaryPart = `Time ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ ${timeLabel}`;
-                  } else {
-                    const now = new Date();
-                    const newTime: RpTimeState = {
-                      year: now.getFullYear(),
-                      month: now.getMonth() + 1,
-                      day: now.getDate(),
-                      hour: absoluteTime.hour,
-                      minute: absoluteTime.minute,
-                      storyDay: 1,
-                    };
-                    nextStats = { ...nextStats, timeState: newTime };
-                    const timeLabel = formatTimeShort(newTime, story.rpConfig);
-                    timeSummaryPart = `Time ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ ${timeLabel}`;
-                  }
-                }
-
-                // Apply pending transaction state change
-                if (extractedPendingTx !== undefined) {
-                  nextStats = { ...nextStats, pendingTransaction: extractedPendingTx ?? undefined };
-                }
-
-                // Apply character state summary
-                if (characterStateSummary && isPlayerSituationPronounsCompatible(
-                  characterStateSummary,
-                  playerCharacter,
-                  playerIdentity,
-                )) {
-                  nextStats = {
-                    ...nextStats,
-                    characterState: characterStateSummary,
-                    characterStateIdentityBasis: {
-                      playerCharacterId: playerCharacter.id,
-                      sceneName: playerIdentity.sceneName,
-                      pronouns: playerIdentity.pronouns,
-                    },
-                  };
-                } else {
-                  nextStats = {
-                    ...nextStats,
-                    characterState: undefined,
-                    characterStateIdentityBasis: undefined,
-                  };
-                }
-
-                // Apply condition suggestion
-                if (suggestedCondition && !nextStats.pendingConditionSuggestion) {
-                  nextStats = { ...nextStats, pendingConditionSuggestion: suggestedCondition };
-                }
-
-                const playerSummary = applied.length ? buildRpEventSummary(applied, story.rpConfig) : null;
-                const npcSummary = npcSummaryParts.length ? npcSummaryParts.join(" ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ") : null;
-                const summary = [playerSummary, npcSummary, timeSummaryPart].filter(Boolean).join(" ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ") || narrative || null;
-
-                if (summary) {
-                  const eventEntry: RpEventLogEntry = { ts: Date.now(), summary };
-                  const prevLog: RpEventLogEntry[] = Array.isArray(nextStats.eventLog) ? nextStats.eventLog : [];
-                  nextStats = { ...nextStats, eventLog: [eventEntry, ...prevLog].slice(0, 100) };
-
-                  const latestState = await repository.getStoryState(storyId);
-                  const latestParsed = latestState?.stateJson
-                    ? (() => { try { return JSON.parse(latestState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
-                    : {} as Record<string, unknown>;
-                  await repository.saveStoryState({
-                    id: `story-state:${storyId}`,
-                    storyId,
-                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
-                    updatedAt: new Date().toISOString(),
-                  });
-                  appliedRpChanges = applied;
-                  rpEventSummary = summary;
-                } else if (npcSummaryParts.length || nextStats.timeState !== currentRpStats.timeState || extractedPendingTx !== undefined || characterStateSummary || suggestedCondition) {
-                  const latestState = await repository.getStoryState(storyId);
-                  const latestParsed = latestState?.stateJson
-                    ? (() => { try { return JSON.parse(latestState.stateJson) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
-                    : {} as Record<string, unknown>;
-                  await repository.saveStoryState({
-                    id: `story-state:${storyId}`,
-                    storyId,
-                    stateJson: JSON.stringify({ ...latestParsed, rpStats: nextStats }),
-                    updatedAt: new Date().toISOString(),
-                  });
-                }
-              }
-            } catch {}
-          }
         } else {
           // #region debug-point D:story-skip
           reportGenerationAudit({
@@ -9040,7 +8794,7 @@ export function StoryEngineProvider({
         await touchStory(storyId);
         await hydrate(false);
 
-        return { message: assistantMessage, appliedRpChanges, pendingCoreStatChanges, rpEventSummary };
+        return { message: assistantMessage };
       },
     };
   }, [
