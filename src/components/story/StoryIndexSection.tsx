@@ -65,6 +65,20 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
     setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
+  const [openRecords, setOpenRecords] = useState<Set<string>>(() => new Set());
+
+  const toggleRecord = (recordKey: string) => {
+    setOpenRecords((prev) => {
+      const next = new Set(prev);
+      if (next.has(recordKey)) {
+        next.delete(recordKey);
+      } else {
+        next.add(recordKey);
+      }
+      return next;
+    });
+  };
+
   const allExpanded = openSections.characters && openSections.relationships && openSections.chapters;
 
   const toggleAllSections = () => {
@@ -385,56 +399,74 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                   No canonical characters indexed yet. Click "Update Index" to extract characters from the story transcript.
                 </div>
               ) : (
-                characters.map((char) => (
-                  <div
-                    key={char.id}
-                    className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-1.5 text-xs transition hover:border-divider/50"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="font-semibold text-ink text-sm">{char.canonicalName}</span>
-                      {char.status && (
-                        <Badge variant="neutral" className="text-[10px]">
-                          {char.status}
-                        </Badge>
+                characters.map((char) => {
+                  const recordKey = `character:${char.id}`;
+                  const isOpen = openRecords.has(recordKey);
+                  return (
+                    <div
+                      key={char.id}
+                      className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 text-xs transition hover:border-divider/50 overflow-hidden"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleRecord(recordKey)}
+                        aria-expanded={isOpen}
+                        className="flex w-full items-center justify-between gap-3 p-3 text-left transition hover:bg-panel-muted/30"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="font-semibold text-ink text-sm truncate">{char.canonicalName}</span>
+                          {char.status && (
+                            <Badge variant="neutral" className="text-[10px] shrink-0">
+                              {char.status}
+                            </Badge>
+                          )}
+                        </div>
+                        <span className={cn("shrink-0 text-xs text-ink-muted transition-transform duration-200", isOpen ? "rotate-0" : "-rotate-90")}>
+                          ▼
+                        </span>
+                      </button>
+
+                      {isOpen && (
+                        <div className="border-t border-divider/[0.15] px-3 pb-3 pt-2 space-y-1.5">
+                          {(char.aliases.length > 0 || char.pronouns) && (
+                            <div className="text-[11px] text-ink-muted">
+                              {char.aliases.length > 0 && (
+                                <><span className="text-ink/60">Aliases:</span> {char.aliases.join(", ")}</>
+                              )}
+                              {char.aliases.length > 0 && char.pronouns ? " · " : ""}
+                              {char.pronouns && (
+                                <><span className="text-ink/60">Pronouns:</span> {char.pronouns}</>
+                              )}
+                            </div>
+                          )}
+
+                          {char.description && (
+                            <div className="text-ink/90 text-[11px] leading-relaxed">
+                              {char.description}
+                            </div>
+                          )}
+
+                          {char.developments.length > 0 && (
+                            <div className="space-y-1 pt-1 border-t border-divider/[0.15]">
+                              <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+                                Developments:
+                              </div>
+                              <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-ink/80">
+                                {char.developments.map((dev, idx) => (
+                                  <li key={idx}>{dev}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          <div className="pt-1 text-[10px] text-ink-muted">
+                            Provenance: {char.provenance.length} source message{char.provenance.length === 1 ? "" : "s"}
+                          </div>
+                        </div>
                       )}
                     </div>
-
-                    {(char.aliases.length > 0 || char.pronouns) && (
-                      <div className="text-[11px] text-ink-muted">
-                        {char.aliases.length > 0 && (
-                          <><span className="text-ink/60">Aliases:</span> {char.aliases.join(", ")}</>
-                        )}
-                        {char.aliases.length > 0 && char.pronouns ? " · " : ""}
-                        {char.pronouns && (
-                          <><span className="text-ink/60">Pronouns:</span> {char.pronouns}</>
-                        )}
-                      </div>
-                    )}
-
-                    {char.description && (
-                      <div className="text-ink/90 text-[11px] leading-relaxed">
-                        {char.description}
-                      </div>
-                    )}
-
-                    {char.developments.length > 0 && (
-                      <div className="space-y-1 pt-1 border-t border-divider/[0.15]">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                          Developments:
-                        </div>
-                        <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-ink/80">
-                          {char.developments.map((dev, idx) => (
-                            <li key={idx}>{dev}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    <div className="pt-1 text-[10px] text-ink-muted">
-                      Provenance: {char.provenance.length} source message{char.provenance.length === 1 ? "" : "s"}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
@@ -475,40 +507,57 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                   const nameA = charA?.canonicalName ?? (rel.characterIdA === playerCharacter?.id ? playerCharacter.name : undefined) ?? rel.characterIdA;
                   const nameB = charB?.canonicalName ?? (rel.characterIdB === playerCharacter?.id ? playerCharacter.name : undefined) ?? rel.characterIdB;
 
+                  const recordKey = `relationship:${rel.id ?? `${rel.characterIdA}-${rel.characterIdB}-${idx}`}`;
+                  const isOpen = openRecords.has(recordKey);
+
                   return (
                     <div
                       key={`${rel.characterIdA}-${rel.characterIdB}-${idx}`}
-                      className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-1.5 text-xs transition hover:border-divider/50"
+                      className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 text-xs transition hover:border-divider/50 overflow-hidden"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="font-semibold text-ink">
-                          {nameA} & {nameB}
+                      <button
+                        type="button"
+                        onClick={() => toggleRecord(recordKey)}
+                        aria-expanded={isOpen}
+                        className="flex w-full items-center justify-between gap-3 p-3 text-left transition hover:bg-panel-muted/30"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="font-semibold text-ink truncate">
+                            {nameA} & {nameB}
+                          </span>
+                          {rel.state && (
+                            <Badge variant="neutral" className="text-[10px] shrink-0">
+                              {rel.state}
+                            </Badge>
+                          )}
+                        </div>
+                        <span className={cn("shrink-0 text-xs text-ink-muted transition-transform duration-200", isOpen ? "rotate-0" : "-rotate-90")}>
+                          ▼
                         </span>
-                        {rel.state && (
-                          <Badge variant="neutral" className="text-[10px]">
-                            {rel.state}
-                          </Badge>
-                        )}
-                      </div>
+                      </button>
 
-                      <div className="text-ink/90 text-[11px]">{rel.nature}</div>
+                      {isOpen && (
+                        <div className="border-t border-divider/[0.15] px-3 pb-3 pt-2 space-y-1.5">
+                          <div className="text-ink/90 text-[11px]">{rel.nature}</div>
 
-                      {rel.developments.length > 0 && (
-                        <div className="space-y-0.5 pt-1 border-t border-divider/[0.15]">
-                          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                            Key Developments:
+                          {rel.developments.length > 0 && (
+                            <div className="space-y-0.5 pt-1 border-t border-divider/[0.15]">
+                              <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+                                Key Developments:
+                              </div>
+                              <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-ink/80">
+                                {rel.developments.map((dev, dIdx) => (
+                                  <li key={dIdx}>{dev}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          <div className="pt-1 text-[10px] text-ink-muted">
+                            Provenance: {rel.provenance.length} source message{rel.provenance.length === 1 ? "" : "s"}
                           </div>
-                          <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-ink/80">
-                            {rel.developments.map((dev, dIdx) => (
-                              <li key={dIdx}>{dev}</li>
-                            ))}
-                          </ul>
                         </div>
                       )}
-
-                      <div className="pt-1 text-[10px] text-ink-muted">
-                        Provenance: {rel.provenance.length} source message{rel.provenance.length === 1 ? "" : "s"}
-                      </div>
                     </div>
                   );
                 })
@@ -542,25 +591,43 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                   No chapter summaries indexed yet.
                 </div>
               ) : (
-                chapterSummaries.map((summary) => (
-                  <div
-                    key={summary.chapterId}
-                    className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 p-3 space-y-2 text-xs transition hover:border-divider/50"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-ink text-sm">
-                        {summary.originStoryTitle ? `${summary.originStoryTitle} · ${summary.chapterLabel}` : `${story?.title ?? "Current Story"} · ${summary.chapterLabel}`}
-                      </span>
-                      <span className="text-[10px] text-ink-muted">
-                        {summary.sourceMessageIds.length} message{summary.sourceMessageIds.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
+                chapterSummaries.map((summary) => {
+                  const recordKey = `chapter:${summary.originStoryId ?? storyId}:${summary.chapterId}`;
+                  const isOpen = openRecords.has(recordKey);
+                  return (
+                    <div
+                      key={`${summary.originStoryId ?? storyId}:${summary.chapterId}`}
+                      className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 text-xs transition hover:border-divider/50 overflow-hidden"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleRecord(recordKey)}
+                        aria-expanded={isOpen}
+                        className="flex w-full items-center justify-between gap-3 p-3 text-left transition hover:bg-panel-muted/30"
+                      >
+                        <span className="min-w-0 font-semibold text-ink text-sm truncate">
+                          {summary.originStoryTitle ? `${summary.originStoryTitle} · ${summary.chapterLabel}` : `${story?.title ?? "Current Story"} · ${summary.chapterLabel}`}
+                        </span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-[10px] text-ink-muted">
+                            {summary.sourceMessageIds.length} message{summary.sourceMessageIds.length === 1 ? "" : "s"}
+                          </span>
+                          <span className={cn("text-xs text-ink-muted transition-transform duration-200", isOpen ? "rotate-0" : "-rotate-90")}>
+                            ▼
+                          </span>
+                        </div>
+                      </button>
 
-                    <p className="text-ink/90 text-[11px] leading-relaxed whitespace-pre-wrap">
-                      {summary.summary}
-                    </p>
-                  </div>
-                ))
+                      {isOpen && (
+                        <div className="border-t border-divider/[0.15] px-3 pb-3 pt-2">
+                          <p className="text-ink/90 text-[11px] leading-relaxed whitespace-pre-wrap">
+                            {summary.summary}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           )}

@@ -200,6 +200,10 @@ describe("StoryIndexSection", () => {
     expect(html).toContain("Relationships (1)");
     expect(html).toContain("Chapter Summaries (1)");
     expect(html).toContain("Elena");
-    expect(html).toContain("A brave explorer");
+    // Individual Story State records are collapsed by default so long indexes
+    // remain easy to scan. Details render only after expanding a record.
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("A brave explorer");
+    expect(html).not.toContain("Elena set off on the journey.");
   });
 });
