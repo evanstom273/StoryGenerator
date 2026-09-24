@@ -6002,6 +6002,7 @@ export function StoryEngineProvider({
           id: storyId,
           title: sequelTitle,
           parentStoryId: parentStory.id,
+          inheritedStoryIds: [parentStory.id],
           lineageKind: "sequel",
           isArchived: false,
           openingPrompt: "",
