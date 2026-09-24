@@ -3,6 +3,7 @@ import type { StoryChapter, StoryMessage } from "../../types/models";
 import { cn } from "../../utils/cn";
 import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
+import { normalizeSceneSpeakerLabel } from "../../lib/storyText/speakerLabels";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
 import type { CharacterTtsGenderMap } from "../../lib/ai/characterTtsVoices";
@@ -326,7 +327,7 @@ export function StoryTranscriptView({
                   : "npc";
                 const tag = isNarration
                   ? getSpeakerTag("Narrator", "narrator")
-                  : getSpeakerTag(block.speakerLabel?.trim() || "Unknown", speakerKind);
+                  : getSpeakerTag(normalizeSceneSpeakerLabel(block.speakerLabel) || "Unknown", speakerKind);
                 if (isNarration) {
                   const displayLines = block.text.split("\n");
                   return (
