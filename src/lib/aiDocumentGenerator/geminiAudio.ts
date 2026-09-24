@@ -197,7 +197,7 @@ export async function generateGeminiPodcastAudioFromMarkdown(params: {
 			try {
 				pcm = await generateGeminiMultiSpeakerAudio({
 					apiKey: params.apiKey,
-					input: buildGeminiTtsInput(chunk.script, chunk.hostOne, chunk.hostTwo),
+					turns: buildGeminiTtsInput(chunk.script, chunk.hostOne, chunk.hostTwo),
 					speakers: [
 						{ name: chunk.hostOne, voice: ttsSettings.hostOneVoice },
 						{ name: chunk.hostTwo, voice: ttsSettings.hostTwoVoice },
