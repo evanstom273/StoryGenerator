@@ -184,7 +184,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               <Button type="submit" className="w-full" disabled={saving}>{saving ? "Saving…" : "Save Story"}</Button>
             </form>
           </Section>
-          <Section title="Story Index">
+          <Section title="Story State">
             <StoryIndexSection storyId={story.id} />
           </Section>
           <Section title="Story accent">
