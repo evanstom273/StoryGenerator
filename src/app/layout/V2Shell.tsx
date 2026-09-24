@@ -227,19 +227,6 @@ export function V2Shell() {
               <BackgroundTasksButton />
               <button
                 type="button"
-                aria-label="Open library MetaChat"
-                onClick={() => setGlobalMetaChatOpen(true)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="8" width="18" height="11" rx="2" />
-                  <path d="M8 8V5" /><path d="M16 8V5" />
-                  <circle cx="9" cy="13.5" r="1" fill="currentColor" stroke="none" />
-                  <circle cx="15" cy="13.5" r="1" fill="currentColor" stroke="none" />
-                </svg>
-              </button>
-              <button
-                type="button"
                 aria-label="Search library"
                 onClick={() => librarySearchContextValue.openSearch()}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
