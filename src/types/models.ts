@@ -315,6 +315,8 @@ export interface Story {
   importedCharacterIds?: EntityId[];
   /** Story lineage. Sequels inherit indexed continuity from their parent story. */
   parentStoryId?: EntityId;
+  /** Ordered inheritance sources. V1 creates sequels with exactly one source. */
+  inheritedStoryIds?: EntityId[];
   lineageKind?: "sequel" | "branch";
   guidedGenerationMeta?: {
     historyChapterCount?: number;
