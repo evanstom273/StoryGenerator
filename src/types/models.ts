@@ -313,6 +313,9 @@ export interface Story {
   accentThemeKey?: string;
   accentThemeCustom?: string;
   importedCharacterIds?: EntityId[];
+  /** Story lineage. Sequels inherit indexed continuity from their parent story. */
+  parentStoryId?: EntityId;
+  lineageKind?: "sequel" | "branch";
   guidedGenerationMeta?: {
     historyChapterCount?: number;
     historyDividerMessageId?: string;
@@ -547,6 +550,9 @@ export interface StorySummary {
 export interface StoryIndexChapterSummary {
   chapterId: EntityId;
   chapterLabel: string;
+  /** Set when this summary originated in an inherited ancestor story. */
+  originStoryId?: EntityId;
+  originStoryTitle?: string;
   summary: string;
   sourceMessageIds: EntityId[];
   lastIndexedMessageId: EntityId;
@@ -586,6 +592,9 @@ export interface StoryIndex {
   lastIndexedMessageId?: EntityId;
   lastIndexedAt?: Timestamp;
   indexedMessageCount: number;
+  /** Immediate parent whose index seeded this story, when created as a sequel. */
+  inheritedFromStoryId?: EntityId;
+  inheritedAt?: Timestamp;
   updatedAt: Timestamp;
 }
 

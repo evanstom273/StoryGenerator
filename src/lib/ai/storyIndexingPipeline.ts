@@ -396,8 +396,12 @@ export function applyExtractionToIndex(params: {
   if (extraction.chapterSummary) {
     const existingSummaryIdx = chapterSummaries.findIndex(
       (s) =>
-        (chapterId && s.chapterId === chapterId) ||
-        normalizeNameKey(s.chapterLabel) === normalizeNameKey(chapterLabel),
+        // Inherited chapters can have the same local label (for example both
+        // stories have "Chapter I"). Never merge a sequel chapter into an
+        // ancestor's summary merely because the labels match.
+        !s.originStoryId &&
+        ((chapterId && s.chapterId === chapterId) ||
+          normalizeNameKey(s.chapterLabel) === normalizeNameKey(chapterLabel)),
     );
 
     const mergedSourceIds = Array.from(

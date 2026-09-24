@@ -549,7 +549,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-ink text-sm">
-                        {summary.chapterLabel}
+                        {summary.originStoryTitle ? `${summary.originStoryTitle} · ${summary.chapterLabel}` : `${story?.title ?? "Current Story"} · ${summary.chapterLabel}`}
                       </span>
                       <span className="text-[10px] text-ink-muted">
                         {summary.sourceMessageIds.length} message{summary.sourceMessageIds.length === 1 ? "" : "s"}

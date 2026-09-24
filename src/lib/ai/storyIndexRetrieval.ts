@@ -173,7 +173,8 @@ export function formatChapterSummariesForDirector(
         s.summary.length > maxSummaryChars
           ? `${s.summary.slice(0, maxSummaryChars).trim()}…`
           : s.summary;
-      return `### ${s.chapterLabel}\n${truncated}`;
+      const label = s.originStoryTitle ? `${s.originStoryTitle} · ${s.chapterLabel}` : s.chapterLabel;
+      return `### ${label}\n${truncated}`;
     })
     .join("\n\n");
 }

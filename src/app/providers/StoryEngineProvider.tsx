@@ -24,6 +24,7 @@ import {
   sortByUpdatedAtDesc,
 } from "../../lib/dates";
 import { createEntityId } from "../../lib/ids";
+import { createInheritedStoryIndex } from "../../lib/storyInheritance";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { resolveGeminiMinimalThinkingSettings, resolveGeminiStoryThinkingSettings } from "../../lib/ai/geminiThinking";
 import {
@@ -459,6 +460,7 @@ interface StoryEngineContextValue {
   ) => Promise<PlayerCharacter | null>;
   deletePlayerCharacter: (id: string) => Promise<GuardedDeleteResult>;
   createStory: (draft: StoryDraft) => Promise<Story>;
+  createSequel: (parentStoryId: string, title: string) => Promise<Story>;
   updateStory: (id: string, patch: Partial<StoryDraft>) => Promise<Story | null>;
   deleteStory: (id: string) => Promise<void>;
   deleteAllStories: () => Promise<void>;
@@ -5974,6 +5976,87 @@ export function StoryEngineProvider({
           await queueGuidedChapterJob(storyId, { entry: "story_history", plan });
         }
 
+        return nextStory;
+      },
+      async createSequel(parentStoryId, title) {
+        const sequelTitle = title.trim();
+        if (!sequelTitle) {
+          throw new Error("Enter a title for the sequel.");
+        }
+
+        const parentStory = await repository.getStory(parentStoryId);
+        if (!parentStory) {
+          throw new Error("The story to inherit from could not be found.");
+        }
+
+        const [parentIndex, parentState, parentAIConfig] = await Promise.all([
+          repository.getStoryIndex(parentStoryId),
+          repository.getStoryState(parentStoryId),
+          repository.getStoryAIConfig(parentStoryId),
+        ]);
+
+        const now = new Date().toISOString();
+        const storyId = createEntityId("story");
+        const nextStory: Story = {
+          ...parentStory,
+          id: storyId,
+          title: sequelTitle,
+          parentStoryId: parentStory.id,
+          lineageKind: "sequel",
+          isArchived: false,
+          currentSummary: "",
+          guidedGenerationMeta: undefined,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        await repository.saveStory(nextStory);
+
+        await repository.saveStoryMessage({
+          id: createEntityId("story-message"),
+          storyId,
+          role: "system",
+          content: "Chapter I.",
+          timestamp: now,
+          speakerType: "system",
+          chapterBoundary: {
+            kind: "start",
+            label: "Chapter I",
+          },
+        });
+
+        if (parentIndex) {
+          await repository.saveStoryIndex(
+            createInheritedStoryIndex({
+              parentIndex,
+              parentStoryId: parentStory.id,
+              parentStoryTitle: parentStory.title,
+              childStoryId: storyId,
+              inheritedAt: now,
+            }),
+          );
+        }
+
+        if (parentState) {
+          await repository.saveStoryState({
+            ...parentState,
+            id: `story-state:${storyId}`,
+            storyId,
+            updatedAt: now,
+          });
+        }
+
+        if (parentAIConfig) {
+          await repository.saveStoryAIConfig({
+            ...parentAIConfig,
+            id: createEntityId("story-ai-config"),
+            storyId,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        await hydrate(false);
         return nextStory;
       },
       async updateStory(id, patch) {
