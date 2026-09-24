@@ -1,4 +1,4 @@
-import type { PlayerCharacter, PlayerCharacterDraft, PlayerIdentityBasis, StoryMessage, StoryStateData, StoryStateDataV2 } from "../types/models";
+import type { PlayerCharacter, PlayerCharacterDraft, PlayerIdentityBasis, StoryIndex, StoryIndexCharacter, StoryMessage, StoryStateData, StoryStateDataV2 } from "../types/models";
 import { isDeniedSpeakerLabel } from "./storyText/speakerLabels";
 import {
 	detectEstablishedPlayerIdentityFromMessages,
@@ -192,6 +192,7 @@ export function resolvePlayerCharacterSceneName(
 	opts?: {
 		storyState?: StoryStateData | StoryStateDataV2 | null;
 		recentMessages?: StoryMessage[];
+		storyIndex?: StoryIndex | null;
 	},
 ): string {
 	const legalName = character.name.trim();
@@ -218,6 +219,15 @@ export function resolvePlayerCharacterSceneName(
 	const trustedOverride = getTrustedPlayerIdentityOverride(character, opts?.storyState);
 	if (trustedOverride?.sceneName && isValidPlayerSceneName(trustedOverride.sceneName)) {
 		return trustedOverride.sceneName.trim();
+	}
+
+	const indexedIdentity = getIndexedPlayerIdentity(character, opts?.storyIndex);
+	if (
+		indexedIdentity?.canonicalName &&
+		isValidPlayerSceneName(indexedIdentity.canonicalName) &&
+		isStoryLocalDisplayNameOverride(indexedIdentity.canonicalName, legalName, primaryAlias)
+	) {
+		return indexedIdentity.canonicalName.trim();
 	}
 
 	return primaryAlias;
@@ -247,6 +257,31 @@ function getTrustedPlayerIdentityOverride(
 		return null;
 	}
 	return override;
+}
+
+function getIndexedPlayerIdentity(
+	character: Pick<PlayerCharacter, "name" | "aliases"> & Partial<Pick<PlayerCharacter, "id">>,
+	storyIndex: StoryIndex | null | undefined,
+): StoryIndexCharacter | null {
+	if (!storyIndex?.characters?.length) return null;
+
+	if (character.id) {
+		const exactId = storyIndex.characters.find((candidate) => candidate.id === character.id);
+		if (exactId) return exactId;
+	}
+
+	const sheetNames = new Set(
+		[character.name, ...normalizePlayerCharacterAliases(character.aliases)]
+			.map((value) => value.trim().toLowerCase())
+			.filter(Boolean),
+	);
+	return (
+		storyIndex.characters.find((candidate) =>
+			[candidate.canonicalName, ...candidate.aliases]
+				.map((value) => value.trim().toLowerCase())
+				.some((value) => sheetNames.has(value)),
+		) ?? null
+	);
 }
 
 /**
@@ -297,6 +332,7 @@ export function resolveEffectivePlayerPronouns(
 		storyState?: StoryStateData | StoryStateDataV2 | null;
 		recentMessages?: StoryMessage[];
 		sceneName?: string;
+		storyIndex?: StoryIndex | null;
 	},
 ): string {
 	const sheetPronouns = character.pronouns.trim();
@@ -316,6 +352,11 @@ export function resolveEffectivePlayerPronouns(
 		return trustedOverride.pronouns.trim();
 	}
 
+	const indexedIdentity = getIndexedPlayerIdentity(character, opts?.storyIndex);
+	if (indexedIdentity?.pronouns?.trim()) {
+		return indexedIdentity.pronouns.trim();
+	}
+
 	return sheetPronouns;
 }
 
@@ -324,6 +365,7 @@ export function resolveEffectivePlayerIdentity(
 	opts?: {
 		storyState?: StoryStateData | StoryStateDataV2 | null;
 		recentMessages?: StoryMessage[];
+		storyIndex?: StoryIndex | null;
 	},
 ): EffectivePlayerIdentity {
 	const legalName = character.name.trim();
@@ -331,6 +373,7 @@ export function resolveEffectivePlayerIdentity(
 	let sceneName = resolvePlayerCharacterSceneName(character, {
 		storyState: opts?.storyState,
 		recentMessages: opts?.recentMessages,
+		storyIndex: opts?.storyIndex,
 	});
 
 	const establishedIdentity = opts?.recentMessages?.length
@@ -341,6 +384,7 @@ export function resolveEffectivePlayerIdentity(
 			)
 		: null;
 	const trustedOverride = getTrustedPlayerIdentityOverride(character, opts?.storyState);
+	const indexedIdentity = getIndexedPlayerIdentity(character, opts?.storyIndex);
 	if (
 		establishedIdentity?.sceneName?.trim() &&
 		isValidPlayerSceneName(establishedIdentity.sceneName)
@@ -352,6 +396,7 @@ export function resolveEffectivePlayerIdentity(
 		storyState: opts?.storyState,
 		recentMessages: opts?.recentMessages,
 		sceneName,
+		storyIndex: opts?.storyIndex,
 	});
 
 	const hasNameTransition = sceneName.toLowerCase() !== sheetPreferred.toLowerCase();
@@ -360,7 +405,14 @@ export function resolveEffectivePlayerIdentity(
 		!!pronouns &&
 		pronouns.toLowerCase() !== character.pronouns.trim().toLowerCase();
 	const hasAuthoredIdentity = Boolean(
-		establishedIdentity?.sceneName || establishedIdentity?.pronouns || trustedOverride?.sceneName || trustedOverride?.pronouns,
+		establishedIdentity?.sceneName ||
+		establishedIdentity?.pronouns ||
+		trustedOverride?.sceneName ||
+		trustedOverride?.pronouns ||
+		(indexedIdentity &&
+			(indexedIdentity.canonicalName.trim().toLowerCase() !== sheetPreferred.toLowerCase() ||
+				(indexedIdentity.pronouns?.trim() &&
+					indexedIdentity.pronouns.trim().toLowerCase() !== character.pronouns.trim().toLowerCase()))),
 	);
 
 	return {
