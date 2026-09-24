@@ -383,11 +383,6 @@ export function StoryWorkspacePage() {
     setAssistantEditContent("");
     setAssistantEditError(null);
     setIsAssistantEditSaving(false);
-    setRpToasts([]);
-    setShowZeroHpModal(false);
-    setZeroHpConsequenceChoice("");
-    setZeroHpCustom("");
-    setPendingZeroHpConsequence(null);
     setVariantSession(null);
   }, [storyId]);
 
