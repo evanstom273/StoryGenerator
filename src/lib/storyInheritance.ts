@@ -11,10 +11,11 @@ import type { EntityId, StoryIndex } from "../types/models";
 export function createInheritedStoryIndex(params: {
   parentIndex: StoryIndex;
   parentStoryId: EntityId;
+  parentStoryTitle: string;
   childStoryId: EntityId;
   inheritedAt?: string;
 }): StoryIndex {
-  const { parentIndex, parentStoryId, childStoryId } = params;
+  const { parentIndex, parentStoryId, parentStoryTitle, childStoryId } = params;
   const inheritedAt = params.inheritedAt ?? new Date().toISOString();
 
   return {
@@ -23,6 +24,7 @@ export function createInheritedStoryIndex(params: {
     chapterSummaries: parentIndex.chapterSummaries.map((summary) => ({
       ...summary,
       originStoryId: summary.originStoryId ?? parentStoryId,
+      originStoryTitle: summary.originStoryTitle ?? parentStoryTitle,
       sourceMessageIds: [...summary.sourceMessageIds],
     })),
     characters: parentIndex.characters.map((character) => ({
