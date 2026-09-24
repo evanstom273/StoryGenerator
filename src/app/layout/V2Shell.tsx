@@ -101,7 +101,6 @@ export function V2Shell() {
   );
   const readerActive = Boolean(activeStoryId) && readerMode;
   const effectiveShowChrome = readerActive ? false : showChrome;
-  const showFloatingGlobalMetaChatButton = !activeStoryId;
   const isStoryWorkspace = /^\/stories\/[^/]+$/.test(location.pathname);
   const leftOpenRef = useRef(leftOpen);
   const storySettingsOpenRef = useRef(storySettingsOpen);
@@ -282,10 +281,7 @@ export function V2Shell() {
             {readerActive ? null : (
               <aside className="hidden border-r border-divider bg-app-elevated lg:block">
                 <div className="sticky top-0 h-screen">
-                  <V2LeftSidebar
-                    activeStoryId={activeStoryId}
-                    onOpenMetaChat={() => setGlobalMetaChatOpen(true)}
-                  />
+                  <V2LeftSidebar activeStoryId={activeStoryId} />
                 </div>
               </aside>
             )}
@@ -333,31 +329,11 @@ export function V2Shell() {
             <V2LeftSidebar
               activeStoryId={activeStoryId}
               onNavigate={() => setLeftOpen(false)}
-              onOpenMetaChat={() => {
-                setLeftOpen(false);
-                setGlobalMetaChatOpen(true);
-              }}
             />
           </div>
         </div>
 
         <StorySettingsDrawer storyId={activeStoryId} />
-        {showFloatingGlobalMetaChatButton ? (
-          <button
-            type="button"
-            aria-label="Open library MetaChat"
-            onClick={() => setGlobalMetaChatOpen(true)}
-            className="fixed right-4 bottom-4 z-40 hidden items-center gap-2 rounded-full border border-accent/25 bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground shadow-hero transition hover:bg-accent-hover lg:flex"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="8" width="18" height="11" rx="2" />
-              <path d="M8 8V5" /><path d="M16 8V5" />
-              <circle cx="9" cy="13.5" r="1" fill="currentColor" stroke="none" />
-              <circle cx="15" cy="13.5" r="1" fill="currentColor" stroke="none" />
-            </svg>
-            Library MetaChat
-          </button>
-        ) : null}
         <MetaChatOverlay
           open={globalMetaChatOpen}
           storyId={GLOBAL_META_CHAT_SCOPE_ID}
