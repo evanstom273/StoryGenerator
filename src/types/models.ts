@@ -552,6 +552,7 @@ export interface StoryIndexChapterSummary {
   chapterLabel: string;
   /** Set when this summary originated in an inherited ancestor story. */
   originStoryId?: EntityId;
+  originStoryTitle?: string;
   summary: string;
   sourceMessageIds: EntityId[];
   lastIndexedMessageId: EntityId;
