@@ -35,7 +35,10 @@ export function StoryListRow({
     >
       <div className="flex items-start justify-between gap-4">
         <Link to={to} className="group min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-ink">{story.title}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            {story.isFavorite ? <span className="shrink-0 text-amber-300" title="Favorite · protected from deletion">★</span> : null}
+            <div className="truncate text-sm font-semibold text-ink">{story.title}</div>
+          </div>
           <div className="mt-0.5 truncate text-xs text-ink-muted">
             {universeName} · {playerCharacterName}
           </div>
