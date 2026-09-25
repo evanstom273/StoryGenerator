@@ -122,7 +122,12 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   }
 
   async function deleteCurrentStory() {
-    if (!story || !window.confirm("Delete this story and every stored message in its timeline?")) return;
+    if (!story) return;
+    if (story.isFavorite) {
+      setError("This story is favorited and protected. Unfavorite it before deleting.");
+      return;
+    }
+    if (!window.confirm("Delete this story and every stored message in its timeline?")) return;
     await deleteStory(story.id); setStorySettingsOpen(false); navigate("/stories");
   }
 
@@ -219,10 +224,11 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           </Section>
           <Section title="Story actions">
             <div className="grid gap-2">
+              <Button variant="secondary" onClick={() => void updateStory(story.id, { isFavorite: !story.isFavorite })}>{story.isFavorite ? "★ Unfavorite Story" : "☆ Favorite Story"}</Button>
               <Button variant="secondary" onClick={() => void updateStory(story.id, { isArchived: !story.isArchived })}>{story.isArchived ? "Restore Story" : "Archive Story"}</Button>
               {playerCharacter ? <Button variant="secondary" onClick={() => void promote()} disabled={promoting}>{promoting ? "Saving…" : "Save Player Character"}</Button> : null}
               <Button variant="secondary" onClick={() => setCleanupOpen(true)}>Cleanup Duplicate Characters</Button>
-              <Button variant="ghost" onClick={() => void deleteCurrentStory()}><TrashIcon className="h-4 w-4" />Delete Story</Button>
+              <Button variant="ghost" disabled={Boolean(story.isFavorite)} title={story.isFavorite ? "Unfavorite this story before deleting it." : undefined} onClick={() => void deleteCurrentStory()}><TrashIcon className="h-4 w-4" />{story.isFavorite ? "Protected from deletion" : "Delete Story"}</Button>
             </div>
           </Section>
         </> : <div className="text-sm text-ink-muted">Select a story to view settings.</div>}
