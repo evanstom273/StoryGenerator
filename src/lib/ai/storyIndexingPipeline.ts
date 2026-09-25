@@ -274,7 +274,7 @@ export function buildIndexingPrompt(params: {
     ? existingCharacters
         .map(
           (c) =>
-            `- ID: ${c.id} | Name: "${c.canonicalName}" | Aliases: [${c.aliases.map((a) => `"${a}"`).join(", ")}] | Pronouns: ${c.pronouns || "Unknown"} | Info: ${c.description || "None"} | Status: ${c.status || "None"}`,
+            `- ID: ${c.id} | Name: "${c.canonicalName}" | Aliases: [${c.aliases.map((a) => `"${a}"`).join(", ")}] | Pronouns: ${c.pronouns || "Unknown"} | Info: ${c.description || "None"} | Status: ${c.status || "None"} | Existing developments: [${c.developments.map((d) => `"${d}"`).join(", ")}]`,
         )
         .join("\n")
     : "None recorded yet.";
@@ -284,7 +284,7 @@ export function buildIndexingPrompt(params: {
         .map((r) => {
           const charA = existingCharacters.find((c) => c.id === r.characterIdA)?.canonicalName ?? r.characterIdA;
           const charB = existingCharacters.find((c) => c.id === r.characterIdB)?.canonicalName ?? r.characterIdB;
-          return `- ${charA} & ${charB}: ${r.nature} | State: ${r.state || "None"}`;
+          return `- ${charA} & ${charB}: ${r.nature} | State: ${r.state || "None"} | Existing developments: [${r.developments.map((d) => `"${d}"`).join(", ")}]`;
         })
         .join("\n")
     : "None recorded yet.";
@@ -344,6 +344,7 @@ export function buildIndexingPrompt(params: {
     "- The relationship nature is the relatively durable connection (examples: close friends, trusted colleagues, captain/officer, parent/child, siblings, mentor/student, romantic partners, ex-partners, rivals, adversaries, uneasy allies, newly hostile acquaintances).",
     "- The relationship state is how that connection currently stands or feels (examples: trusting, affectionate, playful, strained, suspicious, hostile, protective, conflicted).",
     "- Keep relationship developments selective: record consequential events, revelations, or changes in the relationship, not every small interaction.",
+    "- EXISTING DEVELOPMENT DEDUPLICATION: Existing character and relationship developments listed above are already stored canonical memory. Do not return a development that merely repeats, paraphrases, recalls, or continues an already-recorded development. Return only materially new information introduced by the new messages.",
     "- When meaningful evidence supports several relationships in the chapter, include each useful relationship rather than returning an empty or artificially sparse relationships array.",
     "",
     "### Required Output JSON Format:",
