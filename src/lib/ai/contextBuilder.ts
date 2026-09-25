@@ -39,6 +39,9 @@ import {
 
 const MAX_IMPORTED_LORE_CHARS = 12000;
 const MAX_RECENT_MESSAGES = 30;
+const MAX_PLAYER_STYLE_EXCERPTS = 6;
+const MAX_PLAYER_STYLE_CHARS = 4000;
+const MIN_PLAYER_STYLE_EXCERPT_CHARS = 24;
 
 function normalizeWhitespace(value: string) {
   return value
@@ -46,6 +49,48 @@ function normalizeWhitespace(value: string) {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function buildPlayerWritingStyleBlock(recentMessages: StoryMessage[]): string {
+  const candidates = sortByTimestampAsc(recentMessages).filter(
+    (message) =>
+      message.role === "user" &&
+      !isAuthorDirectiveMessage(message) &&
+      !isContinueMessage(message) &&
+      !isDirectorMessage(message),
+  );
+
+  const substantive = candidates.filter(
+    (message) => normalizeWhitespace(message.content).length >= MIN_PLAYER_STYLE_EXCERPT_CHARS,
+  );
+  const pool = substantive.length ? substantive : candidates;
+  const selected: string[] = [];
+  let totalChars = 0;
+
+  for (const message of pool.slice().reverse()) {
+    const excerpt = normalizeWhitespace(message.content);
+    if (!excerpt) continue;
+    const remaining = MAX_PLAYER_STYLE_CHARS - totalChars;
+    if (remaining <= 0) break;
+    const clipped = excerpt.length > remaining ? excerpt.slice(0, remaining).trimEnd() : excerpt;
+    if (!clipped) break;
+    selected.push(clipped);
+    totalChars += clipped.length;
+    if (selected.length >= MAX_PLAYER_STYLE_EXCERPTS) break;
+  }
+
+  if (!selected.length) return "";
+
+  return normalizeWhitespace(
+    [
+      "Player Writing Style (player-authored examples; style reference only):",
+      "Use these excerpts as the primary reference for restraint, descriptive density, emotional explicitness, pacing, and how much the author trusts subtext.",
+      "Match the player's level of narrative trust: expand the world around their writing, not the explanation of their writing.",
+      "Do not mechanically copy first-person perspective, sentence structure, wording, or brevity. The Director may write longer when the scene genuinely needs it.",
+      "These examples never authorize speaking, acting, thinking, or feeling for the player character.",
+      ...selected.reverse().map((excerpt, index) => "Example " + (index + 1) + ":\n" + excerpt),
+    ].join("\n\n"),
+  );
 }
 
 function containsSpeakerLabeledTranscript(content: string) {
@@ -328,6 +373,7 @@ export function buildStoryChatContext({
       "Core philosophy: the player is the author. You portray the world: canon characters, NPCs, locations, and consequences.",
       matureFictionPolicy,
       "The transcript is canon and defines the authoritative state. Expand the player's setup rather than replacing it.",
+      "Continuity/style separation: previous assistant-generated prose is evidence of what happened, not a style template. Preserve its canon facts, but do not imitate its verbosity, emotional inflation, repetitive reassurance, descriptive density, or stock phrasing merely because those habits appear in earlier replies.",
       "Player identity precedence: the current Player Character Identity block and explicit first-person identity declarations by the user-role player are authoritative.",
       "Continue notes may appear in the transcript as out-of-character instructions to keep the current scene moving without requiring a fresh player action. They are visible in the transcript but are not themselves spoken dialogue or canon events.",
       "Director notes may appear in the transcript as out-of-character production guidance. They are visible in the transcript but are not themselves spoken dialogue or automatic canon facts. Canon comes from what actually happens in the generated scene that follows.",
@@ -365,7 +411,7 @@ export function buildStoryChatContext({
       playerStateHint
         ? `Player State (explicit): ${playerStateHint}`
         : "Preserve all explicitly stated player character states (absent, silent, travelling, waiting, etc.).",
-      `Scene depth: ${sceneDepth}. Target length: ${wordTarget.minWords}-${wordTarget.maxWords} words.`,
+      `Scene depth: ${sceneDepth}. Target length: ${wordTarget.minWords}-${wordTarget.maxWords} words. This range is guidance, not a quota. If the immediate beat is complete before the minimum, end naturally. Never add narration, reactions, reassurance, dialogue, or extra speakers merely to reach a word count.`,
       sceneDepth === "light"
         ? "Light interaction: prioritize dialogue and character voice; keep narration minimal; no scene resets; only brief actions when necessary."
         : sceneDepth === "major"
@@ -481,11 +527,11 @@ export function buildStoryChatContext({
       "- If an action interrupts dialogue mid-sentence, close with an em dash â€” never a colon â€” then place the action between the two quoted fragments in the same labeled block.",
       "- Keep each character block complete and meaningful, but let its length fit the moment. A brief line, action, or silence-adjacent response can be stronger than multiple sentences; do not pad a turn merely to make it substantial. Here is an example of the format:",
       "",
-      "Morgan: *She leans back in her chair.* \"Do you think she knows? That we talk about her like this? Because I keep thinking about the way she looked at us last Tuesday â€” like she was doing math in her head and we were the variables.\"",
+      "Morgan: *She sets down her mug.* \"You coming?\"",
       "",
-      "Alex: *She sets down her mug carefully.* \"I think she suspects there's a conversation. I don't think she has full intelligence on the scope of it. Which is probably good, for everyone involved.\"",
+      "Alex: \"In a minute.\"",
       "",
-      "Narrator: *The refrigerator hums. Neither of them reaches for their coffee.*",
+      "Narrator: *Rain taps against the kitchen window.*",
       "",
       "- That is the correct format. Every block is a single labeled line; narration is wrapped in asterisks; action beats stay outside quotes.",
     ].join("\n"),
@@ -539,6 +585,8 @@ export function buildStoryChatContext({
     ].join("\n\n");
   })();
 
+  const playerWritingStyleBlock = buildPlayerWritingStyleBlock(recentMessages);
+
   const chatHistory = sortByTimestampAsc(recentMessages)
     .slice(-MAX_RECENT_MESSAGES)
     .map((message) =>
@@ -570,6 +618,9 @@ export function buildStoryChatContext({
       ? [{ role: "system" as const, content: guidedChapterBlock }]
       : []),
     { role: "system", content: `Scene Direction\n\n${sceneGuidance}` },
+    ...(playerWritingStyleBlock
+      ? [{ role: "system" as const, content: playerWritingStyleBlock }]
+      : []),
     ...chatHistory,
     {
       role: "user",
