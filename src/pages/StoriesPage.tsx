@@ -16,7 +16,7 @@ export function StoriesPage() {
   } = useStoryEngine();
   const { showArchivedStories } = useUiPrefs();
 
-  const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "all">(
+  const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "favorites" | "all">(
     showArchivedStories ? "all" : "active",
   );
   const [sortMode, setSortMode] = useState<"updated" | "created" | "alpha">("updated");
@@ -25,7 +25,9 @@ export function StoriesPage() {
   const filteredStories = useMemo(() => {
     let result = stories;
 
-    if (statusFilter !== "all") {
+    if (statusFilter === "favorites") {
+      result = result.filter((story) => Boolean(story.isFavorite));
+    } else if (statusFilter !== "all") {
       const wantArchived = statusFilter === "archived";
       result = result.filter((story) => Boolean(story.isArchived) === wantArchived);
     }
@@ -82,6 +84,7 @@ export function StoriesPage() {
               >
                 <option value="active">Active</option>
                 <option value="archived">Archived</option>
+                <option value="favorites">Favorites</option>
                 <option value="all">All</option>
               </select>
             </label>
