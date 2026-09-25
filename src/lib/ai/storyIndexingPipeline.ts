@@ -715,8 +715,11 @@ export async function processIndexingBatch(
 
   const existingSummary = existingIndex?.chapterSummaries.find(
     (s) =>
-      (chapterId && s.chapterId === chapterId) ||
-      normalizeNameKey(s.chapterLabel) === normalizeNameKey(chapterLabel),
+      // Inherited chapter summaries are historical continuity, not the mutable
+      // summary for a same-labelled chapter in the current sequel.
+      !s.originStoryId &&
+      ((chapterId && s.chapterId === chapterId) ||
+        normalizeNameKey(s.chapterLabel) === normalizeNameKey(chapterLabel)),
   )?.summary;
 
   const prompt = buildIndexingPrompt({
