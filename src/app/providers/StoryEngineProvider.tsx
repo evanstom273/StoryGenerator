@@ -6071,6 +6071,7 @@ export function StoryEngineProvider({
           playerCharacterId:
             patch.playerCharacterId ?? currentStory.playerCharacterId,
           isArchived: patch.isArchived ?? currentStory.isArchived,
+          isFavorite: patch.isFavorite ?? currentStory.isFavorite,
           adultContentMode,
           matureFictionMode: adultContentModeToLegacyMatureFictionMode(adultContentMode),
           autoIndexMode: patch.autoIndexMode ?? currentStory.autoIndexMode,
@@ -6111,12 +6112,23 @@ export function StoryEngineProvider({
         return nextStory;
       },
       async deleteStory(id) {
+        const story = await repository.getStory(id);
+        if (story?.isFavorite) {
+          throw new Error("Favorited stories are protected from deletion. Unfavorite this story first.");
+        }
         await repository.deleteStory(id);
         await markMediaAssetsOrphanedForStory(id);
         await hydrate(false);
       },
       async deleteAllStories() {
-        await repository.deleteAllStories();
+        const allStories = await repository.listStories();
+        const deletableStories = allStories.filter((story) => !story.isFavorite);
+        await Promise.all(
+          deletableStories.map(async (story) => {
+            await repository.deleteStory(story.id);
+            await markMediaAssetsOrphanedForStory(story.id);
+          }),
+        );
         await hydrate(false);
       },
       async deleteAllPlayerCharacters() {
