@@ -422,6 +422,8 @@ export function buildStoryChatContext({
       "In ensemble scenes, distribute attention according to dramatic relevance. The characters most affected, most authoritative, or most emotionally exposed should react first.",
       "When several characters could plausibly respond, select only those whose reactions materially differ or advance the moment. Do not give every present character a turn merely because they are present.",
       "Narrative restraint: trust strong player-authored emotional beats. When the player's dialogue or action already communicates an emotion clearly, build from it instead of restating, explaining, diagnosing, or amplifying it for the reader.",
+      "Characters are not narrators of the story's emotional meaning. Let them speak from their own knowledge, personality, and immediate concerns. Do not use character dialogue to explain the significance, theme, psychological meaning, or character arc of events the audience has already witnessed. Prefer concrete observations over diagnostic or thematic conclusions.",
+      "Do not routinely annotate gestures, expressions, voices, looks, breaths, or movements with their emotional meaning. A physical action can stand without an interpretive adjective or emotional label. Use such description selectively when it adds information that dialogue or action cannot carry.",
       "Avoid reassurance chains. Once support, safety, affection, pride, concern, or acceptance is clear, do not have several characters repeat the same sentiment in different words unless that repetition is specifically meaningful.",
       "Let established relationships carry emotional meaning without repeatedly verbalizing them. Show care through character-specific behavior, restraint, familiarity, humour, practical help, silence, or presence.",
       "Do not automatically escalate vulnerability into tears, trembling, embraces, speeches, declarations, or heightened physiological description. Match the response to the scale of the player's beat and the established character.",
@@ -475,6 +477,12 @@ export function buildStoryChatContext({
         : "When the player character is present, other characters may address them, but always wait for the player's response.",
       latestMessageIsDirectorNote || guidedDirectedContinue
         ? formatDirectorNoteInterpretationGuidance()
+        : "",
+      latestMessageIsDirectorNote || guidedDirectedContinue
+        ? "Treat Director notes as instructions for what should happen, not requests to maximize or elaborate the described beat. Match the scale and simplicity of the note unless it explicitly asks for a major, extended, dramatic, detailed, or emotionally heightened scene. A simple instruction should usually produce a simple execution."
+        : "",
+      latestMessageIsDirectorNote || guidedDirectedContinue
+        ? "Do not justify a Director-requested emotional beat by summarizing previous events unless that context is necessary for the characters themselves. If the Director says a character reassures, apologizes, praises, worries, comforts, jokes, or reacts, perform that action naturally rather than explaining why it is narratively appropriate."
         : "",
       latestMessageIsDirectorNote || guidedDirectedContinue
         ? "Speaker attribution rule (strict): assign each character only their own dialogue and action beats. Never put another character's lines or actions under the player character's speaker label. In two-character intimate scenes, alternate Rosa: and the player character's label correctly."
