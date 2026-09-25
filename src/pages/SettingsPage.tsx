@@ -1382,7 +1382,10 @@ export function SettingsPage() {
               <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/5 px-4 py-4 space-y-3">
                 <div>
                   <div className="font-semibold text-sm text-ink">Delete All Stories</div>
-                  <div className="text-xs text-ink-muted mt-0.5">Delete {storageStatus.storiesCount} {storageStatus.storiesCount === 1 ? "story" : "stories"}?</div>
+                  <div className="text-xs text-ink-muted mt-0.5">
+                    Delete {stories.filter((story) => !story.isFavorite).length} {stories.filter((story) => !story.isFavorite).length === 1 ? "story" : "stories"}?
+                    {stories.some((story) => story.isFavorite) ? ` ${stories.filter((story) => story.isFavorite).length} favorited ${stories.filter((story) => story.isFavorite).length === 1 ? "story is" : "stories are"} protected and will be preserved.` : ""}
+                  </div>
                 </div>
                 <ul className="text-xs text-ink-muted space-y-0.5 list-disc list-inside">
                   <li>Stories and chapters</li>
