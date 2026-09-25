@@ -199,6 +199,8 @@ export interface Story {
   universePackSnapshot?: UniversePackSnapshotV1;
   universePackSnapshots?: UniversePackSnapshotV1[];
   isArchived?: boolean;
+  /** Favorited stories are protected from individual and bulk deletion. */
+  isFavorite?: boolean;
   adultContentMode?: StoryAdultContentMode;
   /** Legacy compatibility flag. Prefer adultContentMode for new writes. */
   matureFictionMode?: boolean;
@@ -559,6 +561,7 @@ export interface StoryDraft {
   universeIds?: EntityId[];
   playerCharacterId: EntityId;
   isArchived?: boolean;
+  isFavorite?: boolean;
   adultContentMode?: StoryAdultContentMode;
   /** Legacy compatibility flag. Prefer adultContentMode for new writes. */
   matureFictionMode?: boolean;
