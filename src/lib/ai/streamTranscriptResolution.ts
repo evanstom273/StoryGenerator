@@ -30,7 +30,7 @@ export interface StreamTranscriptRewriteContext<TValidation> {
 export interface StreamTranscriptProviderAttemptEvent {
 	attempt: number;
 	maxAttempts: number;
-	kind: "validation_retry";
+	kind: "validation_rewrite";
 }
 
 export interface StreamTranscriptLocalRepairEvent<TRepairEvent> {
@@ -288,7 +288,7 @@ export async function resolveStreamTranscript<
 		args.onProviderAttempt?.({
 			attempt: nextAttempt,
 			maxAttempts,
-			kind: "validation_retry",
+			kind: "validation_rewrite",
 		});
 		const rewritten = await args.rewriteCandidate({
 			text: candidate,
