@@ -17,8 +17,11 @@ export const STREAM_VALIDATION_MAX_REWRITES =
 export const STREAM_VALIDATION_MAX_LOCAL_REPAIR_PASSES = 8;
 
 /**
- * Provider rewrites are forbidden for modes whose generated content must stay
- * local. In those modes only the already-produced initial response counts.
+ * Callers may explicitly disable fresh provider validation retries. When they
+ * do, only the already-produced initial response counts.
+ *
+ * The option retains its legacy name for compatibility; StoryEngine's normal
+ * story path now uses fresh generations rather than provider rewrites.
  */
 export function getStreamValidationAttemptLimit(args?: {
 	allowProviderRewrites?: boolean;
