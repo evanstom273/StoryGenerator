@@ -23,9 +23,10 @@ export function StoryIndexDrawer({ open, onClose, storyId }: StoryIndexDrawerPro
     const scrollerRect = scroller.getBoundingClientRect();
     const sectionRect = section.getBoundingClientRect();
     const targetTop = scroller.scrollTop + (sectionRect.top - scrollerRect.top) - 10;
+    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
 
     scroller.scrollTo({
-      top: Math.max(0, targetTop),
+      top: Math.min(maxScrollTop, Math.max(0, targetTop)),
       behavior: "smooth",
     });
   }
@@ -71,7 +72,7 @@ export function StoryIndexDrawer({ open, onClose, storyId }: StoryIndexDrawerPro
             Close
           </Button>
         </div>
-        <div ref={drawerScrollRef} className="flex-1 overflow-y-auto p-4 overscroll-contain">
+        <div ref={drawerScrollRef} className="flex-1 overflow-y-auto p-4 overscroll-contain [overflow-anchor:none]">
           <StoryIndexSection storyId={storyId} onSectionOpen={scrollSectionIntoView} />
         </div>
       </div>
