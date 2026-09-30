@@ -93,7 +93,16 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
   const chaptersListRef = useRef<HTMLDivElement>(null);
 
   function scrollRecordIntoView(record: HTMLDivElement, scroller: HTMLDivElement | null) {
-    if (!scroller) return;
+    if (!scroller) {
+      onSectionOpen?.(record);
+      return;
+    }
+
+    const canScrollLocally = scroller.scrollHeight > scroller.clientHeight + 1;
+    if (!canScrollLocally) {
+      onSectionOpen?.(record);
+      return;
+    }
 
     const scrollerRect = scroller.getBoundingClientRect();
     const recordRect = record.getBoundingClientRect();
