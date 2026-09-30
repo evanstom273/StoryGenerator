@@ -16,6 +16,20 @@ export function StoryIndexDrawer({ open, onClose, storyId }: StoryIndexDrawerPro
   const story = useMemo(() => stories.find((s) => s.id === storyId), [stories, storyId]);
   const drawerScrollRef = useRef<HTMLDivElement>(null);
 
+  function scrollSectionIntoView(section: HTMLDivElement) {
+    const scroller = drawerScrollRef.current;
+    if (!scroller) return;
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const sectionRect = section.getBoundingClientRect();
+    const targetTop = scroller.scrollTop + (sectionRect.top - scrollerRect.top) - 10;
+
+    scroller.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: "smooth",
+    });
+  }
+
   useEffect(() => {
     if (!open) return;
     const originalOverflow = document.body.style.overflow;
@@ -30,7 +44,7 @@ export function StoryIndexDrawer({ open, onClose, storyId }: StoryIndexDrawerPro
     <div
       className={cn(
         OVERLAY_BACKDROP_CLASS,
-        "fixed inset-0 z-[70] flex justify-end",
+        "fixed inset-x-0 bottom-0 top-14 z-[70] flex justify-end lg:inset-0",
         open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
       aria-hidden={!open}
@@ -58,7 +72,7 @@ export function StoryIndexDrawer({ open, onClose, storyId }: StoryIndexDrawerPro
           </Button>
         </div>
         <div ref={drawerScrollRef} className="flex-1 overflow-y-auto p-4 overscroll-contain">
-          <StoryIndexSection storyId={storyId} />
+          <StoryIndexSection storyId={storyId} onSectionOpen={scrollSectionIntoView} />
         </div>
       </div>
     </div>
