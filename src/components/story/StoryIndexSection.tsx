@@ -88,14 +88,37 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
   };
 
   const [openRecords, setOpenRecords] = useState<Set<string>>(() => new Set());
+  const charactersListRef = useRef<HTMLDivElement>(null);
+  const relationshipsListRef = useRef<HTMLDivElement>(null);
+  const chaptersListRef = useRef<HTMLDivElement>(null);
 
-  const toggleRecord = (recordKey: string) => {
+  function scrollRecordIntoView(record: HTMLDivElement, scroller: HTMLDivElement | null) {
+    if (!scroller) return;
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const recordRect = record.getBoundingClientRect();
+    const targetTop = scroller.scrollTop + (recordRect.top - scrollerRect.top) - 8;
+
+    scroller.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: "smooth",
+    });
+  }
+
+  const toggleRecord = (
+    recordKey: string,
+    record: HTMLDivElement | null,
+    scroller: HTMLDivElement | null,
+  ) => {
     setOpenRecords((prev) => {
       const next = new Set(prev);
       if (next.has(recordKey)) {
         next.delete(recordKey);
       } else {
         next.add(recordKey);
+        if (record) {
+          requestAnimationFrame(() => scrollRecordIntoView(record, scroller));
+        }
       }
       return next;
     });
@@ -434,7 +457,7 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
             </span>
           </button>
           {openSections.characters && (
-            <div className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
+            <div ref={charactersListRef} className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
               {characters.length === 0 ? (
                 <div className="py-6 text-center text-xs text-ink-muted">
                   No canonical characters indexed yet. Click "Update Index" to extract characters from the story transcript.
@@ -450,7 +473,13 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
                     >
                       <button
                         type="button"
-                        onClick={() => toggleRecord(recordKey)}
+                        onClick={(event) =>
+                          toggleRecord(
+                            recordKey,
+                            event.currentTarget.parentElement as HTMLDivElement | null,
+                            charactersListRef.current,
+                          )
+                        }
                         aria-expanded={isOpen}
                         className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-panel-muted/20"
                       >
@@ -534,7 +563,7 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
             </span>
           </button>
           {openSections.relationships && (
-            <div className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
+            <div ref={relationshipsListRef} className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
               {relationships.length === 0 ? (
                 <div className="py-6 text-center text-xs text-ink-muted">
                   No relationships indexed yet.
@@ -558,7 +587,13 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
                     >
                       <button
                         type="button"
-                        onClick={() => toggleRecord(recordKey)}
+                        onClick={(event) =>
+                          toggleRecord(
+                            recordKey,
+                            event.currentTarget.parentElement as HTMLDivElement | null,
+                            relationshipsListRef.current,
+                          )
+                        }
                         aria-expanded={isOpen}
                         className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-panel-muted/20"
                       >
@@ -626,7 +661,7 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
             </span>
           </button>
           {openSections.chapters && (
-            <div className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
+            <div ref={chaptersListRef} className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
               {chapterSummaries.length === 0 ? (
                 <div className="py-6 text-center text-xs text-ink-muted">
                   No chapter summaries indexed yet.
@@ -642,7 +677,13 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
                     >
                       <button
                         type="button"
-                        onClick={() => toggleRecord(recordKey)}
+                        onClick={(event) =>
+                          toggleRecord(
+                            recordKey,
+                            event.currentTarget.parentElement as HTMLDivElement | null,
+                            chaptersListRef.current,
+                          )
+                        }
                         aria-expanded={isOpen}
                         className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-panel-muted/20"
                       >
