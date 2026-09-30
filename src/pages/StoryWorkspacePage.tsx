@@ -1698,7 +1698,7 @@ export function StoryWorkspacePage() {
           onClose={() => setMetaChatOpen(false)}
         />
       ) : null}
-      {storyId && storyIndexOpen ? (
+      {storyId ? (
         <StoryIndexDrawer
           open={storyIndexOpen}
           storyId={storyId}
