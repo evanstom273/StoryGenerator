@@ -1237,9 +1237,8 @@ async function resolveStreamedAssistantTranscript(args: {
 		allowProviderRewrites: args.allowProviderRewrites,
 		maxLocalRepairPasses: 1,
 		validateCandidate: (text, context) => {
-			const normalizedText = args.normalizeCandidate?.(text) ?? text;
 			const validation = validateAssistantTranscriptForSave({
-				text: normalizedText,
+				text,
 				latestUserMessage: args.latestUserMessage,
 				playerName: args.playerName,
 				playerSceneName: args.playerSceneName,
@@ -1323,10 +1322,11 @@ async function resolveStreamedAssistantTranscript(args: {
 	const diagnostic = validationDiagnostics.join("; ");
 
 	if (resolution.ok) {
+		const resolvedText = resolution.usedRecoveryPath
+			? normalizeTranscriptForDisplay(resolution.text)
+			: resolution.text;
 		return {
-			text: resolution.usedRecoveryPath
-				? normalizeTranscriptForDisplay(resolution.text)
-				: resolution.text,
+			text: args.normalizeCandidate?.(resolvedText) ?? resolvedText,
 			diagnostic,
 			speakerResolutionChanges: finalSpeakerResolutionChanges,
 			usedRecoveryPath: resolution.usedRecoveryPath,
