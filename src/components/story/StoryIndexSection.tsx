@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
@@ -15,9 +15,10 @@ import type {
 
 interface StoryIndexSectionProps {
   storyId: string;
+  onSectionOpen?: (section: HTMLDivElement) => void;
 }
 
-export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
+export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionProps) {
   const {
     storyIndexes,
     stories,
@@ -61,8 +62,29 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
     chapters: false,
   });
 
+  const charactersSectionRef = useRef<HTMLDivElement>(null);
+  const relationshipsSectionRef = useRef<HTMLDivElement>(null);
+  const chaptersSectionRef = useRef<HTMLDivElement>(null);
+
+  const sectionRefs = {
+    characters: charactersSectionRef,
+    relationships: relationshipsSectionRef,
+    chapters: chaptersSectionRef,
+  };
+
   const toggleSection = (section: "characters" | "relationships" | "chapters") => {
-    setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }));
+    setOpenSections((prev) => {
+      const nextOpen = !prev[section];
+      if (nextOpen) {
+        requestAnimationFrame(() => {
+          const sectionElement = sectionRefs[section].current;
+          if (sectionElement) {
+            onSectionOpen?.(sectionElement);
+          }
+        });
+      }
+      return { ...prev, [section]: nextOpen };
+    });
   };
 
   const [openRecords, setOpenRecords] = useState<Set<string>>(() => new Set());
@@ -392,7 +414,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
       {/* Collapsible Sections */}
       <div className="space-y-2">
         {/* Characters Section */}
-        <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated overflow-hidden">
+        <div ref={charactersSectionRef} className="rounded-[10px] border border-divider/[0.35] bg-app-elevated overflow-hidden">
           <button
             type="button"
             onClick={() => toggleSection("characters")}
@@ -492,7 +514,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
         </div>
 
         {/* Relationships Section */}
-        <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated overflow-hidden">
+        <div ref={relationshipsSectionRef} className="rounded-[10px] border border-divider/[0.35] bg-app-elevated overflow-hidden">
           <button
             type="button"
             onClick={() => toggleSection("relationships")}
@@ -586,7 +608,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
         </div>
 
         {/* Chapter Summaries Section */}
-        <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated overflow-hidden">
+        <div ref={chaptersSectionRef} className="rounded-[10px] border border-divider/[0.35] bg-app-elevated overflow-hidden">
           <button
             type="button"
             onClick={() => toggleSection("chapters")}
