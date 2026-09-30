@@ -94,7 +94,7 @@ describe("resolveStreamTranscript", () => {
 		expect(rewriteCandidate).not.toHaveBeenCalled();
 	});
 
-	it("uses ten total provider generations: one initial plus nine rewrites", async () => {
+	it("uses ten total provider generations: one initial plus nine fresh retries", async () => {
 		const attempts: number[] = [];
 		const rewriteCandidate = vi.fn(async ({ attempt }: { attempt: number }) => {
 			attempts.push(attempt);
@@ -203,7 +203,8 @@ describe("resolveStreamTranscript", () => {
 		expect(repairCandidate).toHaveBeenCalledTimes(1);
 	});
 
-	it("stops when a provider returns an unchanged invalid candidate", async () => {
+	it("keeps trying after a provider repeats the same invalid candidate", async () => {
+		const rewriteCandidate = vi.fn(async () => "invalid");
 		const result = await resolveStreamTranscript({
 			initialText: "invalid",
 			validateCandidate: (text): TestValidation => ({
@@ -211,32 +212,27 @@ describe("resolveStreamTranscript", () => {
 				text,
 				diagnostic: "still_invalid",
 			}),
-			rewriteCandidate: async ({ text }) => text,
+			rewriteCandidate,
 		});
 
 		expect(result).toMatchObject({
 			ok: false,
-			reason: "provider_candidate_unchanged",
-			attemptsUsed: 2,
+			reason: "provider_attempts_exhausted",
+			attemptsUsed: STREAM_VALIDATION_MAX_ATTEMPTS,
 			maxAttempts: STREAM_VALIDATION_MAX_ATTEMPTS,
 		});
+		expect(rewriteCandidate).toHaveBeenCalledTimes(STREAM_VALIDATION_MAX_REWRITES);
 	});
 
-	it("recognizes a previously normalized invalid provider candidate", async () => {
-		const rewriteCandidate = vi
-			.fn<({ attempt }: { attempt: number }) => Promise<string>>()
-			.mockResolvedValueOnce("raw-two")
-			.mockResolvedValueOnce("normalized-one");
+	it("keeps trying when fresh provider attempts cycle through previously seen invalid text", async () => {
+		const rewriteCandidate = vi.fn(async ({ attempt }: { attempt: number }) =>
+			attempt % 2 === 0 ? "invalid-even" : "invalid-odd",
+		);
 		const result = await resolveStreamTranscript({
-			initialText: "raw-one",
+			initialText: "invalid-odd",
 			validateCandidate: (text): TestValidation => ({
 				valid: false,
-				text:
-					text === "raw-one"
-						? "normalized-one"
-						: text === "raw-two"
-							? "normalized-two"
-							: text,
+				text,
 				diagnostic: "still_invalid",
 			}),
 			rewriteCandidate,
@@ -244,11 +240,10 @@ describe("resolveStreamTranscript", () => {
 
 		expect(result).toMatchObject({
 			ok: false,
-			reason: "provider_candidate_repeated",
-			attemptsUsed: 3,
-			text: "normalized-one",
+			reason: "provider_attempts_exhausted",
+			attemptsUsed: STREAM_VALIDATION_MAX_ATTEMPTS,
 		});
-		expect(rewriteCandidate).toHaveBeenCalledTimes(2);
+		expect(rewriteCandidate).toHaveBeenCalledTimes(STREAM_VALIDATION_MAX_REWRITES);
 	});
 
 	it("starts from a caller-owned provider attempt count", async () => {
