@@ -1268,13 +1268,12 @@ async function resolveStreamedAssistantTranscript(args: {
 			}
 			return validation;
 		},
-		shouldRewrite: (validation) =>
-			Boolean(validation.stage && validation.stage !== "insubstantial"),
+		shouldRewrite: () => true,
 		rewriteCandidate: async ({ validation, attempt, maxAttempts }) => {
 			const stage = validation.stage;
-			if (!stage || stage === "insubstantial") {
-				throw new Error("Fresh validation retry requested without a retryable validation stage.");
-			}
+			const retryPrompt = stage
+				? rewriteStageToPrompt[stage]
+				: withSpeakerRegistry(args.rewritePrompts.format);
 
 			const retryGuidance = [
 				"STORY ENGINE VALIDATION RETRY",
@@ -1283,8 +1282,8 @@ async function resolveStreamedAssistantTranscript(args: {
 				"Generate a completely new scene from scratch from the original story context and latest user turn.",
 				"Do not edit, repair, paraphrase, imitate, continue from, or reconstruct the rejected candidate. It is intentionally not included in this request.",
 				"Preserve established canon and the user's intent, but use a fresh composition, fresh dialogue phrasing, and fresh prose.",
-				`Validation failure category: ${stage}.`,
-				rewriteStageToPrompt[stage],
+				`Validation failure category: ${stage ?? "unknown"}.`,
+				retryPrompt,
 			].join("\n\n");
 
 			args.onChunkReset?.();
