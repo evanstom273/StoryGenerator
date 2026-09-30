@@ -1123,6 +1123,28 @@ function reportStreamGenerationAttempt(
 	onGenerationAttempt?.(streamAttempt.current, streamAttempt.max);
 }
 
+function injectFreshValidationRetryGuidance(
+	messages: AIChatMessage[],
+	guidance: string,
+): AIChatMessage[] {
+	const retryMessages = messages.map((message) => ({ ...message }));
+	let lastUserIndex = -1;
+	for (let index = retryMessages.length - 1; index >= 0; index -= 1) {
+		if (retryMessages[index]?.role === "user") {
+			lastUserIndex = index;
+			break;
+		}
+	}
+
+	const retryGuidance: AIChatMessage = { role: "system", content: guidance };
+	if (lastUserIndex >= 0) {
+		retryMessages.splice(lastUserIndex, 0, retryGuidance);
+	} else {
+		retryMessages.push(retryGuidance);
+	}
+	return retryMessages;
+}
+
 async function resolveStreamedAssistantTranscript(args: {
 	initialText: string;
 	latestUserMessage: string;
@@ -1138,6 +1160,8 @@ async function resolveStreamedAssistantTranscript(args: {
 	resolvedParticipants?: readonly ResolvedSceneParticipant[];
 	hiddenDialoguePattern: RegExp;
 	rewritePrompts: StreamedTranscriptRewritePrompts;
+	freshGenerationMessages: AIChatMessage[];
+	freshGenerationMaxTokens?: number;
 	allowProviderRewrites?: boolean;
 	redactContent?: boolean;
 	providerType: string;
@@ -1281,11 +1305,23 @@ async function resolveStreamedAssistantTranscript(args: {
 		},
 		shouldRewrite: (validation) =>
 			Boolean(validation.stage && validation.stage !== "insubstantial"),
-		rewriteCandidate: async ({ text, validation }) => {
+		rewriteCandidate: async ({ validation, attempt, maxAttempts }) => {
 			const stage = validation.stage;
 			if (!stage || stage === "insubstantial") {
-				throw new Error("Transcript rewrite requested without a rewriteable validation stage.");
+				throw new Error("Fresh validation retry requested without a retryable validation stage.");
 			}
+
+			const retryGuidance = [
+				"STORY ENGINE VALIDATION RETRY",
+				`Attempt ${attempt}/${maxAttempts}.`,
+				"The previous generated candidate failed validation and has been discarded.",
+				"Generate a completely new scene from scratch from the original story context and latest user turn.",
+				"Do not edit, repair, paraphrase, imitate, continue from, or reconstruct the rejected candidate. It is intentionally not included in this request.",
+				"Preserve established canon and the user's intent, but use a fresh composition, fresh dialogue phrasing, and fresh prose.",
+				`Validation failure category: ${stage}.`,
+				rewriteStageToPrompt[stage],
+			].join("\n\n");
+
 			args.onChunkReset?.();
 			return (
 				await generateResponseWithRetry({
@@ -1293,10 +1329,11 @@ async function resolveStreamedAssistantTranscript(args: {
 					provider: args.provider,
 					apiKey: args.apiKey,
 					model: args.model,
-					messages: [
-						{ role: "system", content: rewriteStageToPrompt[stage] },
-						{ role: "user", content: text },
-					],
+					messages: injectFreshValidationRetryGuidance(
+						args.freshGenerationMessages,
+						retryGuidance,
+					),
+					maxTokens: args.freshGenerationMaxTokens,
 					signal: args.signal,
 					onChunk: args.onChunk,
 					onChunkReset: args.onChunkReset,
@@ -1306,8 +1343,8 @@ async function resolveStreamedAssistantTranscript(args: {
 						traceId: args.traceId,
 						mode: "story",
 						storyId: args.storyId,
-						stage: `${stage}-rewrite`,
-						lastUserText: text,
+						stage: `${stage}-fresh-retry`,
+						lastUserText: args.latestUserMessage,
 						redactContent: args.redactContent,
 					},
 				})
@@ -1356,7 +1393,7 @@ async function resolveStreamedAssistantTranscript(args: {
 				return `The response remained invalid after ${resolution.attemptsUsed} provider generations. The invalid draft was not saved.`;
 			case "provider_candidate_unchanged":
 			case "provider_candidate_repeated":
-				return "The provider repeated an invalid transcript during correction. The invalid draft was not saved.";
+				return "The provider kept producing an invalid transcript across fresh validation attempts. The invalid draft was not saved.";
 			default:
 				return "The response could not be validated, and no safe automatic correction remained. The invalid draft was not saved.";
 		}
@@ -6533,8 +6570,8 @@ export function StoryEngineProvider({
         const sceneDepth = inferSceneDepth(previousMessage.content);
         const target = getSceneWordTarget(sceneDepth);
         const formatRewritePrompt = [
-          "Rewrite the following story scene into the required Story Engine transcript grammar.",
-          "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
+          "Generate a brand-new story continuation that follows the required Story Engine transcript grammar.",
+          "Start from the original story context and latest user turn. Do not copy or paraphrase the rejected candidate.",
           formatHumanNovelistProseGuidance(),
           allowDirectedPlayerControl
             ? "Do not repeat the latest Director note verbatim. Realize it as scene content and continue from the next beat."
@@ -6576,7 +6613,7 @@ export function StoryEngineProvider({
         ].join("\n");
 
         const ownershipRewritePrompt = [
-          "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
+          "Generate a brand-new continuation without any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
           formatHumanNovelistProseGuidance(),
           formatPlayerCharacterOwnershipRulesForRewrite(
             playerCharacter,
@@ -6611,7 +6648,7 @@ export function StoryEngineProvider({
         const hiddenDialogueInferencePattern =
           /\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
         const hiddenDialogueRewritePrompt = [
-          "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
+          "Generate a brand-new continuation without any hidden inference of player dialogue or player-only information.",
           formatHumanNovelistProseGuidance(),
           allowDirectedPlayerControl
             ? `The latest Director note is:\n${previousMessage.content}`
@@ -6644,8 +6681,8 @@ export function StoryEngineProvider({
 
         const sceneStateRewritePrompt = [
           allowDirectedPlayerControl
-            ? "Rewrite the following scene to remove any re-narration of the latest Director note."
-            : "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
+            ? "Generate a brand-new continuation without re-narrating the latest Director note."
+            : "Generate a brand-new continuation without re-narrating the latest player-established scene state.",
           formatHumanNovelistProseGuidance(),
           allowDirectedPlayerControl
             ? `The latest Director note is staging guidance, not spoken dialogue:\n${previousMessage.content}`
@@ -6712,6 +6749,7 @@ export function StoryEngineProvider({
               hiddenDialogue: hiddenDialogueRewritePrompt,
               sceneState: sceneStateRewritePrompt,
             },
+            freshGenerationMessages: context,
             allowProviderRewrites,
             redactContent: redactSensitiveContent,
             providerType,
@@ -8451,8 +8489,8 @@ export function StoryEngineProvider({
           const sceneDepth = inferSceneDepth(userMessage.content);
           const target = getSceneWordTarget(sceneDepth);
           const formatRewritePrompt = [
-            "Rewrite the following story scene into the required Story Engine transcript grammar.",
-            "Do not add new story beats. Rewrite only for format, clarity, and compliance.",
+            "Generate a brand-new story continuation that follows the required Story Engine transcript grammar.",
+            "Start from the original story context and latest user turn. Do not copy or paraphrase the rejected candidate.",
             formatHumanNovelistProseGuidance(),
             allowDirectedPlayerControl
               ? "Do not repeat the latest Director note verbatim. Realize it as scene content and continue from the next beat."
@@ -8495,8 +8533,8 @@ export function StoryEngineProvider({
 
           const ownershipRewritePrompt = [
             allowDirectedPlayerControl
-              ? "Rewrite the following story scene to preserve the directed scene while removing any formatting or continuity problems."
-              : "Rewrite the following story scene to remove any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
+              ? "Generate a brand-new continuation that realizes the directed scene without formatting or continuity problems."
+              : "Generate a brand-new continuation without any player-character dialogue, actions, thoughts, feelings, decisions, or internal monologue.",
             formatHumanNovelistProseGuidance(),
             formatPlayerCharacterOwnershipRulesForRewrite(
             playerCharacter,
@@ -8540,7 +8578,7 @@ export function StoryEngineProvider({
           const hiddenDialogueInferencePattern =
             /\b(you're saying|you said|as you said|like you said|from what you said)\b/i;
           const hiddenDialogueRewritePrompt = [
-            "Rewrite the following scene to remove any hidden inference of player dialogue or player-only information.",
+            "Generate a brand-new continuation without any hidden inference of player dialogue or player-only information.",
             formatHumanNovelistProseGuidance(),
             allowDirectedPlayerControl
               ? `The latest Director note is:\n${userMessage.content}`
@@ -8573,8 +8611,8 @@ export function StoryEngineProvider({
 
           const sceneStateRewritePrompt = [
             allowDirectedPlayerControl
-              ? "Rewrite the following scene to remove any re-narration of the latest Director note."
-              : "Rewrite the following scene to remove any re-narration of the latest player-established scene state.",
+              ? "Generate a brand-new continuation without re-narrating the latest Director note."
+              : "Generate a brand-new continuation without re-narrating the latest player-established scene state.",
             formatHumanNovelistProseGuidance(),
             allowDirectedPlayerControl
               ? `The latest Director note is staging guidance, not spoken dialogue:\n${userMessage.content}`
@@ -8642,6 +8680,8 @@ export function StoryEngineProvider({
                 hiddenDialogue: hiddenDialogueRewritePrompt,
                 sceneState: sceneStateRewritePrompt,
               },
+              freshGenerationMessages: context,
+              freshGenerationMaxTokens: opts?.guidedChapterContext ? 4096 : undefined,
               allowProviderRewrites,
               redactContent: redactSensitiveContent,
               providerType,
