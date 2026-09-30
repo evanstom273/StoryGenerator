@@ -77,10 +77,12 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
       const nextOpen = !prev[section];
       if (nextOpen) {
         requestAnimationFrame(() => {
-          const sectionElement = sectionRefs[section].current;
-          if (sectionElement) {
-            onSectionOpen?.(sectionElement);
-          }
+          requestAnimationFrame(() => {
+            const sectionElement = sectionRefs[section].current;
+            if (sectionElement) {
+              onSectionOpen?.(sectionElement);
+            }
+          });
         });
       }
       return { ...prev, [section]: nextOpen };
@@ -126,7 +128,9 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
       } else {
         next.add(recordKey);
         if (record) {
-          requestAnimationFrame(() => scrollRecordIntoView(record, scroller));
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => scrollRecordIntoView(record, scroller));
+          });
         }
       }
       return next;
@@ -466,7 +470,7 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
             </span>
           </button>
           {openSections.characters && (
-            <div ref={charactersListRef} className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
+            <div ref={charactersListRef} className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto [overflow-anchor:none]">
               {characters.length === 0 ? (
                 <div className="py-6 text-center text-xs text-ink-muted">
                   No canonical characters indexed yet. Click "Update Index" to extract characters from the story transcript.
@@ -572,7 +576,7 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
             </span>
           </button>
           {openSections.relationships && (
-            <div ref={relationshipsListRef} className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
+            <div ref={relationshipsListRef} className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto [overflow-anchor:none]">
               {relationships.length === 0 ? (
                 <div className="py-6 text-center text-xs text-ink-muted">
                   No relationships indexed yet.
@@ -670,7 +674,7 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
             </span>
           </button>
           {openSections.chapters && (
-            <div ref={chaptersListRef} className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
+            <div ref={chaptersListRef} className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto [overflow-anchor:none]">
               {chapterSummaries.length === 0 ? (
                 <div className="py-6 text-center text-xs text-ink-muted">
                   No chapter summaries indexed yet.
