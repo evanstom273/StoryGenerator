@@ -111,8 +111,8 @@ function validateIntegerOption(name: string, value: number, minimum: number): vo
  * came from the initial provider generation. A caller with a shared attempt
  * counter can pass its current value instead. Local repair and validation
  * passes never increment that count. `onProviderAttempt` fires only for a new
- * provider rewrite, so callers that already reported the initial generation do
- * not double-report it.
+ * provider validation retry, so callers that already reported the initial
+ * generation do not double-report it.
  */
 export async function resolveStreamTranscript<
 	TValidation extends StreamTranscriptValidationLike,
@@ -156,9 +156,6 @@ export async function resolveStreamTranscript<
 	}
 
 	const fingerprint = args.fingerprint ?? defaultFingerprint;
-	const providerCandidateFingerprints = new Set<string>([
-		fingerprint(args.initialText),
-	]);
 	const repairEvents: TRepairEvent[] = [];
 	let localPasses = 0;
 	let candidate = args.initialText;
@@ -286,11 +283,6 @@ export async function resolveStreamTranscript<
 			return failure("provider_attempts_exhausted");
 		}
 
-		// Validation may normalize or locally repair the provider's raw output.
-		// Remember that effective invalid candidate as well as each raw provider
-		// response so a later rewrite cannot restart the same failed cycle.
-		providerCandidateFingerprints.add(fingerprint(candidate));
-
 		const nextAttempt = attemptsUsed + 1;
 		attemptsUsed = nextAttempt;
 		args.onProviderAttempt?.({
@@ -304,17 +296,11 @@ export async function resolveStreamTranscript<
 			attempt: nextAttempt,
 			maxAttempts,
 		});
-		const rewrittenFingerprint = fingerprint(rewritten);
-		if (rewrittenFingerprint === fingerprint(candidate)) {
-			candidate = rewritten;
-			return failure("provider_candidate_unchanged");
-		}
-		if (providerCandidateFingerprints.has(rewrittenFingerprint)) {
-			candidate = rewritten;
-			return failure("provider_candidate_repeated");
-		}
-
-		providerCandidateFingerprints.add(rewrittenFingerprint);
+		// A validation retry is allowed to resemble or even exactly repeat a
+		// previous invalid candidate. Do not terminate early: the next provider
+		// attempt must still get its chance to produce a genuinely fresh result.
+		// Callers that require fresh generations should ensure rewriteCandidate
+		// does not receive or reconstruct the rejected candidate.
 		candidate = rewritten;
 	}
 }

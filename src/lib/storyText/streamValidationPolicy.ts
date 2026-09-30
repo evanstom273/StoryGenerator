@@ -1,13 +1,14 @@
 /**
  * Maximum number of provider generations used to produce one valid streamed
- * transcript. The initial response is attempt one; validation rewrites may use
- * the remaining attempts.
+ * transcript. The initial response is attempt one; validation retries may use
+ * the remaining attempts. Each provider retry should be a fresh generation
+ * from the original story context, never a rewrite of the rejected candidate.
  */
 export const STREAM_VALIDATION_MAX_ATTEMPTS = 10;
 
 /** The initial generation consumes one of the total provider attempts. */
 export const STREAM_VALIDATION_MAX_REWRITES =
-	STREAM_VALIDATION_MAX_ATTEMPTS - 1;
+	STREAM_VALIDATION_MAX_ATTEMPTS - 1; // Legacy name: these are fresh retry generations.
 
 /**
  * Safety bound for deterministic, local repair passes applied to one provider
@@ -16,8 +17,11 @@ export const STREAM_VALIDATION_MAX_REWRITES =
 export const STREAM_VALIDATION_MAX_LOCAL_REPAIR_PASSES = 8;
 
 /**
- * Provider rewrites are forbidden for modes whose generated content must stay
- * local. In those modes only the already-produced initial response counts.
+ * Callers may explicitly disable fresh provider validation retries. When they
+ * do, only the already-produced initial response counts.
+ *
+ * The option retains its legacy name for compatibility; StoryEngine's normal
+ * story path now uses fresh generations rather than provider rewrites.
  */
 export function getStreamValidationAttemptLimit(args?: {
 	allowProviderRewrites?: boolean;
