@@ -89,7 +89,7 @@ function Section({
         className="group flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-panel-muted/25"
         aria-expanded={open}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-accent/15 bg-accent/[0.08] text-accent-soft">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-accent/[0.15] bg-accent/[0.08] text-accent-soft">
           <SettingsSectionIcon name={icon} />
         </span>
         <span className="min-w-0 flex-1">
