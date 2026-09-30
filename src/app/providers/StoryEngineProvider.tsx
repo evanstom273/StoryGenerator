@@ -6494,7 +6494,10 @@ export function StoryEngineProvider({
           resolvedParticipants,
         );
 
-        const allowProviderRewrites = !redactSensitiveContent;
+        // Validation retries regenerate from the original story context and never
+        // retransmit the rejected provider output, so all story modes can use
+        // the full fresh-attempt budget.
+        const allowProviderRewrites = true;
         const streamAttempt = {
           current: 0,
           max: getStreamValidationAttemptLimit({ allowProviderRewrites }),
@@ -8286,7 +8289,10 @@ export function StoryEngineProvider({
           });
           // #endregion
 
-          const allowProviderRewrites = !redactSensitiveContent;
+          // Validation retries regenerate from the original story context and never
+        // retransmit the rejected provider output, so all story modes can use
+        // the full fresh-attempt budget.
+        const allowProviderRewrites = true;
           const streamAttempt = {
             current: 0,
             max: getStreamValidationAttemptLimit({ allowProviderRewrites }),
