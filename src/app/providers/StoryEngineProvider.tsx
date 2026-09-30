@@ -168,11 +168,9 @@ import {
 import {
 	applyDirectorIntentToStoryState,
 	resolveStoryGenerationParticipants,
-	toSemanticSpeakerIdentities,
 	type ResolvedSceneParticipant,
 } from "../../lib/sceneParticipation";
 import {
-	resolveSemanticSpeakerAttribution,
 	type SemanticSpeakerResolutionChange,
 } from "../../lib/storyText/semanticSpeakerResolver";
 import { resolveStreamTranscript } from "../../lib/ai/streamTranscriptResolution";
@@ -1190,8 +1188,6 @@ async function resolveStreamedAssistantTranscript(args: {
 		allowProviderRewrites: args.allowProviderRewrites,
 	});
 	const validationDiagnostics: string[] = [];
-	const repairDiagnostics: string[] = [];
-	const repairsByProviderAttempt = new Map<number, SemanticSpeakerResolutionChange[]>();
 	const speakerRegistryPrompt = formatSceneSpeakerRegistryPrompt(
 		args.speakerRegistry,
 		args.allowDirectedPlayerControl,
@@ -1234,43 +1230,16 @@ async function resolveStreamedAssistantTranscript(args: {
 	};
 
 	const resolution = await resolveStreamTranscript<
-		AssistantTranscriptValidationResult,
-		SemanticSpeakerResolutionChange
+		AssistantTranscriptValidationResult
 	>({
 		initialText: args.initialText,
 		initialProviderAttemptsUsed,
 		allowProviderRewrites: args.allowProviderRewrites,
-		repairCandidate: (text, context) => {
-			const normalized = args.normalizeCandidate?.(text) ?? text;
-			const semanticResolution = resolveSemanticSpeakerAttribution({
-				text: normalized,
-				player: {
-					name: args.speakerRegistry.player.canonicalName,
-					aliases: args.speakerRegistry.player.aliases,
-				},
-				eligibleSpeakers: args.resolvedParticipants
-					? toSemanticSpeakerIdentities(
-							args.resolvedParticipants,
-							args.speakerRegistry.player.canonicalName,
-						)
-					: args.speakerRegistry.eligibleNonPlayerSpeakers.map((speaker) => ({
-							name: speaker.canonicalName,
-							aliases: speaker.aliases,
-						})),
-			});
-			if (semanticResolution.changes.length) {
-				const attemptRepairs = repairsByProviderAttempt.get(context.providerAttempt) ?? [];
-				attemptRepairs.push(...semanticResolution.changes);
-				repairsByProviderAttempt.set(context.providerAttempt, attemptRepairs);
-			}
-			return {
-				text: semanticResolution.text,
-				events: semanticResolution.changes,
-			};
-		},
+		maxLocalRepairPasses: 1,
 		validateCandidate: (text, context) => {
+			const normalizedText = args.normalizeCandidate?.(text) ?? text;
 			const validation = validateAssistantTranscriptForSave({
-				text,
+				text: normalizedText,
 				latestUserMessage: args.latestUserMessage,
 				playerName: args.playerName,
 				playerSceneName: args.playerSceneName,
@@ -1283,23 +1252,18 @@ async function resolveStreamedAssistantTranscript(args: {
 				knownTies: args.knownTies,
 				transcriptText: args.transcriptText ?? args.latestUserMessage,
 				repairSpeakerAttribution: false,
-				repairTranscript: context.localPass > 0,
+				repairTranscript: false,
 				resolvedParticipants: args.resolvedParticipants,
 			});
 			if (!validation.valid) {
 				validationDiagnostics.push(
 					[
 						`attempt=${context.providerAttempt}`,
-						`local_pass=${context.localPass}`,
 						validation.diagnostic,
 					]
 						.filter(Boolean)
 						.join("; "),
 				);
-			}
-			if (context.localPass > 0 && validation.text !== text) {
-				args.onChunkReset?.();
-				args.onChunk?.(validation.text);
 			}
 			return validation;
 		},
@@ -1350,29 +1314,13 @@ async function resolveStreamedAssistantTranscript(args: {
 				})
 			).content;
 		},
-		onLocalRepair: ({ repairedText, events }) => {
-			for (const change of events) {
-				repairDiagnostics.push(
-					`local_speaker_repair=line:${change.lineNumber},${change.originalSpeakerLabel}->${change.replacementSpeakerLabel}`,
-				);
-			}
-			args.onChunkReset?.();
-			args.onChunk?.(repairedText);
-		},
 		onProviderAttempt: ({ attempt, maxAttempts }) => {
 			args.reportStreamAttempt?.(attempt, maxAttempts);
 		},
 	});
 
-	const finalSpeakerResolutionChanges = Array.from(
-		new Map(
-			(repairsByProviderAttempt.get(resolution.attemptsUsed) ?? []).map((change) => [
-				`${change.lineNumber}:${change.originalSpeakerLabel}:${change.replacementSpeakerLabel}`,
-				change,
-			]),
-		).values(),
-	);
-	const diagnostic = [...repairDiagnostics, ...validationDiagnostics].join("; ");
+	const finalSpeakerResolutionChanges: SemanticSpeakerResolutionChange[] = [];
+	const diagnostic = validationDiagnostics.join("; ");
 
 	if (resolution.ok) {
 		return {
