@@ -281,7 +281,7 @@ export function V2Shell() {
 
         <div
           className={cn(
-            "fixed inset-0 z-50 lg:hidden",
+            "fixed inset-x-0 bottom-0 top-14 z-50 lg:hidden",
             leftOpen ? "pointer-events-auto" : "pointer-events-none",
           )}
           aria-hidden={!leftOpen}
