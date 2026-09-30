@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DownloadIcon, TrashIcon } from "../../components/icons";
 import { Button } from "../../components/ui/Button";
@@ -143,6 +143,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [promoting, setPromoting] = useState(false);
   const [sequelTitle, setSequelTitle] = useState("");
   const [creatingSequel, setCreatingSequel] = useState(false);
+  const drawerScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!story) return;
@@ -247,6 +248,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     if (!storySettingsOpen) return;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    drawerScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
     return () => {
       document.body.style.overflow = originalOverflow;
     };
@@ -255,10 +257,27 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const activeAudiobookJob = story ? backgroundJobs.find((job) => isAudiobookExportBackgroundJob(job) && job.storyId === story.id && (job.status === "queued" || job.status === "running")) : undefined;
   const audiobookProgress = audiobookExportStatus && audiobookExportStatus.storyId === story?.id ? audiobookExportStatus.progress ?? null : null;
 
-  if (!storySettingsOpen) return null;
-
-  return <div className={cn(OVERLAY_BACKDROP_CLASS, "fixed inset-x-0 bottom-0 top-14 z-[70] flex justify-end lg:inset-0")} onClick={() => setStorySettingsOpen(false)}>
-    <div role="dialog" aria-modal="true" aria-label="Story settings" className={cn(DRAWER_PANEL_CLASS, "h-full w-[86vw] max-w-[28rem] overflow-y-auto overscroll-contain border-l border-divider bg-app-elevated shadow-hero sm:w-[28rem] lg:max-w-[30rem]")} onClick={(event) => event.stopPropagation()}>
+  return <div
+    className={cn(
+      OVERLAY_BACKDROP_CLASS,
+      "fixed inset-x-0 bottom-0 top-14 z-[70] flex justify-end lg:inset-0",
+      storySettingsOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+    )}
+    aria-hidden={!storySettingsOpen}
+    onClick={() => setStorySettingsOpen(false)}
+  >
+    <div
+      ref={drawerScrollRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Story settings"
+      className={cn(
+        DRAWER_PANEL_CLASS,
+        "h-full w-[86vw] max-w-[28rem] overflow-y-auto overscroll-contain border-l border-divider bg-app-elevated shadow-hero sm:w-[28rem] lg:max-w-[30rem]",
+        storySettingsOpen ? "translate-x-0" : "translate-x-full",
+      )}
+      onClick={(event) => event.stopPropagation()}
+    >
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-divider bg-app-elevated/95 px-4 py-3.5 backdrop-blur">
         <div className="min-w-0"><div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Story settings</div><div className="mt-1 truncate text-lg font-bold text-ink">{story?.title ?? "Story"}</div></div>
         <Button variant="ghost" size="sm" onClick={() => setStorySettingsOpen(false)}>Close</Button>

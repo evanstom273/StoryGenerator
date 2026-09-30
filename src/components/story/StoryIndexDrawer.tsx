@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
 import { Button } from "../ui/Button";
 import { DRAWER_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../../app/ui/motion";
@@ -14,27 +14,33 @@ interface StoryIndexDrawerProps {
 export function StoryIndexDrawer({ open, onClose, storyId }: StoryIndexDrawerProps) {
   const { stories } = useStoryEngine();
   const story = useMemo(() => stories.find((s) => s.id === storyId), [stories, storyId]);
+  const drawerScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    drawerScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
     return () => {
       document.body.style.overflow = originalOverflow;
     };
   }, [open]);
 
-  if (!open) return null;
-
   return (
     <div
-      className={cn(OVERLAY_BACKDROP_CLASS, "fixed inset-0 z-[70] flex justify-end")}
+      className={cn(
+        OVERLAY_BACKDROP_CLASS,
+        "fixed inset-0 z-[70] flex justify-end",
+        open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+      )}
+      aria-hidden={!open}
       onClick={onClose}
     >
       <div
         className={cn(
           DRAWER_PANEL_CLASS,
-          "flex h-full w-full max-w-2xl flex-col overflow-hidden overscroll-contain",
+          "flex h-full w-full max-w-2xl flex-col overflow-hidden overscroll-contain bg-app-elevated shadow-hero",
+          open ? "translate-x-0" : "translate-x-full",
         )}
         onClick={(event) => event.stopPropagation()}
       >
@@ -51,7 +57,7 @@ export function StoryIndexDrawer({ open, onClose, storyId }: StoryIndexDrawerPro
             Close
           </Button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 overscroll-contain">
+        <div ref={drawerScrollRef} className="flex-1 overflow-y-auto p-4 overscroll-contain">
           <StoryIndexSection storyId={storyId} />
         </div>
       </div>
