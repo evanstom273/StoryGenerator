@@ -333,6 +333,8 @@ export function StoryWorkspacePage() {
   const [assistantEditError, setAssistantEditError] = useState<string | null>(null);
   const [isAssistantEditSaving, setIsAssistantEditSaving] = useState(false);
   const [storyIndexOpen, setStoryIndexOpen] = useState(false);
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
+  const workspaceMenuRef = useRef<HTMLDivElement | null>(null);
 
   interface VariantCandidate {
     id: string;
@@ -385,7 +387,27 @@ export function StoryWorkspacePage() {
     setAssistantEditError(null);
     setIsAssistantEditSaving(false);
     setVariantSession(null);
+    setWorkspaceMenuOpen(false);
   }, [storyId]);
+
+  useEffect(() => {
+    if (!workspaceMenuOpen) return;
+
+    function handleOutsidePointer(event: MouseEvent | TouchEvent) {
+      const target = event.target;
+      if (target instanceof Node && workspaceMenuRef.current?.contains(target)) {
+        return;
+      }
+      setWorkspaceMenuOpen(false);
+    }
+
+    document.addEventListener("mousedown", handleOutsidePointer);
+    document.addEventListener("touchstart", handleOutsidePointer);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsidePointer);
+      document.removeEventListener("touchstart", handleOutsidePointer);
+    };
+  }, [workspaceMenuOpen]);
 
   useEffect(() => {
     if (!story?.accentThemeKey || !isAccentThemeKey(story.accentThemeKey)) {
@@ -1231,37 +1253,80 @@ export function StoryWorkspacePage() {
           <div className="flex items-center gap-0.5">
             <WorkspaceIconBtn
               label="Settings"
-              onClick={() => setStorySettingsOpen(true)}
+              onClick={() => {
+                setWorkspaceMenuOpen(false);
+                setStorySettingsOpen(true);
+              }}
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>}
             />
             <WorkspaceIconBtn
               label="Story State"
               active={storyIndexOpen}
-              onClick={() => setStoryIndexOpen((c) => !c)}
+              onClick={() => {
+                setWorkspaceMenuOpen(false);
+                setStoryIndexOpen((c) => !c);
+              }}
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8M8 11h6"/></svg>}
             />
-            <WorkspaceIconBtn
-              label="Bubble view"
-              active={showChrome}
-              onClick={() => setShowChrome(!showChrome)}
-              disabled={isGenerating}
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
-            />
-            <WorkspaceIconBtn
-              label="Reader mode"
-              active={readerMode}
-              onClick={() => setReaderMode(!readerMode)}
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>}
-            />
-            {!readerMode ? (
+
+            <div ref={workspaceMenuRef} className="relative">
               <WorkspaceIconBtn
-                label="Manual entry"
-                active={manualMode}
-                onClick={() => setManualMode((c) => !c)}
-                disabled={isGenerating}
-                icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
+                label="More"
+                active={workspaceMenuOpen}
+                onClick={() => setWorkspaceMenuOpen((open) => !open)}
+                icon={<span className="block min-w-[18px] text-center text-[14px] font-bold leading-none tracking-[0.08em]">•••</span>}
               />
-            ) : null}
+              {workspaceMenuOpen ? (
+                <div className="absolute bottom-full right-0 z-50 mb-2 w-44 overflow-hidden rounded-[10px] border border-divider/50 bg-app-elevated p-1.5 shadow-hero">
+                  <button
+                    type="button"
+                    disabled={isGenerating}
+                    onClick={() => {
+                      setShowChrome(!showChrome);
+                      setWorkspaceMenuOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-[7px] px-3 py-2 text-left text-xs transition disabled:opacity-40",
+                      showChrome ? "bg-panel-muted text-accent" : "text-ink-soft hover:bg-panel-muted/50",
+                    )}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    Bubble view
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReaderMode(!readerMode);
+                      setWorkspaceMenuOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-[7px] px-3 py-2 text-left text-xs transition",
+                      readerMode ? "bg-panel-muted text-accent" : "text-ink-soft hover:bg-panel-muted/50",
+                    )}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    Reader mode
+                  </button>
+                  {!readerMode ? (
+                    <button
+                      type="button"
+                      disabled={isGenerating}
+                      onClick={() => {
+                        setManualMode((current) => !current);
+                        setWorkspaceMenuOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-[7px] px-3 py-2 text-left text-xs transition disabled:opacity-40",
+                        manualMode ? "bg-panel-muted text-accent" : "text-ink-soft hover:bg-panel-muted/50",
+                      )}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                      Manual entry
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </StoryWorkspaceViewportPortal>
