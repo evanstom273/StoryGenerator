@@ -1217,10 +1217,12 @@ async function resolveStreamedAssistantTranscript(args: {
 		);
 	}
 
-	const rewriteStageToPrompt: Record<
-		Exclude<AssistantTranscriptValidationStage, "insubstantial">,
-		string
-	> = {
+	const rewriteStageToPrompt: Record<AssistantTranscriptValidationStage, string> = {
+		insubstantial: withSpeakerRegistry([
+			"Generate a brand-new, substantial story continuation from the original story context.",
+			"Do not return a fragment, placeholder, acknowledgement, or abbreviated response.",
+			"Continue the scene with enough concrete action, dialogue, or narration to form a complete Story Engine reply.",
+		].join("\n")),
 		speaker_attribution: withSpeakerRegistry(args.rewritePrompts.format),
 		format: withSpeakerRegistry(args.rewritePrompts.format),
 		ownership: withSpeakerRegistry(args.rewritePrompts.ownership),
