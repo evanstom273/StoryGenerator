@@ -72,20 +72,37 @@ function Section({
   icon,
   children,
   defaultOpen = false,
+  onOpen,
 }: {
   title: string;
   description: string;
   icon: SettingsSectionIcon;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  onOpen?: (section: HTMLDivElement) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  function toggleOpen() {
+    setOpen((value) => {
+      const next = !value;
+      if (next) {
+        requestAnimationFrame(() => {
+          if (sectionRef.current) {
+            onOpen?.(sectionRef.current);
+          }
+        });
+      }
+      return next;
+    });
+  }
 
   return (
-    <div className="overflow-hidden rounded-[12px] border border-divider/[0.35] bg-app-elevated/95">
+    <div ref={sectionRef} className="overflow-hidden rounded-[12px] border border-divider/[0.35] bg-app-elevated/95">
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggleOpen}
         className="group flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-panel-muted/25"
         aria-expanded={open}
       >
@@ -144,6 +161,23 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [sequelTitle, setSequelTitle] = useState("");
   const [creatingSequel, setCreatingSequel] = useState(false);
   const drawerScrollRef = useRef<HTMLDivElement>(null);
+  const drawerHeaderRef = useRef<HTMLDivElement>(null);
+
+  function scrollSectionIntoView(section: HTMLDivElement) {
+    const scroller = drawerScrollRef.current;
+    if (!scroller) return;
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const sectionRect = section.getBoundingClientRect();
+    const headerOffset = drawerHeaderRef.current?.offsetHeight ?? 0;
+    const targetTop =
+      scroller.scrollTop + (sectionRect.top - scrollerRect.top) - headerOffset - 10;
+
+    scroller.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: "smooth",
+    });
+  }
 
   useEffect(() => {
     if (!story) return;
@@ -278,26 +312,26 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       )}
       onClick={(event) => event.stopPropagation()}
     >
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-divider bg-app-elevated/95 px-4 py-3.5 backdrop-blur">
+      <div ref={drawerHeaderRef} className="sticky top-0 z-10 flex items-center justify-between border-b border-divider bg-app-elevated/95 px-4 py-3.5 backdrop-blur">
         <div className="min-w-0"><div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Story settings</div><div className="mt-1 truncate text-lg font-bold text-ink">{story?.title ?? "Story"}</div></div>
         <Button variant="ghost" size="sm" onClick={() => setStorySettingsOpen(false)}>Close</Button>
       </div>
       <div className="space-y-2 p-3 sm:p-4">
         {story ? <>
-          <Section title="Edit Story" description="Title and imported cast" icon="edit">
+          <Section title="Edit Story" description="Title and imported cast" icon="edit" onOpen={scrollSectionIntoView}>
             <form className="space-y-3" onSubmit={saveDetails}>
               <label className="block space-y-2"><FieldLabel label="Title" help="Shown in your library and story header." labelClassName="text-xs text-ink-muted" /><input className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={fields.title} onChange={(e) => setFields((current) => ({ ...current, title: e.target.value }))} /></label>
               <div><FieldLabel label="Imported Characters" help="Library characters available to the story." labelClassName="text-xs text-ink-muted" /><ImportedCharactersPicker selectedIds={fields.importedCharacterIds} excludeCharacterId={story.playerCharacterId} universeIds={getUniverseIds(story)} getPlayerCharactersForUniverse={getPlayerCharactersForUniverse} getUniverseById={getUniverseById} getPlayerCharacterById={getPlayerCharacterById} onChange={(ids) => setFields((current) => ({ ...current, importedCharacterIds: ids }))} /></div>
               <Button type="submit" className="w-full" disabled={saving}>{saving ? "Saving…" : "Save Story"}</Button>
             </form>
           </Section>
-          <Section title="Story accent" description="Colour styling for this story" icon="accent">
+          <Section title="Story accent" description="Colour styling for this story" icon="accent" onOpen={scrollSectionIntoView}>
             <ThemePicker accentOnly allowAppDefault appDefaultSelected={!fields.accentThemeKey} selectedKey={fields.accentThemeKey ?? "ruby"} customAccent={fields.accentThemeCustom} onSelectAppDefault={() => setFields((current) => ({ ...current, accentThemeKey: null }))} onSelectKey={(key) => isAccentThemeKey(key) && setFields((current) => ({ ...current, accentThemeKey: key }))} onCustomAccentChange={(value) => setFields((current) => ({ ...current, accentThemeCustom: value, accentThemeKey: "custom" }))} />
           </Section>
-          <Section title="Content Mode" description="Story-specific content boundaries" icon="content">
+          <Section title="Content Mode" description="Story-specific content boundaries" icon="content" onOpen={scrollSectionIntoView}>
             <label className="block space-y-2"><FieldLabel label="Adult content mode" help="Choose the intended content boundary." labelClassName="text-xs text-ink-muted" /><select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={fields.adultContentMode} onChange={(e) => { const value = e.target.value; if (isAdultContentMode(value)) setFields((current) => ({ ...current, adultContentMode: value })); }}><option value="standard">Standard</option><option value="mature_non_graphic">Mature fiction (non-graphic)</option><option value="explicit_consensual_adults">Explicit fiction (consenting adults)</option></select><div className="mt-2 text-sm text-ink-muted">{getAdultContentProviderProfile(providerType).explanation}</div></label>
           </Section>
-          <Section title="AI Settings" description="Model and audiobook behaviour" icon="ai">
+          <Section title="AI Settings" description="Model and audiobook behaviour" icon="ai" onOpen={scrollSectionIntoView}>
             <form className="space-y-3" onSubmit={saveAI}>
               {shouldShowProviderPicker() ? <ProviderSelect value={providerType} onChange={(event) => setProviderType(event.target.value as typeof providerType)} /> : null}
               <select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={model} onChange={(e) => setModel(e.target.value)}>{getProviderModels(providerType).map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select>
@@ -305,7 +339,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               <Button type="submit" className="w-full" disabled={savingAI}>{savingAI ? "Saving…" : "Save AI Settings"}</Button>
             </form>
           </Section>
-          <Section title="Export" description="Downloads, support files and audio" icon="export">
+          <Section title="Export" description="Downloads, support files and audio" icon="export" onOpen={scrollSectionIntoView}>
             {exportStage ? <div className="text-xs text-ink-muted">{exportStage}</div> : null}
             {audiobookProgress ? <AudiobookChapterProgressList progress={audiobookProgress} /> : null}
             <div className="grid gap-2">
@@ -314,14 +348,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               <Button variant="secondary" onClick={() => void saveAudiobook()} disabled={Boolean(activeAudiobookJob)}>Save Story Audiobook</Button>
             </div>
           </Section>
-          <Section title="Create Sequel" description="Continue with inherited Story State" icon="sequel">
+          <Section title="Create Sequel" description="Continue with inherited Story State" icon="sequel" onOpen={scrollSectionIntoView}>
             <div className="space-y-3">
               <FieldLabel label="Sequel title" help="Creates a new story that inherits this story's indexed chapters, characters, relationships, and ending state. This story is not modified." labelClassName="text-xs text-ink-muted" />
               <input className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={sequelTitle} onChange={(e) => setSequelTitle(e.target.value)} placeholder="Name the sequel" />
               <Button className="w-full" onClick={() => void createStorySequel()} disabled={creatingSequel || !sequelTitle.trim()}>{creatingSequel ? "Creating…" : "Create Sequel"}</Button>
             </div>
           </Section>
-          <Section title="Story actions" description="Favourite, archive and maintenance" icon="actions">
+          <Section title="Story actions" description="Favourite, archive and maintenance" icon="actions" onOpen={scrollSectionIntoView}>
             <div className="grid gap-2">
               <Button variant="secondary" onClick={() => void updateStory(story.id, { isFavorite: !story.isFavorite })}>{story.isFavorite ? "★ Unfavorite Story" : "☆ Favorite Story"}</Button>
               <Button variant="secondary" onClick={() => void updateStory(story.id, { isArchived: !story.isArchived })}>{story.isArchived ? "Restore Story" : "Archive Story"}</Button>
