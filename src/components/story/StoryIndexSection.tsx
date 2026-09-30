@@ -93,6 +93,21 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
   const [confirmClearIndex, setConfirmClearIndex] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [completionMessage, setCompletionMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (
+      rebuildStatus?.storyId !== storyId ||
+      rebuildStatus.phase !== "done" ||
+      !rebuildStatus.message
+    ) {
+      return;
+    }
+
+    setCompletionMessage(rebuildStatus.message);
+    const timer = window.setTimeout(() => setCompletionMessage(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [rebuildStatus?.storyId, rebuildStatus?.phase, rebuildStatus?.message, storyId]);
 
   const currentCadence: IndexingCadence =
     story?.indexingCadence ?? aiSettings?.indexingCadence ?? "every_5_messages";
@@ -226,40 +241,34 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
 
   return (
     <div className="space-y-4">
-      {/* Overview Card */}
-      <div className="rounded-[10px] border border-divider/[0.3] bg-panel-muted/40 p-3.5 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="space-y-0.5">
-            <div className="text-xs font-semibold text-ink">Story Index Status</div>
-            <div className="text-[11px] text-ink-muted">
+      {/* Compact Index Controls */}
+      <div className="rounded-[10px] border border-divider/[0.3] bg-panel-muted/40 p-3 space-y-2.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-xs font-semibold text-ink">Story Index</div>
+              {isIndexingActive ? (
+                <Badge variant="accent" className="animate-pulse">
+                  {rebuildStatus?.storyId === storyId && rebuildStatus.totalMessages > 0
+                    ? `Indexing (${rebuildStatus.processedMessages}/${rebuildStatus.totalMessages})`
+                    : "Indexing in progress…"}
+                </Badge>
+              ) : pendingMessages.length > 0 ? (
+                <Badge variant="warning">{pendingMessages.length} pending</Badge>
+              ) : (
+                <Badge variant="success">Up to date</Badge>
+              )}
+            </div>
+            <div className="text-[10px] leading-snug text-ink-muted">
               {index?.updatedAt
-                ? `Last indexed: ${formatDateTime(index.updatedAt)} (${index.indexedMessageCount} messages)`
+                ? `Last indexed ${formatDateTime(index.updatedAt)} · ${index.indexedMessageCount} messages`
                 : "No index built yet for this story."}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {isIndexingActive ? (
-              <Badge variant="accent" className="animate-pulse">
-                {rebuildStatus?.storyId === storyId && rebuildStatus.totalMessages > 0
-                  ? `Indexing (${rebuildStatus.processedMessages}/${rebuildStatus.totalMessages})`
-                  : "Indexing in progress…"}
-              </Badge>
-            ) : pendingMessages.length > 0 ? (
-              <Badge variant="warning">{pendingMessages.length} pending unindexed</Badge>
-            ) : (
-              <Badge variant="success">Up to date</Badge>
-            )}
-          </div>
-        </div>
 
-        {/* Cadence Selector & Live Progress */}
-        <div className="rounded-[8px] border border-divider/[0.2] bg-panel-muted/30 p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="space-y-0.5">
-            <div className="font-medium text-ink">Automatic Indexing Cadence</div>
-            <div className="text-[11px] text-ink-muted">{cadenceProgressText}</div>
-          </div>
           <select
-            className="rounded-[6px] border border-divider/60 bg-panel px-2.5 py-1 text-xs text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            aria-label="Automatic Indexing Cadence"
+            className="max-w-[150px] shrink-0 rounded-[6px] border border-divider/60 bg-panel px-2 py-1.5 text-[11px] text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             value={currentCadence}
             onChange={(e) => void handleCadenceChange(e.target.value as IndexingCadence)}
             title="Configure how frequently unindexed messages trigger an automatic index update"
@@ -271,6 +280,10 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
             <option value="every_20_messages">Every 20 messages</option>
             <option value="every_chapter">Every chapter</option>
           </select>
+        </div>
+
+        <div className="border-t border-divider/[0.18] pt-2 text-[10px] text-ink-muted">
+          {cadenceProgressText}
         </div>
 
         {/* Live indexing progress bar */}
@@ -304,26 +317,24 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
             </div>
           )}
 
-        {rebuildStatus?.storyId === storyId &&
-          rebuildStatus.phase === "done" &&
-          rebuildStatus.message && (
-            <div className="rounded-[8px] border border-emerald-500/20 bg-emerald-500/5 p-2 text-xs text-emerald-300">
-              {rebuildStatus.message}
-            </div>
-          )}
+        {completionMessage && (
+          <div className="rounded-[7px] border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-2 text-[11px] text-emerald-300">
+            {completionMessage}
+          </div>
+        )}
 
         {actionError && (
-          <div className="rounded-[8px] border border-rose-500/30 bg-rose-500/10 p-2 text-xs text-rose-300">
+          <div className="rounded-[7px] border border-rose-500/30 bg-rose-500/10 px-2.5 py-2 text-[11px] text-rose-300">
             {actionError}
           </div>
         )}
 
-        {/* Action Controls */}
-        <div className="grid grid-cols-3 gap-2 pt-1">
+        <div className="flex items-center gap-2">
           <Button
             type="button"
             size="sm"
             variant="secondary"
+            className="flex-1 justify-center"
             disabled={isIndexingActive || pendingMessages.length === 0}
             onClick={handleUpdateIndex}
             title="Process pending story messages"
@@ -331,35 +342,43 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
             Update Index
           </Button>
 
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={isIndexingActive}
-            onClick={() => setConfirmFullReindex(true)}
-            title="Rebuild entire story index from transcript"
-          >
-            Full Re-index
-          </Button>
-
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
-            disabled={isIndexingActive || !index}
-            onClick={() => setConfirmClearIndex(true)}
-            title="Remove derived index without touching transcripts"
-          >
-            Clear Index
-          </Button>
+          <details className="group relative">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[7px] border border-divider/50 bg-panel px-3 py-2 text-xs font-medium text-ink transition hover:bg-panel-muted/40 [&::-webkit-details-marker]:hidden">
+              Advanced
+              <span className="text-[10px] text-ink-muted transition-transform group-open:rotate-180">▼</span>
+            </summary>
+            <div className="absolute right-0 top-full z-20 mt-2 w-44 rounded-[9px] border border-divider/50 bg-app-elevated p-1.5 shadow-xl">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="w-full justify-start"
+                disabled={isIndexingActive}
+                onClick={() => setConfirmFullReindex(true)}
+                title="Rebuild entire story index from transcript"
+              >
+                Full Re-index
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="w-full justify-start text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                disabled={isIndexingActive || !index}
+                onClick={() => setConfirmClearIndex(true)}
+                title="Remove derived index without touching transcripts"
+              >
+                Clear Index
+              </Button>
+            </div>
+          </details>
         </div>
       </div>
 
       {/* Collapsible Sections Header */}
       <div className="flex items-center justify-between px-1 pt-1">
         <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-muted">
-          Indexed Narrative Memory
+          Story State
         </span>
         <button
           type="button"
@@ -371,13 +390,13 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
       </div>
 
       {/* Collapsible Sections */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {/* Characters Section */}
         <div className="rounded-[10px] border border-divider/[0.35] bg-app-elevated overflow-hidden">
           <button
             type="button"
             onClick={() => toggleSection("characters")}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-panel-muted/20"
+            className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition hover:bg-panel-muted/20"
           >
             <div className="flex items-center gap-2.5">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent-soft">
@@ -393,7 +412,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
             </span>
           </button>
           {openSections.characters && (
-            <div className="border-t border-divider/[0.25] p-3 space-y-2.5 max-h-[380px] overflow-y-auto">
+            <div className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
               {characters.length === 0 ? (
                 <div className="py-6 text-center text-xs text-ink-muted">
                   No canonical characters indexed yet. Click "Update Index" to extract characters from the story transcript.
@@ -405,13 +424,13 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                   return (
                     <div
                       key={char.id}
-                      className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 text-xs transition hover:border-divider/50 overflow-hidden"
+                      className="text-xs transition hover:bg-panel-muted/15 overflow-hidden"
                     >
                       <button
                         type="button"
                         onClick={() => toggleRecord(recordKey)}
                         aria-expanded={isOpen}
-                        className="flex w-full items-start justify-between gap-3 p-3 text-left transition hover:bg-panel-muted/30"
+                        className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-panel-muted/20"
                       >
                         <div className="min-w-0 flex-1 space-y-1.5">
                           <div className="font-semibold text-ink text-sm">{char.canonicalName}</div>
@@ -477,7 +496,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
           <button
             type="button"
             onClick={() => toggleSection("relationships")}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-panel-muted/20"
+            className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition hover:bg-panel-muted/20"
           >
             <div className="flex items-center gap-2.5">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent-soft">
@@ -493,7 +512,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
             </span>
           </button>
           {openSections.relationships && (
-            <div className="border-t border-divider/[0.25] p-3 space-y-2.5 max-h-[380px] overflow-y-auto">
+            <div className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
               {relationships.length === 0 ? (
                 <div className="py-6 text-center text-xs text-ink-muted">
                   No relationships indexed yet.
@@ -513,13 +532,13 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                   return (
                     <div
                       key={`${rel.characterIdA}-${rel.characterIdB}-${idx}`}
-                      className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 text-xs transition hover:border-divider/50 overflow-hidden"
+                      className="text-xs transition hover:bg-panel-muted/15 overflow-hidden"
                     >
                       <button
                         type="button"
                         onClick={() => toggleRecord(recordKey)}
                         aria-expanded={isOpen}
-                        className="flex w-full items-start justify-between gap-3 p-3 text-left transition hover:bg-panel-muted/30"
+                        className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-panel-muted/20"
                       >
                         <div className="min-w-0 flex-1 space-y-1.5">
                           <div className="font-semibold text-ink">
@@ -571,7 +590,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
           <button
             type="button"
             onClick={() => toggleSection("chapters")}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-panel-muted/20"
+            className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition hover:bg-panel-muted/20"
           >
             <div className="flex items-center gap-2.5">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent-soft">
@@ -585,7 +604,7 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
             </span>
           </button>
           {openSections.chapters && (
-            <div className="border-t border-divider/[0.25] p-3 space-y-2.5 max-h-[380px] overflow-y-auto">
+            <div className="border-t border-divider/[0.25] divide-y divide-divider/[0.18] max-h-[420px] overflow-y-auto">
               {chapterSummaries.length === 0 ? (
                 <div className="py-6 text-center text-xs text-ink-muted">
                   No chapter summaries indexed yet.
@@ -597,13 +616,13 @@ export function StoryIndexSection({ storyId }: StoryIndexSectionProps) {
                   return (
                     <div
                       key={`${summary.originStoryId ?? storyId}:${summary.chapterId}`}
-                      className="rounded-[8px] border border-divider/[0.25] bg-panel-muted/30 text-xs transition hover:border-divider/50 overflow-hidden"
+                      className="text-xs transition hover:bg-panel-muted/15 overflow-hidden"
                     >
                       <button
                         type="button"
                         onClick={() => toggleRecord(recordKey)}
                         aria-expanded={isOpen}
-                        className="flex w-full items-center justify-between gap-3 p-3 text-left transition hover:bg-panel-muted/30"
+                        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-panel-muted/20"
                       >
                         <span className="min-w-0 font-semibold text-ink text-sm truncate">
                           {summary.originStoryTitle ? `${summary.originStoryTitle} · ${summary.chapterLabel}` : `${story?.title ?? "Current Story"} · ${summary.chapterLabel}`}
