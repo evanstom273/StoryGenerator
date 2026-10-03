@@ -10,7 +10,7 @@ export function canDownloadAiDocumentJob(job: BackgroundJob) {
 	);
 }
 
-export async function downloadAiDocumentJobResult(job: BackgroundJob) {
+export function prepareAiDocumentJobDownload(job: BackgroundJob) {
 	const filename = job.result?.aiDocumentFilename;
 	const markdown = job.result?.aiDocumentMarkdown;
 	if (!filename || !markdown) {
@@ -18,9 +18,21 @@ export async function downloadAiDocumentJobResult(job: BackgroundJob) {
 	}
 
 	if (/\.epub$/i.test(filename)) {
-		await downloadFile(filename, serializeNovelisationEpub(markdown), EPUB_MIME_TYPE);
-		return;
+		return {
+			filename,
+			content: serializeNovelisationEpub(markdown),
+			mimeType: EPUB_MIME_TYPE,
+		};
 	}
 
-	await downloadFile(filename, markdown, "text/markdown;charset=utf-8");
+	return {
+		filename,
+		content: markdown,
+		mimeType: "text/markdown;charset=utf-8",
+	};
+}
+
+export async function downloadAiDocumentJobResult(job: BackgroundJob) {
+	const prepared = prepareAiDocumentJobDownload(job);
+	await downloadFile(prepared.filename, prepared.content, prepared.mimeType);
 }
