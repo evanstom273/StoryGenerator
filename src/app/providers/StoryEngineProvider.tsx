@@ -59,6 +59,7 @@ import {
 import {
 	buildAiDocumentFilename,
 	getAiDocumentPreset,
+	resolveAiDocumentStructure,
 	type AiDocumentPresetId,
 } from "../../lib/aiDocumentGenerator/presets";
 import { generateChapterStructuredDocument, resolveSourceMaterialForStructure } from "../../lib/aiDocumentGenerator/chapterGeneration";
@@ -69,6 +70,7 @@ import {
 	buildAudioFilenameFromMarkdownUpload,
 	segmentStoryBundleByChapter,
 	segmentUploadedSourceByChapter,
+	truncateAiDocumentSourceMaterial,
 } from "../../lib/aiDocumentGenerator/sourceMaterial";
 import type {
 	AiDocumentOutputFormat,
@@ -3239,6 +3241,8 @@ export function StoryEngineProvider({
       force?: boolean;
     }) => {
       const outputFormat = input.outputFormat ?? "markdown";
+      const preset = getAiDocumentPreset(input.presetId);
+      const structure = resolveAiDocumentStructure(preset, input.structure);
       const dedupeKey =
         input.source.type === "story"
           ? `ai_document:${input.source.storyId}:${input.presetId}:${outputFormat}`
@@ -3271,7 +3275,7 @@ export function StoryEngineProvider({
         payload: {
           aiDocumentPresetId: input.presetId,
           aiDocumentCustomPrompt: input.customPrompt,
-          aiDocumentStructure: input.structure,
+          aiDocumentStructure: structure,
           aiDocumentOutputFormat: outputFormat,
           aiDocumentSourceType: input.source.type,
           aiDocumentSourceStoryId:
@@ -4088,7 +4092,8 @@ export function StoryEngineProvider({
 
       const presetId = (job.payload?.aiDocumentPresetId ?? "custom") as AiDocumentPresetId;
       const preset = getAiDocumentPreset(presetId);
-      const structure = job.payload?.aiDocumentStructure ?? preset.defaultStructure ?? "single";
+      const structure = resolveAiDocumentStructure(preset, job.payload?.aiDocumentStructure);
+      const preserveCompleteNovelisationChapters = preset.id === "novelisation";
       const outputFormat = job.payload?.aiDocumentOutputFormat ?? "markdown";
       if (outputFormat === "epub" && !preset.supportsEpub) {
         throw new Error("EPUB export is only available for novelisations.");
@@ -4114,10 +4119,16 @@ export function StoryEngineProvider({
         sourceMaterial = resolveSourceMaterialForStructure(bundle, structure);
         sourceLabel = sourceLabel || bundle.story.title;
         storyTitle = bundle.story.title;
-        chapterSegments = segmentStoryBundleByChapter(bundle);
+        chapterSegments = segmentStoryBundleByChapter(
+          bundle,
+          preserveCompleteNovelisationChapters ? { maxChapterChars: null } : undefined,
+        );
       } else if (job.payload?.aiDocumentSourceText) {
         sourceMaterial = job.payload.aiDocumentSourceText;
-        chapterSegments = segmentUploadedSourceByChapter(sourceMaterial);
+        chapterSegments = segmentUploadedSourceByChapter(
+          sourceMaterial,
+          preserveCompleteNovelisationChapters ? { maxChapterChars: null } : undefined,
+        );
       } else {
         throw new Error("AI document job is missing source material.");
       }
@@ -4218,7 +4229,7 @@ export function StoryEngineProvider({
             preset,
             customPrompt: job.payload?.aiDocumentCustomPrompt,
             sourceLabel,
-            sourceMaterial,
+            sourceMaterial: truncateAiDocumentSourceMaterial(sourceMaterial),
             structure,
           });
           markdown = await generateChunk(messages);
@@ -5470,7 +5481,8 @@ export function StoryEngineProvider({
         const { apiKey, model } = await resolveAIProfile(providerType, undefined, "creation");
         const provider = createAIProvider(providerType);
         const preset = getAiDocumentPreset(input.presetId);
-        const structure = input.structure ?? preset.defaultStructure ?? "single";
+        const structure = resolveAiDocumentStructure(preset, input.structure);
+        const preserveCompleteNovelisationChapters = preset.id === "novelisation";
         const outputFormat = input.outputFormat ?? "markdown";
         if (outputFormat === "epub" && !preset.supportsEpub) {
           throw new Error("EPUB export is only available for novelisations.");
@@ -5489,11 +5501,17 @@ export function StoryEngineProvider({
           sourceMaterial = resolveSourceMaterialForStructure(bundle, structure);
           sourceLabel = input.source.label.trim() || bundle.story.title;
           storyTitle = bundle.story.title;
-          chapterSegments = segmentStoryBundleByChapter(bundle);
+          chapterSegments = segmentStoryBundleByChapter(
+            bundle,
+            preserveCompleteNovelisationChapters ? { maxChapterChars: null } : undefined,
+          );
         } else {
           sourceMaterial = input.source.text;
           sourceLabel = input.source.label.trim() || "Uploaded export";
-          chapterSegments = segmentUploadedSourceByChapter(input.source.text);
+          chapterSegments = segmentUploadedSourceByChapter(
+            input.source.text,
+            preserveCompleteNovelisationChapters ? { maxChapterChars: null } : undefined,
+          );
         }
 
         if (!sourceMaterial.trim()) {
@@ -5575,7 +5593,7 @@ export function StoryEngineProvider({
             preset,
             customPrompt: input.customPrompt,
             sourceLabel,
-            sourceMaterial,
+            sourceMaterial: truncateAiDocumentSourceMaterial(sourceMaterial),
             structure,
           });
           markdown = await generateChunk(messages);
