@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	assembleNovelisationDocument,
+	assertNovelisationChapterCoverage,
+	assertNovelisationChapterSection,
 	dedupeNovelisationChapterSections,
 	extractNovelisationTitleSourceMaterial,
 	parseNovelisationChapterLabel,
@@ -74,6 +76,29 @@ describe("novelisationPrompt", () => {
 			"## Chapter I\n\nFirst version.",
 			"## Chapter II\n\nMiddle chapter.",
 		]);
+	});
+
+	it("validates generated chapter labels and full source coverage", () => {
+		const chapter = "## Chapter XV: Home Again\n\nComplete prose.";
+		expect(() => assertNovelisationChapterSection(chapter, "Chapter XV")).not.toThrow();
+
+		const complete = [
+			"# Example Story",
+			"## Chapter I: Opening\n\nOne.",
+			"## Chapter II: Middle\n\nTwo.",
+			"## Chapter III: End\n\nThree.",
+		].join("\n\n");
+		expect(() =>
+			assertNovelisationChapterCoverage(complete, ["Chapter I", "Chapter II", "Chapter III"]),
+		).not.toThrow();
+		expect(() =>
+			assertNovelisationChapterCoverage(complete, [
+				"Chapter I",
+				"Chapter II",
+				"Chapter III",
+				"Chapter IV",
+			]),
+		).toThrow(/expected 4 chapters but generated 3/i);
 	});
 
 	it("assembles the final novel document once per chapter", () => {
