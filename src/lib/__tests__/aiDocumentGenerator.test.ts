@@ -29,6 +29,7 @@ describe("aiDocumentGenerator", () => {
 		const preset = getAiDocumentPreset("novelisation");
 		expect(preset.displayName).toBe("Novelisation");
 		expect(preset.defaultStructure).toBe("chapter-by-chapter");
+		expect(preset.supportsEpub).toBe(true);
 		expect(preset.systemPrompt).toBe(buildNovelisationSystemPrompt());
 		expect(preset.systemPrompt).toContain("professional novel adaptor");
 		expect(preset.systemPrompt).toContain("FORMAT ADAPTATION");
@@ -97,6 +98,9 @@ describe("aiDocumentGenerator", () => {
 	it("builds filenames with extensions", () => {
 		expect(buildAiDocumentFilename("story-summary")).toBe("story-summary.md");
 		expect(buildAiDocumentFilename("novelisation", "Rivera")).toBe("rivera-novelisation.md");
+		expect(buildAiDocumentFilename("novelisation", "Rivera", "epub")).toBe(
+			"rivera-novelisation.epub",
+		);
 		expect(buildAiDocumentFilename("podcast-chapter-breakdown", "Rivera", "wav")).toBe(
 			"rivera-podcast-chapter-breakdown.wav",
 		);
