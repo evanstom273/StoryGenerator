@@ -129,8 +129,16 @@ export function AiDocumentGeneratorTab() {
 	useEffect(() => {
 		if (!selectedPreset.supportsGeminiTts && outputFormat === "gemini-audio-wav") {
 			setOutputFormat("markdown");
+			return;
 		}
-	}, [outputFormat, selectedPreset.supportsGeminiTts]);
+		if (!selectedPreset.supportsEpub && outputFormat === "epub") {
+			setOutputFormat("markdown");
+		}
+	}, [
+		outputFormat,
+		selectedPreset.supportsEpub,
+		selectedPreset.supportsGeminiTts,
+	]);
 
 	useEffect(() => {
 		if (!activeDocumentJobId) {
@@ -351,7 +359,12 @@ export function AiDocumentGeneratorTab() {
 		}
 	}
 
-	const outputExtension = outputFormat === "gemini-audio-wav" ? "wav" : "md";
+	const outputExtension =
+		outputFormat === "gemini-audio-wav"
+			? "wav"
+			: outputFormat === "epub"
+				? "epub"
+				: "md";
 
 	return (
 		<div className="space-y-6">
@@ -636,15 +649,21 @@ export function AiDocumentGeneratorTab() {
 							</Field>
 						</div>
 
-						{selectedPreset.supportsGeminiTts ? (
+						{selectedPreset.supportsGeminiTts || selectedPreset.supportsEpub ? (
 							<Field
 								label="Output"
 								hint={
-									hasGeminiKey
-										? "Gemini audio uses your Gemini API key"
-										: "Add a Gemini API key in Settings → AI for audio"
+									selectedPreset.supportsEpub
+										? "EPUB includes real chapter files and navigation for eReaders and ElevenReader"
+										: hasGeminiKey
+											? "Gemini audio uses your Gemini API key"
+											: "Add a Gemini API key in Settings → AI for audio"
 								}
-								help="Markdown saves a readable document. Gemini podcast audio renders a WAV file with the configured host voices."
+								help={
+									selectedPreset.supportsEpub
+										? "Markdown saves the generated manuscript as text. EPUB packages every novel chapter as its own XHTML document with Heading 1 chapter titles plus EPUB navigation/TOC entries."
+										: "Markdown saves a readable document. Gemini podcast audio renders a WAV file with the configured host voices."
+								}
 							>
 								<SelectInput
 									value={outputFormat}
@@ -654,9 +673,14 @@ export function AiDocumentGeneratorTab() {
 									disabled={isGenerating}
 								>
 									<option value="markdown">Markdown document</option>
-									<option value="gemini-audio-wav" disabled={!hasGeminiKey}>
-										Gemini podcast audio (WAV)
-									</option>
+									{selectedPreset.supportsEpub ? (
+										<option value="epub">EPUB ebook (chapter-aware)</option>
+									) : null}
+									{selectedPreset.supportsGeminiTts ? (
+										<option value="gemini-audio-wav" disabled={!hasGeminiKey}>
+											Gemini podcast audio (WAV)
+										</option>
+									) : null}
 								</SelectInput>
 							</Field>
 						) : null}
@@ -706,7 +730,9 @@ export function AiDocumentGeneratorTab() {
 						</Button>
 						{canDownloadCompletedDocument ? (
 							<Button type="button" variant="secondary" onClick={() => void handleDownloadDocument()}>
-								Download Markdown
+								{completedDocumentJob?.result?.aiDocumentFilename?.toLowerCase().endsWith(".epub")
+									? "Download EPUB"
+									: "Download Markdown"}
 							</Button>
 						) : null}
 						{isGenerating ? (
