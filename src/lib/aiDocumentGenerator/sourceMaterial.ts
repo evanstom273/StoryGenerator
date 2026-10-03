@@ -11,7 +11,15 @@ import { parseStoryRuntimeState } from "../storyRuntimeState";
 const MAX_SOURCE_CHARS = 140000;
 const MAX_CHAPTER_SOURCE_CHARS = 32000;
 
-function truncateSourceMaterial(text: string, maxChars = MAX_SOURCE_CHARS) {
+export interface ChapterSegmentationOptions {
+	/**
+	 * Maximum characters passed for one logical chapter. Use null to preserve the
+	 * complete chapter so a caller can split it into multiple model requests.
+	 */
+	maxChapterChars?: number | null;
+}
+
+export function truncateAiDocumentSourceMaterial(text: string, maxChars = MAX_SOURCE_CHARS) {
 	const trimmed = text.trim();
 	if (trimmed.length <= maxChars) {
 		return trimmed;
@@ -59,7 +67,10 @@ function formatMessageLine(
 	return `[${formatDateTime(message.timestamp)}] ${prefix}${message.content.trim()}`;
 }
 
-export function segmentStoryBundleByChapter(bundle: StoryExportBundle): ChapterSourceSegment[] {
+export function segmentStoryBundleByChapter(
+	bundle: StoryExportBundle,
+	options?: ChapterSegmentationOptions,
+): ChapterSourceSegment[] {
 	const sortedMessages = [...bundle.messages].sort(
 		(left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime(),
 	);
@@ -72,13 +83,22 @@ export function segmentStoryBundleByChapter(bundle: StoryExportBundle): ChapterS
 	let currentLabel = "Opening";
 	let currentLines: string[] = [];
 
+	const resolvedMaxChapterChars =
+		options?.maxChapterChars === undefined
+			? MAX_CHAPTER_SOURCE_CHARS
+			: options.maxChapterChars;
+
 	const pushSegment = () => {
 		if (!currentLines.length) {
 			return;
 		}
+		const transcript = currentLines.join("\n").trim();
 		segments.push({
 			label: currentLabel,
-			transcript: truncateSourceMaterial(currentLines.join("\n"), MAX_CHAPTER_SOURCE_CHARS),
+			transcript:
+				resolvedMaxChapterChars === null
+					? transcript
+					: truncateAiDocumentSourceMaterial(transcript, resolvedMaxChapterChars),
 		});
 	};
 
@@ -126,7 +146,7 @@ export function buildChapterSegmentedSourceMaterial(bundle: StoryExportBundle) {
 		.map((segment) => [`## ${segment.label}`, "", segment.transcript, ""].join("\n"))
 		.join("\n");
 
-	return truncateSourceMaterial(`${header}\n\n${body}`);
+	return truncateAiDocumentSourceMaterial(`${header}\n\n${body}`);
 }
 
 export function buildSourceMaterialFromStoryBundle(bundle: StoryExportBundle) {
@@ -135,14 +155,27 @@ export function buildSourceMaterialFromStoryBundle(bundle: StoryExportBundle) {
 		typeof markdown.content === "string"
 			? markdown.content
 			: new TextDecoder().decode(markdown.content as ArrayBuffer);
-	return truncateSourceMaterial(raw);
+	return truncateAiDocumentSourceMaterial(raw);
 }
 
-export function segmentUploadedSourceByChapter(text: string): ChapterSourceSegment[] {
+export function segmentUploadedSourceByChapter(
+	text: string,
+	options?: ChapterSegmentationOptions,
+): ChapterSourceSegment[] {
+	const resolvedMaxChapterChars =
+		options?.maxChapterChars === undefined
+			? MAX_CHAPTER_SOURCE_CHARS
+			: options.maxChapterChars;
+	const normalizeChapterSource = (value: string) => {
+		const trimmed = value.trim();
+		return resolvedMaxChapterChars === null
+			? trimmed
+			: truncateAiDocumentSourceMaterial(trimmed, resolvedMaxChapterChars);
+	};
 	const pattern = /^##\s+(.+)$/gm;
 	const matches = [...text.matchAll(pattern)];
 	if (!matches.length) {
-		return [{ label: "Full Story", transcript: truncateSourceMaterial(text, MAX_CHAPTER_SOURCE_CHARS) }];
+		return [{ label: "Full Story", transcript: normalizeChapterSource(text) }];
 	}
 
 	const segments: ChapterSourceSegment[] = [];
@@ -155,12 +188,12 @@ export function segmentUploadedSourceByChapter(text: string): ChapterSourceSegme
 		if (body) {
 			segments.push({
 				label,
-				transcript: truncateSourceMaterial(body, MAX_CHAPTER_SOURCE_CHARS),
+				transcript: normalizeChapterSource(body),
 			});
 		}
 	}
 
-	return segments.length ? segments : [{ label: "Full Story", transcript: truncateSourceMaterial(text, MAX_CHAPTER_SOURCE_CHARS) }];
+	return segments.length ? segments : [{ label: "Full Story", transcript: normalizeChapterSource(text) }];
 }
 
 export async function readMarkdownUploadFile(file: File) {
@@ -195,7 +228,7 @@ export async function readUploadedSourceFile(file: File) {
 		if (!text.trim()) {
 			throw new Error("Could not extract text from the PDF. Try Markdown or TXT export instead.");
 		}
-		return truncateSourceMaterial(text);
+		return text;
 	}
 
 	if (extension === "md" || extension === "markdown" || extension === "txt") {
@@ -203,7 +236,7 @@ export async function readUploadedSourceFile(file: File) {
 		if (!text.trim()) {
 			throw new Error("The uploaded file is empty.");
 		}
-		return truncateSourceMaterial(text);
+		return text;
 	}
 
 	throw new Error("Upload a Story Engine Archive PDF, Markdown, or TXT export.");
