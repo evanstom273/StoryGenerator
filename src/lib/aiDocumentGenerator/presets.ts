@@ -3,6 +3,7 @@ import {
 	buildPodcastDiscussionSystemPrompt,
 } from "./podcastPrompt";
 import { buildNovelisationSystemPrompt } from "./novelisationPrompt";
+import type { AiDocumentStructure } from "./types";
 
 export type AiDocumentPresetId =
 	| "podcast-chapter-breakdown"
@@ -156,6 +157,16 @@ Short, punchy, dramatic — catch someone up before the next chapter.`,
 
 export function getAiDocumentPreset(id: AiDocumentPresetId): AiDocumentPreset {
 	return AI_DOCUMENT_PRESETS.find((preset) => preset.id === id) ?? AI_DOCUMENT_PRESETS[0];
+}
+
+export function resolveAiDocumentStructure(
+	preset: AiDocumentPreset,
+	requested?: AiDocumentStructure,
+): AiDocumentStructure {
+	if (preset.id === "novelisation") {
+		return "chapter-by-chapter";
+	}
+	return requested ?? preset.defaultStructure ?? "single";
 }
 
 export function buildAiDocumentFilename(

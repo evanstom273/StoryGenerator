@@ -80,23 +80,103 @@ Write ONLY the novel title block for this step.
 - Do not add a subtitle, author line, or preamble unless the source explicitly provides one as part of the story.`;
 }
 
-export function buildNovelisationChapterSectionPrompt(chapterLabel: string) {
+export interface NovelisationChapterPartContext {
+	partIndex: number;
+	totalParts: number;
+	previousProseTail?: string;
+}
+
+export function buildNovelisationChapterSectionPrompt(
+	chapterLabel: string,
+	partContext?: NovelisationChapterPartContext,
+) {
 	const parsed = parseNovelisationChapterLabel(chapterLabel);
-	const headingRule = parsed.authorTitle
-		? `- Begin with this chapter heading exactly: ## ${parsed.rawLabel}`
-		: `- Begin with: ## ${parsed.baseLabel}: [Your concise chapter title]
+	const partIndex = partContext?.partIndex ?? 0;
+	const totalParts = Math.max(1, partContext?.totalParts ?? 1);
+	const isContinuation = totalParts > 1 && partIndex > 0;
+	const headingRule = isContinuation
+		? "- Do NOT output a chapter heading. Continue the same chapter directly from the prior generated prose."
+		: parsed.authorTitle
+			? `- Begin with this chapter heading exactly: ## ${parsed.rawLabel}`
+			: `- Begin with: ## ${parsed.baseLabel}: [Your concise chapter title]
 - Generate a short, novel-appropriate chapter title (typically 2–6 words) based only on events in this chapter.
 - Avoid spoilers and clickbait. Keep the tone natural, not melodramatic.
 - Use only the chapter number/label from the source (${parsed.baseLabel}); do not rename the chapter numbering.`;
+	const partRule =
+		totalParts > 1
+			? `- This request contains source part ${partIndex + 1} of ${totalParts} for this chapter.
+- Adapt ONLY the supplied source part. Do not skip ahead into later source parts.
+- Finish this source part at a complete sentence or paragraph; never trail off mid-sentence.`
+			: "- Finish the supplied chapter at a complete sentence or paragraph; never trail off mid-sentence.";
+	const continuityReference =
+		isContinuation && partContext?.previousProseTail?.trim()
+			? `
+
+Previous generated prose tail for continuity ONLY — do not repeat or paraphrase it:
+--- continuity reference ---
+${partContext.previousProseTail.trim()}
+--- end continuity reference ---`
+			: "";
 
 	return `
 
 Write ONLY the novel prose for ${parsed.rawLabel}.
 ${headingRule}
-- Convert every story beat from this chapter's transcript into polished, professionally adapted novel prose.
+${partRule}
+- Convert every story beat from the supplied transcript into polished, professionally adapted novel prose.
 - Do not write other chapters, the book title, or closing material.
-- Do not summarise or skip content from this chapter.
-- Do not duplicate content from other chapters.`;
+- Do not summarise or skip content from the supplied source.
+- Do not duplicate content from other chapters or earlier parts of this chapter.${continuityReference}`;
+}
+
+function normalizeChapterBaseLabel(label: string) {
+	return parseNovelisationChapterLabel(label).baseLabel.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function stripLeadingNovelisationChapterHeading(section: string) {
+	return section.replace(/^\s*##\s+[^\n]+\n*/i, "").trim();
+}
+
+export function assertNovelisationChapterSection(
+	section: string,
+	expectedLabel: string,
+) {
+	const heading = section.match(/^\s*##\s+(.+)$/m)?.[1]?.trim();
+	if (!heading) {
+		throw new Error(`Novelisation generation failed: ${expectedLabel} did not include a chapter heading.`);
+	}
+
+	if (normalizeChapterBaseLabel(heading) !== normalizeChapterBaseLabel(expectedLabel)) {
+		throw new Error(
+			`Novelisation generation failed: expected ${expectedLabel}, but the model returned "${heading}".`,
+		);
+	}
+
+	if (!stripLeadingNovelisationChapterHeading(section)) {
+		throw new Error(`Novelisation generation failed: ${expectedLabel} contained no prose.`);
+	}
+}
+
+export function assertNovelisationChapterCoverage(
+	document: string,
+	expectedLabels: string[],
+) {
+	const headings = [...document.matchAll(/^##\s+(.+)$/gm)].map((match) => match[1]!.trim());
+	if (headings.length !== expectedLabels.length) {
+		throw new Error(
+			`Novelisation generation incomplete: expected ${expectedLabels.length} chapters but generated ${headings.length}. No file was saved.`,
+		);
+	}
+
+	for (let index = 0; index < expectedLabels.length; index += 1) {
+		const expected = expectedLabels[index]!;
+		const actual = headings[index]!;
+		if (normalizeChapterBaseLabel(actual) !== normalizeChapterBaseLabel(expected)) {
+			throw new Error(
+				`Novelisation generation incomplete at chapter ${index + 1}: expected ${expected}, got "${actual}". No file was saved.`,
+			);
+		}
+	}
 }
 
 export function extractNovelisationTitleSourceMaterial(

@@ -16,8 +16,11 @@ import {
 } from "./podcastPrompt";
 import {
 	assembleNovelisationDocument,
+	assertNovelisationChapterCoverage,
+	assertNovelisationChapterSection,
 	extractNovelisationTitleSourceMaterial,
 	isNovelisationPreset,
+	stripLeadingNovelisationChapterHeading,
 } from "./novelisationPrompt";
 import { buildChapterSegmentedSourceMaterial, buildSourceMaterialFromStoryBundle } from "./sourceMaterial";
 
@@ -26,6 +29,151 @@ type GenerateChunk = (messages: Array<{ role: "system" | "user"; content: string
 export type ChapterDocumentProgressUpdate = {
 	steps: BackgroundJobStep[];
 };
+
+/**
+ * Keep each novelisation request comfortably below model context/output limits.
+ * A long logical chapter is adapted in multiple source parts and then stitched
+ * back into one chapter. This is deliberately independent of chapter count:
+ * 10, 30, or 100 chapters all use the same loop.
+ */
+export const NOVELISATION_SOURCE_PART_MAX_CHARS = 12000;
+const NOVELISATION_CONTINUITY_TAIL_CHARS = 2400;
+
+function splitOversizedLine(line: string, maxChars: number): string[] {
+	const parts: string[] = [];
+	let remaining = line.trim();
+
+	while (remaining.length > maxChars) {
+		let cutAt = remaining.lastIndexOf(" ", maxChars);
+		if (cutAt < Math.floor(maxChars * 0.6)) {
+			cutAt = maxChars;
+		}
+		parts.push(remaining.slice(0, cutAt).trim());
+		remaining = remaining.slice(cutAt).trimStart();
+	}
+
+	if (remaining) {
+		parts.push(remaining);
+	}
+
+	return parts;
+}
+
+export function splitNovelisationChapterSource(
+	transcript: string,
+	maxChars = NOVELISATION_SOURCE_PART_MAX_CHARS,
+): string[] {
+	const normalized = transcript.trim();
+	if (!normalized) {
+		return [];
+	}
+	if (normalized.length <= maxChars) {
+		return [normalized];
+	}
+
+	const parts: string[] = [];
+	let current = "";
+
+	const flushCurrent = () => {
+		if (current.trim()) {
+			parts.push(current.trim());
+		}
+		current = "";
+	};
+
+	for (const rawLine of normalized.split("\n")) {
+		const line = rawLine.trimEnd();
+		const candidate = current ? `${current}\n${line}` : line;
+		if (candidate.length <= maxChars) {
+			current = candidate;
+			continue;
+		}
+
+		flushCurrent();
+		if (line.length <= maxChars) {
+			current = line;
+			continue;
+		}
+
+		const oversizedParts = splitOversizedLine(line, maxChars);
+		for (let index = 0; index < oversizedParts.length; index += 1) {
+			const part = oversizedParts[index]!;
+			if (index === oversizedParts.length - 1) {
+				current = part;
+			} else {
+				parts.push(part);
+			}
+		}
+	}
+
+	flushCurrent();
+	return parts;
+}
+
+function getContinuityTail(text: string) {
+	const trimmed = text.trim();
+	return trimmed.length <= NOVELISATION_CONTINUITY_TAIL_CHARS
+		? trimmed
+		: trimmed.slice(-NOVELISATION_CONTINUITY_TAIL_CHARS);
+}
+
+async function generateNovelisationChapter(params: {
+	preset: AiDocumentPreset;
+	customPrompt?: string;
+	sourceLabel: string;
+	segment: ChapterSourceSegment;
+	generateChunk: GenerateChunk;
+	signal?: AbortSignal;
+}) {
+	const sourceParts = splitNovelisationChapterSource(params.segment.transcript);
+	if (!sourceParts.length) {
+		throw new Error(
+			`Novelisation generation failed: ${params.segment.label} had no source material.`,
+		);
+	}
+
+	let assembled = "";
+
+	for (let partIndex = 0; partIndex < sourceParts.length; partIndex += 1) {
+		if (params.signal?.aborted) {
+			throw new Error("Request aborted.");
+		}
+
+		const chapterMessages = buildAiDocumentMessages({
+			preset: params.preset,
+			customPrompt: params.customPrompt,
+			sourceLabel:
+			`${params.sourceLabel} — ${params.segment.label}` +
+			(sourceParts.length > 1 ? ` — part ${partIndex + 1}/${sourceParts.length}` : ""),
+			sourceMaterial: sourceParts[partIndex]!,
+			structure: "chapter-by-chapter",
+			section: "chapter",
+			chapterLabel: params.segment.label,
+			novelisationChapterPartContext: {
+				partIndex,
+				totalParts: sourceParts.length,
+				previousProseTail: partIndex > 0 ? getContinuityTail(assembled) : undefined,
+			},
+		});
+
+		const generatedPart = (await params.generateChunk(chapterMessages)).trim();
+		if (partIndex === 0) {
+			assertNovelisationChapterSection(generatedPart, params.segment.label);
+			assembled = generatedPart;
+			continue;
+		}
+
+		const continuation = stripLeadingNovelisationChapterHeading(generatedPart);
+		if (!continuation) {
+			throw new Error(
+				`Novelisation generation failed: ${params.segment.label} part ${partIndex + 1} contained no prose.`,
+			);
+		}
+		assembled = `${assembled.trim()}\n\n${continuation}`;
+	}
+
+	return assembled.trim();
+}
 
 export async function generateChapterStructuredDocument(params: {
 	preset: AiDocumentPreset;
@@ -98,10 +246,24 @@ export async function generateChapterStructuredDocument(params: {
 			throw new Error("Request aborted.");
 		}
 
-		const coverage = estimateChapterDiscussionCoverage(segment, normalizedSegments);
 		const stepId = `chapter-${index}`;
 		reportStep(stepId, "start");
 
+		if (isNovelisation) {
+			const section = await generateNovelisationChapter({
+				preset: params.preset,
+				customPrompt: params.customPrompt,
+				sourceLabel: params.sourceLabel,
+				segment,
+				generateChunk: params.generateChunk,
+				signal: params.signal,
+			});
+			chapterSections.push(section);
+			reportStep(stepId, "complete");
+			continue;
+		}
+
+		const coverage = estimateChapterDiscussionCoverage(segment, normalizedSegments);
 		const priorDiscussions = isPodcastBreakdown
 			? formatPriorDiscussionsForPrompt(normalizedSegments, chapterSections, index)
 			: "";
@@ -129,7 +291,12 @@ export async function generateChapterStructuredDocument(params: {
 	}
 
 	if (isNovelisation) {
-		return assembleNovelisationDocument(introduction, chapterSections);
+		const document = assembleNovelisationDocument(introduction, chapterSections);
+		assertNovelisationChapterCoverage(
+			document,
+			normalizedSegments.map((segment) => segment.label),
+		);
+		return document;
 	}
 
 	reportStep("epilogue", "start");

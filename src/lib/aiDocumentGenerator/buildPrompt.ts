@@ -11,6 +11,7 @@ import {
 	buildNovelisationChapterSectionPrompt,
 	buildNovelisationTitleSectionPrompt,
 	isNovelisationPreset,
+	type NovelisationChapterPartContext,
 } from "./novelisationPrompt";
 
 function isPodcastPreset(preset: AiDocumentPreset) {
@@ -31,6 +32,7 @@ export function buildAiDocumentMessages(params: {
 		coverage: ChapterCoverageGuide;
 		priorDiscussions: string;
 	};
+	novelisationChapterPartContext?: NovelisationChapterPartContext;
 }) {
 	const customInstructions =
 		params.preset.id === AI_DOCUMENT_CUSTOM_PRESET_ID
@@ -48,6 +50,7 @@ export function buildAiDocumentMessages(params: {
 					params.section,
 					params.chapterLabel,
 					params.podcastChapterContext,
+					params.novelisationChapterPartContext,
 				)
 			: "";
 
@@ -82,6 +85,7 @@ function buildChapterStructureInstructions(
 		coverage: ChapterCoverageGuide;
 		priorDiscussions: string;
 	},
+	novelisationChapterPartContext?: NovelisationChapterPartContext,
 ) {
 	if (isNovelisationPreset(preset.id)) {
 		if (section === "introduction") {
@@ -89,7 +93,10 @@ function buildChapterStructureInstructions(
 		}
 
 		if (section === "chapter" && chapterLabel?.trim()) {
-			return buildNovelisationChapterSectionPrompt(chapterLabel);
+			return buildNovelisationChapterSectionPrompt(
+				chapterLabel,
+				novelisationChapterPartContext,
+			);
 		}
 
 		if (section === "epilogue") {
