@@ -121,10 +121,14 @@ export function AiDocumentGeneratorTab() {
 	}, [storyId, stories]);
 
 	useEffect(() => {
+		if (selectedPreset.id === "novelisation") {
+			setStructure("chapter-by-chapter");
+			return;
+		}
 		if (selectedPreset.defaultStructure) {
 			setStructure(selectedPreset.defaultStructure);
 		}
-	}, [presetId, selectedPreset.defaultStructure]);
+	}, [presetId, selectedPreset.defaultStructure, selectedPreset.id]);
 
 	useEffect(() => {
 		if (!selectedPreset.supportsGeminiTts && outputFormat === "gemini-audio-wav") {
@@ -634,17 +638,27 @@ export function AiDocumentGeneratorTab() {
 							</Field>
 							<Field
 								label="Structure"
-								help="Chapter-by-chapter writes one section per story chapter. Single document merges everything into one file."
+								help={
+									selectedPreset.id === "novelisation"
+										? "Novelisations always generate one chapter at a time so long stories cannot be cut off by a single model response limit."
+										: "Chapter-by-chapter writes one section per story chapter. Single document merges everything into one file."
+								}
 							>
 								<SelectInput
 									value={structure}
 									onChange={(event) =>
 										setStructure(event.target.value as AiDocumentStructure)
 									}
-									disabled={isGenerating}
+									disabled={isGenerating || selectedPreset.id === "novelisation"}
 								>
-									<option value="chapter-by-chapter">Chapter-by-chapter breakdown</option>
-									<option value="single">Single document</option>
+									<option value="chapter-by-chapter">
+										{selectedPreset.id === "novelisation"
+											? "Chapter-by-chapter (required)"
+											: "Chapter-by-chapter breakdown"}
+									</option>
+									{selectedPreset.id !== "novelisation" ? (
+										<option value="single">Single document</option>
+									) : null}
 								</SelectInput>
 							</Field>
 						</div>
