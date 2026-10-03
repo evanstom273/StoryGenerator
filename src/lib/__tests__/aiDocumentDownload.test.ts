@@ -36,7 +36,7 @@ describe("aiDocumentDownload", () => {
 		const prepared = prepareAiDocumentJobDownload(job);
 		expect(prepared.filename).toBe("story-novelisation.epub");
 		expect(prepared.mimeType).toBe(EPUB_MIME_TYPE);
-		expect(prepared.content).toBeInstanceOf(Uint8Array);
+		expect(prepared.content).toBeInstanceOf(ArrayBuffer);
 	});
 
 	it("rejects jobs without stored markdown", () => {
