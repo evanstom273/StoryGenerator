@@ -398,7 +398,7 @@ export interface BackgroundJob {
     aiDocumentPresetId?: string;
     aiDocumentCustomPrompt?: string;
     aiDocumentStructure?: "single" | "chapter-by-chapter";
-    aiDocumentOutputFormat?: "markdown" | "gemini-audio-wav";
+    aiDocumentOutputFormat?: "markdown" | "epub" | "gemini-audio-wav";
     aiDocumentSourceType?: "story" | "upload";
     aiDocumentSourceStoryId?: EntityId;
     aiDocumentSourceLabel?: string;

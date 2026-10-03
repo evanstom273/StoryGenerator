@@ -1,5 +1,6 @@
 import { downloadFile } from "../download";
 import type { BackgroundJob } from "../../types/models";
+import { EPUB_MIME_TYPE, serializeNovelisationEpub } from "./epub";
 
 export function canDownloadAiDocumentJob(job: BackgroundJob) {
 	return (
@@ -9,12 +10,32 @@ export function canDownloadAiDocumentJob(job: BackgroundJob) {
 	);
 }
 
-export async function downloadAiDocumentJobResult(job: BackgroundJob) {
+export function prepareAiDocumentJobDownload(job: BackgroundJob) {
 	const filename = job.result?.aiDocumentFilename;
 	const markdown = job.result?.aiDocumentMarkdown;
 	if (!filename || !markdown) {
 		throw new Error("This document is no longer available to download.");
 	}
 
-	await downloadFile(filename, markdown, "text/markdown;charset=utf-8");
+	if (/\.epub$/i.test(filename)) {
+		const epubBytes = serializeNovelisationEpub(markdown);
+		const epubBuffer = new Uint8Array(epubBytes.byteLength);
+		epubBuffer.set(epubBytes);
+		return {
+			filename,
+			content: epubBuffer.buffer,
+			mimeType: EPUB_MIME_TYPE,
+		};
+	}
+
+	return {
+		filename,
+		content: markdown,
+		mimeType: "text/markdown;charset=utf-8",
+	};
+}
+
+export async function downloadAiDocumentJobResult(job: BackgroundJob) {
+	const prepared = prepareAiDocumentJobDownload(job);
+	await downloadFile(prepared.filename, prepared.content, prepared.mimeType);
 }

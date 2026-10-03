@@ -28,6 +28,7 @@ export interface AiDocumentPreset {
 	systemPrompt: string;
 	defaultStructure?: "single" | "chapter-by-chapter";
 	supportsGeminiTts?: boolean;
+	supportsEpub?: boolean;
 }
 
 const SHARED_RULES = [
@@ -69,6 +70,7 @@ Include setup, major turns, and where the story stands without spoiling beyond t
 		displayName: "Novelisation",
 		filenameStem: "novelisation",
 		defaultStructure: "chapter-by-chapter",
+		supportsEpub: true,
 		systemPrompt: buildNovelisationSystemPrompt(),
 	},
 	{
@@ -159,7 +161,7 @@ export function getAiDocumentPreset(id: AiDocumentPresetId): AiDocumentPreset {
 export function buildAiDocumentFilename(
 	stem: string,
 	storyTitle?: string,
-	extension: "md" | "wav" = "md",
+	extension: "md" | "epub" | "wav" = "md",
 ) {
 	const safeStem = stem.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 	const safeTitle = storyTitle
