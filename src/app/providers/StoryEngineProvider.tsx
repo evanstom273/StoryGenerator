@@ -4216,7 +4216,9 @@ export function StoryEngineProvider({
             customPrompt: job.payload?.aiDocumentCustomPrompt,
             sourceLabel,
             chapterSegments,
-            fullSourceMaterial: sourceMaterial,
+            fullSourceMaterial: preserveCompleteNovelisationChapters
+              ? sourceMaterial
+              : truncateAiDocumentSourceMaterial(sourceMaterial),
             generateChunk,
             onProgress: ({ steps }) => updateDocumentProgress(steps),
             signal,
@@ -5576,7 +5578,9 @@ export function StoryEngineProvider({
             customPrompt: input.customPrompt,
             sourceLabel,
             chapterSegments,
-            fullSourceMaterial: sourceMaterial,
+            fullSourceMaterial: preserveCompleteNovelisationChapters
+              ? sourceMaterial
+              : truncateAiDocumentSourceMaterial(sourceMaterial),
             generateChunk,
             onProgress: input.onProgress
               ? ({ steps }) => {
