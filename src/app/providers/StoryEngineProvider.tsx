@@ -5570,7 +5570,7 @@ export function StoryEngineProvider({
         };
 
         let markdown = "";
-        if (structure === "chapter-by-chapter" && chapterSegments.length > 1) {
+        if (structure === "chapter-by-chapter") {
           markdown = await generateChapterStructuredDocument({
             preset,
             customPrompt: input.customPrompt,
