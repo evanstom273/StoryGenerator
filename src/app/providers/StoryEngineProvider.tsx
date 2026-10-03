@@ -63,6 +63,7 @@ import {
 } from "../../lib/aiDocumentGenerator/presets";
 import { generateChapterStructuredDocument, resolveSourceMaterialForStructure } from "../../lib/aiDocumentGenerator/chapterGeneration";
 import { generateGeminiPodcastAudioFromMarkdown, planGeminiPodcastTtsChunks } from "../../lib/aiDocumentGenerator/geminiAudio";
+import { EPUB_MIME_TYPE, serializeNovelisationEpub } from "../../lib/aiDocumentGenerator/epub";
 import { resolveGeminiPodcastTtsSettings, resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
 import {
 	buildAudioFilenameFromMarkdownUpload,
@@ -4089,6 +4090,9 @@ export function StoryEngineProvider({
       const preset = getAiDocumentPreset(presetId);
       const structure = job.payload?.aiDocumentStructure ?? preset.defaultStructure ?? "single";
       const outputFormat = job.payload?.aiDocumentOutputFormat ?? "markdown";
+      if (outputFormat === "epub" && !preset.supportsEpub) {
+        throw new Error("EPUB export is only available for novelisations.");
+      }
       const providerType = settings.activeProviderType;
       const { apiKey, model } = await resolveAIProfile(providerType, undefined, "creation");
       const provider = createAIProvider(providerType);
@@ -4297,7 +4301,12 @@ export function StoryEngineProvider({
         };
       }
 
-      const filename = buildAiDocumentFilename(preset.filenameStem, storyTitle, "md");
+      const documentExtension = outputFormat === "epub" ? "epub" : "md";
+      const filename = buildAiDocumentFilename(
+        preset.filenameStem,
+        storyTitle,
+        documentExtension,
+      );
       return {
         filename,
         markdown,
@@ -5463,6 +5472,9 @@ export function StoryEngineProvider({
         const preset = getAiDocumentPreset(input.presetId);
         const structure = input.structure ?? preset.defaultStructure ?? "single";
         const outputFormat = input.outputFormat ?? "markdown";
+        if (outputFormat === "epub" && !preset.supportsEpub) {
+          throw new Error("EPUB export is only available for novelisations.");
+        }
 
         let sourceMaterial = "";
         let sourceLabel = "";
@@ -5594,6 +5606,17 @@ export function StoryEngineProvider({
             filename: buildAiDocumentFilename(preset.filenameStem, storyTitle, "wav"),
             mimeType: "audio/wav",
             content: wavBuffer,
+          };
+        }
+
+        if (outputFormat === "epub") {
+          const epubBytes = serializeNovelisationEpub(markdown);
+          const epubBuffer = new Uint8Array(epubBytes.byteLength);
+          epubBuffer.set(epubBytes);
+          return {
+            filename: buildAiDocumentFilename(preset.filenameStem, storyTitle, "epub"),
+            mimeType: EPUB_MIME_TYPE,
+            content: epubBuffer.buffer,
           };
         }
 
