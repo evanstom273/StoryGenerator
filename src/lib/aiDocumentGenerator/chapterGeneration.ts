@@ -26,6 +26,74 @@ import { buildChapterSegmentedSourceMaterial, buildSourceMaterialFromStoryBundle
 
 type GenerateChunk = (messages: Array<{ role: "system" | "user"; content: string }>) => Promise<string>;
 
+const NOVELISATION_CHAPTER_REQUEST_CHARS = 24000;
+
+function splitSourceForNovelisationRequests(source: string, maxChars = NOVELISATION_CHAPTER_REQUEST_CHARS) {
+	const trimmed = source.trim();
+	if (!trimmed || trimmed.length <= maxChars) {
+		return trimmed ? [trimmed] : [];
+	}
+
+	const lines = trimmed.split("\n");
+	const parts: string[] = [];
+	let current = "";
+
+	const pushCurrent = () => {
+		const value = current.trim();
+		if (value) {
+			parts.push(value);
+		}
+		current = "";
+	};
+
+	for (const line of lines) {
+		if (line.length > maxChars) {
+			pushCurrent();
+			for (let offset = 0; offset < line.length; offset += maxChars) {
+				parts.push(line.slice(offset, offset + maxChars));
+			}
+			continue;
+		}
+
+		const candidate = current ? `${current}\n${line}` : line;
+		if (candidate.length > maxChars) {
+			pushCurrent();
+			current = line;
+		} else {
+			current = candidate;
+		}
+	}
+	pushCurrent();
+	return parts;
+}
+
+function buildNovelisationPartSource(
+	part: string,
+	partIndex: number,
+	totalParts: number,
+	previousTail: string,
+) {
+	if (totalParts <= 1) {
+		return part;
+	}
+
+	return [
+		`This logical chapter is being adapted in ${totalParts} consecutive source parts.`,
+		`This request contains source part ${partIndex + 1} of ${totalParts}.`,
+		partIndex === 0
+			? "Start the chapter normally."
+			: "Continue the SAME chapter directly. Do not restart it and do not repeat its chapter heading.",
+		previousTail
+			? `Previous generated prose ends with this continuity reference (do not repeat it):\n${previousTail}`
+			: "",
+		"",
+		"Source for this part:",
+		part,
+	]
+		.filter(Boolean)
+		.join("\n\n");
+}
+
 export type ChapterDocumentProgressUpdate = {
 	steps: BackgroundJobStep[];
 };
@@ -268,25 +336,69 @@ export async function generateChapterStructuredDocument(params: {
 			? formatPriorDiscussionsForPrompt(normalizedSegments, chapterSections, index)
 			: "";
 
-		const chapterMessages = buildAiDocumentMessages({
-			preset: params.preset,
-			customPrompt: params.customPrompt,
-			sourceLabel: `${params.sourceLabel} — ${segment.label}`,
-			sourceMaterial: segment.transcript,
-			structure: "chapter-by-chapter",
-			section: "chapter",
-			chapterLabel: segment.label,
-			podcastChapterContext: isPodcastBreakdown
-				? {
-						chapterIndex: index,
-						totalChapters: normalizedSegments.length,
-						coverage,
-						priorDiscussions,
-					}
-				: undefined,
-		});
-		const section = await params.generateChunk(chapterMessages);
-		chapterSections.push(section.trim());
+		if (isNovelisation) {
+			const sourceParts = splitSourceForNovelisationRequests(segment.transcript);
+			const generatedParts: string[] = [];
+			for (let partIndex = 0; partIndex < sourceParts.length; partIndex += 1) {
+				if (params.signal?.aborted) {
+					throw new Error("Request aborted.");
+				}
+				const previousTail = generatedParts.length
+					? generatedParts[generatedParts.length - 1]!.slice(-1200)
+					: "";
+				const chapterMessages = buildAiDocumentMessages({
+					preset: params.preset,
+					customPrompt: params.customPrompt,
+					sourceLabel:
+						sourceParts.length > 1
+							? `${params.sourceLabel} — ${segment.label} — part ${partIndex + 1}/${sourceParts.length}`
+							: `${params.sourceLabel} — ${segment.label}`,
+					sourceMaterial: buildNovelisationPartSource(
+						sourceParts[partIndex]!,
+						partIndex,
+						sourceParts.length,
+						previousTail,
+					),
+					structure: "chapter-by-chapter",
+					section: "chapter",
+					chapterLabel: segment.label,
+					novelisationChapterPart:
+						sourceParts.length > 1
+							? {
+								partIndex,
+								totalParts: sourceParts.length,
+							}
+							: undefined,
+				});
+				const generatedPart = await params.generateChunk(chapterMessages);
+				generatedParts.push(
+					partIndex === 0
+						? generatedPart.trim()
+						: stripNovelisationChapterHeading(generatedPart),
+				);
+			}
+			chapterSections.push(generatedParts.filter(Boolean).join("\n\n").trim());
+		} else {
+			const chapterMessages = buildAiDocumentMessages({
+				preset: params.preset,
+				customPrompt: params.customPrompt,
+				sourceLabel: `${params.sourceLabel} — ${segment.label}`,
+				sourceMaterial: segment.transcript,
+				structure: "chapter-by-chapter",
+				section: "chapter",
+				chapterLabel: segment.label,
+				podcastChapterContext: isPodcastBreakdown
+					? {
+							chapterIndex: index,
+							totalChapters: normalizedSegments.length,
+							coverage,
+							priorDiscussions,
+						}
+					: undefined,
+			});
+			const section = await params.generateChunk(chapterMessages);
+			chapterSections.push(section.trim());
+		}
 		reportStep(stepId, "complete");
 	}
 
