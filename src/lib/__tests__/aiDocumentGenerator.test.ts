@@ -4,6 +4,7 @@ import {
 	AI_DOCUMENT_CUSTOM_PRESET_ID,
 	buildAiDocumentFilename,
 	getAiDocumentPreset,
+	resolveAiDocumentStructure,
 } from "../aiDocumentGenerator/presets";
 import { buildNovelisationSystemPrompt } from "../aiDocumentGenerator/novelisationPrompt";
 import { extractPodcastDialogueFromMarkdown } from "../aiDocumentGenerator/podcastScript";
@@ -34,6 +35,13 @@ describe("aiDocumentGenerator", () => {
 		expect(preset.systemPrompt).toContain("professional novel adaptor");
 		expect(preset.systemPrompt).toContain("FORMAT ADAPTATION");
 		expect(preset.systemPrompt).not.toContain("companion Markdown document");
+	});
+
+	it("forces novelisations to chapter-by-chapter even when single is requested", () => {
+		const preset = getAiDocumentPreset("novelisation");
+		expect(resolveAiDocumentStructure(preset, "single")).toBe("chapter-by-chapter");
+		expect(resolveAiDocumentStructure(preset, "chapter-by-chapter")).toBe("chapter-by-chapter");
+		expect(resolveAiDocumentStructure(getAiDocumentPreset("story-summary"), "single")).toBe("single");
 	});
 
 	it("includes novelisation chapter structure instructions", () => {
