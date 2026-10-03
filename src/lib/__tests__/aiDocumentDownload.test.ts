@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { canDownloadAiDocumentJob } from "../aiDocumentGenerator/download";
+import {
+	canDownloadAiDocumentJob,
+	prepareAiDocumentJobDownload,
+} from "../aiDocumentGenerator/download";
+import { EPUB_MIME_TYPE } from "../aiDocumentGenerator/epub";
 import type { BackgroundJob } from "../../types/models";
 
 function makeJob(overrides: Partial<BackgroundJob> = {}): BackgroundJob {
@@ -19,6 +23,20 @@ function makeJob(overrides: Partial<BackgroundJob> = {}): BackgroundJob {
 describe("aiDocumentDownload", () => {
 	it("allows download for completed markdown ai_document jobs", () => {
 		expect(canDownloadAiDocumentJob(makeJob())).toBe(true);
+	});
+
+	it("prepares EPUB bytes when a completed job uses an .epub filename", () => {
+		const job = makeJob({
+			result: {
+				aiDocumentFilename: "story-novelisation.epub",
+				aiDocumentMarkdown: "# Story\n\n## Chapter I\n\nOpening scene.",
+			},
+		});
+
+		const prepared = prepareAiDocumentJobDownload(job);
+		expect(prepared.filename).toBe("story-novelisation.epub");
+		expect(prepared.mimeType).toBe(EPUB_MIME_TYPE);
+		expect(prepared.content).toBeInstanceOf(Uint8Array);
 	});
 
 	it("rejects jobs without stored markdown", () => {
