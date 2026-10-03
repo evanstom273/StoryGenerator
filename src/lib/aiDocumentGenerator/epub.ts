@@ -35,20 +35,18 @@ function stripInlineMarkdown(value: string) {
 		.replace(/__([^_]+)__/g, "$1")
 		.replace(/\*([^*]+)\*/g, "$1")
 		.replace(/_([^_]+)_/g, "$1")
-		.replace(/\`([^\`]+)\`/g, "$1")
+		.replace(/`([^`]+)`/g, "$1")
 		.trim();
 }
 
 function renderInlineMarkdown(value: string) {
 	let html = escapeXml(value);
-	html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => {
-		return `<a href="${escapeXmlAttribute(href)}">${label}</a>`;
-	});
+	html = html.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 	html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 	html = html.replace(/__([^_]+)__/g, "<strong>$1</strong>");
 	html = html.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
 	html = html.replace(/_([^_\n]+)_/g, "<em>$1</em>");
-	html = html.replace(/\`([^\`]+)\`/g, "<code>$1</code>");
+	html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
 	return html;
 }
 
