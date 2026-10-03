@@ -18,9 +18,12 @@ export function prepareAiDocumentJobDownload(job: BackgroundJob) {
 	}
 
 	if (/\.epub$/i.test(filename)) {
+		const epubBytes = serializeNovelisationEpub(markdown);
+		const epubBuffer = new Uint8Array(epubBytes.byteLength);
+		epubBuffer.set(epubBytes);
 		return {
 			filename,
-			content: serializeNovelisationEpub(markdown),
+			content: epubBuffer.buffer,
 			mimeType: EPUB_MIME_TYPE,
 		};
 	}
