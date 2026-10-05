@@ -522,11 +522,17 @@ export function SettingsPage() {
           : "txt";
         let stem = baseStem;
         let suffix = 2;
-        while (usedNames.has(`${stem}.${extension}`)) stem = `${baseStem}-${suffix++}`;
-        const filename =
+        let filename =
           itemExportStoryFormat === "story-markdown"
             ? `${stem}-story.md`
             : `${stem}.${extension}`;
+        while (usedNames.has(filename)) {
+          stem = `${baseStem}-${suffix++}`;
+          filename =
+            itemExportStoryFormat === "story-markdown"
+              ? `${stem}-story.md`
+              : `${stem}.${extension}`;
+        }
         usedNames.add(filename);
         const content =
           itemExportStoryFormat === "story-markdown"
@@ -812,7 +818,7 @@ export function SettingsPage() {
             </div>
             <p className="mt-2 text-[13px] leading-6 text-ink-muted">
               The complete technical architecture and design reference for Story Engine â€” architecture,
-              data models, AI pipeline, story text rules, audiobook, and more.
+              data models, AI pipeline, story text rules, and more.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button variant="secondary" size="sm" onClick={() => void handleExportDesignDocument("markdown")}>
