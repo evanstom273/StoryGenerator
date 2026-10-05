@@ -3,9 +3,6 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { Button } from "../ui/Button";
 import { useStoryEngine } from "../../app/providers/StoryEngineProvider";
-import { resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
-import { buildMetaChatSpeechPlan } from "../../lib/storyText/messageSpeechText";
-import { MessagePlayButton } from "./MessagePlayButton";
 import { downloadFile } from "../../lib/download";
 import {
   getMetaChatReferenceDisplay,
@@ -72,7 +69,6 @@ export function MetaChatOverlay(props: {
   onClose: () => void;
 }) {
   const {
-    aiSettings,
     clearMetaChatDraft,
     getMetaChatJobs,
     getMetaChatDraft,
@@ -87,7 +83,6 @@ export function MetaChatOverlay(props: {
     stories,
     universes,
   } = useStoryEngine();
-  const narrationTts = resolveGeminiNarrationTtsSettings(aiSettings?.geminiNarrationTts);
   const isGlobalScope = isGlobalMetaChatScope(props.storyId);
   const story = getStoryById(props.storyId);
   const messages = useMemo(
@@ -365,12 +360,6 @@ export function MetaChatOverlay(props: {
                 <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
                   <div className="flex items-center gap-2">
                     <div>{message.role === "user" ? "You" : "MetaChat"}</div>
-                    {message.role === "assistant" ? (
-                      <MessagePlayButton
-                        playId={`metachat-${message.id}`}
-                        plan={buildMetaChatSpeechPlan(message.content, narrationTts)}
-                      />
-                    ) : null}
                   </div>
                   <div>{new Date(message.timestamp).toLocaleString()}</div>
                 </div>
