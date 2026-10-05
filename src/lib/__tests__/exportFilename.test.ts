@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createMetaChatExportFilename,
 	createStoryExportFilename,
+	createStoryTranscriptMarkdownFilename,
 	formatLocalExportTimestamp,
 } from "../exportFilename";
 
@@ -18,6 +19,14 @@ describe("exportFilename", () => {
 			new Date(2026, 7, 4, 17, 8),
 		);
 		expect(filename).toBe("wizard-detective-chronicles-archive-2026-08-04-1708.md");
+	});
+
+	it("uses a distinct Story Markdown filename", () => {
+		const filename = createStoryTranscriptMarkdownFilename(
+			"Wizard Detective Chronicles",
+			new Date(2026, 7, 4, 17, 8),
+		);
+		expect(filename).toBe("wizard-detective-chronicles-story-2026-08-04-1708.md");
 	});
 
 	it("includes timestamp for meta chat exports", () => {
