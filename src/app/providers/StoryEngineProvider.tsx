@@ -2603,8 +2603,6 @@ export function StoryEngineProvider({
         storyId,
         metaChatDraft: current?.metaChatDraft,
         metaChatReferences: current?.metaChatReferences ?? [],
-        characterTtsVoices: current?.characterTtsVoices,
-        characterTtsLabels: current?.characterTtsLabels,
         updatedAt: new Date().toISOString(),
         ...patch,
       };
