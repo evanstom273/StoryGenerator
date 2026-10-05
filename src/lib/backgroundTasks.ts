@@ -3,9 +3,6 @@ import type { AudiobookChapterSynthStatus } from "./ai/storyAudiobookProgress";
 import type { BackgroundJob, BackgroundJobStep, BackgroundJobStepStatus, BackgroundJobType } from "../types/models";
 
 export const BACKGROUND_TASK_JOB_TYPES = [
-	"story_audiobook",
-	"ai_document",
-	"podcast_audio",
 	"story_index",
 ] as const satisfies readonly BackgroundJobType[];
 
