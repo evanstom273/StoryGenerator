@@ -36,11 +36,10 @@ import {
 	listAutoBackupRecords,
 	type AutoBackupRecord,
 } from "../lib/autoBackupStorage";
-import { serializeStoryExport } from "../lib/storyExport";
+import { serializeStoryExport, serializeStoryTranscriptMarkdown } from "../lib/storyExport";
 import { formatDateTime } from "../lib/dates";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 import { TutorialSettingsTab } from "../components/settings/TutorialSettingsTab";
-import { AiDocumentGeneratorTab } from "../components/settings/AiDocumentGeneratorTab";
 import { ThemePicker } from "../components/settings/ThemePicker";
 import { ProviderSelect } from "../components/settings/ProviderSelect";
 import {
@@ -206,7 +205,7 @@ export function SettingsPage() {
   const [itemExportCharacterIds, setItemExportCharacterIds] = useState<string[]>([]);
   const [itemExportStoryIds, setItemExportStoryIds] = useState<string[]>([]);
   const [itemExportStoryFormat, setItemExportStoryFormat] = useState<
-    "json" | "markdown" | "txt" | "pdf"
+    "json" | "story-markdown" | "markdown" | "txt" | "pdf"
   >("json");
   const [itemExportStatus, setItemExportStatus] = useState<string | null>(null);
 
@@ -518,15 +517,27 @@ export function SettingsPage() {
         const baseStem = sanitizeFileStem(bundle.story.title) || "story-engine-story";
         const extension =
           itemExportStoryFormat === "json" ? "json"
-          : itemExportStoryFormat === "markdown" ? "md"
+          : itemExportStoryFormat === "story-markdown" || itemExportStoryFormat === "markdown" ? "md"
           : itemExportStoryFormat === "pdf" ? "pdf"
           : "txt";
         let stem = baseStem;
         let suffix = 2;
-        while (usedNames.has(`${stem}.${extension}`)) stem = `${baseStem}-${suffix++}`;
-        const filename = `${stem}.${extension}`;
+        let filename =
+          itemExportStoryFormat === "story-markdown"
+            ? `${stem}-story.md`
+            : `${stem}.${extension}`;
+        while (usedNames.has(filename)) {
+          stem = `${baseStem}-${suffix++}`;
+          filename =
+            itemExportStoryFormat === "story-markdown"
+              ? `${stem}-story.md`
+              : `${stem}.${extension}`;
+        }
         usedNames.add(filename);
-        const { content } = serializeStoryExport(bundle, itemExportStoryFormat);
+        const content =
+          itemExportStoryFormat === "story-markdown"
+            ? serializeStoryTranscriptMarkdown(bundle)
+            : serializeStoryExport(bundle, itemExportStoryFormat).content;
         files[filename] = new Uint8Array(await new Blob([content]).arrayBuffer());
       }
 
@@ -534,7 +545,7 @@ export function SettingsPage() {
         const [filename, bytes] = Object.entries(files)[0]!;
         const mimeType =
           itemExportStoryFormat === "json" ? "application/json"
-          : itemExportStoryFormat === "markdown" ? "text/markdown"
+          : itemExportStoryFormat === "story-markdown" || itemExportStoryFormat === "markdown" ? "text/markdown"
           : itemExportStoryFormat === "pdf" ? "application/pdf"
           : "text/plain";
         await downloadFile(filename, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, mimeType);
@@ -661,7 +672,7 @@ export function SettingsPage() {
   }
 
   const [activeTab, setActiveTab] = useState<
-    "theme" | "ai" | "data" | "storage" | "tutorial" | "documents"
+    "theme" | "ai" | "data" | "storage" | "tutorial"
   >("theme");
 
   useEffect(() => {
@@ -692,8 +703,6 @@ export function SettingsPage() {
     const tab = searchParams.get("tab");
     if (tab === "tutorial") {
       setActiveTab("tutorial");
-    } else if (tab === "documents") {
-      setActiveTab("documents");
     }
   }, [searchParams]);
 
@@ -703,7 +712,6 @@ export function SettingsPage() {
     { id: "data" as const, label: "Data" },
     { id: "storage" as const, label: "Storage" },
     { id: "tutorial" as const, label: "Tutorial" },
-    { id: "documents" as const, label: "AI Documents" },
   ];
 
   return (
@@ -810,7 +818,7 @@ export function SettingsPage() {
             </div>
             <p className="mt-2 text-[13px] leading-6 text-ink-muted">
               The complete technical architecture and design reference for Story Engine â€” architecture,
-              data models, AI pipeline, story text rules, audiobook, and more.
+              data models, AI pipeline, story text rules, and more.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button variant="secondary" size="sm" onClick={() => void handleExportDesignDocument("markdown")}>
@@ -985,7 +993,7 @@ export function SettingsPage() {
             <div className="mt-3">
               <Field
                 label="Maximum Concurrent Background Tasks"
-                hint="Long-running index, audiobook, document, and podcast jobs share this queue."
+                hint="Long-running story indexing jobs use this queue."
                 help="Lower values reduce API load; higher values finish queued jobs sooner when you run several at once."
               >
                 <SelectInput
@@ -1268,11 +1276,12 @@ export function SettingsPage() {
                   </Field>
                   <Field
                     label="Format"
-                    help="JSON keeps full machine-readable data. Markdown, TXT, and PDF are human-readable archives."
+                    help="Story Markdown is transcript-only. JSON and the archive formats include full story metadata."
                   >
-                    <SelectInput value={itemExportStoryFormat} onChange={(event) => setItemExportStoryFormat(event.target.value as "json" | "markdown" | "txt" | "pdf")}>
+                    <SelectInput value={itemExportStoryFormat} onChange={(event) => setItemExportStoryFormat(event.target.value as "json" | "story-markdown" | "markdown" | "txt" | "pdf")}>
                       <option value="json">JSON</option>
-                      <option value="markdown">Markdown</option>
+                      <option value="story-markdown">Story Markdown (transcript only)</option>
+                      <option value="markdown">Markdown archive</option>
                       <option value="txt">TXT</option>
                       <option value="pdf">PDF</option>
                     </SelectInput>
@@ -1497,7 +1506,6 @@ export function SettingsPage() {
 
       {activeTab === "tutorial" && <TutorialSettingsTab />}
 
-      {activeTab === "documents" && <AiDocumentGeneratorTab />}
     </div>
   );
 }

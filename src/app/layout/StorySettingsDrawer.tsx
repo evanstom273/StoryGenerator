@@ -5,13 +5,15 @@ import { Button } from "../../components/ui/Button";
 import { DRAWER_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../ui/motion";
 import { Panel } from "../../components/ui/Panel";
 import { downloadFile } from "../../lib/download";
-import { createStoryExportFilename } from "../../lib/exportFilename";
-import { AudiobookChapterProgressList } from "../../components/story/AudiobookChapterProgressList";
+import {
+  createStoryExportFilename,
+  createStoryTranscriptMarkdownFilename,
+} from "../../lib/exportFilename";
 import { ImportedCharactersPicker } from "../../components/story/ImportedCharactersPicker";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
 import { resolveVisibleProvider, shouldShowProviderPicker } from "../../lib/ai/providerConfig";
 import { ProviderSelect } from "../../components/settings/ProviderSelect";
-import { serializeStoryExport } from "../../lib/storyExport";
+import { serializeStoryExport, serializeStoryTranscriptMarkdown } from "../../lib/storyExport";
 import { normalizeStoryImportedCharacterIds } from "../../lib/storyImportedCharacters";
 import { getUniverseIds } from "../../lib/universeIds";
 import { buildStorySupportBundleZip } from "../../lib/supportBundle";
@@ -22,10 +24,7 @@ import { ThemePicker } from "../../components/settings/ThemePicker";
 import { useUiPrefs } from "../ui/UiPrefsContext";
 import { adultContentModeToLegacyMatureFictionMode, isAdultContentMode, resolveAdultContentMode } from "../../lib/ai/adultContentMode";
 import { getAdultContentProviderProfile } from "../../lib/ai/providerCapabilities";
-import { clampAudiobookParallelChapters, DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS, MAX_AUDIOBOOK_PARALLEL_CHAPTERS } from "../../lib/ai/storyAudiobookParallel";
-import { DEFAULT_AUDIOBOOK_PERFORMANCE_MODE, type AudiobookPerformanceMode } from "../../lib/ai/audiobookPerformance";
 import { cn } from "../../utils/cn";
-import { isAudiobookExportBackgroundJob } from "../../lib/backgroundTasks";
 
 type SettingsSectionIcon =
   | "edit"
@@ -142,14 +141,12 @@ function Section({
 export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const navigate = useNavigate();
   const { storySettingsOpen, setStorySettingsOpen } = useUiPrefs();
-  const { aiSettings, getStoryById, getUniverseById, getPlayerCharacterById, getPlayerCharactersForUniverse, exportStory, promoteStoryPlayerCharacter, cleanupDuplicatePlayerCharacters, createSequel, updateStory, deleteStory, getStoryAIConfig, saveStoryAIConfig, queueAudiobookJob, backgroundJobs, dismissJobNotice, jobNotice, audiobookExportStatus } = useStoryEngine();
+  const { aiSettings, getStoryById, getUniverseById, getPlayerCharacterById, getPlayerCharactersForUniverse, exportStory, promoteStoryPlayerCharacter, cleanupDuplicatePlayerCharacters, createSequel, updateStory, deleteStory, getStoryAIConfig, saveStoryAIConfig, dismissJobNotice, jobNotice } = useStoryEngine();
   const story = storyId ? getStoryById(storyId) : undefined;
   const playerCharacter = story ? getPlayerCharacterById(story.playerCharacterId) : undefined;
   const [fields, setFields] = useState({ title: story?.title ?? "", adultContentMode: resolveAdultContentMode(story), accentThemeKey: (story?.accentThemeKey ?? null) as AccentThemeKey | null, accentThemeCustom: story?.accentThemeCustom ?? themes.custom.accent, importedCharacterIds: normalizeStoryImportedCharacterIds(story?.importedCharacterIds) });
   const [providerType, setProviderType] = useState(() => resolveVisibleProvider(aiSettings?.activeProviderType));
   const [model, setModel] = useState(() => aiSettings?.defaultModels?.[resolveVisibleProvider(aiSettings?.activeProviderType)] ?? getProviderDefaultModel(resolveVisibleProvider(aiSettings?.activeProviderType)));
-  const [parallelChapters, setParallelChapters] = useState(DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS);
-  const [performanceMode, setPerformanceMode] = useState<AudiobookPerformanceMode>(DEFAULT_AUDIOBOOK_PERFORMANCE_MODE);
   const [exportStage, setExportStage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -186,8 +183,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       const provider = resolveVisibleProvider(config?.providerType ?? aiSettings?.activeProviderType);
       setProviderType(provider);
       setModel(config?.model?.trim() || aiSettings?.defaultModels?.[provider]?.trim() || getProviderDefaultModel(provider));
-      setParallelChapters(config?.audiobookParallelChapters ?? DEFAULT_AUDIOBOOK_PARALLEL_CHAPTERS);
-      setPerformanceMode(config?.audiobookPerformanceMode ?? DEFAULT_AUDIOBOOK_PERFORMANCE_MODE);
     }).catch(() => {});
   }, [story, aiSettings, getStoryAIConfig]);
 
@@ -206,7 +201,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     event.preventDefault();
     if (!story) return;
     setSavingAI(true); setError(null);
-    try { await saveStoryAIConfig({ storyId: story.id, providerType, model, audiobookParallelChapters: clampAudiobookParallelChapters(parallelChapters), audiobookPerformanceMode: performanceMode }); setNotice("AI settings saved."); }
+    try { await saveStoryAIConfig({ storyId: story.id, providerType, model }); setNotice("AI settings saved."); }
     catch (e) { setError(e instanceof Error ? e.message : "Unable to save AI settings."); }
     finally { setSavingAI(false); }
   }
@@ -225,18 +220,32 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     finally { setExportStage(null); }
   }
 
+  async function exportStoryMarkdown() {
+    if (!story) return;
+    setExportStage("Assembling transcript…"); setError(null);
+    try {
+      const bundle = await exportStory(story.id);
+      if (!bundle) throw new Error("Unable to assemble export data.");
+      const content = serializeStoryTranscriptMarkdown(bundle);
+      await downloadFile(
+        createStoryTranscriptMarkdownFilename(story.title),
+        content,
+        "text/markdown",
+      );
+      setNotice("Story Markdown saved.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to export Story Markdown.");
+    } finally {
+      setExportStage(null);
+    }
+  }
+
   async function exportSupport() {
     if (!story) return;
     setExportStage("Generating support bundle…"); setError(null);
     try { const bundle = await exportStory(story.id); if (!bundle) throw new Error("Unable to assemble export data."); const zip = await buildStorySupportBundleZip(bundle); await downloadFile(zip.filename, zip.content, zip.mimeType); setNotice("Support bundle saved."); }
     catch (e) { setError(e instanceof Error ? e.message : "Unable to export support bundle."); }
     finally { setExportStage(null); }
-  }
-
-  async function saveAudiobook() {
-    if (!story) return;
-    try { await queueAudiobookJob(story.id); setNotice("Audiobook save queued."); }
-    catch (e) { setError(e instanceof Error ? e.message : "Unable to queue audiobook save."); }
   }
 
   async function deleteCurrentStory() {
@@ -288,9 +297,6 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     };
   }, [storySettingsOpen]);
 
-  const activeAudiobookJob = story ? backgroundJobs.find((job) => isAudiobookExportBackgroundJob(job) && job.storyId === story.id && (job.status === "queued" || job.status === "running")) : undefined;
-  const audiobookProgress = audiobookExportStatus && audiobookExportStatus.storyId === story?.id ? audiobookExportStatus.progress ?? null : null;
-
   return <div
     className={cn(
       OVERLAY_BACKDROP_CLASS,
@@ -331,21 +337,19 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           <Section title="Content Mode" description="Story-specific content boundaries" icon="content" onOpen={scrollSectionIntoView}>
             <label className="block space-y-2"><FieldLabel label="Adult content mode" help="Choose the intended content boundary." labelClassName="text-xs text-ink-muted" /><select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={fields.adultContentMode} onChange={(e) => { const value = e.target.value; if (isAdultContentMode(value)) setFields((current) => ({ ...current, adultContentMode: value })); }}><option value="standard">Standard</option><option value="mature_non_graphic">Mature fiction (non-graphic)</option><option value="explicit_consensual_adults">Explicit fiction (consenting adults)</option></select><div className="mt-2 text-sm text-ink-muted">{getAdultContentProviderProfile(providerType).explanation}</div></label>
           </Section>
-          <Section title="AI Settings" description="Model and audiobook behaviour" icon="ai" onOpen={scrollSectionIntoView}>
+          <Section title="AI Settings" description="Story model override" icon="ai" onOpen={scrollSectionIntoView}>
             <form className="space-y-3" onSubmit={saveAI}>
               {shouldShowProviderPicker() ? <ProviderSelect value={providerType} onChange={(event) => setProviderType(event.target.value as typeof providerType)} /> : null}
               <select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={model} onChange={(e) => setModel(e.target.value)}>{getProviderModels(providerType).map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select>
-              <label className="block space-y-2"><FieldLabel label="Audiobook voices" help="Choose one narrator for the whole story or separate voices for character dialogue." labelClassName="text-xs text-ink-muted" /><select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={performanceMode} onChange={(e) => setPerformanceMode(e.target.value as AudiobookPerformanceMode)}><option value="single_narrator">Single narrator</option><option value="radio_drama">Narrator + character voices</option></select></label>\n              <label className="block text-sm text-ink-muted">Parallel audiobook chapters<input className="mt-2 w-full" type="range" min={1} max={MAX_AUDIOBOOK_PARALLEL_CHAPTERS} value={parallelChapters} onChange={(e) => setParallelChapters(clampAudiobookParallelChapters(Number(e.target.value)))} /></label>
               <Button type="submit" className="w-full" disabled={savingAI}>{savingAI ? "Saving…" : "Save AI Settings"}</Button>
             </form>
           </Section>
-          <Section title="Export" description="Downloads, support files and audio" icon="export" onOpen={scrollSectionIntoView}>
+          <Section title="Export" description="Story files and support data" icon="export" onOpen={scrollSectionIntoView}>
             {exportStage ? <div className="text-xs text-ink-muted">{exportStage}</div> : null}
-            {audiobookProgress ? <AudiobookChapterProgressList progress={audiobookProgress} /> : null}
             <div className="grid gap-2">
+              <Button variant="secondary" onClick={() => void exportStoryMarkdown()} disabled={Boolean(exportStage)}><DownloadIcon className="h-4 w-4" />Story Markdown</Button>
               {(["json", "markdown", "txt", "pdf"] as const).map((format) => <Button key={format} variant="secondary" onClick={() => void exportAs(format)} disabled={Boolean(exportStage)}><DownloadIcon className="h-4 w-4" />Export {format.toUpperCase()}</Button>)}
               <Button variant="secondary" onClick={() => void exportSupport()} disabled={Boolean(exportStage)}><DownloadIcon className="h-4 w-4" />Export Support Bundle</Button>
-              <Button variant="secondary" onClick={() => void saveAudiobook()} disabled={Boolean(activeAudiobookJob)}>Save Story Audiobook</Button>
             </div>
           </Section>
           <Section title="Create Sequel" description="Continue with inherited Story State" icon="sequel" onOpen={scrollSectionIntoView}>

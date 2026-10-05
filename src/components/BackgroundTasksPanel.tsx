@@ -25,10 +25,6 @@ import {
 	partitionBackgroundTasks,
 } from "../lib/backgroundTasks";
 import type { BackgroundJob } from "../types/models";
-import {
-	canDownloadAiDocumentJob,
-	downloadAiDocumentJobResult,
-} from "../lib/aiDocumentGenerator/download";
 import { Button } from "./ui/Button";
 import { cn } from "../utils/cn";
 import {
@@ -153,7 +149,6 @@ const TaskRow = memo(function TaskRow({
 	storyLabel,
 	onNavigate,
 	onCancel,
-	onDownload,
 	onMoveUp,
 	onMoveDown,
 	showCancel,
@@ -165,7 +160,6 @@ const TaskRow = memo(function TaskRow({
 	storyLabel: string;
 	onNavigate: () => void;
 	onCancel?: () => void;
-	onDownload?: () => void;
 	onMoveUp?: () => void;
 	onMoveDown?: () => void;
 	showCancel?: boolean;
@@ -178,7 +172,6 @@ const TaskRow = memo(function TaskRow({
 	const isFailed = job.status === "failed";
 	const isCancelled = job.status === "cancelled";
 	const isComplete = job.status === "complete";
-	const canDownload = canDownloadAiDocumentJob(job);
 
 	return (
 		<div
@@ -211,13 +204,13 @@ const TaskRow = memo(function TaskRow({
 						) : null}
 						{isComplete ? (
 							<div className="mt-1 text-xs text-emerald-300/90">
-								{canDownload ? "Ready to download" : "Complete"}
+								Complete
 							</div>
 						) : null}
 					</div>
 				</div>
 			</button>
-			{showReorder || showCancel || (isComplete && canDownload && onDownload) ? (
+			{showReorder || showCancel ? (
 				<div className="mt-2 flex items-center justify-end gap-1">
 					{showReorder ? (
 						<div className="mr-auto flex items-center gap-1">
@@ -250,18 +243,6 @@ const TaskRow = memo(function TaskRow({
 								</svg>
 							</button>
 						</div>
-					) : null}
-					{isComplete && canDownload && onDownload ? (
-						<Button
-							variant="secondary"
-							size="sm"
-							onClick={(event) => {
-								event.stopPropagation();
-								onDownload();
-							}}
-						>
-							Download
-						</Button>
 					) : null}
 					{showCancel && onCancel ? (
 						<Button variant="ghost" size="sm" onClick={onCancel}>
@@ -302,11 +283,6 @@ function BackgroundTasksPanelBody({
 		[navigate, onClose],
 	);
 
-	const downloadJobDocument = useCallback((job: BackgroundJob) => {
-		void downloadAiDocumentJobResult(job).catch((error) => {
-			window.alert(error instanceof Error ? error.message : "Unable to download document.");
-		});
-	}, []);
 
 	return (
 		<div className={cn("flex min-h-0 flex-col", className)}>
@@ -374,11 +350,6 @@ function BackgroundTasksPanelBody({
 								job={job}
 								storyLabel={getBackgroundTaskStoryLabel(job, storyTitleById)}
 								onNavigate={() => navigateToJob(job)}
-								onDownload={
-									canDownloadAiDocumentJob(job)
-										? () => downloadJobDocument(job)
-										: undefined
-								}
 							/>
 						))}
 					</section>

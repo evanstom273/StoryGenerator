@@ -1,6 +1,108 @@
 import { describe, expect, it } from "vitest";
-import { serializeStoryExport } from "../storyExport";
+import { serializeStoryExport, serializeStoryTranscriptMarkdown } from "../storyExport";
 import type { StoryExportBundle } from "../../types/models";
+
+describe("Story Markdown transcript-only export", () => {
+  it("exports only the chronological transcript with no archive metadata or indexes", () => {
+    const bundle: StoryExportBundle = {
+      exportedAt: "2026-10-05T12:00:00.000Z",
+      story: {
+        id: "story-transcript",
+        title: "Transcript Only",
+        universeId: "uni-1",
+        playerCharacterId: "pc-1",
+        createdAt: "2026-10-05T10:00:00.000Z",
+        updatedAt: "2026-10-05T12:00:00.000Z",
+        currentSummary: "SECRET SUMMARY THAT MUST NOT EXPORT",
+      },
+      universe: {
+        id: "uni-1",
+        name: "Secret Universe Metadata",
+        description: "Must not appear.",
+        wikiUrl: "",
+        createdAt: "2026-10-05T10:00:00.000Z",
+        updatedAt: "2026-10-05T10:00:00.000Z",
+      },
+      playerCharacter: {
+        id: "pc-1",
+        name: "Jamie Test",
+        age: "15",
+        gender: "Male",
+        species: "Human",
+        pronouns: "he/him",
+        appearance: "SECRET APPEARANCE",
+        personality: "",
+        background: "",
+        goals: "",
+        notes: "",
+        createdAt: "2026-10-05T10:00:00.000Z",
+        updatedAt: "2026-10-05T10:00:00.000Z",
+      },
+      messages: [
+        {
+          id: "msg-2",
+          storyId: "story-transcript",
+          role: "assistant",
+          speakerName: "Rosa",
+          speakerType: "canon",
+          content: `She smiles. "Second line."`,
+          timestamp: "2026-10-05T11:02:00.000Z",
+        },
+        {
+          id: "msg-1",
+          storyId: "story-transcript",
+          role: "user",
+          speakerName: "Jamie",
+          speakerType: "player",
+          content: `"First line."`,
+          timestamp: "2026-10-05T11:01:00.000Z",
+          chapterBoundary: { kind: "start", label: "Chapter I" },
+        },
+      ],
+      storyState: {
+        id: "state-1",
+        storyId: "story-transcript",
+        stateJson: '{"secret":"STORY STATE MUST NOT EXPORT"}',
+        updatedAt: "2026-10-05T12:00:00.000Z",
+      },
+      storyIndex: {
+        storyId: "story-transcript",
+        indexedMessageCount: 2,
+        updatedAt: "2026-10-05T12:00:00.000Z",
+        chapterSummaries: [{
+          chapterId: "ch-1",
+          chapterLabel: "Chapter I",
+          summary: "INDEX SUMMARY MUST NOT EXPORT",
+          sourceMessageIds: ["msg-1", "msg-2"],
+          lastIndexedMessageId: "msg-2",
+          updatedAt: "2026-10-05T12:00:00.000Z",
+        }],
+        characters: [],
+        relationships: [],
+      },
+    };
+
+    const content = serializeStoryTranscriptMarkdown(bundle);
+
+    expect(content).toContain('Jamie: "First line."');
+    expect(content).toContain('Rosa: She smiles. "Second line."');
+    expect(content.indexOf('Jamie: "First line."')).toBeLessThan(
+      content.indexOf('Rosa: She smiles. "Second line."'),
+    );
+
+    expect(content).not.toContain("# Transcript Only");
+    expect(content).not.toContain("## Story Details");
+    expect(content).not.toContain("## Universe");
+    expect(content).not.toContain("## Player Character");
+    expect(content).not.toContain("## Story Index");
+    expect(content).not.toContain("## Transcript");
+    expect(content).not.toContain("SECRET SUMMARY THAT MUST NOT EXPORT");
+    expect(content).not.toContain("Secret Universe Metadata");
+    expect(content).not.toContain("SECRET APPEARANCE");
+    expect(content).not.toContain("STORY STATE MUST NOT EXPORT");
+    expect(content).not.toContain("INDEX SUMMARY MUST NOT EXPORT");
+  });
+});
 
 describe("storyExport markdown", () => {
   it("includes story index with chapter summaries, characters, and relationships in markdown export", () => {

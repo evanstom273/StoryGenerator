@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { useMemo } from "react";
-import { MediaLibraryPanel } from "../components/mediaLibrary/MediaLibraryPanel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { useUiPrefs } from "../app/ui/UiPrefsContext";
 import { formatRelativeTime } from "../lib/dates";
@@ -354,10 +353,6 @@ export function HomePage() {
             </div>
           </div>
 
-          {/* Media Library */}
-          <div className="flex flex-1 flex-col overflow-hidden rounded-[10px] border border-divider/[0.45] bg-app px-[18px] py-[15px]">
-            <MediaLibraryPanel compact className="flex-1" />
-          </div>
         </div>
       </div>
     </div>

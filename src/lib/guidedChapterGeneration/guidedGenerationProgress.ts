@@ -1,4 +1,3 @@
-import { formatElapsedSeconds } from "../ai/storyAudiobookProgress";
 import type { GuidedChapterProgressChapter, GuidedChapterProgressUpdate } from "./runGuidedChapters";
 
 export type GuidedChapterUiStatus = {
@@ -63,5 +62,9 @@ export function formatGuidedElapsedLabel(startedAtMs?: number): string {
 	if (!startedAtMs) {
 		return "0s";
 	}
-	return formatElapsedSeconds(startedAtMs);
+	const seconds = Math.max(0, Math.round((Date.now() - startedAtMs) / 1000));
+	if (seconds < 60) return `${seconds}s`;
+	const minutes = Math.floor(seconds / 60);
+	const remainder = seconds % 60;
+	return remainder ? `${minutes}m ${remainder}s` : `${minutes}m`;
 }

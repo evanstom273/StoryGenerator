@@ -1,5 +1,5 @@
 import type { StoryMessage } from "../../types/models";
-import type { CharacterTtsGenderMap } from "../ai/characterTtsVoices";
+import type { CharacterGenderMap } from "../ai/characterGenderHints";
 import { isDeniedSpeakerLabel } from "./speakerLabels";
 import { standardizeAssistantStoryText } from "./storyStandardizer";
 import {
@@ -976,7 +976,7 @@ function buildSanitizerPlayerIdentity(args: {
 	legalName?: string | null;
 	sceneName?: string | null;
 	pronouns?: string | null;
-	characterGenders?: CharacterTtsGenderMap | null;
+	characterGenders?: CharacterGenderMap | null;
 	knownTies?: string[] | null;
 	aliases?: string[] | null;
 	transcriptText?: string | null;
@@ -1003,7 +1003,7 @@ export function applyStoryLocalIdentityToAssistantTranscript(
 		legalName: string;
 		sceneName: string;
 		pronouns?: string | null;
-		characterGenders?: CharacterTtsGenderMap | null;
+		characterGenders?: CharacterGenderMap | null;
 		knownTies?: string[] | null;
 		transcriptText?: string | null;
 		aliases?: string[] | null;
@@ -1063,7 +1063,7 @@ export function sanitizeMessageForDisplay(args: {
   playerPronouns?: string | null;
   playerAliases?: string[] | null;
   knownTies?: string[] | null;
-  characterGenders?: CharacterTtsGenderMap | null;
+  characterGenders?: CharacterGenderMap | null;
   applyActionBeatFormatting?: boolean;
 }) {
   // Kept as a compatibility wrapper for call sites outside the main transcript
@@ -1240,7 +1240,7 @@ export function prevalidateAssistantTranscript(args: {
 	playerName?: string | null;
 	playerSceneName?: string | null;
 	playerPronouns?: string | null;
-	characterGenders?: CharacterTtsGenderMap | null;
+	characterGenders?: CharacterGenderMap | null;
 	latestUserMessage?: string | null;
 	knownTies?: string[] | null;
 	transcriptText?: string | null;
@@ -1309,7 +1309,7 @@ export function validateAssistantTranscriptForSave(args: {
 	playerSceneName?: string | null;
 	playerPronouns?: string | null;
 	playerAliases?: string[] | null;
-	characterGenders?: CharacterTtsGenderMap | null;
+	characterGenders?: CharacterGenderMap | null;
 	allowDirectedPlayerControl?: boolean;
 	skipSceneStateCheck?: boolean;
 	hiddenDialoguePattern: RegExp;

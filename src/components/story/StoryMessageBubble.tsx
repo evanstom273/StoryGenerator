@@ -5,7 +5,6 @@ import { parseActionSegments } from "../../lib/storyText/parseActionSegments";
 import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
-import type { CharacterTtsGenderMap } from "../../lib/ai/characterTtsVoices";
 import { isDirectorMessage, isPlayerLegalNameDirectorBeat, resolveUserTranscriptSpeaker } from "../../lib/storyText/directorMode";
 import { cn } from "../../utils/cn";
 import { Button } from "../ui/Button";
@@ -17,7 +16,6 @@ interface StoryMessageBubbleProps {
   playerSceneName?: string;
   playerPronouns?: string;
   playerAliases?: string[];
-  characterGenders?: CharacterTtsGenderMap;
   onEdit: (message: StoryMessage) => void;
   onQuickEdit?: (message: StoryMessage) => void;
   onRegenerate?: (message: StoryMessage) => void;

@@ -5,11 +5,9 @@ import { PageHeader } from "../components/PageHeader";
 import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
 import { StoryMessageBubble } from "../components/story/StoryMessageBubble";
 import { StoryTranscriptView } from "../components/story/StoryTranscriptView";
-import { StoryAudioPlayerBar } from "../components/story/StoryAudioPlayerBar";
 import { GuidedChapterProgressBar } from "../components/story/GuidedChapterProgressBar";
 import { StoryWorkspaceViewportPortal } from "../components/story/StoryWorkspaceViewportPortal";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
-import { useGeminiTtsPlayback } from "../app/providers/GeminiTtsPlaybackProvider";
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
 import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
 import { StoryIndexDrawer } from "../components/story/StoryIndexDrawer";
@@ -27,7 +25,6 @@ import { storyHasGeneratedScenes } from "../lib/ai/playerAssistContext";
 import { formatDirectorNoteComposerHint } from "../lib/storyText/directorSyntax";
 import { parseSlashParticipateCommand } from "../lib/storyText/directorIntent";
 import { normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity } from "../lib/playerCharacterPrompt";
-import { buildCharacterGenderHintsFromStoryState } from "../lib/ai/characterTtsVoices";
 import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
@@ -136,13 +133,6 @@ export function StoryWorkspacePage() {
     storySettingsOpen,
     setStorySettingsOpen,
   } = useUiPrefs();
-  const { status: ttsPlaybackStatus, activeId: ttsActiveId } = useGeminiTtsPlayback();
-  const audioPlayerVisible =
-    Boolean(ttsActiveId) &&
-    (ttsPlaybackStatus === "loading" ||
-      ttsPlaybackStatus === "ready" ||
-      ttsPlaybackStatus === "playing" ||
-      ttsPlaybackStatus === "error");
   const {
     chapters: engineChapters,
     createMessage,
@@ -188,21 +178,6 @@ export function StoryWorkspacePage() {
   }, [messages, playerCharacter, storyStateJson]);
   const playerSceneName = playerIdentity?.sceneName ?? "";
   const playerEffectivePronouns = playerIdentity?.pronouns ?? playerCharacter?.pronouns ?? "";
-  const characterGenders = useMemo(() => {
-    if (!playerCharacter) {
-      return {};
-    }
-
-    return buildCharacterGenderHintsFromStoryState(
-      storyStateJson ? safeParseStoryStateData(storyStateJson) : null,
-      {
-        playerName: playerCharacter.name,
-        playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
-        playerGender: playerCharacter.gender,
-        playerPronouns: playerEffectivePronouns,
-      },
-    );
-  }, [playerCharacter, storyStateJson]);
   const resolvedParticipants = useMemo(() => {
     if (!playerCharacter || !playerIdentity) {
       return [];
@@ -1237,7 +1212,6 @@ export function StoryWorkspacePage() {
       <StoryWorkspaceViewportPortal>
         <div className="fixed bottom-10 left-0 right-0 z-50 flex flex-col lg:left-[266px]">
           <GuidedChapterProgressBar storyId={storyId} />
-          <StoryAudioPlayerBar className="relative border-t-0 shadow-none" />
         </div>
         <div
           className={[
@@ -1352,8 +1326,7 @@ export function StoryWorkspacePage() {
                       playerSceneName={playerSceneName}
                       playerPronouns={playerEffectivePronouns}
                       playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter.aliases)}
-                      characterGenders={characterGenders}
-                      onEdit={populateComposerFromMessage}
+                              onEdit={populateComposerFromMessage}
                       onQuickEdit={handleOpenAssistantEdit}
                       onRegenerate={handleRegenerateLastAssistant}
                       isLatestAssistant={message.id === latestAssistantMessage?.id}
@@ -1373,8 +1346,6 @@ export function StoryWorkspacePage() {
               playerSceneName={playerSceneName}
               playerPronouns={playerEffectivePronouns}
               playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter.aliases)}
-              characterGenders={characterGenders}
-              storyTitle={activeStory.title}
               chapters={storyChapters}
               highlightedMessageId={highlightedMessageId}
               resolvedParticipants={resolvedParticipants}
@@ -1778,7 +1749,7 @@ export function StoryWorkspacePage() {
             onClick={handleJumpToLatestChapter}
             className={cn(
               "fixed left-4 z-40 rounded-full border border-accent/30 bg-app-elevated/95 px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-soft shadow-hero backdrop-blur-sm transition hover:border-accent hover:bg-accent/15 hover:text-ink lg:left-[282px]",
-              audioPlayerVisible ? "bottom-40" : "bottom-12",
+              "bottom-12",
             )}
           >
             Jump to Latest Chapter
