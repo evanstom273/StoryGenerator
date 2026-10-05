@@ -1649,6 +1649,10 @@ async function persistStoryLocalPlayerIdentity(args: {
 }
 
 function rethrowUserFacingGenerationError(error: unknown, providerType: string): never {
+  if (isGenerationFailureError(error)) {
+    throw error;
+  }
+
   throw new GenerationFailureError(
     createGenerationFailure(error, {
       providerName: providerType,
