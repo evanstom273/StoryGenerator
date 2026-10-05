@@ -50,11 +50,3 @@ export function createMetaChatExportFilename(
 	const extension = format === "markdown" ? "md" : format;
 	return `${slug}-meta-chat-${timestamp}.${extension}`;
 }
-
-export function buildStoryAudiobookFilename(storyTitle: string, exportedAt = new Date()) {
-	const slug = sanitizeExportSlug(storyTitle) || "story";
-	const timestamp = formatLocalExportTimestamp(exportedAt);
-	return `${slug}-story-audiobook-${timestamp}.wav`;
-}
-
-
