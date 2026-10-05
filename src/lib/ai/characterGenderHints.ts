@@ -3,7 +3,7 @@ import type { StoryStateData, StoryStateDataV2 } from "../../types/models";
 export type CharacterGenderHint = "male" | "female";
 export type CharacterGenderMap = Record<string, CharacterGenderHint>;
 
-function normalizeCharacterKey(name: string) {
+export function normalizeCharacterKey(name: string) {
   return name.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
@@ -29,6 +29,28 @@ export function inferCharacterGenderHint(
     return "female";
   }
 
+  return undefined;
+}
+
+
+export function inferGenderFromPronounsInText(
+  text: string,
+): CharacterGenderHint | undefined {
+  const normalized = text.toLowerCase();
+  let maleSignals = 0;
+  let femaleSignals = 0;
+
+  if (/\bhe\b/.test(normalized)) maleSignals += 1;
+  if (/\bhis\b/.test(normalized)) maleSignals += 1;
+  if (/\bhim\b/.test(normalized)) maleSignals += 1;
+  if (/\bhimself\b/.test(normalized)) maleSignals += 1;
+  if (/\bshe\b/.test(normalized)) femaleSignals += 1;
+  if (/\bher\b/.test(normalized)) femaleSignals += 1;
+  if (/\bhers\b/.test(normalized)) femaleSignals += 1;
+  if (/\bherself\b/.test(normalized)) femaleSignals += 1;
+
+  if (maleSignals > 0 && femaleSignals === 0) return "male";
+  if (femaleSignals > 0 && maleSignals === 0) return "female";
   return undefined;
 }
 
