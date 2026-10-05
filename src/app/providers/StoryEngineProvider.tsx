@@ -178,7 +178,7 @@ import {
   resolveUserSpeakerNameForContinue,
   resolveUserSpeakerTypeForContinue,
 } from "../../lib/storyText/continueMode";
-import { buildCharacterGenderHintsFromStoryState } from "../../lib/ai/characterTtsVoices";
+import { buildCharacterGenderHintsFromStoryState } from "../../lib/ai/characterGenderHints";
 import {
 	isBackgroundTaskJob,
 	resolveMaxConcurrentBackgroundTasks,
