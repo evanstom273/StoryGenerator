@@ -42,37 +42,10 @@ export type BackgroundJobStatus =
   | "cancelled";
 export type BackgroundJobType =
   | "story_index"
-  | "story_audiobook"
-  | "ai_document"
-  | "podcast_audio"
   | "guided_chapter_generate"
   | "metachat_generate"
   | "story_export"
   | "story_archive_export";
-export type MediaAssetCategory = "audiobook" | "chapter" | "ai_document" | "podcast";
-export type MediaAssetFormat = "wav" | "opus";
-
-export interface MediaAsset {
-  id: EntityId;
-  category: MediaAssetCategory;
-  libraryKey: string;
-  title: string;
-  subtitle: string;
-  storyId?: EntityId;
-  storyTitleSnapshot?: string;
-  sourceJobId?: EntityId;
-  createdAtMs: number;
-  updatedAtMs: number;
-  durationMs: number;
-  format: MediaAssetFormat;
-  mimeType: "audio/wav" | "audio/webm" | "audio/ogg";
-  byteLength: number;
-  audioBytes: Uint8Array;
-  orphaned: boolean;
-  lastPositionMs: number;
-  lastPlayedAtMs?: number;
-  contentDigest?: string;
-}
 export type MaxConcurrentBackgroundTasks = 1 | 2 | 3 | 4 | 5;
 export type MetaChatScopeKind = "story" | "global";
 export type MetaChatReferenceKind = "story" | "character" | "universe";
@@ -278,18 +251,6 @@ export interface StoryChapter {
   summary?: string;
 }
 
-export interface GeminiPodcastTtsSettings {
-  hostOneVoice: string;
-  hostTwoVoice: string;
-  model: string;
-}
-
-export interface GeminiNarrationTtsSettings {
-  voice: string;
-  characterVoice: string;
-  model: string;
-}
-
 export type AIModelRole = "story" | "metachat" | "creation" | "indexing";
 
 export type IndexingCadence =
@@ -312,8 +273,6 @@ export interface AISettings {
   /** Character/universe generation and related creation tools */
   creationModels?: Partial<Record<AIProviderType, string>>;
   indexingCadence?: IndexingCadence;
-  geminiPodcastTts?: GeminiPodcastTtsSettings;
-  geminiNarrationTts?: GeminiNarrationTtsSettings;
   /** Max simultaneous long-running background tasks. */
   maxConcurrentBackgroundTasks?: MaxConcurrentBackgroundTasks;
   createdAt: Timestamp;
@@ -325,8 +284,6 @@ export interface StoryAIConfig {
   storyId: EntityId;
   providerType: AIProviderType;
   model?: string;
-  audiobookParallelChapters?: number;
-  audiobookPerformanceMode?: "radio_drama" | "single_narrator";
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -346,8 +303,6 @@ export interface StoryUiState {
   storyId: EntityId;
   metaChatDraft?: string;
   metaChatReferences?: MetaChatReference[];
-  characterTtsVoices?: Record<string, string>;
-  characterTtsLabels?: Record<string, string>;
   updatedAt: Timestamp;
 }
 
@@ -395,26 +350,12 @@ export interface BackgroundJob {
         scenesPerChapter: number;
       }>;
     };
-    aiDocumentPresetId?: string;
-    aiDocumentCustomPrompt?: string;
-    aiDocumentStructure?: "single" | "chapter-by-chapter";
-    aiDocumentOutputFormat?: "markdown" | "epub" | "gemini-audio-wav";
-    aiDocumentSourceType?: "story" | "upload";
-    aiDocumentSourceStoryId?: EntityId;
-    aiDocumentSourceLabel?: string;
-    aiDocumentSourceText?: string;
-    audiobookParallelChapters?: number;
-    audiobookPerformanceMode?: "radio_drama" | "single_narrator";
-    audiobookPurpose?: "export" | "playback" | "chapter_listen";
-    audiobookPlayId?: string;
   };
   result?: {
     messageId?: EntityId;
     notificationTitle?: string;
     notificationBody?: string;
     openMetaChat?: boolean;
-    aiDocumentFilename?: string;
-    aiDocumentMarkdown?: string;
   };
 }
 
