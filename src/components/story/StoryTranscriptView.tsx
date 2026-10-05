@@ -6,11 +6,10 @@ import { parseSceneBlocks } from "../../lib/storyText/parseSceneBlocks";
 import { normalizeSceneSpeakerLabel } from "../../lib/storyText/speakerLabels";
 import { isAuthorDirectiveMessage } from "../../lib/storyText/authorDirectives";
 import { isContinueMessage } from "../../lib/storyText/continueMode";
-import type { CharacterTtsGenderMap } from "../../lib/ai/characterTtsVoices";
 import { isDirectorMessage, isDirectorSpeakerLabel } from "../../lib/storyText/directorMode";
 import { resolveMessageChapterBoundary } from "../../lib/storyText/chapterNavigation";
 import { isStoryHistoryDividerMessage } from "../../lib/guidedChapterGeneration/storyHistoryDivider";
-import { ChapterListenBanner, FullStoryAudiobookControls } from "./StorySpeechControls";
+import { ChapterPlanButton } from "./GuidedChapterSetupModal";
 import type { ResolvedSceneParticipant } from "../../lib/sceneParticipation";
 
 type StoryTranscriptViewProps = {
@@ -19,8 +18,6 @@ type StoryTranscriptViewProps = {
   playerSceneName?: string;
   playerPronouns?: string;
   playerAliases?: string[];
-  characterGenders?: CharacterTtsGenderMap;
-  storyTitle?: string;
   chapters?: StoryChapter[];
   className?: string;
   highlightedMessageId?: string | null;
@@ -177,7 +174,6 @@ export function StoryTranscriptView({
   messages,
   playerCharacterName,
   playerSceneName,
-  storyTitle = "Story",
   chapters,
   className,
   highlightedMessageId,
@@ -192,12 +188,6 @@ export function StoryTranscriptView({
   }
   return (
     <div className={cn("space-y-6", className)}>
-      <FullStoryAudiobookControls
-        messages={messages}
-        playerCharacterName={playerCharacterName}
-        storyTitle={storyTitle}
-        chapters={chapters}
-      />
       {messages.map((message) => {
         const highlight = highlightedMessageId === message.id;
         const chapterEndLabel = chapterEndByMessageId.get(message.id);
@@ -220,14 +210,19 @@ export function StoryTranscriptView({
 
         if (chapterBoundary?.kind === "start") {
           return (
-            <ChapterListenBanner
+            <div
               key={message.id}
-              messageId={message.id}
-              label={chapterBoundary.label}
-              highlighted={highlight}
-              messages={messages}
-              playerCharacterName={playerCharacterName}
-            />
+              id={`story-chapter-start-${message.id}`}
+              className={cn(
+                "max-lg:scroll-mt-[6.5rem] lg:scroll-mt-10 rounded-2xl border border-accent/20 bg-accent/8 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft",
+                highlight ? "ring-2 ring-accent/35" : "",
+              )}
+            >
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <span>{chapterBoundary.label}</span>
+                <ChapterPlanButton setup={message.guidedChapterSetup} />
+              </div>
+            </div>
           );
         }
 
