@@ -1658,6 +1658,29 @@ function rethrowUserFacingGenerationError(error: unknown, providerType: string):
   );
 }
 
+function formatBackgroundJobFailureMessage(error: unknown) {
+  if (!isGenerationFailureError(error)) {
+    return error instanceof Error ? error.message : "Background job failed.";
+  }
+
+  const failure = error.failure;
+  const details = [
+    `kind=${failure.kind}`,
+    `stage=${failure.stage}`,
+    failure.providerName ? `provider=${failure.providerName}` : undefined,
+    failure.model ? `model=${failure.model}` : undefined,
+    `attempts=${failure.attempts}/${failure.maxAttempts}`,
+    failure.diagnostic ? `diagnostic=${failure.diagnostic}` : undefined,
+  ].filter(Boolean);
+
+  return [
+    failure.summaryMessage,
+    details.length ? `Details: ${details.join("; ")}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function normalizeMetaChatWhitespace(value: string) {
   return value
     .replace(/\r\n/g, "\n")
@@ -4860,6 +4883,7 @@ export function StoryEngineProvider({
         }
       } catch (error) {
         const latest = await repository.getBackgroundJob(job.id);
+        const backgroundJobFailureMessage = formatBackgroundJobFailureMessage(error);
         // #region debug-point job-cancel-timeout:job-error
         reportJobDebug({
           hypothesisId: "C",
@@ -4907,7 +4931,7 @@ export function StoryEngineProvider({
             ...runningJob,
             status: "failed",
             finishedAt: new Date().toISOString(),
-            error: error instanceof Error ? error.message : "Background job failed.",
+            error: backgroundJobFailureMessage,
           });
         } catch {}
         if (job.type === "story_index" && job.storyId) {
