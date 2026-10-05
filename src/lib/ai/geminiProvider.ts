@@ -305,7 +305,17 @@ function throwGeminiHttpError(response: Response, message: string) {
     throw new AIError("provider_unavailable", "Gemini provider unavailable.", response.status);
   }
   if (looksLikeSafetyRefusal(message)) {
-    throw new AIError("safety_refusal", message, response.status, { retryable: false, kind: "safety" });
+    const diagnostic = [
+      `status=${response.status}`,
+      "provider=Gemini",
+      "stage=request",
+      `raw=${message}`,
+    ].join("; ");
+    throw new AIError("safety_refusal", message, response.status, {
+      diagnostic,
+      retryable: false,
+      kind: "safety",
+    });
   }
   throw new AIError("generation_failed", message, response.status);
 }
