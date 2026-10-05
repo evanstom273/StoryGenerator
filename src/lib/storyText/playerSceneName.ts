@@ -2,10 +2,10 @@
 import type { StoryMessage, StoryStateCharacterState, StoryStateData, StoryStateDataV2 } from "../../types/models";
 import { isDirectorMessage } from "./directorMode";
 import {
-	type CharacterTtsGenderMap,
-	inferGenderFromPronounsInText,
-	normalizeCharacterTtsKey,
-} from "../ai/characterTtsVoices";
+  type CharacterGenderMap,
+  inferGenderFromPronounsInText,
+  normalizeCharacterKey,
+} from "../ai/characterGenderHints";
 import { isDeniedSpeakerLabel } from "./speakerLabels";
 import { splitDialogueQuoteRegions } from "./dialogueQuoteRegions";
 import { findSpeakerColonIndex, looksLikeClockTimeFragment } from "./clockTimeInProse";
@@ -737,15 +737,15 @@ function shouldSkipActionBeatSpeaker(label: string) {
 
 function lookupCharacterSubjectPronoun(
 	speakerLabel: string,
-	characterGenders?: CharacterTtsGenderMap | null,
+	characterGenders?: CharacterGenderMap | null,
 ): "He" | "She" | "They" | null {
 	if (!characterGenders) {
 		return null;
 	}
 
 	const keys = [
-		normalizeCharacterTtsKey(speakerLabel),
-		normalizeCharacterTtsKey(speakerLabel.split(/\s+/)[0] ?? ""),
+		normalizeCharacterKey(speakerLabel),
+		normalizeCharacterKey(speakerLabel.split(/\s+/)[0] ?? ""),
 	].filter(Boolean);
 
 	for (const key of keys) {
@@ -778,7 +778,7 @@ function resolveSpeakerActionPronoun(
 		playerSceneName?: string | null;
 		playerLegalName?: string | null;
 		playerPronouns?: string | null;
-		characterGenders?: CharacterTtsGenderMap | null;
+		characterGenders?: CharacterGenderMap | null;
 		playerIdentity?: PlayerTranscriptIdentity | null;
 		forcePlayerPronouns?: boolean;
 	},
@@ -890,7 +890,7 @@ function normalizeSpeakerRemainderActionBeats(
 		playerSceneName?: string | null;
 		playerLegalName?: string | null;
 		playerPronouns?: string | null;
-		characterGenders?: CharacterTtsGenderMap | null;
+		characterGenders?: CharacterGenderMap | null;
 		playerIdentity?: PlayerTranscriptIdentity | null;
 		forcePlayerPronouns?: boolean;
 	},
@@ -904,7 +904,7 @@ function resolveActionBeatOptions(opts?: {
 	playerSceneName?: string | null;
 	playerLegalName?: string | null;
 	playerPronouns?: string | null;
-	characterGenders?: CharacterTtsGenderMap | null;
+	characterGenders?: CharacterGenderMap | null;
 	playerIdentity?: PlayerTranscriptIdentity | null;
 	forcePlayerPronouns?: boolean;
 }) {
@@ -927,7 +927,7 @@ export function normalizeCharacterActionBeatsInTranscript(
 		playerSceneName?: string | null;
 		playerLegalName?: string | null;
 		playerPronouns?: string | null;
-		characterGenders?: CharacterTtsGenderMap | null;
+		characterGenders?: CharacterGenderMap | null;
 		playerIdentity?: PlayerTranscriptIdentity | null;
 		forcePlayerPronouns?: boolean;
 	},
