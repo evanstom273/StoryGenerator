@@ -53,30 +53,6 @@ import {
 import {
   buildUniverseBlueprintSystemPrompt,
 } from "../../lib/ai/universeGenerator";
-import {
-	buildAiDocumentMessages,
-} from "../../lib/aiDocumentGenerator/buildPrompt";
-import {
-	buildAiDocumentFilename,
-	getAiDocumentPreset,
-	resolveAiDocumentStructure,
-	type AiDocumentPresetId,
-} from "../../lib/aiDocumentGenerator/presets";
-import { generateChapterStructuredDocument, resolveSourceMaterialForStructure } from "../../lib/aiDocumentGenerator/chapterGeneration";
-import { generateGeminiPodcastAudioFromMarkdown, planGeminiPodcastTtsChunks } from "../../lib/aiDocumentGenerator/geminiAudio";
-import { EPUB_MIME_TYPE, serializeNovelisationEpub } from "../../lib/aiDocumentGenerator/epub";
-import { resolveGeminiPodcastTtsSettings, resolveGeminiNarrationTtsSettings } from "../../lib/ai/geminiTtsVoices";
-import {
-	buildAudioFilenameFromMarkdownUpload,
-	segmentStoryBundleByChapter,
-	segmentUploadedSourceByChapter,
-	truncateAiDocumentSourceMaterial,
-} from "../../lib/aiDocumentGenerator/sourceMaterial";
-import type {
-	AiDocumentOutputFormat,
-	AiDocumentStructure,
-	AiDocumentGenerationResult,
-} from "../../lib/aiDocumentGenerator/types";
 import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "../../lib/ai/json";
 import { buildMatureFictionPolicyBlock } from "../../lib/ai/matureFictionPolicy";
 import {
@@ -202,32 +178,13 @@ import {
   resolveUserSpeakerNameForContinue,
   resolveUserSpeakerTypeForContinue,
 } from "../../lib/storyText/continueMode";
-import { clampAudiobookParallelChapters } from "../../lib/ai/storyAudiobookParallel";
-import { normalizeAudiobookPerformanceMode } from "../../lib/ai/audiobookPerformance";
-import {
-	computeStoryAudiobookPreparedDigest,
-	listStoryAudiobookChapterSegments,
-	synthesizeStoryAudiobookWav,
-} from "../../lib/ai/storyAudiobook";
-import type { StoryAudiobookProgress } from "../../lib/ai/storyAudiobookProgress";
 import { buildCharacterGenderHintsFromStoryState } from "../../lib/ai/characterTtsVoices";
-import { buildCharacterTtsRegistryForStory } from "../../lib/storyText/messageSpeechText";
-import { ingestAiDocumentAudioFromJob } from "../../lib/mediaLibrary/ingestAiDocumentAudio";
-import { ingestStoryAudio } from "../../lib/mediaLibrary/ingestStoryAudio";
-import { markMediaAssetsOrphanedForStory } from "../../lib/mediaLibrary/store";
 import {
 	isBackgroundTaskJob,
-	isAudiobookExportBackgroundJob,
-	isAudiobookListenBackgroundJob,
 	resolveMaxConcurrentBackgroundTasks,
-	countRunningBackgroundTasks,
 	getNextBackgroundTaskQueueOrder,
 	moveQueuedBackgroundTaskInOrder,
 	sortQueuedBackgroundTasks,
-	audiobookProgressToBackgroundJobProgress,
-	backgroundJobProgressFromSteps,
-	buildSingleDocumentSteps,
-	setBackgroundJobStepStatus,
 } from "../../lib/backgroundTasks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import {
@@ -281,8 +238,6 @@ import type {
   DeveloperTestingNote,
   DeveloperTestingNoteDraft,
   DirectorIntent,
-  GeminiPodcastTtsSettings,
-  GeminiNarrationTtsSettings,
   GuardedDeleteResult,
   MetaChatReference,
   PlayerCharacterExportBundleV1,
@@ -2304,8 +2259,6 @@ export function StoryEngineProvider({
         metachatModels,
         indexingModels,
         creationModels,
-        geminiPodcastTts: resolveGeminiPodcastTtsSettings(record.geminiPodcastTts),
-        geminiNarrationTts: resolveGeminiNarrationTtsSettings(record.geminiNarrationTts),
         maxConcurrentBackgroundTasks: resolveMaxConcurrentBackgroundTasks(
           record.maxConcurrentBackgroundTasks,
         ),
@@ -5028,7 +4981,6 @@ export function StoryEngineProvider({
           throw new Error("Favorited stories are protected from deletion. Unfavorite this story first.");
         }
         await repository.deleteStory(id);
-        await markMediaAssetsOrphanedForStory(id);
         await hydrate(false);
       },
       async deleteAllStories() {
@@ -5037,7 +4989,6 @@ export function StoryEngineProvider({
         await Promise.all(
           deletableStories.map(async (story) => {
             await repository.deleteStory(story.id);
-            await markMediaAssetsOrphanedForStory(story.id);
           }),
         );
         await hydrate(false);
@@ -6231,22 +6182,6 @@ export function StoryEngineProvider({
         const metachatModels = mergeModelMaps(current?.metachatModels, nextMetachatModels);
         const indexingModels = mergeModelMaps(current?.indexingModels, nextIndexingModels);
         const creationModels = mergeModelMaps(current?.creationModels, nextCreationModels);
-        const geminiPodcastTts = next.geminiPodcastTts
-          ? resolveGeminiPodcastTtsSettings({
-              ...current?.geminiPodcastTts,
-              ...next.geminiPodcastTts,
-            })
-          : current?.geminiPodcastTts
-            ? resolveGeminiPodcastTtsSettings(current.geminiPodcastTts)
-            : undefined;
-        const geminiNarrationTts = next.geminiNarrationTts
-          ? resolveGeminiNarrationTtsSettings({
-              ...current?.geminiNarrationTts,
-              ...next.geminiNarrationTts,
-            })
-          : current?.geminiNarrationTts
-            ? resolveGeminiNarrationTtsSettings(current.geminiNarrationTts)
-            : undefined;
         const maxConcurrentBackgroundTasks = resolveMaxConcurrentBackgroundTasks(
           next.maxConcurrentBackgroundTasks ?? current?.maxConcurrentBackgroundTasks,
         );
@@ -6261,8 +6196,6 @@ export function StoryEngineProvider({
           metachatModels,
           indexingModels,
           creationModels,
-          geminiPodcastTts,
-          geminiNarrationTts,
           maxConcurrentBackgroundTasks,
           indexingCadence,
           createdAt,
@@ -6297,14 +6230,6 @@ export function StoryEngineProvider({
           storyId: next.storyId,
           providerType: next.providerType,
           model: next.model?.trim() || undefined,
-          audiobookParallelChapters:
-            next.audiobookParallelChapters !== undefined
-              ? clampAudiobookParallelChapters(next.audiobookParallelChapters)
-              : existing?.audiobookParallelChapters,
-          audiobookPerformanceMode:
-            next.audiobookPerformanceMode !== undefined
-              ? normalizeAudiobookPerformanceMode(next.audiobookPerformanceMode)
-              : existing?.audiobookPerformanceMode,
           createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         };
