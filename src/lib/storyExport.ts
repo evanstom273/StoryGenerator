@@ -76,6 +76,16 @@ function toJson(bundle: StoryExportBundle) {
   return JSON.stringify(bundle, null, 2);
 }
 
+/**
+ * Clean story transcript export: no metadata, Story State, indexes, summaries,
+ * character sheets, or relationship data. This is intentionally just the
+ * chronological transcript.
+ */
+export function serializeStoryTranscriptMarkdown(bundle: StoryExportBundle) {
+  const transcript = buildTranscriptLines(bundle);
+  return transcript.length ? `${transcript.join("\n")}\n` : "";
+}
+
 function toMarkdown(bundle: StoryExportBundle) {
   const lines: string[] = [];
 
