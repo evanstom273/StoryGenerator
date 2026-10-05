@@ -34,6 +34,12 @@ export function createStoryExportFilename(title: string, format: ExportFormat, e
 	return `${slug}${archiveSuffix}-${timestamp}.${extension}`;
 }
 
+export function createStoryTranscriptMarkdownFilename(title: string, exportedAt = new Date()) {
+	const slug = sanitizeExportSlug(title) || "story";
+	const timestamp = formatLocalExportTimestamp(exportedAt);
+	return `${slug}-story-${timestamp}.md`;
+}
+
 export function createMetaChatExportFilename(
 	title: string,
 	format: "json" | "markdown" | "txt" | "pdf",
