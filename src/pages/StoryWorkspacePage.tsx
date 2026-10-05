@@ -25,7 +25,6 @@ import { storyHasGeneratedScenes } from "../lib/ai/playerAssistContext";
 import { formatDirectorNoteComposerHint } from "../lib/storyText/directorSyntax";
 import { parseSlashParticipateCommand } from "../lib/storyText/directorIntent";
 import { normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity } from "../lib/playerCharacterPrompt";
-import { buildCharacterGenderHintsFromStoryState } from "../lib/ai/characterGenderHints";
 import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
@@ -179,21 +178,6 @@ export function StoryWorkspacePage() {
   }, [messages, playerCharacter, storyStateJson]);
   const playerSceneName = playerIdentity?.sceneName ?? "";
   const playerEffectivePronouns = playerIdentity?.pronouns ?? playerCharacter?.pronouns ?? "";
-  const characterGenders = useMemo(() => {
-    if (!playerCharacter) {
-      return {};
-    }
-
-    return buildCharacterGenderHintsFromStoryState(
-      storyStateJson ? safeParseStoryStateData(storyStateJson) : null,
-      {
-        playerName: playerCharacter.name,
-        playerAliases: normalizePlayerCharacterAliases(playerCharacter.aliases),
-        playerGender: playerCharacter.gender,
-        playerPronouns: playerEffectivePronouns,
-      },
-    );
-  }, [playerCharacter, storyStateJson]);
   const resolvedParticipants = useMemo(() => {
     if (!playerCharacter || !playerIdentity) {
       return [];
