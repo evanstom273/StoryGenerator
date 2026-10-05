@@ -25,7 +25,7 @@ import { storyHasGeneratedScenes } from "../lib/ai/playerAssistContext";
 import { formatDirectorNoteComposerHint } from "../lib/storyText/directorSyntax";
 import { parseSlashParticipateCommand } from "../lib/storyText/directorIntent";
 import { normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity } from "../lib/playerCharacterPrompt";
-import { buildCharacterGenderHintsFromStoryState } from "../lib/ai/characterTtsVoices";
+import { buildCharacterGenderHintsFromStoryState } from "../lib/ai/characterGenderHints";
 import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
