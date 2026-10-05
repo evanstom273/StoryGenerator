@@ -1,5 +1,5 @@
 import type { StoryMessage } from "../../types/models";
-import { normalizeCharacterKey, type CharacterGenderMap } from "../ai/characterGenderHints";
+import type { CharacterGenderMap } from "../ai/characterGenderHints";
 import { isDeniedSpeakerLabel } from "./speakerLabels";
 import { standardizeAssistantStoryText } from "./storyStandardizer";
 import {
