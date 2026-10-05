@@ -1362,7 +1362,6 @@ export function StoryWorkspacePage() {
               playerSceneName={playerSceneName}
               playerPronouns={playerEffectivePronouns}
               playerAliases={normalizePlayerCharacterAliases(activePlayerCharacter.aliases)}
-              characterGenders={characterGenders}
               chapters={storyChapters}
               highlightedMessageId={highlightedMessageId}
               resolvedParticipants={resolvedParticipants}
