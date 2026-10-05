@@ -1,4 +1,5 @@
 import type { GenerateResponseResult } from "../ai/types";
+import { GenerationFailureError, isGenerationFailureError, type GenerationFailure } from "../ai/errors";
 import type { BackgroundJobStep } from "../../types/models";
 import {
 	buildChapterDocumentSteps,
@@ -117,6 +118,46 @@ function getContinuityTail(text: string) {
 		: trimmed.slice(-NOVELISATION_CONTINUITY_TAIL_CHARS);
 }
 
+function withNovelisationFailureContext(
+	failure: GenerationFailure,
+	args: {
+		chapterLabel: string;
+		partIndex: number;
+		totalParts: number;
+		fallback?: string;
+		fallbackSource?: string;
+	},
+) {
+	const partLabel = `${args.partIndex + 1}/${Math.max(1, args.totalParts)}`;
+	return {
+		...failure,
+		summaryMessage:
+			`${failure.summaryMessage}\nFailed while generating ${args.chapterLabel} (part ${partLabel}).`,
+		diagnostic: [
+			failure.diagnostic,
+			"documentStep=chapter",
+			`chapterLabel=${args.chapterLabel}`,
+			`chapterPart=${partLabel}`,
+			args.fallback ? `fallback=${args.fallback}` : undefined,
+			args.fallbackSource ? `fallbackSource=${args.fallbackSource}` : undefined,
+		]
+			.filter(Boolean)
+			.join("; "),
+	};
+}
+
+function buildNovelisationSummaryFallbackPrompt(customPrompt?: string) {
+	return [
+		customPrompt?.trim(),
+		"Provider-refusal fallback: adapt only the canonical high-level chapter summary supplied as source.",
+		"Preserve the established events, emotional beats, relationships, and outcomes from that summary.",
+		"Keep sensitive material non-graphic and non-procedural. Do not add instructions, anatomical detail, or new events.",
+		"Write the chapter as polished novel prose without mentioning this fallback or the missing transcript.",
+	]
+		.filter(Boolean)
+		.join("\n\n");
+}
+
 async function generateNovelisationChapter(params: {
 	preset: AiDocumentPreset;
 	customPrompt?: string;
@@ -133,46 +174,106 @@ async function generateNovelisationChapter(params: {
 	}
 
 	let assembled = "";
+	let activePartIndex = 0;
 
-	for (let partIndex = 0; partIndex < sourceParts.length; partIndex += 1) {
+	try {
+		for (let partIndex = 0; partIndex < sourceParts.length; partIndex += 1) {
+			activePartIndex = partIndex;
+			if (params.signal?.aborted) {
+				throw new Error("Request aborted.");
+			}
+
+			const chapterMessages = buildAiDocumentMessages({
+				preset: params.preset,
+				customPrompt: params.customPrompt,
+				sourceLabel:
+				`${params.sourceLabel} — ${params.segment.label}` +
+				(sourceParts.length > 1 ? ` — part ${partIndex + 1}/${sourceParts.length}` : ""),
+				sourceMaterial: sourceParts[partIndex]!,
+				structure: "chapter-by-chapter",
+				section: "chapter",
+				chapterLabel: params.segment.label,
+				novelisationChapterPartContext: {
+					partIndex,
+					totalParts: sourceParts.length,
+					previousProseTail: partIndex > 0 ? getContinuityTail(assembled) : undefined,
+				},
+			});
+
+			const generatedPart = (await params.generateChunk(chapterMessages)).trim();
+			if (partIndex === 0) {
+				assertNovelisationChapterSection(generatedPart, params.segment.label);
+				assembled = generatedPart;
+				continue;
+			}
+
+			const continuation = stripLeadingNovelisationChapterHeading(generatedPart);
+			if (!continuation) {
+				throw new Error(
+					`Novelisation generation failed: ${params.segment.label} part ${partIndex + 1} contained no prose.`,
+				);
+			}
+			assembled = `${assembled.trim()}\n\n${continuation}`;
+		}
+
+		return assembled.trim();
+	} catch (error) {
+		if (!isGenerationFailureError(error)) {
+			throw error;
+		}
+
+		const contextualFailure = withNovelisationFailureContext(error.failure, {
+			chapterLabel: params.segment.label,
+			partIndex: activePartIndex,
+			totalParts: sourceParts.length,
+		});
+
+		const summary = params.segment.summary?.trim();
+		if (contextualFailure.kind !== "provider_refusal" || !summary) {
+			throw new GenerationFailureError(contextualFailure);
+		}
+
 		if (params.signal?.aborted) {
 			throw new Error("Request aborted.");
 		}
 
-		const chapterMessages = buildAiDocumentMessages({
+		const fallbackMessages = buildAiDocumentMessages({
 			preset: params.preset,
-			customPrompt: params.customPrompt,
-			sourceLabel:
-			`${params.sourceLabel} — ${params.segment.label}` +
-			(sourceParts.length > 1 ? ` — part ${partIndex + 1}/${sourceParts.length}` : ""),
-			sourceMaterial: sourceParts[partIndex]!,
+			customPrompt: buildNovelisationSummaryFallbackPrompt(params.customPrompt),
+			sourceLabel: `${params.sourceLabel} — ${params.segment.label} — summary fallback`,
+			sourceMaterial: `Canonical high-level summary for ${params.segment.label}:\n\n${summary}`,
 			structure: "chapter-by-chapter",
 			section: "chapter",
 			chapterLabel: params.segment.label,
 			novelisationChapterPartContext: {
-				partIndex,
-				totalParts: sourceParts.length,
-				previousProseTail: partIndex > 0 ? getContinuityTail(assembled) : undefined,
+				partIndex: 0,
+				totalParts: 1,
 			},
 		});
 
-		const generatedPart = (await params.generateChunk(chapterMessages)).trim();
-		if (partIndex === 0) {
-			assertNovelisationChapterSection(generatedPart, params.segment.label);
-			assembled = generatedPart;
-			continue;
-		}
+		try {
+			const fallbackChapter = (await params.generateChunk(fallbackMessages)).trim();
+			assertNovelisationChapterSection(fallbackChapter, params.segment.label);
+			return fallbackChapter;
+		} catch (fallbackError) {
+			if (!isGenerationFailureError(fallbackError)) {
+				throw fallbackError;
+			}
 
-		const continuation = stripLeadingNovelisationChapterHeading(generatedPart);
-		if (!continuation) {
-			throw new Error(
-				`Novelisation generation failed: ${params.segment.label} part ${partIndex + 1} contained no prose.`,
-			);
+			const fallbackFailure = withNovelisationFailureContext(fallbackError.failure, {
+				chapterLabel: params.segment.label,
+				partIndex: 0,
+				totalParts: 1,
+				fallback: "chapter_summary_non_graphic",
+				fallbackSource: "canonical_chapter_summary",
+			});
+			throw new GenerationFailureError({
+				...fallbackFailure,
+				summaryMessage:
+					`${fallbackFailure.summaryMessage}\nThe full-transcript request was refused first, and the one-time high-level chapter-summary fallback was also refused.`,
+			});
 		}
-		assembled = `${assembled.trim()}\n\n${continuation}`;
 	}
-
-	return assembled.trim();
 }
 
 export async function generateChapterStructuredDocument(params: {

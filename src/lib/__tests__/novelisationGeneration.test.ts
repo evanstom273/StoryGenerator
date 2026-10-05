@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { GenerationFailureError } from "../ai/errors";
 import {
 	generateChapterStructuredDocument,
 	NOVELISATION_SOURCE_PART_MAX_CHARS,
@@ -89,6 +90,54 @@ describe("scalable novelisation generation", () => {
 		expect(normal[0]!.transcript).not.toContain("END-MARKER");
 		expect(complete[0]!.transcript).toContain("END-MARKER");
 		expect(complete[0]!.transcript.length).toBeGreaterThan(40000);
+	});
+
+	it("retries a refused chapter once from its canonical high-level summary", async () => {
+		let transcriptAttempts = 0;
+		let summaryAttempts = 0;
+
+		const document = await generateChapterStructuredDocument({
+			preset: getAiDocumentPreset("novelisation"),
+			sourceLabel: "Fallback Story",
+			chapterSegments: [{
+				label: "Chapter IX",
+				transcript: "Narrator: Full transcript that the provider refuses.",
+				summary: "The family talks quietly, resolves the misunderstanding, and drives home together.",
+			}],
+			fullSourceMaterial: "Story: Fallback Story\n\n## Chapter IX\nSource.",
+			generateChunk: async (messages) => {
+				const system = messages[0]!.content;
+				if (system.includes("Write ONLY the novel title block")) {
+					return "# Fallback Story";
+				}
+
+				const isSummaryFallback = messages.some((message) =>
+					message.content.includes("Canonical high-level summary for Chapter IX"),
+				);
+				if (isSummaryFallback) {
+					summaryAttempts += 1;
+					return "## Chapter IX: Homeward\n\nThey settle the misunderstanding and head home together.";
+				}
+
+				transcriptAttempts += 1;
+				throw new GenerationFailureError({
+					kind: "provider_refusal",
+					stage: "response",
+					summaryMessage: "The provider declined this request under its own safeguards.",
+					providerName: "gemini",
+					model: "gemini-test",
+					attempts: 1,
+					maxAttempts: 1,
+					retryable: false,
+					diagnostic: "status=200; provider=Gemini; stage=response; finishReason=PROHIBITED_CONTENT",
+				});
+			},
+		});
+
+		expect(transcriptAttempts).toBe(1);
+		expect(summaryAttempts).toBe(1);
+		expect(document).toContain("## Chapter IX: Homeward");
+		expect(document).toContain("head home together");
 	});
 
 	it("refuses to return a novelisation when a generated chapter heading is wrong", async () => {

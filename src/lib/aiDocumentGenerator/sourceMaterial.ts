@@ -67,6 +67,22 @@ function formatMessageLine(
 	return `[${formatDateTime(message.timestamp)}] ${prefix}${message.content.trim()}`;
 }
 
+function normalizeChapterLabelForSummary(value: string) {
+	return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function resolveChapterSummary(bundle: StoryExportBundle, label: string) {
+	const normalizedLabel = normalizeChapterLabelForSummary(label);
+	const indexed = bundle.storyIndex?.chapterSummaries.find(
+		(chapter) => normalizeChapterLabelForSummary(chapter.chapterLabel) === normalizedLabel,
+	)?.summary?.trim();
+	if (indexed) return indexed;
+
+	return bundle.chapters?.find(
+		(chapter) => normalizeChapterLabelForSummary(chapter.label) === normalizedLabel,
+	)?.summary?.trim();
+}
+
 export function segmentStoryBundleByChapter(
 	bundle: StoryExportBundle,
 	options?: ChapterSegmentationOptions,
@@ -99,6 +115,7 @@ export function segmentStoryBundleByChapter(
 				resolvedMaxChapterChars === null
 					? transcript
 					: truncateAiDocumentSourceMaterial(transcript, resolvedMaxChapterChars),
+			summary: resolveChapterSummary(bundle, currentLabel),
 		});
 	};
 
@@ -118,6 +135,7 @@ export function segmentStoryBundleByChapter(
 		segments[0] = {
 			label: "Chapter I",
 			transcript: segments[0].transcript,
+			summary: resolveChapterSummary(bundle, "Chapter I") ?? segments[0].summary,
 		};
 	}
 
