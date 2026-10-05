@@ -209,7 +209,6 @@ import {
   formatPlayerCharacterPronounAndNamingRules,
   resolveEffectivePlayerIdentity,
   type EffectivePlayerIdentity,
-  resolvePlayerCharacterSceneName,
   resolvePlayerCharacterPreferredSceneName,
   formatPlayerCharacterIdentityForPrompt,
 } from "../../lib/playerCharacterPrompt";
@@ -3468,38 +3467,6 @@ export function StoryEngineProvider({
       return assistantText.trim();
     },
     [buildMetaChatContextBlock, getNormalizedAISettings, repository, resolveAIProfile],
-  );
-
-  const updateBackgroundJobProgress = useCallback(
-    async (
-      jobId: string,
-      progress: NonNullable<BackgroundJob["progress"]>,
-    ) => {
-      const liveJob = await repository.getBackgroundJob(jobId);
-      if (!liveJob) {
-        return;
-      }
-
-      const processorActive = inFlightBackgroundJobsRef.current.has(jobId);
-      if (
-        liveJob.status !== "running" &&
-        !(liveJob.status === "queued" && processorActive)
-      ) {
-        return;
-      }
-
-      const nextJob: BackgroundJob = {
-        ...liveJob,
-        status: "running",
-        startedAt: liveJob.startedAt ?? new Date().toISOString(),
-        progress,
-      };
-      await repository.saveBackgroundJob(nextJob);
-      setBackgroundJobs((current) =>
-        current.map((entry) => (entry.id === jobId ? nextJob : entry)),
-      );
-    },
-    [repository],
   );
 
   const processBackgroundJob = useCallback(
