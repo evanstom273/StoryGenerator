@@ -49,7 +49,8 @@ export function V2Shell() {
       hash: location.hash,
       scrollY: window.scrollY,
     };
-    navigate("/metachat");
+    const match = /^\/stories\/([^/]+)$/.exec(location.pathname);
+    navigate("/metachat", { state: match ? { initialStoryId: match[1] } : undefined });
   }
 
   const [leftOpen, setLeftOpen] = useState(false);
