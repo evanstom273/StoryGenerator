@@ -1,5 +1,5 @@
 const DATABASE_NAME = "story-engine-db";
-const DATABASE_VERSION = 12;
+const DATABASE_VERSION = 13;
 
 export type StoreName =
   | "universes"
@@ -8,6 +8,7 @@ export type StoreName =
   | "messages"
   | "storyMetaMessages"
   | "metaChatConversations"
+  | "metaChatThreads"
   | "storyChapters"
   | "aiSettings"
   | "storyAiConfigs"
@@ -41,6 +42,7 @@ export function openStoryEngineDatabase() {
 
   databasePromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+    let failed = false;
 
     request.onupgradeneeded = (event) => {
       const database = request.result;
@@ -76,20 +78,35 @@ export function openStoryEngineDatabase() {
 
       ensureStore("universes", { keyPath: "id" });
 
-      const playerCharacters = ensureStore("playerCharacters", { keyPath: "id" });
-      ensureIndex(playerCharacters, "universeId", "universeId", { unique: false });
-      ensureIndex(playerCharacters, "universeIds", "universeIds", { unique: false, multiEntry: true });
+      const playerCharacters = ensureStore("playerCharacters", {
+        keyPath: "id",
+      });
+      ensureIndex(playerCharacters, "universeId", "universeId", {
+        unique: false,
+      });
+      ensureIndex(playerCharacters, "universeIds", "universeIds", {
+        unique: false,
+        multiEntry: true,
+      });
 
       const stories = ensureStore("stories", { keyPath: "id" });
       ensureIndex(stories, "universeId", "universeId", { unique: false });
-      ensureIndex(stories, "universeIds", "universeIds", { unique: false, multiEntry: true });
-      ensureIndex(stories, "playerCharacterId", "playerCharacterId", { unique: false });
+      ensureIndex(stories, "universeIds", "universeIds", {
+        unique: false,
+        multiEntry: true,
+      });
+      ensureIndex(stories, "playerCharacterId", "playerCharacterId", {
+        unique: false,
+      });
 
       const messages = ensureStore("messages", { keyPath: "id" });
       ensureIndex(messages, "storyId", "storyId", { unique: false });
 
       ensureStore("metaChatConversations", { keyPath: "id" });
-      const storyMetaMessages = ensureStore("storyMetaMessages", { keyPath: "id" });
+      ensureStore("metaChatThreads", { keyPath: "id" });
+      const storyMetaMessages = ensureStore("storyMetaMessages", {
+        keyPath: "id",
+      });
       ensureIndex(storyMetaMessages, "storyId", "storyId", { unique: false });
 
       const storyChapters = ensureStore("storyChapters", { keyPath: "id" });
@@ -101,7 +118,9 @@ export function openStoryEngineDatabase() {
       ensureIndex(storyAiConfigs, "storyId", "storyId", { unique: false });
 
       const universeImports = ensureStore("universeImports", { keyPath: "id" });
-      ensureIndex(universeImports, "universeId", "universeId", { unique: false });
+      ensureIndex(universeImports, "universeId", "universeId", {
+        unique: false,
+      });
 
       const storySummaries = ensureStore("storySummaries", { keyPath: "id" });
       ensureIndex(storySummaries, "storyId", "storyId", { unique: false });
@@ -124,13 +143,17 @@ export function openStoryEngineDatabase() {
       ensureIndex(autoBackups, "createdAt", "createdAt", { unique: false });
 
       const geminiTtsCache = ensureStore("geminiTtsCache", { keyPath: "id" });
-      ensureIndex(geminiTtsCache, "createdAtMs", "createdAtMs", { unique: false });
+      ensureIndex(geminiTtsCache, "createdAtMs", "createdAtMs", {
+        unique: false,
+      });
 
       const mediaLibrary = ensureStore("mediaLibrary", { keyPath: "id" });
       ensureIndex(mediaLibrary, "libraryKey", "libraryKey", { unique: true });
       ensureIndex(mediaLibrary, "category", "category", { unique: false });
       ensureIndex(mediaLibrary, "storyId", "storyId", { unique: false });
-      ensureIndex(mediaLibrary, "createdAtMs", "createdAtMs", { unique: false });
+      ensureIndex(mediaLibrary, "createdAtMs", "createdAtMs", {
+        unique: false,
+      });
 
       ensureStore("storyIndexes", { keyPath: "storyId" });
 
@@ -156,7 +179,9 @@ export function openStoryEngineDatabase() {
         }
 
         if (fromVersion < 7 && toVersion >= 7) {
-          const migrateUniverseIds = (storeName: "playerCharacters" | "stories") => {
+          const migrateUniverseIds = (
+            storeName: "playerCharacters" | "stories",
+          ) => {
             const store = transaction.objectStore(storeName);
             const request = store.openCursor();
 
@@ -206,9 +231,32 @@ export function openStoryEngineDatabase() {
       runMigrations(oldVersion, newVersion);
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () =>
+    request.onsuccess = () => {
+      const database = request.result;
+      if (failed) {
+        database.close();
+        return;
+      }
+      database.onversionchange = () => {
+        database.close();
+        databasePromise = null;
+      };
+      resolve(database);
+    };
+    request.onblocked = () => {
+      failed = true;
+      databasePromise = null;
+      reject(
+        new Error(
+          "Close other StoryEngine tabs, then reload to finish the storage upgrade.",
+        ),
+      );
+    };
+    request.onerror = () => {
+      failed = true;
+      databasePromise = null;
       reject(request.error ?? new Error("Unable to open IndexedDB."));
+    };
   });
 
   return databasePromise;

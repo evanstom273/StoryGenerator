@@ -6,8 +6,6 @@ import { DRAWER_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../ui/motion";
 import { MetaChatRobotIcon, SearchIcon } from "../../components/icons";
 
 import { cn } from "../../utils/cn";
-import { META_CHAT_OPEN_STORAGE_KEY } from "../../lib/jobNotifications";
-import { GLOBAL_META_CHAT_SCOPE_ID } from "../../lib/metaChatScope";
 import {
   readStoredBoolean,
   readStoredTextSize,
@@ -81,30 +79,6 @@ export function V2Shell() {
     setLibrarySearchQuery("");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [location.pathname]);
-
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(META_CHAT_OPEN_STORAGE_KEY) === GLOBAL_META_CHAT_SCOPE_ID) {
-        localStorage.removeItem(META_CHAT_OPEN_STORAGE_KEY);
-        navigate("/metachat");
-      }
-    } catch {}
-  }, [location.pathname, navigate]);
-
-  useEffect(() => {
-    function openGlobalMetaChat() {
-      try {
-        if (localStorage.getItem(META_CHAT_OPEN_STORAGE_KEY) === GLOBAL_META_CHAT_SCOPE_ID) {
-          localStorage.removeItem(META_CHAT_OPEN_STORAGE_KEY);
-        }
-      } catch {}
-      navigate("/metachat");
-    }
-
-    window.addEventListener("story-engine:open-global-metachat", openGlobalMetaChat);
-    return () =>
-      window.removeEventListener("story-engine:open-global-metachat", openGlobalMetaChat);
-  }, [navigate]);
 
   const activeStoryId = useMemo(() => (storyId ? String(storyId) : undefined), [storyId]);
   const librarySearchContextValue = useMemo(
@@ -242,7 +216,7 @@ export function V2Shell() {
     >
       <div className={cn("min-w-0 overflow-x-clip bg-app text-ink", isMetaChat ? "h-[100dvh] overflow-hidden" : "min-h-screen")}>
         <div className={cn("mx-auto min-w-0 max-w-[1800px]", isMetaChat ? "flex h-full flex-col overflow-hidden" : "min-h-screen")}>
-          <header className={cn("sticky top-0 z-40 flex h-14 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-b border-divider bg-app/80 px-2 backdrop-blur-xl sm:px-3", location.pathname !== "/metachat" && "lg:hidden")}>
+          <header className="sticky top-0 z-40 flex h-14 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-b border-divider bg-app/80 px-2 backdrop-blur-xl sm:px-3">
             <BrandMark mobileHeader />
             <div className="ml-auto flex min-w-0 shrink-0 items-center gap-0.5">
               <BackgroundTasksButton />
@@ -279,7 +253,7 @@ export function V2Shell() {
 
           <div
             className={cn(
-              location.pathname === "/metachat" ? "grid h-[calc(100dvh-3.5rem)] min-h-0 min-w-0 overflow-hidden" : "grid min-h-screen min-w-0",
+              location.pathname === "/metachat" ? "grid h-[calc(100dvh-3.5rem)] min-h-0 min-w-0 overflow-hidden" : "grid min-h-[calc(100dvh-3.5rem)] min-w-0",
               readerActive || location.pathname === "/metachat"
                 ? "lg:grid-cols-[minmax(0,1fr)]"
                 : rightSidebarCollapsed
@@ -289,7 +263,7 @@ export function V2Shell() {
           >
             {readerActive || location.pathname === "/metachat" ? null : (
               <aside className="hidden border-r border-divider bg-app-elevated lg:block">
-                <div className="sticky top-0 h-screen">
+                <div className="sticky top-14 h-[calc(100dvh-3.5rem)]">
                   <V2LeftSidebar activeStoryId={activeStoryId} />
                 </div>
               </aside>
@@ -302,7 +276,7 @@ export function V2Shell() {
 
             {readerActive || location.pathname === "/metachat" || rightSidebarCollapsed || !effectiveShowChrome ? null : (
               <aside className="hidden border-l border-divider bg-app-elevated lg:block">
-                <div className="sticky top-0 h-screen">
+                <div className="sticky top-14 h-[calc(100dvh-3.5rem)]">
                   <V2RightSidebar storyId={activeStoryId} />
                 </div>
               </aside>

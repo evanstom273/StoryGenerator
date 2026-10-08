@@ -306,11 +306,11 @@ export function resolveChapterHeaderElement(messageId: string): HTMLElement | nu
 
 export const CHAPTER_HEADER_SCROLL_GAP_PX = 40;
 
-/** Sticky mobile app header sits above the transcript; desktop has no top chrome. */
+/** The permanent app header sits above the transcript on every viewport. */
 export function getChapterHeaderScrollInset(): number {
   let inset = CHAPTER_HEADER_SCROLL_GAP_PX;
 
-  if (typeof window.matchMedia !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
+  if (typeof document !== "undefined") {
     const mobileHeader = document.querySelector("header.sticky.top-0");
     if (mobileHeader instanceof HTMLElement) {
       inset = Math.max(inset, mobileHeader.offsetHeight + CHAPTER_HEADER_SCROLL_GAP_PX);

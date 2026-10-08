@@ -1,4 +1,12 @@
 import {
+  createUniverseRecord,
+  updateUniverseRecord,
+  createCharacterRecord,
+  updateCharacterRecord,
+  characterDeletionReason,
+  universeDeletionReason,
+} from "../../lib/libraryRecords";
+import {
   createContext,
   useCallback,
   useContext,
@@ -54,7 +62,6 @@ import {
   buildUniverseBlueprintSystemPrompt,
 } from "../../lib/ai/universeGenerator";
 import { extractFirstJsonObject, safeParseJsonObject, tryRepairTruncatedJson } from "../../lib/ai/json";
-import { buildMatureFictionPolicyBlock } from "../../lib/ai/matureFictionPolicy";
 import {
   adultContentModeToLegacyMatureFictionMode,
   resolveAdultContentMode,
@@ -102,8 +109,6 @@ import {
   applyTranscriptPresenceGate,
   selectChaptersForArchiveRebuild,
   getArchiveIndexStatus,
-  formatStoryLongTermMemoryForPrompt,
-  formatStorySceneStateForPrompt,
   reconcileRelationshipsFromStateJson,
 } from "../../lib/storyRuntimeState";
 import { runGuidedChapterGeneration } from "../../lib/guidedChapterGeneration/runGuidedChapters";
@@ -122,11 +127,6 @@ import { runAutoBackupIfNeeded } from "../../lib/autoBackup";
 import {
   sendJobCompletionNotification,
 } from "../../lib/jobNotifications";
-import {
-  mergeMetaChatReferences,
-  resolveMetaChatReferences,
-} from "../../lib/metaChatReferences";
-import { isGlobalMetaChatScope, isMetaChatConversationScope } from "../../lib/metaChatScope";
 import {
   buildAssistantCandidateSelection,
   buildManualAssistantEdit,
@@ -188,21 +188,14 @@ import {
 } from "../../lib/backgroundTasks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
 import {
-  formatUniverseWikiSources,
-  getPrimaryUniverseWikiUrl,
-  normalizeUniverseWikiSources,
-} from "../../lib/universeSources";
-import {
   formatHumanNovelistProseGuidance,
 } from "../../lib/storyProseGuidance";
 import {
-  formatPlayerCharacterAliasesForPrompt,
   normalizePlayerCharacterAliases,
   buildCharacterConceptConstraintsFromDraft,
   formatCharacterConceptAliasesConstraint,
   formatCharacterKnownTiesConstraint,
   formatAntiCanonSprawlGuidance,
-  formatPlayerCharacterKnownTiesForPrompt,
   normalizePlayerCharacterKnownTies,
   buildPlayerNameForValidation,
   formatPlayerCharacterOwnershipRulesForRewrite,
@@ -238,7 +231,6 @@ import type {
   DeveloperTestingNoteDraft,
   DirectorIntent,
   GuardedDeleteResult,
-  MetaChatReference,
   PlayerCharacterExportBundleV1,
   PlayerCharacter,
   PlayerCharacterDraft,
@@ -253,10 +245,6 @@ import type {
   StoryExportBundle,
   StoryChapter,
   StoryIndexesV2,
-  StoryUiState,
-  StoryMetaMessage,
-  MetaChatConversation,
-  MetaChatLibraryAction,
   StoryMessage,
   StoryMessageDraft,
   StorySpeakerAttributionAudit,
@@ -273,13 +261,13 @@ import type {
 
 interface StoryEngineContextValue {
   loading: boolean;
+  refreshLibrary: () => Promise<void>;
   errorMessage: string | null;
   storageStatus: StorageStatus;
   universes: Universe[];
   playerCharacters: PlayerCharacter[];
   stories: Story[];
   messages: StoryMessage[];
-  metaMessages: StoryMetaMessage[];
   chapters: StoryChapter[];
   backgroundJobs: BackgroundJob[];
   aiSettings: AISettings | null;
@@ -324,7 +312,6 @@ interface StoryEngineContextValue {
     title: string;
     body: string;
     storyId?: string;
-    openMetaChat?: boolean;
   } | null;
   getUniverseById: (id: string) => Universe | undefined;
   getPlayerCharacterById: (id: string) => PlayerCharacter | undefined;
@@ -333,18 +320,8 @@ interface StoryEngineContextValue {
   getDeveloperFeatureRequestById: (id: string) => DeveloperFeatureRequest | undefined;
   getDeveloperTestingNoteById: (id: string) => DeveloperTestingNote | undefined;
   getMessagesForStory: (storyId: string) => StoryMessage[];
-  metaChatConversations: MetaChatConversation[];
-  planMetaChatLibraryActions: (scopeId: string, instruction: string) => Promise<MetaChatLibraryAction[]>;
-  createMetaChatConversation: (references?: MetaChatReference[]) => Promise<MetaChatConversation>;
-  renameMetaChatConversation: (id: string, title: string) => Promise<void>;
-  deleteMetaChatConversation: (id: string) => Promise<void>;
-  getMetaMessagesForScope: (scopeId: string) => StoryMetaMessage[];
-  getMetaMessagesForStory: (storyId: string) => StoryMetaMessage[];
   getChaptersForStory: (storyId: string) => StoryChapter[];
   getJobsForStory: (storyId: string) => BackgroundJob[];
-  getMetaChatJobs: (scopeId: string) => BackgroundJob[];
-  getMetaChatDraft: (storyId: string) => string;
-  getMetaChatReferences: (scopeId: string) => MetaChatReference[];
   getPlayerCharactersForUniverse: (universeIdOrIds: string | string[]) => PlayerCharacter[];
   getStoriesForUniverse: (universeId: string) => Story[];
   getStoriesForPlayerCharacter: (playerCharacterId: string) => Story[];
@@ -391,19 +368,6 @@ interface StoryEngineContextValue {
     messageId: string,
     intent: StoryMessage["directorIntent"] | null,
   ) => Promise<StoryMessage | null>;
-  sendMetaChatMessage: (storyId: string, content: string) => Promise<StoryMetaMessage>;
-  queueMetaChatMessage: (
-    storyId: string,
-    content: string,
-  ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
-  editMetaChatMessage: (scopeId: string, messageId: string, content: string) => Promise<void>;
-  setMetaChatDraft: (storyId: string, draft: string) => Promise<void>;
-  clearMetaChatDraft: (storyId: string) => Promise<void>;
-  setMetaChatReferences: (
-    scopeId: string,
-    references: MetaChatReference[],
-  ) => Promise<void>;
-  resetMetaChatConversation: (scopeId: string) => Promise<void>;
   createDeveloperBug: (draft: DeveloperBugDraft) => Promise<DeveloperBug>;
   updateDeveloperBug: (id: string, draft: DeveloperBugDraft) => Promise<DeveloperBug | null>;
   deleteDeveloperBug: (id: string) => Promise<void>;
@@ -795,7 +759,7 @@ async function generateResponseWithRetry(params: {
   geminiMatureFictionMode?: boolean;
   debugTrace?: {
     traceId: string;
-    mode: "story" | "additive" | "metachat" | "summary" | "other";
+    mode: "story" | "additive" | "summary" | "other";
     storyId?: string;
     stage: string;
     lastUserText?: string;
@@ -1559,51 +1523,6 @@ function formatBackgroundJobFailureMessage(error: unknown) {
     .join("\n\n");
 }
 
-function normalizeMetaChatWhitespace(value: string) {
-  return value
-    .replace(/\r\n/g, "\n")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function formatMetaChatCanonMessage(message: StoryMessage, playerCharacterName: string) {
-  const content = normalizeMetaChatWhitespace(message.content ?? "");
-  if (!content) {
-    return "";
-  }
-
-  if (message.role === "user") {
-    if (isAuthorDirectiveMessage(message)) {
-      return `${message.speakerName?.trim() || "Author"}: ${content}`;
-    }
-
-    if (isContinueMessage(message)) {
-      return `Continue: ${content}`;
-    }
-
-    if (isDirectorMessage(message)) {
-      return `Director: ${content}`;
-    }
-
-    return `Player (${message.speakerName?.trim() || playerCharacterName}): ${content}`;
-  }
-
-  if (message.speakerType === "canon") {
-    return `Canon (${message.speakerName?.trim() || "Unknown"}): ${content}`;
-  }
-
-  if (message.speakerType === "narrator") {
-    return `Narrator: ${content}`;
-  }
-
-  if (message.role === "system" || message.speakerType === "system") {
-    return `System: ${content}`;
-  }
-
-  return `Assistant: ${content}`;
-}
-
 function formatTranscriptSpeakerForIndexing(
   message: StoryMessage,
   playerCharacterName: string,
@@ -1666,185 +1585,6 @@ function shouldAllowDirectedPlayerControlForUserTurn(
     isContinueMessage(message) &&
       latestPriorUserMessage &&
       isDirectorMessage(latestPriorUserMessage),
-  );
-}
-
-function buildMetaChatCanonContext(params: {
-  story: Story;
-  universe: Universe;
-  playerCharacter: PlayerCharacter;
-  storyState: StoryState | null;
-  messages: StoryMessage[];
-  chapters: StoryChapter[];
-}) {
-  const normalizedState = (() => {
-    const json = params.storyState?.stateJson?.trim() ?? "";
-    if (!json) return null;
-    const parsed = safeParseStoryStateData(json);
-    return normalizeStoryStateToV2(parsed);
-  })();
-
-  const universeBlock = [
-    `Universe name: ${params.universe.name}`,
-    params.universe.description?.trim() ? `Universe description: ${params.universe.description.trim()}` : null,
-    params.universe.concept?.trim() ? `Universe concept: ${params.universe.concept.trim()}` : null,
-    params.universe.genreTheme?.trim() ? `Genre/theme: ${params.universe.genreTheme.trim()}` : null,
-    params.universe.tone?.trim() ? `Tone: ${params.universe.tone.trim()}` : null,
-    params.universe.universeBlueprint?.trim()
-      ? `Universe blueprint:\n${params.universe.universeBlueprint.trim()}`
-      : null,
-    params.universe.notes?.trim() ? `Universe notes: ${params.universe.notes.trim()}` : null,
-    formatUniverseWikiSources(params.universe).length
-      ? `Reference sources:\n${formatUniverseWikiSources(params.universe).join("\n")}`
-      : null,
-  ]
-    .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
-    .join("\n");
-
-  const playerBlock = [
-    `Name: ${params.playerCharacter.name}`,
-    formatPlayerCharacterAliasesForPrompt(params.playerCharacter),
-    formatPlayerCharacterKnownTiesForPrompt(params.playerCharacter),
-    params.playerCharacter.age?.trim() ? `Age: ${params.playerCharacter.age.trim()}` : null,
-    params.playerCharacter.gender?.trim() ? `Gender: ${params.playerCharacter.gender.trim()}` : null,
-    params.playerCharacter.species?.trim() ? `Species: ${params.playerCharacter.species.trim()}` : null,
-    params.playerCharacter.pronouns?.trim() ? `Pronouns: ${params.playerCharacter.pronouns.trim()}` : null,
-    params.playerCharacter.characterConcept?.trim()
-      ? `Concept/role: ${params.playerCharacter.characterConcept.trim()}`
-      : null,
-    params.playerCharacter.appearance?.trim()
-      ? `Appearance: ${params.playerCharacter.appearance.trim()}`
-      : null,
-    params.playerCharacter.personality?.trim()
-      ? `Personality: ${params.playerCharacter.personality.trim()}`
-      : null,
-    params.playerCharacter.background?.trim()
-      ? `Background: ${params.playerCharacter.background.trim()}`
-      : null,
-    params.playerCharacter.notes?.trim() ? `Notes: ${params.playerCharacter.notes.trim()}` : null,
-  ]
-    .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
-    .join("\n");
-
-  const chaptersBlock = params.chapters.length
-    ? params.chapters
-        .map((chapter) =>
-          [
-            `${chapter.label} (ends at message #${chapter.endsAtIndex})`,
-            chapter.summary?.trim() ? chapter.summary.trim() : null,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        )
-        .join("\n\n")
-    : "No chapters recorded yet.";
-
-  const recentTranscript = sortByTimestampAsc(params.messages)
-    .slice(-80)
-    .map((message) => formatMetaChatCanonMessage(message, params.playerCharacter.name))
-    .filter(Boolean)
-    .join("\n\n");
-
-  return normalizeMetaChatWhitespace(
-    [
-      `Story title: ${params.story.title}`,
-      params.story.currentSummary?.trim() ? `Current summary: ${params.story.currentSummary.trim()}` : null,
-      universeBlock ? `Universe Reference\n${universeBlock}` : null,
-      playerBlock ? `Player Character Sheet\n${playerBlock}` : null,
-      normalizedState
-        ? `Full Indexed Memory\n${formatStoryLongTermMemoryForPrompt(normalizedState, {
-            playerName: params.playerCharacter.name,
-          })}`
-        : "Full Indexed Memory\nNo indexed archive available yet.",
-      normalizedState
-        ? `Current Scene State\n${formatStorySceneStateForPrompt(normalizedState) || "No current scene state recorded yet."}`
-        : null,
-      `Chapters\n${chaptersBlock}`,
-      recentTranscript ? `Recent Canon Transcript\n${recentTranscript}` : null,
-    ]
-      .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
-      .join("\n\n"),
-  );
-}
-
-function buildMetaChatLibraryOverview(args: {
-  stories: Story[];
-  universes: Universe[];
-  playerCharacters: PlayerCharacter[];
-}) {
-  const universeMap = new Map(args.universes.map((universe) => [universe.id, universe]));
-  const characterMap = new Map(
-    args.playerCharacters.map((character) => [character.id, character]),
-  );
-
-  const recentStories = sortByUpdatedAtDesc(args.stories)
-    .slice(0, 16)
-    .map((story) =>
-      [
-        story.title,
-        universeMap.get(story.universeId)?.name
-          ? `Universe: ${universeMap.get(story.universeId)!.name}`
-          : null,
-        characterMap.get(story.playerCharacterId)?.name
-          ? `Player character: ${characterMap.get(story.playerCharacterId)!.name}`
-          : null,
-        story.currentSummary?.trim() ? `Summary: ${story.currentSummary.trim()}` : null,
-      ]
-        .filter((line): line is string => Boolean(line))
-        .join(" | "),
-    );
-
-  const recentCharacters = sortByCreatedAtDesc(args.playerCharacters)
-    .filter((character) => (character.scope ?? "library") === "library")
-    .slice(0, 16)
-    .map((character) =>
-      [
-        character.name,
-        universeMap.get(character.universeId)?.name
-          ? `Universe: ${universeMap.get(character.universeId)!.name}`
-          : null,
-        character.characterConcept?.trim()
-          ? `Concept: ${character.characterConcept.trim()}`
-          : null,
-        normalizePlayerCharacterAliases(character.aliases).length
-          ? `Aliases: ${normalizePlayerCharacterAliases(character.aliases).join(", ")}`
-          : null,
-      ]
-        .filter((line): line is string => Boolean(line))
-        .join(" | "),
-    );
-
-  const recentUniverses = sortByCreatedAtDesc(args.universes)
-    .slice(0, 12)
-    .map((universe) =>
-      [
-        universe.name,
-        universe.description?.trim() ? `Description: ${universe.description.trim()}` : null,
-        universe.genreTheme?.trim() ? `Genre/theme: ${universe.genreTheme.trim()}` : null,
-        universe.tone?.trim() ? `Tone: ${universe.tone.trim()}` : null,
-      ]
-        .filter((line): line is string => Boolean(line))
-        .join(" | "),
-    );
-
-  return normalizeMetaChatWhitespace(
-    [
-      "Library Overview",
-      `Stories in library: ${args.stories.length}`,
-      `Universes in library: ${args.universes.length}`,
-      `Library characters: ${args.playerCharacters.filter((character) => (character.scope ?? "library") === "library").length}`,
-      recentStories.length
-        ? `Recent / active stories\n${recentStories.map((line) => `- ${line}`).join("\n")}`
-        : null,
-      recentCharacters.length
-        ? `Player characters\n${recentCharacters.map((line) => `- ${line}`).join("\n")}`
-        : null,
-      recentUniverses.length
-        ? `Universes\n${recentUniverses.map((line) => `- ${line}`).join("\n")}`
-        : null,
-    ]
-      .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
-      .join("\n\n"),
   );
 }
 
@@ -2204,11 +1944,8 @@ export function StoryEngineProvider({
   const [playerCharacters, setPlayerCharacters] = useState<PlayerCharacter[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [messages, setMessages] = useState<StoryMessage[]>([]);
-  const [metaMessages, setMetaMessages] = useState<StoryMetaMessage[]>([]);
-  const [metaChatConversations, setMetaChatConversations] = useState<MetaChatConversation[]>([]);
   const [chapters, setChapters] = useState<StoryChapter[]>([]);
   const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([]);
-  const [storyUiStates, setStoryUiStates] = useState<StoryUiState[]>([]);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const [developerBugs, setDeveloperBugs] = useState<DeveloperBug[]>([]);
   const [developerFeatureRequests, setDeveloperFeatureRequests] = useState<
@@ -2251,7 +1988,7 @@ export function StoryEngineProvider({
       const metachatModels =
         typeof record.metachatModels === "object" && record.metachatModels !== null
           ? (record.metachatModels as Partial<Record<AIProviderType, string>>)
-          : { ...storyModels };
+          : {};
       const indexingModels =
         typeof record.indexingModels === "object" && record.indexingModels !== null
           ? (record.indexingModels as Partial<Record<AIProviderType, string>>)
@@ -2323,11 +2060,8 @@ export function StoryEngineProvider({
           nextPlayerCharacters,
           nextStories,
           nextMessages,
-          nextMetaMessages,
-          nextMetaChatConversations,
           nextChapters,
           nextBackgroundJobs,
-          nextStoryUiStates,
           nextAISettings,
           nextDeveloperBugs,
           nextDeveloperFeatureRequests,
@@ -2338,11 +2072,8 @@ export function StoryEngineProvider({
           repository.listPlayerCharacters(),
           repository.listStories(),
           repository.listAllMessages(),
-          repository.listAllStoryMetaMessages(),
-          repository.listMetaChatConversations(),
           repository.listAllStoryChapters(),
           repository.listBackgroundJobs(),
-          repository.listStoryUiStates(),
           getNormalizedAISettings().catch(() => null),
           repository.listDeveloperBugs(),
           repository.listDeveloperFeatureRequests(),
@@ -2415,8 +2146,6 @@ export function StoryEngineProvider({
         );
         setStories(sortByUpdatedAtDesc(nextStories));
         setMessages(sortByTimestampAsc(nextMessages));
-        setMetaMessages(sortByTimestampAsc(nextMetaMessages));
-        setMetaChatConversations(nextMetaChatConversations);
         setChapters([...nextChapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex));
         setBackgroundJobs(
           [...cleanedBackgroundJobs].sort(
@@ -2424,7 +2153,6 @@ export function StoryEngineProvider({
               new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
           ),
         );
-        setStoryUiStates(nextStoryUiStates);
         setAiSettings(nextAISettings);
         setDeveloperBugs(
           [...nextDeveloperBugs].sort(
@@ -2607,210 +2335,6 @@ export function StoryEngineProvider({
     [repository],
   );
 
-  const saveStoryUiStateRecord = useCallback(
-    async (storyId: string, patch: Partial<StoryUiState>) => {
-      const current = await repository.getStoryUiState(storyId);
-      const next: StoryUiState = {
-        id: current?.id ?? `story-ui-state:${storyId}`,
-        storyId,
-        metaChatDraft: current?.metaChatDraft,
-        metaChatReferences: current?.metaChatReferences ?? [],
-        updatedAt: new Date().toISOString(),
-        ...patch,
-      };
-
-      if (!next.metaChatDraft?.trim()) {
-        next.metaChatDraft = "";
-      }
-
-      next.metaChatReferences = mergeMetaChatReferences(next.metaChatReferences ?? []);
-
-      await repository.saveStoryUiState(next);
-      setStoryUiStates((currentStates) => {
-        const otherStates = currentStates.filter((record) => record.storyId !== storyId);
-        return [...otherStates, next];
-      });
-      return next;
-    },
-    [repository],
-  );
-
-  const resolveInlineMetaChatReferences = useCallback(
-    (content: string) =>
-      resolveMetaChatReferences({
-        text: content,
-        stories,
-        characters: playerCharacters.filter(
-          (character) => (character.scope ?? "library") === "library",
-        ),
-        universes,
-      }),
-    [playerCharacters, stories, universes],
-  );
-
-  const buildMetaChatContextBlock = useCallback(
-    async (scopeId: string, references: MetaChatReference[]) => {
-      async function buildStoryContext(storyId: string, heading: string) {
-        const story = await repository.getStory(storyId);
-        if (!story) {
-          return null;
-        }
-
-        const [universeContext, playerCharacter, storyState, storyMessages, storyChapters] =
-          await Promise.all([
-            resolveStoryUniverseContext({
-              story,
-              getUniverse: repository.getUniverse,
-              listUniverseImports: repository.listUniverseImports,
-            }),
-            repository.getPlayerCharacter(story.playerCharacterId),
-            repository.getStoryState(storyId),
-            repository.listStoryMessages(storyId),
-            repository.listStoryChapters(storyId),
-          ]);
-
-        if (!playerCharacter) {
-          return null;
-        }
-
-        return `${heading}\n${buildMetaChatCanonContext({
-          story,
-          universe: universeContext.universe,
-          playerCharacter,
-          storyState,
-          messages: storyMessages,
-          chapters: storyChapters,
-        })}`;
-      }
-
-      const blocks: string[] = [];
-
-      if (isMetaChatConversationScope(scopeId)) {
-        blocks.push(
-          buildMetaChatLibraryOverview({
-            stories,
-            universes,
-            playerCharacters,
-          }),
-        );
-      } else {
-        const currentStoryBlock = await buildStoryContext(scopeId, "Current Story Canon");
-        if (currentStoryBlock) {
-          blocks.push(currentStoryBlock);
-        }
-      }
-
-      for (const reference of references) {
-        if (reference.kind === "story") {
-          if (!isMetaChatConversationScope(scopeId) && reference.id === scopeId) {
-            continue;
-          }
-          const storyBlock = await buildStoryContext(
-            reference.id,
-            `Referenced Story: ${reference.label}`,
-          );
-          if (storyBlock) {
-            blocks.push(storyBlock);
-          }
-          continue;
-        }
-
-        if (reference.kind === "character") {
-          const character = playerCharacters.find((entry) => entry.id === reference.id);
-          if (!character) {
-            continue;
-          }
-          const universe = universes.find((entry) => entry.id === character.universeId);
-          const relatedStories = stories
-            .filter(
-              (story) =>
-                story.playerCharacterId === character.id ||
-                story.openingPrompt?.toLowerCase().includes(character.name.toLowerCase()),
-            )
-            .slice(0, 8)
-            .map((story) => story.title);
-
-          blocks.push(
-            normalizeMetaChatWhitespace(
-              [
-                `Referenced Character: ${reference.label}`,
-                `Name: ${character.name}`,
-                formatPlayerCharacterAliasesForPrompt(character),
-                formatPlayerCharacterKnownTiesForPrompt(character),
-                universe ? `Universe: ${universe.name}` : null,
-                character.characterConcept?.trim()
-                  ? `Concept/role: ${character.characterConcept.trim()}`
-                  : null,
-                character.appearance?.trim()
-                  ? `Appearance: ${character.appearance.trim()}`
-                  : null,
-                character.personality?.trim()
-                  ? `Personality: ${character.personality.trim()}`
-                  : null,
-                character.background?.trim()
-                  ? `Background: ${character.background.trim()}`
-                  : null,
-                character.notes?.trim() ? `Notes: ${character.notes.trim()}` : null,
-                relatedStories.length
-                  ? `Stories in library involving this character: ${relatedStories.join(", ")}`
-                  : null,
-              ]
-                .filter((line): line is string => Boolean(line))
-                .join("\n"),
-            ),
-          );
-          continue;
-        }
-
-        const universe = universes.find((entry) => entry.id === reference.id);
-        if (!universe) {
-          continue;
-        }
-        const relatedStories = stories
-          .filter((story) => getUniverseIds(story).includes(universe.id))
-          .slice(0, 8)
-          .map((story) => story.title);
-        const relatedCharacters = playerCharacters
-          .filter(
-            (character) =>
-              characterMatchesUniverses(character, [universe.id]) &&
-              (character.scope ?? "library") === "library",
-          )
-          .slice(0, 8)
-          .map((character) => character.name);
-
-        blocks.push(
-          normalizeMetaChatWhitespace(
-            [
-              `Referenced Universe: ${reference.label}`,
-              `Name: ${universe.name}`,
-              universe.description?.trim()
-                ? `Description: ${universe.description.trim()}`
-                : null,
-              universe.concept?.trim() ? `Concept: ${universe.concept.trim()}` : null,
-              universe.genreTheme?.trim()
-                ? `Genre/theme: ${universe.genreTheme.trim()}`
-                : null,
-              universe.tone?.trim() ? `Tone: ${universe.tone.trim()}` : null,
-              universe.notes?.trim() ? `Notes: ${universe.notes.trim()}` : null,
-              relatedStories.length
-                ? `Stories in this universe: ${relatedStories.join(", ")}`
-                : null,
-              relatedCharacters.length
-                ? `Player characters in this universe: ${relatedCharacters.join(", ")}`
-                : null,
-            ]
-              .filter((line): line is string => Boolean(line))
-              .join("\n"),
-          ),
-        );
-      }
-
-      return normalizeMetaChatWhitespace(blocks.join("\n\n"));
-    },
-    [playerCharacters, repository, stories, universes],
-  );
-
   const queueStoryIndexJob = useCallback(
     async (storyId: string, opts?: { trigger?: "manual" | "auto"; incremental?: boolean; force?: boolean }) => {
       const existingJobs = await repository.listBackgroundJobs();
@@ -2981,70 +2505,6 @@ export function StoryEngineProvider({
     [getNormalizedAISettings, repository, resolveAIProfile],
   );
 
-  const queueMetaChatMessage = useCallback(
-    async (scopeId: string, content: string) => {
-      const trimmed = content.trim();
-      if (!trimmed) {
-        throw new Error("Message content is required.");
-      }
-
-      const existingReferences = (await repository.getStoryUiState(scopeId))?.metaChatReferences ?? [];
-      const resolvedReferences = mergeMetaChatReferences(
-        existingReferences,
-        resolveInlineMetaChatReferences(trimmed),
-      );
-
-      const jobId = createEntityId("background-job");
-      const userMessage: StoryMetaMessage = {
-        id: createEntityId("story-meta-message"),
-        storyId: scopeId,
-        role: "user",
-        content: trimmed,
-        timestamp: new Date().toISOString(),
-        jobId,
-        referenceSnapshot: resolvedReferences,
-      };
-
-      const job: BackgroundJob = {
-        id: jobId,
-        type: "metachat_generate",
-        storyId: scopeId,
-        createdAt: new Date().toISOString(),
-        status: "queued",
-        payload: {
-          content: trimmed,
-          metaChatUserMessageId: userMessage.id,
-          metaChatOpenOnComplete: true,
-          metaChatReferences: resolvedReferences,
-        },
-      };
-
-      await repository.saveStoryMetaMessage(userMessage);
-      const conversation = (await repository.listMetaChatConversations()).find(item => item.id === scopeId);
-      if (conversation) {
-        await repository.saveMetaChatConversation({
-          ...conversation,
-          title: conversation.title === "New conversation" ? trimmed.slice(0, 65) : conversation.title,
-          updatedAt: new Date().toISOString(),
-        });
-      }
-      await repository.saveBackgroundJob(job);
-      await saveStoryUiStateRecord(scopeId, {
-        metaChatDraft: "",
-        metaChatReferences: resolvedReferences,
-      });
-      await hydrate(false);
-      return { job, duplicate: false };
-    },
-    [
-      hydrate,
-      repository,
-      resolveInlineMetaChatReferences,
-      saveStoryUiStateRecord,
-      storyUiStates,
-    ],
-  );
-
   const cancelBackgroundJob = useCallback(
     async (jobId: string) => {
       const current = await repository.getBackgroundJob(jobId);
@@ -3087,13 +2547,11 @@ export function StoryEngineProvider({
       storyId?: string;
       title: string;
       body: string;
-      openMetaChat?: boolean;
     }) => {
       const delivered = await sendJobCompletionNotification({
         storyId: args.storyId,
         title: args.title,
         body: args.body,
-        openMetaChat: args.openMetaChat,
       });
 
       if (!delivered) {
@@ -3102,7 +2560,6 @@ export function StoryEngineProvider({
           title: args.title,
           body: args.body,
           storyId: args.storyId,
-          openMetaChat: args.openMetaChat,
         });
       }
     },
@@ -3406,137 +2863,6 @@ export function StoryEngineProvider({
     [getNormalizedAISettings, hydrate, repository, resolveAIProfile],
   );
 
-  const generateMetaChatAssistantReply = useCallback(
-    async (
-      scopeId: string,
-      content: string,
-      references: MetaChatReference[] = [],
-      signal?: AbortSignal,
-    ) => {
-      const trimmed = content.trim();
-      if (!trimmed) {
-        throw new Error("Message content is required.");
-      }
-
-      const settings = await getNormalizedAISettings();
-      if (!settings) {
-        throw new Error("Configure an AI provider in Settings before generating messages.");
-      }
-
-      const scopeStory = isMetaChatConversationScope(scopeId)
-        ? null
-        : await repository.getStory(scopeId);
-      if (!isMetaChatConversationScope(scopeId) && !scopeStory) {
-        throw new Error("Story not found.");
-      }
-
-      const storyConfig = scopeStory ? await repository.getStoryAIConfig(scopeId) : null;
-      const providerType = storyConfig?.providerType ?? settings.activeProviderType;
-      const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "metachat");
-      const provider = createAIProvider(providerType);
-      const contextBlock = await buildMetaChatContextBlock(scopeId, references);
-
-      const priorMetaHistory = sortByTimestampAsc(await repository.listStoryMetaMessages(scopeId))
-        .slice(-20)
-        .map(
-          (message) =>
-            ({
-              role: message.role === "assistant" ? "assistant" : "user",
-              content: message.content,
-            }) satisfies AIChatMessage,
-        );
-
-      const systemPrompt = [
-        "You are MetaChat, an out-of-canon writer's room assistant for Story Engine.",
-        "Hard rule: MetaChat is NOT canon and must never be treated as story reality.",
-        "Respond as a natural writing companion, not a formal reviewer. Match the depth and tone of the user's actual message.",
-        "For a short casual comment, joke or rhetorical question, reply conversationally in one or two sentences. Do not produce unsolicited chapter summaries.",
-        "Give substantial analysis only when the user explicitly requests it or clearly invites it. Avoid automatic headings, lists, plot proposals and generic follow-up questions.",
-        "Use story and character context to understand references and continuity, not to recite everything you know.",
-        "Offer thoughtful disagreement and specific criticism when warranted, without reflexive praise or unsolicited rewrites.",
-        "Remember the existing MetaChat discussion in this conversation unless the user resets the chat.",
-        isMetaChatConversationScope(scopeId)
-          ? "This is library-level MetaChat. You may compare stories, universes, characters, voice, pacing, structure, and recurring themes across the user's writing library."
-          : "This is story-level MetaChat. The current story remains the default reference. Any @Story, @Character, or @Universe mentions add context rather than replacing the active story.",
-        references.length
-          ? `Resolved references: ${references.map((reference) => `${reference.kind}:${reference.label}`).join(", ")}`
-          : "Resolved references: none beyond the default active scope.",
-        "You have access to the canon reference block below: use it freely for analysis, planning, continuity checks, comparisons, and archive discussion.",
-        buildMatureFictionPolicyBlock({
-          includeParity: true,
-          includeAnalysisFocus: true,
-        }),
-        "Do not write the next story scene or in-character narration unless the user explicitly asks you to draft an out-of-canon example.",
-        "Prefer analysis, planning, options, comparisons, and questions. Be concise and practical.",
-      ].join("\n");
-
-      const assistantText = (
-        await generateResponseWithRetry({
-          providerType,
-          provider,
-          apiKey,
-          model,
-          signal,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "system", content: `Context (canon reference only):\n${contextBlock}` },
-            ...priorMetaHistory,
-          ],
-        })
-      ).content;
-
-      return assistantText.trim();
-    },
-    [buildMetaChatContextBlock, getNormalizedAISettings, repository, resolveAIProfile],
-  );
-
-  const planMetaChatLibraryActions = useCallback(async (scopeId: string, instruction: string): Promise<MetaChatLibraryAction[]> => {
-    const settings = await getNormalizedAISettings();
-    if (!settings) throw new Error("Configure an AI provider in Settings first.");
-    const providerType = settings.activeProviderType;
-    const { apiKey, model } = await resolveAIProfile(providerType, undefined, "metachat");
-    const provider = createAIProvider(providerType);
-    const history = (await repository.listStoryMetaMessages(scopeId)).slice(-18)
-      .map(message => ({ role: message.role === "assistant" ? "assistant" as const : "user" as const, content: message.content }));
-    const universeList = universes.map(u => ({ id: u.id, name: u.name }));
-    const characterList = playerCharacters.filter(c => (c.scope ?? "library") === "library").map(c => ({ id: c.id, name: c.name, universeId: c.universeId }));
-    const response = await generateResponseWithRetry({
-      providerType, provider, apiKey, model,
-      messages: [
-        { role: "system", content: [
-          "You prepare proposed StoryEngine library actions. You never execute them.",
-          "Return only JSON object {actions:[...]}. Each action: kind character|universe, operation create|update|delete, summary, targetId for update/delete, draft for create/update.",
-          "Only use existing exact targetId values for edits/deletes. Do not guess identifiers.",
-          "For updates, draft MUST be a complete character/universe sheet, preserving all unchanged fields.",
-          "For character drafts include name, age, gender, species, pronouns, appearance, personality, background, notes, universeId. Character sheets have NO player/supporting flag; use scope library.",
-          "For universe drafts include name, description, wikiUrl, mode (custom or referenced).",
-          "For character creation, use a real universeId from the provided list. If none fits, return actions empty and explain in summary.",
-          "Never include story transcript or Story State changes. If ambiguous, return no actions.",
-          "Universe list: " + JSON.stringify(universeList),
-          "Character list: " + JSON.stringify(characterList),
-          "Existing complete characters: " + JSON.stringify(playerCharacters.filter(c => (c.scope ?? "library") === "library").slice(0,40)),
-          "Existing complete universes: " + JSON.stringify(universes.slice(0,40)),
-        ].join("\n") },
-        ...history,
-        { role: "user", content: instruction },
-      ],
-    });
-    const raw = extractFirstJsonObject(response.content);
-    if (!raw) throw new Error("MetaChat did not return an actionable proposal.");
-    const parsed: unknown = JSON.parse(raw);
-    const items = (parsed as { actions?: unknown }).actions;
-    if (!Array.isArray(items)) throw new Error("Invalid action proposal.");
-    return items.slice(0,20).filter((item): item is MetaChatLibraryAction => {
-      if (!item || typeof item !== "object") return false;
-      const action = item as MetaChatLibraryAction;
-      if (!["character","universe"].includes(action.kind) || !["create","update","delete"].includes(action.operation)) return false;
-      if (typeof action.summary !== "string") return false;
-      if (action.operation !== "create" && (!action.targetId || !(action.kind === "character" ? characterList : universeList).some(x => x.id === action.targetId))) return false;
-      if (action.operation !== "delete" && (!action.draft || typeof action.draft !== "object")) return false;
-      return true;
-    });
-  }, [getNormalizedAISettings, resolveAIProfile, repository, playerCharacters, universes]);
-
   const processBackgroundJob = useCallback(
     async (job: BackgroundJob, signal: AbortSignal) => {
       if (inFlightBackgroundJobsRef.current.has(job.id)) {
@@ -3692,77 +3018,6 @@ export function StoryEngineProvider({
             title:
               completedJob.result?.notificationTitle ?? "Indexing complete",
             body: completedJob.result?.notificationBody ?? summaryLine,
-          });
-        } else if (job.type === "metachat_generate") {
-          const currentJob = await repository.getBackgroundJob(job.id);
-          if (currentJob?.status === "cancelled") {
-            return;
-          }
-          const userText = job.payload?.content ?? "";
-          const resolvedReferences = mergeMetaChatReferences(
-            job.payload?.metaChatReferences ?? [],
-          );
-          const assistantText = await generateMetaChatAssistantReply(
-            job.storyId ?? "",
-            userText,
-            resolvedReferences,
-            signal,
-          );
-          const refreshed = await repository.getBackgroundJob(job.id);
-          if (signal.aborted || refreshed?.status === "cancelled") {
-            return;
-          }
-          const assistantMessage: StoryMetaMessage = {
-            id: createEntityId("story-meta-message"),
-            storyId: job.storyId ?? "",
-            role: "assistant",
-            content: assistantText,
-            timestamp: new Date().toISOString(),
-            jobId: job.id,
-            referenceSnapshot: resolvedReferences,
-          };
-          await repository.saveStoryMetaMessage(assistantMessage);
-          const story = job.storyId ? await repository.getStory(job.storyId) : null;
-          const completedJob: BackgroundJob = {
-            ...runningJob,
-            status: "complete",
-            finishedAt: new Date().toISOString(),
-            result: {
-              messageId: assistantMessage.id,
-              notificationTitle: story
-                ? `MetaChat reply ready for ${story.title}`
-                : isGlobalMetaChatScope(job.storyId ?? "")
-                  ? "Library MetaChat reply ready"
-                  : "MetaChat reply ready",
-              notificationBody: "Your out-of-canon assistant reply is ready.",
-              openMetaChat: Boolean(job.payload?.metaChatOpenOnComplete),
-            },
-          };
-          await repository.saveBackgroundJob(completedJob);
-          await hydrate(false);
-          // #region debug-point job-cancel-timeout:job-complete
-          reportJobDebug({
-            hypothesisId: "C",
-            location: "StoryEngineProvider.tsx:processBackgroundJob:complete",
-            msg: "job completed",
-            data: {
-              jobId: completedJob.id,
-              jobType: completedJob.type,
-              storyId: completedJob.storyId ?? null,
-              status: completedJob.status,
-              aborted: signal.aborted,
-            },
-          });
-          // #endregion
-          await deliverJobNotice({
-            jobId: completedJob.id,
-            storyId: job.storyId,
-            title:
-              completedJob.result?.notificationTitle ?? "MetaChat reply ready",
-            body:
-              completedJob.result?.notificationBody ??
-              "Your out-of-canon assistant reply is ready.",
-            openMetaChat: completedJob.result?.openMetaChat,
           });
         } else if (job.type === "guided_chapter_generate") {
           const plan = job.payload?.guidedPlan;
@@ -4049,7 +3304,7 @@ export function StoryEngineProvider({
         inFlightBackgroundJobsRef.current.delete(job.id);
       }
     },
-    [deliverJobNotice, generateMetaChatAssistantReply, getNormalizedAISettings, hydrate, repository, resolveAIProfile, runDeepIndexProcess],
+    [deliverJobNotice, getNormalizedAISettings, hydrate, repository, resolveAIProfile, runDeepIndexProcess],
   );
 
   const startBackgroundTaskJob = useCallback(
@@ -4171,7 +3426,7 @@ export function StoryEngineProvider({
 
     const nextJob = backgroundJobs.find(
       (job) =>
-        (job.type === "metachat_generate" || job.type === "guided_chapter_generate") &&
+        job.type === "guided_chapter_generate" &&
         (job.status === "queued" || job.status === "running"),
     );
 
@@ -4321,13 +3576,13 @@ export function StoryEngineProvider({
 
     return {
       loading,
+      refreshLibrary: () => hydrate(false),
       errorMessage,
       storageStatus,
       universes,
       playerCharacters,
       stories,
       messages,
-      metaMessages,
       chapters,
       backgroundJobs,
       aiSettings,
@@ -4349,64 +3604,12 @@ export function StoryEngineProvider({
         developerTestingNotes.find((note) => note.id === id),
       getMessagesForStory: (storyId) =>
         sortByTimestampAsc(messages.filter((message) => message.storyId === storyId)),
-      metaChatConversations,
-      planMetaChatLibraryActions,
-      async createMetaChatConversation(initialReferences = []) {
-        const now = new Date().toISOString();
-        const record: MetaChatConversation = {
-          id: createEntityId("metachat-conversation"),
-          title: "New conversation",
-          createdAt: now,
-          updatedAt: now,
-        };
-        await repository.saveMetaChatConversation(record);
-        if (initialReferences.length) {
-          await saveStoryUiStateRecord(record.id, { metaChatReferences: initialReferences });
-        }
-        await hydrate(false);
-        return record;
-      },
-      async renameMetaChatConversation(id, title) {
-        const record = metaChatConversations.find(item => item.id === id);
-        if (!record) throw new Error("Conversation not found.");
-        const trimmed = title.trim();
-        if (!trimmed) throw new Error("Conversation title cannot be empty.");
-        await repository.saveMetaChatConversation({ ...record, title: trimmed, updatedAt: new Date().toISOString() });
-        await hydrate(false);
-      },
-      async deleteMetaChatConversation(id) {
-        const record = metaChatConversations.find(item => item.id === id);
-        if (!record) return;
-        const jobs = (await repository.listBackgroundJobs()).filter(job => job.storyId === id && job.type === "metachat_generate");
-        for (const job of jobs) {
-          if (job.status === "queued" || job.status === "running") await cancelBackgroundJob(job.id);
-        }
-        const messages = await repository.listStoryMetaMessages(id);
-        for (const message of messages) await repository.deleteStoryMetaMessage(message.id);
-        for (const job of jobs) await repository.deleteBackgroundJob(job.id);
-        const state = await repository.getStoryUiState(id);
-        if (state) await repository.deleteStoryUiState(state.id);
-        await repository.deleteMetaChatConversation(id);
-        await hydrate(false);
-      },
-      getMetaMessagesForScope: (scopeId) =>
-        sortByTimestampAsc(metaMessages.filter((message) => message.storyId === scopeId)),
-      getMetaMessagesForStory: (storyId) =>
-        sortByTimestampAsc(metaMessages.filter((message) => message.storyId === storyId)),
       getChaptersForStory: (storyId) =>
         [...chapters]
           .filter((chapter) => chapter.storyId === storyId)
           .sort((a, b) => a.endsAtIndex - b.endsAtIndex),
       getJobsForStory: (storyId) =>
         backgroundJobs.filter((job) => job.storyId === storyId),
-      getMetaChatJobs: (scopeId) =>
-        backgroundJobs.filter(
-          (job) => job.type === "metachat_generate" && job.storyId === scopeId,
-        ),
-      getMetaChatDraft: (scopeId) =>
-        storyUiStates.find((record) => record.storyId === scopeId)?.metaChatDraft ?? "",
-      getMetaChatReferences: (scopeId) =>
-        storyUiStates.find((record) => record.storyId === scopeId)?.metaChatReferences ?? [],
       getPlayerCharactersForUniverse: (universeIdOrIds) => {
         const selectedIds = normalizeUniverseIds(
           Array.isArray(universeIdOrIds) ? universeIdOrIds : [universeIdOrIds],
@@ -4431,28 +3634,7 @@ export function StoryEngineProvider({
           stories.filter((story) => story.playerCharacterId === playerCharacterId),
         ),
       async createUniverse(draft) {
-        const mode = draft.mode ?? "referenced";
-        const concept = (draft.concept ?? "").trim();
-        const description = (draft.description ?? "").trim() || (mode === "custom" ? concept : "");
-        const wikiUrls = normalizeUniverseWikiSources(draft);
-        const nextUniverse: Universe = {
-          id: createEntityId("universe"),
-          name: draft.name.trim(),
-          description,
-          wikiUrl: getPrimaryUniverseWikiUrl({ wikiUrl: draft.wikiUrl, wikiUrls }),
-          wikiUrls,
-          mode,
-          concept: mode === "custom" && concept ? concept : undefined,
-          genreTheme: draft.genreTheme?.trim() || undefined,
-          tone: draft.tone?.trim() || undefined,
-          universeBlueprint: draft.universeBlueprint?.trim() || undefined,
-          notes: draft.notes?.trim() || undefined,
-          importedLore: [],
-          importedCharacters: [],
-          importedLocations: [],
-          importedRelationships: [],
-          createdAt: new Date().toISOString(),
-        };
+        const nextUniverse = createUniverseRecord(draft);
 
         await repository.saveUniverse(nextUniverse);
         await hydrate(false);
@@ -4466,37 +3648,7 @@ export function StoryEngineProvider({
           return null;
         }
 
-        const mode = draft.mode ?? (currentUniverse.mode ?? "referenced");
-        const concept =
-          typeof draft.concept === "string"
-            ? draft.concept.trim()
-            : (currentUniverse.concept ?? "").trim();
-        const draftDescription =
-          typeof draft.description === "string" ? draft.description.trim() : "";
-        const description =
-          draftDescription || (mode === "custom" ? concept : currentUniverse.description.trim());
-        const wikiUrls = normalizeUniverseWikiSources({
-          wikiUrl:
-            typeof draft.wikiUrl === "string" ? draft.wikiUrl : currentUniverse.wikiUrl,
-          wikiUrls: draft.wikiUrls ?? currentUniverse.wikiUrls,
-        });
-        const nextUniverse: Universe = {
-          ...currentUniverse,
-          name: draft.name.trim(),
-          description,
-          wikiUrl: getPrimaryUniverseWikiUrl({
-            wikiUrl:
-              typeof draft.wikiUrl === "string" ? draft.wikiUrl : currentUniverse.wikiUrl,
-            wikiUrls,
-          }),
-          wikiUrls,
-          mode,
-          concept: mode === "custom" && concept ? concept : undefined,
-          genreTheme: draft.genreTheme?.trim() || undefined,
-          tone: draft.tone?.trim() || undefined,
-          universeBlueprint: draft.universeBlueprint?.trim() || undefined,
-          notes: draft.notes?.trim() || undefined,
-        };
+        const nextUniverse = updateUniverseRecord(draft, currentUniverse);
 
         await repository.saveUniverse(nextUniverse);
         await hydrate(false);
@@ -4586,18 +3738,8 @@ export function StoryEngineProvider({
         };
       },
       async deleteUniverse(id) {
-        const linkedCharacters = playerCharacters.some((character) =>
-          getUniverseIds(character).includes(id),
-        );
-        const linkedStories = stories.some((story) => getUniverseIds(story).includes(id));
-
-        if (linkedCharacters || linkedStories) {
-          return {
-            ok: false,
-            reason:
-              "Remove or reassign linked player characters and stories before deleting this universe.",
-          };
-        }
+        const reason = universeDeletionReason(id, await repository.listStoryCatalog(), await repository.listPlayerCharacters());
+        if (reason) return { ok: false, reason };
 
         await repository.deleteUniverse(id);
         await hydrate(false);
@@ -4605,26 +3747,7 @@ export function StoryEngineProvider({
         return { ok: true };
       },
       async createPlayerCharacter(draft) {
-        const nextCharacter = applyUniverseIdsFromDraft(draft, {
-          id: createEntityId("player-character"),
-          name: draft.name.trim(),
-          aliases: normalizePlayerCharacterAliases(draft.aliases),
-          knownTies: normalizePlayerCharacterKnownTies(draft.knownTies),
-          age: draft.age.trim(),
-          gender: draft.gender.trim(),
-          species: draft.species?.trim() ?? "",
-          pronouns: draft.pronouns.trim(),
-          characterConcept: draft.characterConcept?.trim() || undefined,
-          appearance: draft.appearance.trim(),
-          personality: draft.personality.trim(),
-          background: draft.background.trim(),
-          goals: "",
-          notes: draft.notes.trim(),
-          universeId: draft.universeId,
-          scope: draft.scope ?? "library",
-          storyId: draft.storyId,
-          createdAt: new Date().toISOString(),
-        } satisfies PlayerCharacter);
+        const nextCharacter = createCharacterRecord(draft);
 
         await repository.savePlayerCharacter(nextCharacter);
         await hydrate(false);
@@ -4756,25 +3879,7 @@ export function StoryEngineProvider({
           return null;
         }
 
-        const nextCharacter = applyUniverseIdsFromDraft(draft, {
-          ...currentCharacter,
-          name: draft.name.trim(),
-          aliases: normalizePlayerCharacterAliases(draft.aliases),
-          knownTies: normalizePlayerCharacterKnownTies(draft.knownTies),
-          age: draft.age.trim(),
-          gender: draft.gender.trim(),
-          species: draft.species?.trim() ?? "",
-          pronouns: draft.pronouns.trim(),
-          characterConcept: draft.characterConcept?.trim() || undefined,
-          appearance: draft.appearance.trim(),
-          personality: draft.personality.trim(),
-          background: draft.background.trim(),
-          goals: currentCharacter.goals,
-          notes: draft.notes.trim(),
-          universeId: draft.universeId,
-          scope: draft.scope ?? currentCharacter.scope ?? "library",
-          storyId: draft.storyId ?? currentCharacter.storyId,
-        });
+        const nextCharacter = updateCharacterRecord(draft, currentCharacter);
 
         const identityChanged =
           currentCharacter.name.trim() !== nextCharacter.name.trim() ||
@@ -4813,15 +3918,8 @@ export function StoryEngineProvider({
         return nextCharacter;
       },
       async deletePlayerCharacter(id) {
-        const linkedStories = stories.some((story) => story.playerCharacterId === id);
-
-        if (linkedStories) {
-          return {
-            ok: false,
-            reason:
-              "Delete or move linked stories before deleting this player character.",
-          };
-        }
+        const reason = characterDeletionReason(id, await repository.listStoryCatalog());
+        if (reason) return { ok: false, reason };
 
         await repository.deletePlayerCharacter(id);
         await hydrate(false);
@@ -5793,114 +4891,6 @@ export function StoryEngineProvider({
         await hydrate(false);
 
         return nextMessage;
-      },
-      async sendMetaChatMessage(scopeId, content) {
-        const trimmed = content.trim();
-        if (!trimmed) {
-          throw new Error("Message content is required.");
-        }
-        const existingReferences =
-          storyUiStates.find((record) => record.storyId === scopeId)?.metaChatReferences ?? [];
-        const resolvedReferences = mergeMetaChatReferences(
-          existingReferences,
-          resolveInlineMetaChatReferences(trimmed),
-        );
-        const userMessage: StoryMetaMessage = {
-          id: createEntityId("story-meta-message"),
-          storyId: scopeId,
-          role: "user",
-          content: trimmed,
-          timestamp: new Date().toISOString(),
-          referenceSnapshot: resolvedReferences,
-        };
-
-        await repository.saveStoryMetaMessage(userMessage);
-        const assistantText = await generateMetaChatAssistantReply(
-          scopeId,
-          trimmed,
-          resolvedReferences,
-        );
-
-        const assistantMessage: StoryMetaMessage = {
-          id: createEntityId("story-meta-message"),
-          storyId: scopeId,
-          role: "assistant",
-          content: assistantText.trim(),
-          timestamp: new Date().toISOString(),
-          referenceSnapshot: resolvedReferences,
-        };
-
-        await repository.saveStoryMetaMessage(assistantMessage);
-        // #region debug-point D:metachat-save
-        reportGenerationAudit({
-          hypothesisId: "D",
-          location: "StoryEngineProvider.tsx:sendMetaChatMessage:save",
-          msg: "MetaChat response saved",
-          data: {
-            storyId: scopeId,
-            savedOutput: assistantMessage.content,
-            savedLength: assistantMessage.content?.length ?? 0,
-          },
-        });
-        // #endregion
-        await saveStoryUiStateRecord(scopeId, {
-          metaChatDraft: "",
-          metaChatReferences: resolvedReferences,
-        });
-        await hydrate(false);
-        return assistantMessage ?? userMessage;
-      },
-      queueMetaChatMessage,
-      async editMetaChatMessage(scopeId, messageId, content) {
-        const trimmed = content.trim();
-        if (!trimmed) throw new Error("Message cannot be empty.");
-        const [scopeMessages, jobs] = await Promise.all([
-          repository.listStoryMetaMessages(scopeId),
-          repository.listBackgroundJobs(),
-        ]);
-        const ordered = [...scopeMessages].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-        const index = ordered.findIndex(message => message.id === messageId && message.role === "user");
-        if (index < 0) throw new Error("Original user message not found.");
-        const active = jobs.filter(job => job.storyId === scopeId && job.type === "metachat_generate" && (job.status === "queued" || job.status === "running"));
-        if (active.length) throw new Error("Wait for the current MetaChat reply to finish before editing.");
-        // Editing rewinds this conversation to the selected user turn.
-        for (const message of ordered.slice(index)) {
-          await repository.deleteStoryMetaMessage(message.id);
-        }
-        await hydrate(false);
-        await queueMetaChatMessage(scopeId, trimmed);
-      },
-      async setMetaChatDraft(scopeId, draft) {
-        await saveStoryUiStateRecord(scopeId, { metaChatDraft: draft });
-      },
-      async clearMetaChatDraft(scopeId) {
-        await saveStoryUiStateRecord(scopeId, { metaChatDraft: "" });
-      },
-      async setMetaChatReferences(scopeId, references) {
-        await saveStoryUiStateRecord(scopeId, {
-          metaChatReferences: mergeMetaChatReferences(references),
-        });
-      },
-      async resetMetaChatConversation(scopeId) {
-        const [scopeMessages, jobs] = await Promise.all([
-          repository.listStoryMetaMessages(scopeId),
-          repository.listBackgroundJobs(),
-        ]);
-        await Promise.all(
-          scopeMessages.map((message) => repository.deleteStoryMetaMessage(message.id)),
-        );
-        await Promise.all(
-          jobs
-            .filter(
-              (job) =>
-                job.storyId === scopeId &&
-                job.type === "metachat_generate" &&
-                (job.status === "queued" || job.status === "running"),
-            )
-            .map((job) => cancelBackgroundJob(job.id)),
-        );
-        await saveStoryUiStateRecord(scopeId, { metaChatDraft: "" });
-        await hydrate(false);
       },
       async createDeveloperBug(draft) {
         const now = new Date().toISOString();
@@ -7752,8 +6742,6 @@ export function StoryEngineProvider({
     hydrate,
     loading,
     messages,
-    metaMessages,
-    storyUiStates,
     playerCharacters,
     repository,
     stories,
@@ -7765,8 +6753,6 @@ export function StoryEngineProvider({
     developerBugs,
     developerFeatureRequests,
     developerTestingNotes,
-    metaChatConversations,
-    planMetaChatLibraryActions,
     storyIndexes,
     backgroundJobs,
     queueGuidedChapterJob,
