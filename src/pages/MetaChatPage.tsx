@@ -27,7 +27,13 @@ export function MetaChatPage() {
   const candidates = useMemo(() => getMetaChatReferenceSuggestions({ query, stories, universes, characters: playerCharacters.filter(c => (c.scope ?? "library") === "library"), limit: 30 }), [query, stories, universes, playerCharacters]);
 
   useEffect(() => { setDraft(getMetaChatDraft(scope)); setDrawer(false); setPicker(false); setError(""); }, [scope, getMetaChatDraft]);
-  useEffect(() => { bottom.current?.scrollIntoView({ block: "end" }); }, [messages.length, jobs.length, scope]);
+  useEffect(() => { if (!drawer) bottom.current?.scrollIntoView({ block: "end" }); }, [messages.length, jobs.length, scope, drawer]);
+  useEffect(() => {
+    if (!drawer) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previous; };
+  }, [drawer]);
 
   function selectScope(id: string) { setParams(id === GLOBAL_META_CHAT_SCOPE_ID ? {} : { story: id }); setDrawer(false); }
   async function send() {
@@ -47,11 +53,11 @@ export function MetaChatPage() {
   }
   const conversationItems = [{ id: GLOBAL_META_CHAT_SCOPE_ID, title: "Writing Library" }, ...stories.map(s => ({ id: s.id, title: s.title }))];
   const history = (
-    <div className="flex h-full flex-col bg-app-elevated">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-contain bg-app-elevated">
       <div className="flex items-center justify-between border-b border-divider p-4"><span className="text-sm font-semibold">Conversations</span><button aria-label="Close conversations" onClick={() => setDrawer(false)} className="lg:hidden"><CloseIcon /></button></div>
       <button className="mx-3 mt-3 rounded-lg border border-divider px-3 py-2 text-left text-sm text-ink-soft hover:bg-panel" onClick={() => selectScope(GLOBAL_META_CHAT_SCOPE_ID)}>+ Library discussion</button>
       <p className="px-4 pb-2 pt-5 text-[10px] font-semibold uppercase tracking-widest text-ink-muted">Story discussions</p>
-      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-4" aria-label="MetaChat conversations">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain touch-pan-y px-2 pb-4" aria-label="MetaChat conversations">
         {conversationItems.map(item => <button key={item.id} onClick={() => selectScope(item.id)} className={`block w-full truncate rounded-lg px-3 py-2.5 text-left text-sm ${scope === item.id ? "bg-accent/15 text-accent-soft" : "text-ink-muted hover:bg-panel"}`}>{item.title}</button>)}
       </nav>
       <p className="border-t border-divider p-3 text-[11px] leading-5 text-ink-muted">Existing library and story conversations. Independent multi-chat threads are not enabled yet.</p>
@@ -60,14 +66,14 @@ export function MetaChatPage() {
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 min-w-0 overflow-hidden border border-divider/30 bg-app lg:h-screen">
       <aside className="hidden w-64 shrink-0 border-r border-divider lg:block">{history}</aside>
-      {drawer && <div className="fixed inset-x-0 bottom-0 top-14 z-30 flex lg:hidden"><button aria-label="Close conversation drawer" className="flex-1 bg-black/70" onClick={() => setDrawer(false)} /><div className="order-first w-[min(85vw,320px)] border-r border-divider">{history}</div></div>}
+      {drawer && <div className="fixed inset-x-0 bottom-0 top-14 z-30 flex h-[calc(100dvh-3.5rem)] overflow-hidden overscroll-none lg:hidden"><button aria-label="Close conversation drawer" className="flex-1 bg-black/70" onClick={() => setDrawer(false)} /><div className="order-first h-full min-h-0 w-[min(85vw,320px)] overflow-hidden border-r border-divider">{history}</div></div>}
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center gap-3 border-b border-divider px-4">
           <button aria-label="Conversation history" onClick={() => setDrawer(true)} className="rounded-lg p-2 text-ink-muted hover:bg-panel lg:hidden"><MenuIcon /></button>
           <div className="min-w-0 flex-1"><h1 className="truncate text-base font-semibold">MetaChat</h1><p className="truncate text-xs text-ink-muted">{story?.title ?? "Entire Writing Library"} · Out of canon</p></div>
           <button className="rounded-lg border border-divider px-3 py-2 text-xs text-ink-muted hover:bg-panel" onClick={() => navigate(-1)}>Back</button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6">
+        <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 ${drawer ? "pointer-events-none" : ""}`}>
           <div className="mx-auto flex max-w-3xl flex-col gap-4">
             {!messages.length && <div className="mx-auto max-w-md py-16 text-center"><h2 className="text-xl font-semibold">Let's talk stories.</h2><p className="mt-3 text-sm leading-6 text-ink-muted">Review your writing, discuss characters and explore ideas. MetaChat stays outside the story.</p></div>}
             {messages.map(m => <div key={m.id} className={m.role === "user" ? "ml-auto max-w-[88%] rounded-2xl bg-panel px-4 py-3 text-sm" : "rounded-2xl border border-divider/50 bg-app-elevated px-4 py-3 text-sm"}>{m.role !== "user" && <div className="mb-2 font-semibold">MetaChat</div>}<div className="prose-metachat break-words leading-7" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(m.content) as string) }} /></div>)}
