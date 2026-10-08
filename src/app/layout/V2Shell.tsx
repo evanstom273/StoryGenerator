@@ -216,17 +216,17 @@ export function V2Shell() {
         setStorySettingsOpen,
       }}
     >
-      <div className="min-h-screen bg-app text-ink">
-        <div className="mx-auto min-h-screen max-w-[1800px]">
-          <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 overflow-hidden border-b border-divider bg-app/80 px-2 backdrop-blur-xl sm:px-3 lg:hidden">
+      <div className="min-h-screen min-w-0 overflow-x-clip bg-app text-ink">
+        <div className="mx-auto min-h-screen min-w-0 max-w-[1800px]">
+          <header className="sticky top-0 z-40 flex h-14 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-b border-divider bg-app/80 px-2 backdrop-blur-xl sm:px-3 lg:hidden">
             <BrandMark mobileHeader />
-            <div className="ml-auto flex shrink-0 items-center gap-1">
+            <div className="ml-auto flex min-w-0 shrink-0 items-center gap-0.5">
               <BackgroundTasksButton />
               <button
                 type="button"
                 aria-label="Search library"
                 onClick={() => librarySearchContextValue.openSearch()}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
               >
                 <SearchIcon className="h-4 w-4" />
               </button>
@@ -235,7 +235,7 @@ export function V2Shell() {
                 aria-label="Open MetaChat"
                 title="MetaChat · out-of-canon assistant"
                 onClick={() => setGlobalMetaChatOpen(true)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
               >
                 <MetaChatRobotIcon className="h-4 w-4" />
               </button>
@@ -243,7 +243,7 @@ export function V2Shell() {
                 type="button"
                 aria-label="Global settings"
                 onClick={() => navigate("/settings")}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 2.75v3" /><path d="m18.54 5.46-2.12 2.12" /><path d="M21.25 12h-3" /><path d="m18.54 18.54-2.12-2.12" /><path d="M12 18.25v3" /><path d="m7.58 16.42-2.12 2.12" /><path d="M5.75 12h-3" /><path d="m7.58 7.58-2.12-2.12" /><circle cx="12" cy="12" r="3.5" />
