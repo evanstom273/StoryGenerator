@@ -51,7 +51,7 @@ export function MetaChatPage() {
   useEffect(() => { if (!drawer) bottom.current?.parentElement?.parentElement?.scrollTo({ top: bottom.current.parentElement.parentElement.scrollHeight }); }, [messages.length, jobs.length, scope, drawer]);
 
   function selectScope(id: string) { setParams(id ? { chat: id } : {}); setDrawer(false); setMenuId(null); }
-  function newChat() { selectScope(""); setInitialReferences([]); setDraft(""); }
+  function newChat() { selectScope(""); const id = (location.state as { initialStoryId?: string } | null)?.initialStoryId; const story = stories.find(item => item.id === id); setInitialReferences(story ? [{ id: story.id, kind: "story", label: story.title }] : []); setDraft(""); }
   async function renameChat(id: string) {
     const item = metaChatConversations.find(c => c.id === id);
     const title = window.prompt("Rename conversation", item?.title ?? "");
@@ -109,6 +109,10 @@ export function MetaChatPage() {
     setApplying(true); setError("");
     let completed = 0;
     try {
+      for (const action of proposedActions) {
+        if (action.operation !== "delete" && (!action.draft || typeof action.draft.name !== "string" || !action.draft.name.trim())) throw new Error("Every proposed draft needs a name.");
+        if (action.kind === "character" && action.operation !== "delete" && ["age","gender","species","pronouns","appearance","personality","background","notes"].some(key => typeof ({ ...(playerCharacters.find(c => c.id === action.targetId) ?? {}), ...action.draft } as Record<string, unknown>)[key] !== "string")) throw new Error("Character proposal is missing required fields.");
+      }
       for (const action of proposedActions) {
         if (action.kind === "character") {
           const existing = playerCharacters.find(item => item.id === action.targetId);
