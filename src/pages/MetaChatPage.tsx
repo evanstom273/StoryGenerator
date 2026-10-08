@@ -174,7 +174,7 @@ export function MetaChatPage() {
     </div>
   );
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] w-full max-w-full min-h-0 min-w-0 overflow-hidden bg-app">
+    <div className="flex h-full w-full max-w-full min-h-0 min-w-0 overflow-hidden bg-app">
       <aside className="hidden w-64 shrink-0 border-r border-divider lg:block">{history}</aside>
       {drawer && <div className="fixed inset-x-0 bottom-0 top-14 z-30 flex h-[calc(100dvh-3.5rem)] overflow-hidden overscroll-none lg:hidden"><button aria-label="Close conversation drawer" className="flex-1 bg-black/70" onClick={() => setDrawer(false)} /><div className="order-first h-full min-h-0 w-[min(85vw,320px)] overflow-hidden border-r border-divider">{history}</div></div>}
       <section className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
