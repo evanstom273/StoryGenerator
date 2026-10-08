@@ -168,7 +168,7 @@ function extractChosenNameCandidate(
 		const match = content.match(pattern);
 		const candidate = match?.[1]
 			?.trim()
-			.replace(/\s+(?:from\s+now(?:\s+on)?|going\s+forward|please)$/i, "")
+			.replace(/\s+(?:from\s+now(?:\s+on)?|going\s+forward|now|please)$/i, "")
 			.trim();
 		if (!candidate) {
 			continue;

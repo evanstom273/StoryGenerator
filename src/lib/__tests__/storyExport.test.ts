@@ -256,7 +256,7 @@ describe("storyExport markdown", () => {
 
     for (const format of ["markdown", "txt"] as const) {
       const content = String(serializeStoryExport(bundle, format).content);
-      expect(content).toContain("Name: James Peralta");
+      expect(content.replace(/\*\*/g, "")).toContain("Name: James Peralta");
       expect(content).toContain("Lyra Peralta & Jake Peralta");
       expect(content).not.toContain("James Peralta & Jake Peralta");
     }

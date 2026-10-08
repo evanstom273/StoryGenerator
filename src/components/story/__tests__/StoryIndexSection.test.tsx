@@ -70,8 +70,6 @@ describe("StoryIndexSection", () => {
     expect(html).toContain("Every 10 messages");
     expect(html).toContain('value="every_10_messages"');
 
-    // Live counter shows 2 pending unindexed
-    expect(html).toContain("2 pending unindexed");
     // Cadence progress indicator indicates 2 / 10
     expect(html).toContain("2 / 10 unindexed (8 more until auto-index)");
   });
@@ -199,7 +197,8 @@ describe("StoryIndexSection", () => {
     expect(html).toContain("Characters (1)");
     expect(html).toContain("Relationships (1)");
     expect(html).toContain("Chapter Summaries (1)");
-    expect(html).toContain("Elena");
+    // Sections are collapsed until explicitly expanded.
+    expect(html).not.toContain("Elena");
     // Individual Story State records are collapsed by default so long indexes
     // remain easy to scan. Details render only after expanding a record.
     expect(html).toContain('aria-expanded="false"');

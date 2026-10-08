@@ -92,7 +92,7 @@ describe("StoryTranscriptView narrator presentation", () => {
 		expect(html).not.toContain("Chapter V");
 		expect(html).toContain("The room is quiet.");
 		expect(html).toContain("No one moves.");
-		expect((html.match(/data-chapter-banner/g) ?? []).length).toBe(1);
+		expect((html.match(/id="story-chapter-start-/g) ?? []).length).toBe(1);
 		expect(messages[0]?.content).toBe("Chapter IV.");
 	});
 
@@ -142,6 +142,6 @@ describe("StoryTranscriptView narrator presentation", () => {
 		);
 
 		expect(html).toContain("Chapter V");
-		expect((html.match(/data-chapter-banner/g) ?? []).length).toBe(2);
+		expect((html.match(/id="story-chapter-start-/g) ?? []).length).toBe(2);
 	});
 });
