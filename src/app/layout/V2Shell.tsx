@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BrandMark } from "../../components/BrandMark";
 import { AnimatedOutlet } from "../../components/ui/AnimatedOutlet";
 import { DRAWER_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../ui/motion";
-import { SearchIcon } from "../../components/icons";
+import { MetaChatRobotIcon, SearchIcon } from "../../components/icons";
 import { MetaChatOverlay } from "../../components/story/MetaChatOverlay";
 import { cn } from "../../utils/cn";
 import { META_CHAT_OPEN_STORAGE_KEY } from "../../lib/jobNotifications";
@@ -229,6 +229,15 @@ export function V2Shell() {
                 className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
               >
                 <SearchIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Open MetaChat"
+                title="MetaChat · out-of-canon assistant"
+                onClick={() => setGlobalMetaChatOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+              >
+                <MetaChatRobotIcon className="h-4 w-4" />
               </button>
               <button
                 type="button"

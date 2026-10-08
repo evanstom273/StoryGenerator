@@ -229,3 +229,15 @@ export function ExternalLinkIcon(props: IconProps) {
     </SvgIcon>
   );
 }
+
+export function MetaChatRobotIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M12 3v3M9.5 3h5" />
+      <rect x="4" y="7" width="16" height="13" rx="4" />
+      <path d="M4 12H2m20 0h-2M9 16h6" />
+      <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none" />
+    </SvgIcon>
+  );
+}
