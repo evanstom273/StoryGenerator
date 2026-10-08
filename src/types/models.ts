@@ -225,6 +225,13 @@ export interface StoryMessage {
   revision?: number;
 }
 
+export interface MetaChatConversation {
+  id: EntityId;
+  title: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export interface StoryMetaMessage {
   id: EntityId;
   storyId: EntityId;
