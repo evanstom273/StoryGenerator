@@ -170,12 +170,12 @@ export function HomePage() {
                           {story.title}
                         </span>
                         {universe && (
-                          <span className="hidden max-w-[35%] shrink-0 truncate text-[10px] text-white/22 sm:block">
+                          <span className="max-w-[28%] shrink-0 truncate text-[10px] text-white/22">
                             {universe.name}
                           </span>
                         )}
                       </div>
-                      <span className="ml-1 hidden shrink-0 whitespace-nowrap text-[10px] text-white/18 sm:block">
+                      <span className="ml-1 shrink-0 whitespace-nowrap text-[10px] text-white/18">
                         {formatRelativeTime(story.updatedAt)}
                       </span>
                     </Link>
