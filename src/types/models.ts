@@ -225,6 +225,14 @@ export interface StoryMessage {
   revision?: number;
 }
 
+export interface MetaChatLibraryAction {
+  kind: "character" | "universe";
+  operation: "create" | "update" | "delete";
+  targetId?: string;
+  summary: string;
+  draft?: Record<string, unknown>;
+}
+
 export interface MetaChatConversation {
   id: EntityId;
   title: string;
