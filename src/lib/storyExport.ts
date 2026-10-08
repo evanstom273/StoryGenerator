@@ -42,7 +42,7 @@ function buildTranscriptLines(bundle: StoryExportBundle) {
     recentMessages: bundle.messages,
   });
 
-  return bundle.messages.flatMap((message) => {
+  return [...bundle.messages].sort((a, b) => a.timestamp.localeCompare(b.timestamp)).flatMap((message) => {
     const timestamp = `[${formatDateTime(message.timestamp)}] `;
     if (message.role !== "assistant") {
       const speaker = resolveSpeakerLabel(message, bundle.playerCharacter, playerSceneName);

@@ -1,3 +1,4 @@
+import { MetaChatProvider } from "../features/metachat/MetaChatProvider";
 import { StoryEngineProvider } from "./providers/StoryEngineProvider";
 import { ChangelogProvider } from "./versioning/ChangelogContext";
 import { ThemeProvider } from "./theming/ThemeContext";
@@ -7,9 +8,11 @@ export function App() {
   return (
     <ThemeProvider>
       <StoryEngineProvider>
-        <ChangelogProvider>
-          <AppBootstrap />
-        </ChangelogProvider>
+        <MetaChatProvider>
+          <ChangelogProvider>
+            <AppBootstrap />
+          </ChangelogProvider>
+        </MetaChatProvider>
       </StoryEngineProvider>
     </ThemeProvider>
   );

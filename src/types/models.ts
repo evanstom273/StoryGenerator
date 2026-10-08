@@ -47,7 +47,6 @@ export type BackgroundJobType =
   | "story_export"
   | "story_archive_export";
 export type MaxConcurrentBackgroundTasks = 1 | 2 | 3 | 4 | 5;
-export type MetaChatScopeKind = "story" | "global";
 export type MetaChatReferenceKind = "story" | "character" | "universe";
 
 export type SceneParticipantCapabilities = {
@@ -225,14 +224,7 @@ export interface StoryMessage {
   revision?: number;
 }
 
-export interface MetaChatLibraryAction {
-  kind: "character" | "universe";
-  operation: "create" | "update" | "delete";
-  targetId?: string;
-  summary: string;
-  draft?: Record<string, unknown>;
-}
-
+/** Legacy storage shapes, retained for non-destructive migration and backup compatibility. */
 export interface MetaChatConversation {
   id: EntityId;
   title: string;
@@ -644,6 +636,9 @@ export type StoryEngineBackupV1 = {
     storyAiConfigs: StoryAIConfig[];
     storyUiStates?: StoryUiState[];
     storyIndexes?: StoryIndex[];
+    metaChatThreads?: import("../features/metachat/types").Conversation[];
+    metaChatConversations?: MetaChatConversation[];
+    storyMetaMessages?: StoryMetaMessage[];
     aiSettings: (Omit<AISettings, "apiKeys"> & { apiKeys?: Partial<Record<AIProviderType, string>> }) | null;
   };
   uiPrefs: {

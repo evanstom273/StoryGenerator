@@ -454,6 +454,7 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
           <button
             type="button"
             onClick={() => toggleSection("characters")}
+            aria-expanded={openSections.characters}
             className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition hover:bg-panel-muted/20"
           >
             <div className="flex items-center gap-2.5">
@@ -560,6 +561,7 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
           <button
             type="button"
             onClick={() => toggleSection("relationships")}
+            aria-expanded={openSections.relationships}
             className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition hover:bg-panel-muted/20"
           >
             <div className="flex items-center gap-2.5">
@@ -660,6 +662,7 @@ export function StoryIndexSection({ storyId, onSectionOpen }: StoryIndexSectionP
           <button
             type="button"
             onClick={() => toggleSection("chapters")}
+            aria-expanded={openSections.chapters}
             className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left transition hover:bg-panel-muted/20"
           >
             <div className="flex items-center gap-2.5">

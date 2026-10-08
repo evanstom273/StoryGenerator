@@ -291,7 +291,7 @@ The responsive application chrome:
 - Transcript view (screenplay default) vs bubble view (BTS message list)
 - Composer: player turn, Director, Continue, Author directives
 - Streaming draft display with validation attempt counter
-- MetaChat overlay
+- Full-page MetaChat
 - Archive view (indexes, evidence, relationships)
 - RP overlays: character sheet, relationships, dice rolls
 - Guided chapter generation modal and progress
@@ -321,7 +321,7 @@ The central application brain. On mount, loads all IndexedDB entities into React
 |-------|----------|
 | Entity CRUD | `createStory`, `updatePlayerCharacter`, `deleteMessage` |
 | Chat | `sendChatMessage`, `regenerateLastAssistantMessage`, `editAssistantMessage` |
-| MetaChat | `sendMetaChatMessage`, `queueMetaChatMessage` |
+| MetaChat | Independent `ConversationService` (outside StoryEngineProvider) |
 | Indexing | `refreshStoryState`, `updateIndexesDeep`, `queueStoryIndexJob` |
 | Background jobs | `queueAudiobookJob`, `queueGuidedChapterJob`, `queueAiDocumentJob` |
 | Import/export | `exportStory`, `importStoryBundle`, `exportWorkspaceBackup` |
@@ -913,16 +913,20 @@ Runs as `guided_chapter_generate` background job.
 
 ## 19. MetaChat
 
-**Purpose:** Out-of-canon AI conversation for story analysis, plotting, and worldbuilding help.
+MetaChat 2.0 is a separate out-of-canon conversational subsystem in `src/features/metachat`.
+The existing full-page UI in `MetaChatPage.tsx` connects to its own provider and services.
 
 | Aspect | Detail |
 |--------|--------|
-| Message store | Separate `storyMetaMessages` IndexedDB store |
-| Model role | `metachat` (can differ from story model) |
-| References | `@Story`, `@Character`, `@Universe` mention syntax |
-| Jobs | `metachat_generate` background job for long responses |
-| UI | `MetaChatOverlay.tsx` — markdown rendering via `marked` |
-| Isolation | Never written into story transcript |
+| Persistence | Independent `metaChatThreads` records in IndexedDB v13; original legacy stores retained |
+| Model role | Dedicated `metachat` configuration, independent of story/Director overrides |
+| Context | Intent-aware semantic index, Story State, chapter transcript and resource retrieval with bounded evidence |
+| Memory | Complete history, recent turns, compact discussion summaries, exact earlier quotations and archived edits |
+| Library changes | Structured character/universe proposals; explicit review; atomic confirmation and dependency checks |
+| Isolation | Read-only story access; no transcript, chapter or Story State mutations |
+| Requests | Local cancellation/retry and restart recovery; retired MetaChat background jobs never run |
+
+See [MetaChat subsystem documentation](../features/metachat/README.md) for migration, limits and verification.
 
 ---
 
@@ -1383,7 +1387,8 @@ Version must be updated in:
 | `playerCharacters` | `universeId`, `universeIds` (multi) | Player character sheets |
 | `stories` | `universeId`, `universeIds`, `playerCharacterId` | Story metadata |
 | `messages` | `storyId` | Transcript messages |
-| `storyMetaMessages` | `storyId` | MetaChat messages |
+| `storyMetaMessages` | `storyId` | Legacy MetaChat messages retained for migration |
+| `metaChatThreads` | `id` | Independent MetaChat conversations, messages and action receipts |
 | `storyChapters` | `storyId` | Chapter boundary records |
 | `aiSettings` | — | Global AI configuration |
 | `storyAiConfigs` | `storyId` | Per-story AI overrides |
@@ -1410,7 +1415,7 @@ Version must be updated in:
 | `ai_document` | AI document generation |
 | `podcast_audio` | Podcast audio synthesis |
 | `guided_chapter_generate` | Guided multi-chapter generation |
-| `metachat_generate` | Long MetaChat response |
+| `metachat_generate` | Retired; legacy persisted shape only |
 | `story_export` | Async story export |
 | `story_archive_export` | Archive PDF export |
 

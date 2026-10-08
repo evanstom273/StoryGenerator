@@ -1,3 +1,4 @@
+import type { Conversation } from "../features/metachat/types";
 import type {
   AISettings,
   BackgroundJob,
@@ -67,6 +68,8 @@ export interface StoryEngineRepository {
   savePlayerCharacter(character: PlayerCharacter): Promise<PlayerCharacter>;
   deletePlayerCharacter(id: EntityId): Promise<void>;
   listStories(): Promise<Story[]>;
+  /** Metadata-only discovery; never reads story transcripts. */
+  listStoryCatalog(): Promise<Story[]>;
   getStory(id: EntityId): Promise<Story | null>;
   saveStory(story: Story): Promise<Story>;
   deleteStory(id: EntityId): Promise<void>;
@@ -174,6 +177,9 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     deletePlayerCharacter(id) {
       return deleteFromStore("playerCharacters", id);
     },
+    async listStoryCatalog() {
+      return sortByUpdatedAtDesc(await getAllFromStore<Story>("stories"));
+    },
     async listStories() {
       const stories = await getAllFromStore<Story>("stories");
       return sortByUpdatedAtDesc(await Promise.all(stories.map(normalizeStoryRecord)));
@@ -188,13 +194,11 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     async deleteStory(id) {
       await deleteFromStore("stories", id);
       await deleteAllByIndex("messages", "storyId", id);
-      await deleteAllByIndex("storyMetaMessages", "storyId", id);
       await deleteAllByIndex("storyChapters", "storyId", id);
       await deleteAllByIndex("storySummaries", "storyId", id);
       await deleteAllByIndex("storyStates", "storyId", id);
       await deleteAllByIndex("storyAiConfigs", "storyId", id);
       await deleteAllByIndex("backgroundJobs", "storyId", id);
-      await deleteAllByIndex("storyUiStates", "storyId", id);
       await deleteFromStore("storyIndexes", id);
     },
     async listAllMessages() {
@@ -740,6 +744,9 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         storyUiStates,
         storyIndexes,
         aiSettings,
+        metaChatThreads,
+        metaChatConversations,
+        storyMetaMessages,
       ] = await Promise.all([
         getAllFromStore<Universe>("universes"),
         getAllFromStore<PlayerCharacter>("playerCharacters"),
@@ -752,6 +759,9 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         getAllFromStore<StoryUiState>("storyUiStates"),
         getAllFromStore<StoryIndex>("storyIndexes"),
         getFromStore<AISettings>("aiSettings", "ai-settings"),
+        getAllFromStore<Conversation>("metaChatThreads"),
+        getAllFromStore<MetaChatConversation>("metaChatConversations"),
+        getAllFromStore<StoryMetaMessage>("storyMetaMessages"),
       ]);
 
       const sanitizedAISettings = (() => {
@@ -802,6 +812,9 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
           storyUiStates,
           storyIndexes,
           aiSettings: sanitizedAISettings,
+          metaChatThreads,
+          metaChatConversations,
+          storyMetaMessages,
         },
         uiPrefs: {
           rightSidebarCollapsed: readPref("story-engine:v2:right-collapsed", true),
@@ -815,13 +828,11 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
       await Promise.all([
         clearStore("stories"),
         clearStore("messages"),
-        clearStore("storyMetaMessages"),
         clearStore("storyChapters"),
         clearStore("storySummaries"),
         clearStore("storyStates"),
         clearStore("storyAiConfigs"),
         clearStore("backgroundJobs"),
-        clearStore("storyUiStates"),
         clearStore("storyIndexes"),
       ]);
     },
@@ -833,6 +844,9 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     },
     async clearWorkspace() {
       await Promise.all([
+        clearStore("metaChatThreads"),
+        clearStore("metaChatConversations"),
+        clearStore("storyMetaMessages"),
         clearStore("messages"),
         clearStore("stories"),
         clearStore("playerCharacters"),
@@ -1055,6 +1069,16 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
         if (normalizedAISettings) {
           await putManyInStore("aiSettings", [normalizedAISettings]);
         }
+      }
+
+      // Old backups lack these optional fields: preserve existing chats in that case.
+      for (const store of ["metaChatThreads", "metaChatConversations", "storyMetaMessages"] as const) {
+        const records = data[store];
+        if (!Array.isArray(records)) continue;
+        for (const record of records) assertHasId(store, record);
+        if (mode === "replace") await clearStore(store);
+        const existing = new Set((await getAllFromStore<{ id: string }>(store)).map(record => record.id));
+        await putManyInStore(store, records.filter(record => mode === "replace" || conflict === "overwrite" || !existing.has(record.id)));
       }
 
       const writePref = (key: string, value: boolean) => {

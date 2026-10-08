@@ -15,12 +15,12 @@ describe("speakerLabels", () => {
 		expect(normalizeSceneSpeakerLabel("Jamie's")).toBe("Jamie's");
 	});
 
-	it("collapses embedded nickname mentions in prose", () => {
+	it("removes quoted nicknames while preserving surnames in prose", () => {
 		expect(
 			normalizeEmbeddedNicknameMentions(
 				'Rebecca "Becca" Alvarez steps into Room 204.',
 			),
-		).toBe("Rebecca steps into Room 204.");
+		).toBe("Rebecca Alvarez steps into Room 204.");
 	});
 
 	it("normalizes speaker labels in transcript lines", () => {
@@ -54,7 +54,7 @@ Maya: *sets her paperback down on her desk with a faint smirk* "Told you."`;
 		expect(result.text).not.toContain('"Becca"');
 		expect(result.text).not.toContain("'Becca'");
 		expect(result.text).toMatch(
-			/Narrator: \*The classroom chatter is cut short as the door swings wide open\. Rebecca steps into Room 204/i,
+			/Narrator: \*The classroom chatter is cut short as the door swings wide open\. Rebecca Alvarez steps into Room 204/i,
 		);
 	});
 });

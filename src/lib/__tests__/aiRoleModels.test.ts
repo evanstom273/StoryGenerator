@@ -22,7 +22,8 @@ describe("getAIModelForRole", () => {
 		expect(getAIModelForRole(settings, "openai", "creation")).toBe("gpt-5");
 	});
 
-	it("falls back to the story model when a role model is unset", () => {
-		expect(getAIModelForRole(settings, "gemini", "metachat")).toBe("gemini-2.5-flash");
+	it("uses a provider default for MetaChat without inheriting the Director model", () => {
+		expect(getAIModelForRole({ ...settings, defaultModels: { gemini: "director-only-model" } }, "gemini", "metachat")).toBe("gemini-2.5-flash");
+    expect(getAIModelForRole(settings, "gemini", "story")).toBe("gemini-2.5-flash");
 	});
 });

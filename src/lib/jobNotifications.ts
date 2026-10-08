@@ -1,12 +1,7 @@
-import { isGlobalMetaChatScope } from "./metaChatScope";
-
-export const META_CHAT_OPEN_STORAGE_KEY = "story-engine:open-metachat";
-
 type JobNotificationArgs = {
   storyId?: string;
   title: string;
   body: string;
-  openMetaChat?: boolean;
 };
 
 export async function sendJobCompletionNotification(args: JobNotificationArgs) {
@@ -28,7 +23,7 @@ export async function sendJobCompletionNotification(args: JobNotificationArgs) {
   }
 
   const tag = args.storyId
-    ? `story-engine-job:${args.storyId}:${args.openMetaChat ? "metachat" : "story"}`
+    ? `story-engine-job:${args.storyId}:story`
     : undefined;
 
   const swReg = navigator.serviceWorker?.ready ?? null;
@@ -41,13 +36,10 @@ export async function sendJobCompletionNotification(args: JobNotificationArgs) {
       const notification = new Notification(args.title, { body: args.body, tag });
       notification.onclick = () => {
         try {
-          if (args.storyId && args.openMetaChat) {
-            localStorage.setItem(META_CHAT_OPEN_STORAGE_KEY, args.storyId);
-          }
           if (args.storyId) {
             window.focus();
             window.location.assign(
-              isGlobalMetaChatScope(args.storyId) ? "/" : `/stories/${args.storyId}`,
+              `/stories/${args.storyId}`,
             );
           }
         } catch {}

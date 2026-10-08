@@ -12,18 +12,6 @@ function normalizeReferenceName(value: string) {
     .replace(/\s+/g, " ");
 }
 
-function toUniqueReferences(references: MetaChatReference[]) {
-  const seen = new Set<string>();
-  return references.filter((reference) => {
-    const key = `${reference.kind}:${reference.id}`;
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
-}
-
 function buildReferenceCandidates(args: {
   stories: Story[];
   characters: PlayerCharacter[];
@@ -101,67 +89,6 @@ function scoreCandidate(query: string, candidateLabel: string) {
   return 0;
 }
 
-export function mergeMetaChatReferences(...referenceSets: Array<MetaChatReference[] | undefined>) {
-  return toUniqueReferences(referenceSets.flatMap((set) => set ?? []));
-}
-
-export function resolveMetaChatReferences(args: {
-  text: string;
-  stories: Story[];
-  characters: PlayerCharacter[];
-  universes: Universe[];
-}): MetaChatReference[] {
-  const haystack = args.text.trim();
-  if (!haystack.includes("@")) {
-    return [];
-  }
-
-  const candidates = buildReferenceCandidates(args);
-
-  const mentionPattern =
-    /(^|\s)@([A-Za-z0-9][A-Za-z0-9'’&.+-]*(?:\s+[A-Za-z0-9][A-Za-z0-9'’&.+-]*){0,5})/g;
-  const resolved: MetaChatReference[] = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = mentionPattern.exec(haystack)) !== null) {
-    const rawQuery = match[2] ?? "";
-    const normalizedQuery = normalizeReferenceName(rawQuery);
-    if (normalizedQuery.length < 2) {
-      continue;
-    }
-
-    let bestMatch: (MetaChatReference & { normalizedLabel: string }) | null = null;
-    let bestScore = 0;
-
-    for (const candidate of candidates) {
-      const score = scoreCandidate(normalizedQuery, candidate.normalizedLabel);
-      if (score > bestScore) {
-        bestMatch = candidate;
-        bestScore = score;
-        continue;
-      }
-      if (
-        score === bestScore &&
-        score > 0 &&
-        bestMatch &&
-        candidate.normalizedLabel.length < bestMatch.normalizedLabel.length
-      ) {
-        bestMatch = candidate;
-      }
-    }
-
-    if (bestMatch && bestScore >= 64) {
-      resolved.push({
-        id: bestMatch.id,
-        kind: bestMatch.kind,
-        label: bestMatch.label,
-      });
-    }
-  }
-
-  return toUniqueReferences(resolved);
-}
-
 export function getMetaChatReferenceSuggestions(args: {
   query: string;
   stories: Story[];
@@ -189,14 +116,4 @@ export function getMetaChatReferenceSuggestions(args: {
     .map(({ normalizedLabel: _normalizedLabel, ...candidate }) => candidate);
 
   return suggestions;
-}
-
-export function getMetaChatReferenceDisplay(reference: MetaChatReference) {
-  if (reference.kind === "story") {
-    return `Story: ${reference.label}`;
-  }
-  if (reference.kind === "character") {
-    return `Character: ${reference.label}`;
-  }
-  return `Universe: ${reference.label}`;
 }
