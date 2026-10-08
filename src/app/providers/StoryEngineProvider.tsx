@@ -389,6 +389,7 @@ interface StoryEngineContextValue {
     storyId: string,
     content: string,
   ) => Promise<{ job: BackgroundJob; duplicate: boolean }>;
+  editMetaChatMessage: (scopeId: string, messageId: string, content: string) => Promise<void>;
   setMetaChatDraft: (storyId: string, draft: string) => Promise<void>;
   clearMetaChatDraft: (storyId: string) => Promise<void>;
   setMetaChatReferences: (
@@ -5741,6 +5742,25 @@ export function StoryEngineProvider({
         return assistantMessage ?? userMessage;
       },
       queueMetaChatMessage,
+      async editMetaChatMessage(scopeId, messageId, content) {
+        const trimmed = content.trim();
+        if (!trimmed) throw new Error("Message cannot be empty.");
+        const [scopeMessages, jobs] = await Promise.all([
+          repository.listStoryMetaMessages(scopeId),
+          repository.listBackgroundJobs(),
+        ]);
+        const ordered = [...scopeMessages].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        const index = ordered.findIndex(message => message.id === messageId && message.role === "user");
+        if (index < 0) throw new Error("Original user message not found.");
+        const active = jobs.filter(job => job.storyId === scopeId && job.type === "metachat_generate" && (job.status === "queued" || job.status === "running"));
+        if (active.length) throw new Error("Wait for the current MetaChat reply to finish before editing.");
+        // Editing rewinds this conversation to the selected user turn.
+        for (const message of ordered.slice(index)) {
+          await repository.deleteStoryMetaMessage(message.id);
+        }
+        await hydrate(false);
+        await queueMetaChatMessage(scopeId, trimmed);
+      },
       async setMetaChatDraft(scopeId, draft) {
         await saveStoryUiStateRecord(scopeId, { metaChatDraft: draft });
       },
