@@ -50,6 +50,8 @@ export function MetaChatPage() {
   useEffect(() => { setDraft(scope ? getMetaChatDraft(scope) : ""); setDrawer(false); setPicker(false); setError(""); }, [scope, getMetaChatDraft]);
   useEffect(() => { const scroller = bottom.current?.parentElement?.parentElement; if (!drawer && scroller) scroller.scrollTop = scroller.scrollHeight; }, [messages.length, jobs.length, scope, drawer]);
 
+  useEffect(() => { if (!drawer) return; const previous = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = previous; }; }, [drawer]);
+
   function selectScope(id: string) { setParams(id ? { chat: id } : {}); setDrawer(false); setMenuId(null); }
   function newChat() { selectScope(""); const id = (location.state as { initialStoryId?: string } | null)?.initialStoryId; const story = stories.find(item => item.id === id); setInitialReferences(story ? [{ id: story.id, kind: "story", label: story.title }] : []); setDraft(""); }
   async function renameChat(id: string) {
@@ -175,8 +177,8 @@ export function MetaChatPage() {
       <aside className="hidden w-64 shrink-0 border-r border-divider lg:block">{history}</aside>
       {drawer && <div className="fixed inset-x-0 bottom-0 top-14 z-30 flex h-[calc(100dvh-3.5rem)] overflow-hidden overscroll-none lg:hidden"><button aria-label="Close conversation drawer" className="flex-1 bg-black/70" onClick={() => setDrawer(false)} /><div className="order-first h-full min-h-0 w-[min(85vw,320px)] overflow-hidden border-r border-divider">{history}</div></div>}
       <section className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <button aria-label="Conversation history" title="Conversations" onClick={() => setDrawer(true)} className="absolute left-3 top-[4.25rem] z-10 flex h-9 w-9 items-center justify-center rounded-full border border-divider bg-app-elevated text-ink-muted shadow-lg hover:bg-panel lg:hidden"><MenuIcon className="h-4 w-4" /></button>
-        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-6">
+        <button aria-label="Conversation history" title="Conversations" onClick={() => setDrawer(true)} className="absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-divider bg-app-elevated text-ink-muted shadow-lg hover:bg-panel lg:hidden"><MenuIcon className="h-4 w-4" /></button>
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-6 pt-14 lg:pt-6">
           <div className="mx-auto flex max-w-3xl flex-col gap-4">
             {!messages.length && <div className="mx-auto max-w-md py-16 text-center"><h2 className="text-xl font-semibold">Let's talk stories.</h2><p className="mt-3 text-sm leading-6 text-ink-muted">Review your writing, discuss characters and explore ideas. MetaChat stays outside the story.</p></div>}
             {messages.map(m => <div key={m.id} className={m.role === "user" ? "ml-auto max-w-[88%] rounded-2xl bg-panel px-4 py-3 text-sm" : "rounded-2xl border border-divider/50 bg-app-elevated px-4 py-3 text-sm"}>
