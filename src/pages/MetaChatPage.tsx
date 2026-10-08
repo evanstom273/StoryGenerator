@@ -48,7 +48,7 @@ export function MetaChatPage() {
   const candidates = useMemo(() => getMetaChatReferenceSuggestions({ query, stories, universes, characters: playerCharacters.filter(c => (c.scope ?? "library") === "library"), limit: 30 }), [query, stories, universes, playerCharacters]);
 
   useEffect(() => { setDraft(scope ? getMetaChatDraft(scope) : ""); setDrawer(false); setPicker(false); setError(""); }, [scope, getMetaChatDraft]);
-  useEffect(() => { if (!drawer) bottom.current?.parentElement?.parentElement?.scrollTo({ top: bottom.current.parentElement.parentElement.scrollHeight }); }, [messages.length, jobs.length, scope, drawer]);
+  useEffect(() => { const scroller = bottom.current?.parentElement?.parentElement; if (!drawer && scroller) scroller.scrollTop = scroller.scrollHeight; }, [messages.length, jobs.length, scope, drawer]);
 
   function selectScope(id: string) { setParams(id ? { chat: id } : {}); setDrawer(false); setMenuId(null); }
   function newChat() { selectScope(""); const id = (location.state as { initialStoryId?: string } | null)?.initialStoryId; const story = stories.find(item => item.id === id); setInitialReferences(story ? [{ id: story.id, kind: "story", label: story.title }] : []); setDraft(""); }
