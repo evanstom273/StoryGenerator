@@ -7748,6 +7748,8 @@ export function StoryEngineProvider({
     hydrate,
     loading,
     messages,
+    metaMessages,
+    storyUiStates,
     playerCharacters,
     repository,
     stories,
