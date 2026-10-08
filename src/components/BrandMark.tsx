@@ -33,10 +33,10 @@ export function BrandMark({
       <Link
         to="/"
         aria-label="Go to Home"
-        className={cn("flex shrink-0 items-center gap-2", className)}
+        className={cn("flex min-w-0 shrink items-center gap-1.5", className)}
       >
         <BrandLogo className="h-8 w-8 shrink-0" />
-        <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-ink-muted">
+        <span className="hidden shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-ink-muted min-[390px]:inline">
           v{APP_VERSION}
         </span>
       </Link>
