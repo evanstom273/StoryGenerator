@@ -254,7 +254,7 @@ export function V2Shell() {
 
           <div
             className={cn(
-              "grid min-h-screen",
+              location.pathname === "/metachat" ? "grid min-h-0" : "grid min-h-screen",
               readerActive || location.pathname === "/metachat"
                 ? "lg:grid-cols-[minmax(0,1fr)]"
                 : rightSidebarCollapsed

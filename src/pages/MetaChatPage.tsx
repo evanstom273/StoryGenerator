@@ -24,6 +24,14 @@ export function MetaChatPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const element = composerRef.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(element.scrollHeight, 144)}px`;
+    element.style.overflowY = element.scrollHeight > 144 ? "auto" : "hidden";
+  }, [draft, scope]);
   const candidates = useMemo(() => getMetaChatReferenceSuggestions({ query, stories, universes, characters: playerCharacters.filter(c => (c.scope ?? "library") === "library"), limit: 30 }), [query, stories, universes, playerCharacters]);
 
   useEffect(() => { setDraft(getMetaChatDraft(scope)); setDrawer(false); setPicker(false); setError(""); }, [scope, getMetaChatDraft]);
@@ -58,7 +66,7 @@ export function MetaChatPage() {
     </div>
   );
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 min-w-0 overflow-hidden border border-divider/30 bg-app lg:h-screen">
+    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 min-w-0 overflow-hidden border border-divider/30 bg-app">
       <aside className="hidden w-64 shrink-0 border-r border-divider lg:block">{history}</aside>
       {drawer && <div className="fixed inset-x-0 bottom-0 top-14 z-30 flex lg:hidden"><button aria-label="Close conversation drawer" className="flex-1 bg-black/70" onClick={() => setDrawer(false)} /><div className="order-first w-[min(85vw,320px)] border-r border-divider">{history}</div></div>}
       <section className="flex min-w-0 flex-1 flex-col">
@@ -80,10 +88,10 @@ export function MetaChatPage() {
           <div className="mx-auto max-w-3xl">
             {error && <p role="alert" className="mb-2 text-xs text-rose-300">{error}</p>}
             {!!references.length && <div className="mb-2 flex flex-wrap gap-2">{references.map(r => <button key={r.kind + r.id} onClick={() => void setMetaChatReferences(scope, references.filter(x => x.id !== r.id || x.kind !== r.kind))} className="max-w-full truncate rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs text-accent-soft">{r.label} ×</button>)}</div>}
-            {picker && <div className="absolute bottom-full left-3 right-3 mb-2 max-h-[50vh] overflow-hidden rounded-xl border border-divider bg-app-elevated shadow-hero sm:left-auto sm:w-96"><div className="flex items-center gap-2 border-b border-divider p-3"><SearchIcon className="h-4 w-4" /><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Find stories, characters, universes…" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></div><div className="max-h-64 overflow-y-auto p-2">{candidates.map(c => <button key={c.kind + c.id} onClick={() => void addReference(c)} className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-panel"><span className="truncate">{c.label}</span><span className="shrink-0 text-[10px] text-ink-muted">{c.kind}</span></button>)}</div></div>}
+            {picker && <div className="absolute bottom-full left-3 right-3 mb-2 max-h-[50vh] overflow-hidden rounded-xl border border-divider bg-app-elevated shadow-hero sm:left-auto sm:w-96"><div className="flex items-center gap-2 border-b border-divider p-3"><SearchIcon className="h-4 w-4" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Find stories, characters, universes…" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></div><div className="max-h-64 overflow-y-auto p-2">{candidates.map(c => <button key={c.kind + c.id} onClick={() => void addReference(c)} className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-panel"><span className="truncate">{c.label}</span><span className="shrink-0 text-[10px] text-ink-muted">{c.kind}</span></button>)}</div></div>}
             <div className="flex items-end gap-2">
               <button aria-label="Attach StoryEngine content" onClick={() => setPicker(!picker)} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-divider hover:bg-panel"><PlusIcon /></button>
-              <textarea rows={1} value={draft} onChange={e => { setDraft(e.target.value); void setMetaChatDraft(scope, e.target.value); }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder="Talk about your stories…" className="max-h-36 min-h-11 min-w-0 flex-1 resize-y rounded-2xl border border-divider bg-panel-muted px-4 py-3 text-sm outline-none focus:border-accent/50" />
+              <textarea ref={composerRef} rows={1} value={draft} onChange={e => { setDraft(e.target.value); void setMetaChatDraft(scope, e.target.value); }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder="Talk about your stories…" className="max-h-36 min-h-11 min-w-0 flex-1 resize-none overflow-y-hidden rounded-2xl border border-divider bg-panel-muted px-4 py-3 text-sm outline-none focus:border-accent/50" />
               <button aria-label="Send" disabled={!draft.trim() || sending} onClick={() => void send()} className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground disabled:opacity-40"><ArrowRightIcon className="h-5 w-5 -rotate-90" /></button>
             </div>
           </div>
