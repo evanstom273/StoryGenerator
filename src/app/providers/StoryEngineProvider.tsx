@@ -3019,6 +3019,14 @@ export function StoryEngineProvider({
       };
 
       await repository.saveStoryMetaMessage(userMessage);
+      const conversation = (await repository.listMetaChatConversations()).find(item => item.id === scopeId);
+      if (conversation) {
+        await repository.saveMetaChatConversation({
+          ...conversation,
+          title: conversation.title === "New conversation" ? trimmed.slice(0, 65) : conversation.title,
+          updatedAt: new Date().toISOString(),
+        });
+      }
       await repository.saveBackgroundJob(job);
       await saveStoryUiStateRecord(scopeId, {
         metaChatDraft: "",
@@ -7702,6 +7710,7 @@ export function StoryEngineProvider({
     developerBugs,
     developerFeatureRequests,
     developerTestingNotes,
+    metaChatConversations,
     storyIndexes,
     backgroundJobs,
     queueGuidedChapterJob,
