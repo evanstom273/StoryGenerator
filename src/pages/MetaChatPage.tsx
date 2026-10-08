@@ -8,9 +8,9 @@ import { getMetaChatReferenceSuggestions } from "../lib/metaChatReferences";
 import { ArrowRightIcon, CloseIcon, MenuIcon, PlusIcon, SearchIcon } from "../components/icons";
 
 export function MetaChatPage() {
-  const navigate = useNavigate();
+
   const [params, setParams] = useSearchParams();
-  const { stories, universes, playerCharacters, getMetaMessagesForScope, getMetaChatJobs, getMetaChatDraft, setMetaChatDraft, clearMetaChatDraft, queueMetaChatMessage, getMetaChatReferences, setMetaChatReferences } = useStoryEngine();
+  const { stories, universes, playerCharacters, getMetaMessagesForScope, getMetaChatJobs, getMetaChatDraft, setMetaChatDraft, clearMetaChatDraft, queueMetaChatMessage, editMetaChatMessage, getMetaChatReferences, setMetaChatReferences } = useStoryEngine();
   const requested = params.get("story");
   const scope = requested && stories.some(s => s.id === requested) ? requested : GLOBAL_META_CHAT_SCOPE_ID;
   const story = stories.find(s => s.id === scope);
@@ -23,6 +23,9 @@ export function MetaChatPage() {
   const [query, setQuery] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -45,6 +48,15 @@ export function MetaChatPage() {
     try { await queueMetaChatMessage(scope, content); await clearMetaChatDraft(scope); }
     catch (e) { setDraft(content); setError(e instanceof Error ? e.message : "Unable to send message."); }
     finally { setSending(false); }
+  }
+  async function resendEdited() {
+    if (!editingId || !editDraft.trim() || savingEdit) return;
+    setSavingEdit(true); setError("");
+    try {
+      await editMetaChatMessage(scope, editingId, editDraft);
+      setEditingId(null); setEditDraft("");
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to edit message."); }
+    finally { setSavingEdit(false); }
   }
   async function addReference(item: { id: string; kind: "story" | "character" | "universe"; label: string }) {
     if (!references.some(r => r.kind === item.kind && r.id === item.id)) {
@@ -69,16 +81,26 @@ export function MetaChatPage() {
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 min-w-0 overflow-hidden border border-divider/30 bg-app">
       <aside className="hidden w-64 shrink-0 border-r border-divider lg:block">{history}</aside>
       {drawer && <div className="fixed inset-x-0 bottom-0 top-14 z-30 flex lg:hidden"><button aria-label="Close conversation drawer" className="flex-1 bg-black/70" onClick={() => setDrawer(false)} /><div className="order-first w-[min(85vw,320px)] border-r border-divider">{history}</div></div>}
-      <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center gap-3 border-b border-divider px-4">
-          <button aria-label="Conversation history" onClick={() => setDrawer(true)} className="rounded-lg p-2 text-ink-muted hover:bg-panel lg:hidden"><MenuIcon /></button>
-          <div className="min-w-0 flex-1"><h1 className="truncate text-base font-semibold">MetaChat</h1><p className="truncate text-xs text-ink-muted">{story?.title ?? "Entire Writing Library"} · Out of canon</p></div>
-          <button className="rounded-lg border border-divider px-3 py-2 text-xs text-ink-muted hover:bg-panel" onClick={() => navigate(-1)}>Back</button>
-        </header>
+      <section className="relative flex min-w-0 flex-1 flex-col">
+        <button aria-label="Conversation history" title="Conversations" onClick={() => setDrawer(true)} className="absolute left-3 top-[4.25rem] z-10 flex h-9 w-9 items-center justify-center rounded-full border border-divider bg-app-elevated text-ink-muted shadow-lg hover:bg-panel lg:hidden"><MenuIcon className="h-4 w-4" /></button>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6">
           <div className="mx-auto flex max-w-3xl flex-col gap-4">
             {!messages.length && <div className="mx-auto max-w-md py-16 text-center"><h2 className="text-xl font-semibold">Let's talk stories.</h2><p className="mt-3 text-sm leading-6 text-ink-muted">Review your writing, discuss characters and explore ideas. MetaChat stays outside the story.</p></div>}
-            {messages.map(m => <div key={m.id} className={m.role === "user" ? "ml-auto max-w-[88%] rounded-2xl bg-panel px-4 py-3 text-sm" : "rounded-2xl border border-divider/50 bg-app-elevated px-4 py-3 text-sm"}>{m.role !== "user" && <div className="mb-2 font-semibold">MetaChat</div>}<div className="prose-metachat break-words leading-7" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(m.content) as string) }} /></div>)}
+            {messages.map(m => <div key={m.id} className={m.role === "user" ? "ml-auto max-w-[88%] rounded-2xl bg-panel px-4 py-3 text-sm" : "rounded-2xl border border-divider/50 bg-app-elevated px-4 py-3 text-sm"}>
+              {m.role !== "user" && <div className="mb-2 font-semibold">MetaChat</div>}
+              {editingId === m.id ? (
+                <div className="space-y-2">
+                  <textarea autoFocus value={editDraft} onChange={e => setEditDraft(e.target.value)} rows={3} className="w-full resize-y rounded-lg border border-divider bg-app px-3 py-2 text-sm outline-none focus:border-accent" />
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setEditingId(null)} className="rounded-lg px-3 py-2 text-xs text-ink-muted">Cancel</button>
+                    <button disabled={savingEdit || !editDraft.trim()} onClick={() => void resendEdited()} className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-accent-foreground disabled:opacity-50">Save & resend</button>
+                  </div>
+                </div>
+              ) : <>
+                <div className="prose-metachat break-words leading-7" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(m.content) as string) }} />
+                {m.role === "user" && <button aria-label="Edit message" onClick={() => { setEditingId(m.id); setEditDraft(m.content); }} className="mt-2 text-xs text-ink-muted underline-offset-2 hover:text-ink hover:underline">Edit</button>}
+              </>}
+            </div>)}
             {jobs.some(j => j.status === "queued" || j.status === "running") && <p className="text-sm text-ink-muted">MetaChat is thinking…</p>}
             {jobs.filter(j => j.status === "failed").map(j => <p key={j.id} className="text-sm text-rose-300">Reply failed: {j.error ?? "Unknown error"}</p>)}
             <div ref={bottom} />
