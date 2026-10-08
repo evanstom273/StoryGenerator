@@ -65,7 +65,7 @@ export function V2Shell() {
         navigate("/metachat");
       }
     } catch {}
-  }, [location.pathname]);
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
     function openGlobalMetaChat() {
@@ -218,7 +218,7 @@ export function V2Shell() {
     >
       <div className="min-h-screen min-w-0 overflow-x-clip bg-app text-ink">
         <div className="mx-auto min-h-screen min-w-0 max-w-[1800px]">
-          <header className="sticky top-0 z-40 flex h-14 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-b border-divider bg-app/80 px-2 backdrop-blur-xl sm:px-3 lg:hidden">
+          <header className={cn("sticky top-0 z-40 flex h-14 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-b border-divider bg-app/80 px-2 backdrop-blur-xl sm:px-3", location.pathname !== "/metachat" && "lg:hidden")}>
             <BrandMark mobileHeader />
             <div className="ml-auto flex min-w-0 shrink-0 items-center gap-0.5">
               <BackgroundTasksButton />
