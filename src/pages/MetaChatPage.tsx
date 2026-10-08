@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
@@ -13,7 +13,6 @@ export function MetaChatPage() {
   const { stories, universes, playerCharacters, getMetaMessagesForScope, getMetaChatJobs, getMetaChatDraft, setMetaChatDraft, clearMetaChatDraft, queueMetaChatMessage, editMetaChatMessage, getMetaChatReferences, setMetaChatReferences } = useStoryEngine();
   const requested = params.get("story");
   const scope = requested && stories.some(s => s.id === requested) ? requested : GLOBAL_META_CHAT_SCOPE_ID;
-  const story = stories.find(s => s.id === scope);
   const messages = getMetaMessagesForScope(scope);
   const references = getMetaChatReferences(scope);
   const jobs = getMetaChatJobs(scope).filter(j => j.type === "metachat_generate");
