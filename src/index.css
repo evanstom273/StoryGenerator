@@ -210,3 +210,8 @@
   animation: dropdown-enter 280ms ease-out both;
 }
 
+
+/* Keep long MetaChat responses, tables and code inside the mobile viewport. */
+.prose-metachat { max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
+.prose-metachat pre, .prose-metachat table { max-width: 100%; overflow-x: auto; }
+.prose-metachat table { display: block; }
