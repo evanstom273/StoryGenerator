@@ -256,6 +256,7 @@ import type {
   StoryUiState,
   StoryMetaMessage,
   MetaChatConversation,
+  MetaChatLibraryAction,
   StoryMessage,
   StoryMessageDraft,
   StorySpeakerAttributionAudit,
@@ -333,6 +334,7 @@ interface StoryEngineContextValue {
   getDeveloperTestingNoteById: (id: string) => DeveloperTestingNote | undefined;
   getMessagesForStory: (storyId: string) => StoryMessage[];
   metaChatConversations: MetaChatConversation[];
+  planMetaChatLibraryActions: (scopeId: string, instruction: string) => Promise<MetaChatLibraryAction[]>;
   createMetaChatConversation: (references?: MetaChatReference[]) => Promise<MetaChatConversation>;
   renameMetaChatConversation: (id: string, title: string) => Promise<void>;
   deleteMetaChatConversation: (id: string) => Promise<void>;
@@ -3485,6 +3487,53 @@ export function StoryEngineProvider({
     [buildMetaChatContextBlock, getNormalizedAISettings, repository, resolveAIProfile],
   );
 
+  const planMetaChatLibraryActions = useCallback(async (scopeId: string, instruction: string): Promise<MetaChatLibraryAction[]> => {
+    const settings = await getNormalizedAISettings();
+    if (!settings) throw new Error("Configure an AI provider in Settings first.");
+    const providerType = settings.activeProviderType;
+    const { apiKey, model } = await resolveAIProfile(providerType, undefined, "metachat");
+    const provider = createAIProvider(providerType);
+    const history = (await repository.listStoryMetaMessages(scopeId)).slice(-18)
+      .map(message => ({ role: message.role === "assistant" ? "assistant" as const : "user" as const, content: message.content }));
+    const universeList = universes.map(u => ({ id: u.id, name: u.name }));
+    const characterList = playerCharacters.filter(c => (c.scope ?? "library") === "library").map(c => ({ id: c.id, name: c.name, universeId: c.universeId }));
+    const response = await generateResponseWithRetry({
+      providerType, provider, apiKey, model,
+      messages: [
+        { role: "system", content: [
+          "You prepare proposed StoryEngine library actions. You never execute them.",
+          "Return only JSON object {actions:[...]}. Each action: kind character|universe, operation create|update|delete, summary, targetId for update/delete, draft for create/update.",
+          "Only use existing exact targetId values for edits/deletes. Do not guess identifiers.",
+          "For updates, draft MUST be a complete character/universe sheet, preserving all unchanged fields.",
+          "For character drafts include name, age, gender, species, pronouns, appearance, personality, background, notes, universeId. Character sheets have NO player/supporting flag; use scope library.",
+          "For universe drafts include name, description, wikiUrl, mode (custom or referenced).",
+          "For character creation, use a real universeId from the provided list. If none fits, return actions empty and explain in summary.",
+          "Never include story transcript or Story State changes. If ambiguous, return no actions.",
+          "Universe list: " + JSON.stringify(universeList),
+          "Character list: " + JSON.stringify(characterList),
+          "Existing complete characters: " + JSON.stringify(playerCharacters.filter(c => (c.scope ?? "library") === "library").slice(0,40)),
+          "Existing complete universes: " + JSON.stringify(universes.slice(0,40)),
+        ].join("\n") },
+        ...history,
+        { role: "user", content: instruction },
+      ],
+    });
+    const raw = extractFirstJsonObject(response.content);
+    if (!raw) throw new Error("MetaChat did not return an actionable proposal.");
+    const parsed: unknown = JSON.parse(raw);
+    const items = (parsed as { actions?: unknown }).actions;
+    if (!Array.isArray(items)) throw new Error("Invalid action proposal.");
+    return items.slice(0,20).filter((item): item is MetaChatLibraryAction => {
+      if (!item || typeof item !== "object") return false;
+      const action = item as MetaChatLibraryAction;
+      if (!["character","universe"].includes(action.kind) || !["create","update","delete"].includes(action.operation)) return false;
+      if (typeof action.summary !== "string") return false;
+      if (action.operation !== "create" && (!action.targetId || !(action.kind === "character" ? characterList : universeList).some(x => x.id === action.targetId))) return false;
+      if (action.operation !== "delete" && (!action.draft || typeof action.draft !== "object")) return false;
+      return true;
+    });
+  }, [getNormalizedAISettings, resolveAIProfile, repository, playerCharacters, universes]);
+
   const processBackgroundJob = useCallback(
     async (job: BackgroundJob, signal: AbortSignal) => {
       if (inFlightBackgroundJobsRef.current.has(job.id)) {
@@ -4298,6 +4347,7 @@ export function StoryEngineProvider({
       getMessagesForStory: (storyId) =>
         sortByTimestampAsc(messages.filter((message) => message.storyId === storyId)),
       metaChatConversations,
+      planMetaChatLibraryActions,
       async createMetaChatConversation(initialReferences = []) {
         const now = new Date().toISOString();
         const record: MetaChatConversation = {
@@ -7711,6 +7761,7 @@ export function StoryEngineProvider({
     developerFeatureRequests,
     developerTestingNotes,
     metaChatConversations,
+    planMetaChatLibraryActions,
     storyIndexes,
     backgroundJobs,
     queueGuidedChapterJob,
