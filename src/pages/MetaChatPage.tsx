@@ -22,6 +22,7 @@ export function MetaChatPage() {
     return story ? [{ id: story.id, kind: "story", label: story.title }] : [];
   });
   const messages = scope ? getMetaMessagesForScope(scope) : [];
+  const references: MetaChatReference[] = scope ? getMetaChatReferences(scope) : initialReferences;
   const jobs = getMetaChatJobs(scope).filter(j => j.type === "metachat_generate");
   const [draft, setDraft] = useState("");
   const [drawer, setDrawer] = useState(false);
