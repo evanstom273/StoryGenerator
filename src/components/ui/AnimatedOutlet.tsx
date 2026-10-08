@@ -11,8 +11,8 @@ export function AnimatedOutlet() {
 	const previousPathRef = useRef(location.pathname);
 	const bypassAnimation = isMetaChat || previousPathRef.current === "/metachat";
 	// A route with a different shell layout must never render the previous page, even for one frame.
-	const instantRouteSwap = bypassAnimation && location.key !== displayedKey;
 	const [displayedKey, setDisplayedKey] = useState(location.key);
+	const instantRouteSwap = bypassAnimation && location.key !== displayedKey;
 	const [displayedOutlet, setDisplayedOutlet] = useState(outlet);
 	const [animClass, setAnimClass] = useState<"enter" | "exit" | null>(null);
 	const pendingOutletRef = useRef(outlet);
