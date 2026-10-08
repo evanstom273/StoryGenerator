@@ -7,6 +7,9 @@ export function AnimatedOutlet() {
 	const location = useLocation();
 	const outlet = useOutlet();
 	const reducedMotion = usePrefersReducedMotion();
+	const isMetaChat = location.pathname === "/metachat";
+	const previousPathRef = useRef(location.pathname);
+	const bypassAnimation = isMetaChat || previousPathRef.current === "/metachat";
 	const [displayedKey, setDisplayedKey] = useState(location.key);
 	const [displayedOutlet, setDisplayedOutlet] = useState(outlet);
 	const [animClass, setAnimClass] = useState<"enter" | "exit" | null>(null);
@@ -21,13 +24,15 @@ export function AnimatedOutlet() {
 			return;
 		}
 
-		if (reducedMotion) {
+		if (reducedMotion || bypassAnimation) {
+			previousPathRef.current = location.pathname;
 			setDisplayedKey(location.key);
 			setDisplayedOutlet(outlet);
 			setAnimClass(null);
 			return;
 		}
 
+		previousPathRef.current = location.pathname;
 		setAnimClass("exit");
 
 		const swapTimer = window.setTimeout(() => {
@@ -44,13 +49,13 @@ export function AnimatedOutlet() {
 			window.clearTimeout(swapTimer);
 			window.clearTimeout(clearTimer);
 		};
-	}, [location.key, outlet, displayedKey, reducedMotion]);
+	}, [location.key, location.pathname, outlet, displayedKey, reducedMotion, bypassAnimation]);
 
 	return (
-		<div className="relative min-h-full bg-app">
+		<div className={cn("relative min-w-0 bg-app", isMetaChat ? "h-full min-h-0 overflow-hidden" : "min-h-full")}>
 			<div
 				className={cn(
-					"min-h-full backface-hidden",
+					isMetaChat ? "h-full min-h-0 min-w-0 overflow-hidden backface-hidden" : "min-h-full min-w-0 backface-hidden",
 					animClass === "exit" && "animate-page-exit",
 					animClass === "enter" && "animate-page-enter",
 				)}
