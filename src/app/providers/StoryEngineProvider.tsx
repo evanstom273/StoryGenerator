@@ -2988,8 +2988,7 @@ export function StoryEngineProvider({
         throw new Error("Message content is required.");
       }
 
-      const existingReferences =
-        storyUiStates.find((record) => record.storyId === scopeId)?.metaChatReferences ?? [];
+      const existingReferences = (await repository.getStoryUiState(scopeId))?.metaChatReferences ?? [];
       const resolvedReferences = mergeMetaChatReferences(
         existingReferences,
         resolveInlineMetaChatReferences(trimmed),
