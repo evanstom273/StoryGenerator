@@ -4,7 +4,7 @@ import { BrandMark } from "../../components/BrandMark";
 import { AnimatedOutlet } from "../../components/ui/AnimatedOutlet";
 import { DRAWER_PANEL_CLASS, OVERLAY_BACKDROP_CLASS } from "../ui/motion";
 import { MetaChatRobotIcon, SearchIcon } from "../../components/icons";
-import { MetaChatOverlay } from "../../components/story/MetaChatOverlay";
+
 import { cn } from "../../utils/cn";
 import { META_CHAT_OPEN_STORAGE_KEY } from "../../lib/jobNotifications";
 import { GLOBAL_META_CHAT_SCOPE_ID } from "../../lib/metaChatScope";
@@ -33,7 +33,7 @@ export function V2Shell() {
   const [storySettingsOpen, setStorySettingsOpen] = useState(false);
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false);
   const [librarySearchQuery, setLibrarySearchQuery] = useState("");
-  const [globalMetaChatOpen, setGlobalMetaChatOpen] = useState(false);
+
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(() =>
     readStoredBoolean(UI_PREFS_KEYS.rightSidebarCollapsed, true),
   );
@@ -62,10 +62,10 @@ export function V2Shell() {
     try {
       if (localStorage.getItem(META_CHAT_OPEN_STORAGE_KEY) === GLOBAL_META_CHAT_SCOPE_ID) {
         localStorage.removeItem(META_CHAT_OPEN_STORAGE_KEY);
-        setGlobalMetaChatOpen(true);
+        navigate("/metachat");
       }
     } catch {}
-  }, [location.pathname]);
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
     function openGlobalMetaChat() {
@@ -74,13 +74,13 @@ export function V2Shell() {
           localStorage.removeItem(META_CHAT_OPEN_STORAGE_KEY);
         }
       } catch {}
-      setGlobalMetaChatOpen(true);
+      navigate("/metachat");
     }
 
     window.addEventListener("story-engine:open-global-metachat", openGlobalMetaChat);
     return () =>
       window.removeEventListener("story-engine:open-global-metachat", openGlobalMetaChat);
-  }, []);
+  }, [navigate]);
 
   const activeStoryId = useMemo(() => (storyId ? String(storyId) : undefined), [storyId]);
   const librarySearchContextValue = useMemo(
@@ -218,7 +218,7 @@ export function V2Shell() {
     >
       <div className="min-h-screen min-w-0 overflow-x-clip bg-app text-ink">
         <div className="mx-auto min-h-screen min-w-0 max-w-[1800px]">
-          <header className="sticky top-0 z-40 flex h-14 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-b border-divider bg-app/80 px-2 backdrop-blur-xl sm:px-3 lg:hidden">
+          <header className={cn("sticky top-0 z-40 flex h-14 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-b border-divider bg-app/80 px-2 backdrop-blur-xl sm:px-3", location.pathname !== "/metachat" && "lg:hidden")}>
             <BrandMark mobileHeader />
             <div className="ml-auto flex min-w-0 shrink-0 items-center gap-0.5">
               <BackgroundTasksButton />
@@ -234,7 +234,7 @@ export function V2Shell() {
                 type="button"
                 aria-label="Open MetaChat"
                 title="MetaChat · out-of-canon assistant"
-                onClick={() => setGlobalMetaChatOpen(true)}
+                onClick={() => navigate("/metachat")}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
               >
                 <MetaChatRobotIcon className="h-4 w-4" />
@@ -255,14 +255,14 @@ export function V2Shell() {
           <div
             className={cn(
               "grid min-h-screen",
-              readerActive
+              readerActive || location.pathname === "/metachat"
                 ? "lg:grid-cols-[minmax(0,1fr)]"
                 : rightSidebarCollapsed
                   ? "lg:grid-cols-[266px_minmax(0,1fr)]"
                   : "lg:grid-cols-[266px_minmax(0,1fr)_360px]",
             )}
           >
-            {readerActive ? null : (
+            {readerActive || location.pathname === "/metachat" ? null : (
               <aside className="hidden border-r border-divider bg-app-elevated lg:block">
                 <div className="sticky top-0 h-screen">
                   <V2LeftSidebar activeStoryId={activeStoryId} />
@@ -270,13 +270,12 @@ export function V2Shell() {
               </aside>
             )}
 
-            <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
-              <PwaInstallBanner />
-              <PwaUpdateBanner />
+            <main className={location.pathname === "/metachat" ? "min-w-0 overflow-hidden p-0" : "min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-10"}>
+              {location.pathname === "/metachat" ? null : <><PwaInstallBanner /><PwaUpdateBanner /></>}
               <AnimatedOutlet />
             </main>
 
-            {readerActive || rightSidebarCollapsed || !effectiveShowChrome ? null : (
+            {readerActive || location.pathname === "/metachat" || rightSidebarCollapsed || !effectiveShowChrome ? null : (
               <aside className="hidden border-l border-divider bg-app-elevated lg:block">
                 <div className="sticky top-0 h-screen">
                   <V2RightSidebar storyId={activeStoryId} />
@@ -318,11 +317,7 @@ export function V2Shell() {
         </div>
 
         <StorySettingsDrawer storyId={activeStoryId} />
-        <MetaChatOverlay
-          open={globalMetaChatOpen}
-          storyId={GLOBAL_META_CHAT_SCOPE_ID}
-          onClose={() => setGlobalMetaChatOpen(false)}
-        />
+
         <LibrarySearchOverlay
           open={librarySearchOpen}
           initialQuery={librarySearchQuery}
