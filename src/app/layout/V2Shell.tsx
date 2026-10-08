@@ -29,6 +29,29 @@ export function V2Shell() {
   const { storyId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const returnLocationRef = useRef<{ pathname: string; search: string; hash: string; scrollY: number } | null>(null);
+  const isMetaChat = location.pathname === "/metachat";
+  function toggleMetaChat() {
+    if (isMetaChat) {
+      const previous = returnLocationRef.current;
+      returnLocationRef.current = null;
+      if (previous) {
+        navigate({ pathname: previous.pathname, search: previous.search, hash: previous.hash });
+        requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, previous.scrollY)));
+      } else {
+        navigate("/");
+      }
+      return;
+    }
+    returnLocationRef.current = {
+      pathname: location.pathname,
+      search: location.search,
+      hash: location.hash,
+      scrollY: window.scrollY,
+    };
+    navigate("/metachat");
+  }
+
   const [leftOpen, setLeftOpen] = useState(false);
   const [storySettingsOpen, setStorySettingsOpen] = useState(false);
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false);
@@ -232,9 +255,10 @@ export function V2Shell() {
               </button>
               <button
                 type="button"
-                aria-label="Open MetaChat"
-                title="MetaChat · out-of-canon assistant"
-                onClick={() => navigate("/metachat")}
+                aria-label={isMetaChat ? "Return to previous page" : "Open MetaChat"}
+                aria-pressed={isMetaChat}
+                title={isMetaChat ? "Return to previous page" : "Open MetaChat"}
+                onClick={toggleMetaChat}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
               >
                 <MetaChatRobotIcon className="h-4 w-4" />
