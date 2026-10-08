@@ -126,7 +126,7 @@ import {
   mergeMetaChatReferences,
   resolveMetaChatReferences,
 } from "../../lib/metaChatReferences";
-import { isGlobalMetaChatScope } from "../../lib/metaChatScope";
+import { isGlobalMetaChatScope, isMetaChatConversationScope } from "../../lib/metaChatScope";
 import {
   buildAssistantCandidateSelection,
   buildManualAssistantEdit,
@@ -255,6 +255,8 @@ import type {
   StoryIndexesV2,
   StoryUiState,
   StoryMetaMessage,
+  MetaChatConversation,
+  MetaChatLibraryAction,
   StoryMessage,
   StoryMessageDraft,
   StorySpeakerAttributionAudit,
@@ -331,6 +333,11 @@ interface StoryEngineContextValue {
   getDeveloperFeatureRequestById: (id: string) => DeveloperFeatureRequest | undefined;
   getDeveloperTestingNoteById: (id: string) => DeveloperTestingNote | undefined;
   getMessagesForStory: (storyId: string) => StoryMessage[];
+  metaChatConversations: MetaChatConversation[];
+  planMetaChatLibraryActions: (scopeId: string, instruction: string) => Promise<MetaChatLibraryAction[]>;
+  createMetaChatConversation: (references?: MetaChatReference[]) => Promise<MetaChatConversation>;
+  renameMetaChatConversation: (id: string, title: string) => Promise<void>;
+  deleteMetaChatConversation: (id: string) => Promise<void>;
   getMetaMessagesForScope: (scopeId: string) => StoryMetaMessage[];
   getMetaMessagesForStory: (storyId: string) => StoryMetaMessage[];
   getChaptersForStory: (storyId: string) => StoryChapter[];
@@ -2198,6 +2205,7 @@ export function StoryEngineProvider({
   const [stories, setStories] = useState<Story[]>([]);
   const [messages, setMessages] = useState<StoryMessage[]>([]);
   const [metaMessages, setMetaMessages] = useState<StoryMetaMessage[]>([]);
+  const [metaChatConversations, setMetaChatConversations] = useState<MetaChatConversation[]>([]);
   const [chapters, setChapters] = useState<StoryChapter[]>([]);
   const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([]);
   const [storyUiStates, setStoryUiStates] = useState<StoryUiState[]>([]);
@@ -2316,6 +2324,7 @@ export function StoryEngineProvider({
           nextStories,
           nextMessages,
           nextMetaMessages,
+          nextMetaChatConversations,
           nextChapters,
           nextBackgroundJobs,
           nextStoryUiStates,
@@ -2330,6 +2339,7 @@ export function StoryEngineProvider({
           repository.listStories(),
           repository.listAllMessages(),
           repository.listAllStoryMetaMessages(),
+          repository.listMetaChatConversations(),
           repository.listAllStoryChapters(),
           repository.listBackgroundJobs(),
           repository.listStoryUiStates(),
@@ -2406,6 +2416,7 @@ export function StoryEngineProvider({
         setStories(sortByUpdatedAtDesc(nextStories));
         setMessages(sortByTimestampAsc(nextMessages));
         setMetaMessages(sortByTimestampAsc(nextMetaMessages));
+        setMetaChatConversations(nextMetaChatConversations);
         setChapters([...nextChapters].sort((a, b) => a.endsAtIndex - b.endsAtIndex));
         setBackgroundJobs(
           [...cleanedBackgroundJobs].sort(
@@ -2674,7 +2685,7 @@ export function StoryEngineProvider({
 
       const blocks: string[] = [];
 
-      if (isGlobalMetaChatScope(scopeId)) {
+      if (isMetaChatConversationScope(scopeId)) {
         blocks.push(
           buildMetaChatLibraryOverview({
             stories,
@@ -2691,7 +2702,7 @@ export function StoryEngineProvider({
 
       for (const reference of references) {
         if (reference.kind === "story") {
-          if (!isGlobalMetaChatScope(scopeId) && reference.id === scopeId) {
+          if (!isMetaChatConversationScope(scopeId) && reference.id === scopeId) {
             continue;
           }
           const storyBlock = await buildStoryContext(
@@ -2977,8 +2988,7 @@ export function StoryEngineProvider({
         throw new Error("Message content is required.");
       }
 
-      const existingReferences =
-        storyUiStates.find((record) => record.storyId === scopeId)?.metaChatReferences ?? [];
+      const existingReferences = (await repository.getStoryUiState(scopeId))?.metaChatReferences ?? [];
       const resolvedReferences = mergeMetaChatReferences(
         existingReferences,
         resolveInlineMetaChatReferences(trimmed),
@@ -3010,6 +3020,14 @@ export function StoryEngineProvider({
       };
 
       await repository.saveStoryMetaMessage(userMessage);
+      const conversation = (await repository.listMetaChatConversations()).find(item => item.id === scopeId);
+      if (conversation) {
+        await repository.saveMetaChatConversation({
+          ...conversation,
+          title: conversation.title === "New conversation" ? trimmed.slice(0, 65) : conversation.title,
+          updatedAt: new Date().toISOString(),
+        });
+      }
       await repository.saveBackgroundJob(job);
       await saveStoryUiStateRecord(scopeId, {
         metaChatDraft: "",
@@ -3405,10 +3423,10 @@ export function StoryEngineProvider({
         throw new Error("Configure an AI provider in Settings before generating messages.");
       }
 
-      const scopeStory = isGlobalMetaChatScope(scopeId)
+      const scopeStory = isMetaChatConversationScope(scopeId)
         ? null
         : await repository.getStory(scopeId);
-      if (!isGlobalMetaChatScope(scopeId) && !scopeStory) {
+      if (!isMetaChatConversationScope(scopeId) && !scopeStory) {
         throw new Error("Story not found.");
       }
 
@@ -3433,7 +3451,7 @@ export function StoryEngineProvider({
         "Hard rule: MetaChat is NOT canon and must never be treated as story reality.",
         "Behave like an experienced writers' room: critique, analyse, compare, brainstorm, review, and explain recurring strengths, weaknesses, and patterns.",
         "Remember the existing MetaChat discussion in this conversation unless the user resets the chat.",
-        isGlobalMetaChatScope(scopeId)
+        isMetaChatConversationScope(scopeId)
           ? "This is library-level MetaChat. You may compare stories, universes, characters, voice, pacing, structure, and recurring themes across the user's writing library."
           : "This is story-level MetaChat. The current story remains the default reference. Any @Story, @Character, or @Universe mentions add context rather than replacing the active story.",
         references.length
@@ -3467,6 +3485,53 @@ export function StoryEngineProvider({
     },
     [buildMetaChatContextBlock, getNormalizedAISettings, repository, resolveAIProfile],
   );
+
+  const planMetaChatLibraryActions = useCallback(async (scopeId: string, instruction: string): Promise<MetaChatLibraryAction[]> => {
+    const settings = await getNormalizedAISettings();
+    if (!settings) throw new Error("Configure an AI provider in Settings first.");
+    const providerType = settings.activeProviderType;
+    const { apiKey, model } = await resolveAIProfile(providerType, undefined, "metachat");
+    const provider = createAIProvider(providerType);
+    const history = (await repository.listStoryMetaMessages(scopeId)).slice(-18)
+      .map(message => ({ role: message.role === "assistant" ? "assistant" as const : "user" as const, content: message.content }));
+    const universeList = universes.map(u => ({ id: u.id, name: u.name }));
+    const characterList = playerCharacters.filter(c => (c.scope ?? "library") === "library").map(c => ({ id: c.id, name: c.name, universeId: c.universeId }));
+    const response = await generateResponseWithRetry({
+      providerType, provider, apiKey, model,
+      messages: [
+        { role: "system", content: [
+          "You prepare proposed StoryEngine library actions. You never execute them.",
+          "Return only JSON object {actions:[...]}. Each action: kind character|universe, operation create|update|delete, summary, targetId for update/delete, draft for create/update.",
+          "Only use existing exact targetId values for edits/deletes. Do not guess identifiers.",
+          "For updates, draft MUST be a complete character/universe sheet, preserving all unchanged fields.",
+          "For character drafts include name, age, gender, species, pronouns, appearance, personality, background, notes, universeId. Character sheets have NO player/supporting flag; use scope library.",
+          "For universe drafts include name, description, wikiUrl, mode (custom or referenced).",
+          "For character creation, use a real universeId from the provided list. If none fits, return actions empty and explain in summary.",
+          "Never include story transcript or Story State changes. If ambiguous, return no actions.",
+          "Universe list: " + JSON.stringify(universeList),
+          "Character list: " + JSON.stringify(characterList),
+          "Existing complete characters: " + JSON.stringify(playerCharacters.filter(c => (c.scope ?? "library") === "library").slice(0,40)),
+          "Existing complete universes: " + JSON.stringify(universes.slice(0,40)),
+        ].join("\n") },
+        ...history,
+        { role: "user", content: instruction },
+      ],
+    });
+    const raw = extractFirstJsonObject(response.content);
+    if (!raw) throw new Error("MetaChat did not return an actionable proposal.");
+    const parsed: unknown = JSON.parse(raw);
+    const items = (parsed as { actions?: unknown }).actions;
+    if (!Array.isArray(items)) throw new Error("Invalid action proposal.");
+    return items.slice(0,20).filter((item): item is MetaChatLibraryAction => {
+      if (!item || typeof item !== "object") return false;
+      const action = item as MetaChatLibraryAction;
+      if (!["character","universe"].includes(action.kind) || !["create","update","delete"].includes(action.operation)) return false;
+      if (typeof action.summary !== "string") return false;
+      if (action.operation !== "create" && (!action.targetId || !(action.kind === "character" ? characterList : universeList).some(x => x.id === action.targetId))) return false;
+      if (action.operation !== "delete" && (!action.draft || typeof action.draft !== "object")) return false;
+      return true;
+    });
+  }, [getNormalizedAISettings, resolveAIProfile, repository, playerCharacters, universes]);
 
   const processBackgroundJob = useCallback(
     async (job: BackgroundJob, signal: AbortSignal) => {
@@ -4280,6 +4345,46 @@ export function StoryEngineProvider({
         developerTestingNotes.find((note) => note.id === id),
       getMessagesForStory: (storyId) =>
         sortByTimestampAsc(messages.filter((message) => message.storyId === storyId)),
+      metaChatConversations,
+      planMetaChatLibraryActions,
+      async createMetaChatConversation(initialReferences = []) {
+        const now = new Date().toISOString();
+        const record: MetaChatConversation = {
+          id: createEntityId("metachat-conversation"),
+          title: "New conversation",
+          createdAt: now,
+          updatedAt: now,
+        };
+        await repository.saveMetaChatConversation(record);
+        if (initialReferences.length) {
+          await saveStoryUiStateRecord(record.id, { metaChatReferences: initialReferences });
+        }
+        await hydrate(false);
+        return record;
+      },
+      async renameMetaChatConversation(id, title) {
+        const record = metaChatConversations.find(item => item.id === id);
+        if (!record) throw new Error("Conversation not found.");
+        const trimmed = title.trim();
+        if (!trimmed) throw new Error("Conversation title cannot be empty.");
+        await repository.saveMetaChatConversation({ ...record, title: trimmed, updatedAt: new Date().toISOString() });
+        await hydrate(false);
+      },
+      async deleteMetaChatConversation(id) {
+        const record = metaChatConversations.find(item => item.id === id);
+        if (!record) return;
+        const jobs = (await repository.listBackgroundJobs()).filter(job => job.storyId === id && job.type === "metachat_generate");
+        for (const job of jobs) {
+          if (job.status === "queued" || job.status === "running") await cancelBackgroundJob(job.id);
+        }
+        const messages = await repository.listStoryMetaMessages(id);
+        for (const message of messages) await repository.deleteStoryMetaMessage(message.id);
+        for (const job of jobs) await repository.deleteBackgroundJob(job.id);
+        const state = await repository.getStoryUiState(id);
+        if (state) await repository.deleteStoryUiState(state.id);
+        await repository.deleteMetaChatConversation(id);
+        await hydrate(false);
+      },
       getMetaMessagesForScope: (scopeId) =>
         sortByTimestampAsc(metaMessages.filter((message) => message.storyId === scopeId)),
       getMetaMessagesForStory: (storyId) =>
@@ -7643,6 +7748,8 @@ export function StoryEngineProvider({
     hydrate,
     loading,
     messages,
+    metaMessages,
+    storyUiStates,
     playerCharacters,
     repository,
     stories,
@@ -7654,6 +7761,8 @@ export function StoryEngineProvider({
     developerBugs,
     developerFeatureRequests,
     developerTestingNotes,
+    metaChatConversations,
+    planMetaChatLibraryActions,
     storyIndexes,
     backgroundJobs,
     queueGuidedChapterJob,

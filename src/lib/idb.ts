@@ -1,5 +1,5 @@
 const DATABASE_NAME = "story-engine-db";
-const DATABASE_VERSION = 11;
+const DATABASE_VERSION = 12;
 
 export type StoreName =
   | "universes"
@@ -7,6 +7,7 @@ export type StoreName =
   | "stories"
   | "messages"
   | "storyMetaMessages"
+  | "metaChatConversations"
   | "storyChapters"
   | "aiSettings"
   | "storyAiConfigs"
@@ -87,6 +88,7 @@ export function openStoryEngineDatabase() {
       const messages = ensureStore("messages", { keyPath: "id" });
       ensureIndex(messages, "storyId", "storyId", { unique: false });
 
+      ensureStore("metaChatConversations", { keyPath: "id" });
       const storyMetaMessages = ensureStore("storyMetaMessages", { keyPath: "id" });
       ensureIndex(storyMetaMessages, "storyId", "storyId", { unique: false });
 

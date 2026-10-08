@@ -14,6 +14,7 @@ import type {
   StoryChapter,
   StoryUiState,
   StoryMetaMessage,
+  MetaChatConversation,
   StoryState,
   StoryMessage,
   StorySummary,
@@ -74,6 +75,9 @@ export interface StoryEngineRepository {
   getStoryMessage(id: EntityId): Promise<StoryMessage | null>;
   saveStoryMessage(message: StoryMessage): Promise<StoryMessage>;
   deleteStoryMessage(id: EntityId): Promise<void>;
+  listMetaChatConversations(): Promise<MetaChatConversation[]>;
+  saveMetaChatConversation(record: MetaChatConversation): Promise<MetaChatConversation>;
+  deleteMetaChatConversation(id: EntityId): Promise<void>;
   listAllStoryMetaMessages(): Promise<StoryMetaMessage[]>;
   listStoryMetaMessages(storyId: EntityId): Promise<StoryMetaMessage[]>;
   saveStoryMetaMessage(message: StoryMetaMessage): Promise<StoryMetaMessage>;
@@ -209,6 +213,16 @@ export function createIndexedDbStoryEngineRepository(): StoryEngineRepository {
     },
     deleteStoryMessage(id) {
       return deleteFromStore("messages", id);
+    },
+    async listMetaChatConversations() {
+      const conversations = await getAllFromStore<MetaChatConversation>("metaChatConversations");
+      return [...conversations].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    },
+    saveMetaChatConversation(record) {
+      return putInStore("metaChatConversations", record);
+    },
+    deleteMetaChatConversation(id) {
+      return deleteFromStore("metaChatConversations", id);
     },
     async listAllStoryMetaMessages() {
       const messages = await getAllFromStore<StoryMetaMessage>("storyMetaMessages");
