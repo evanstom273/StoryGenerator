@@ -43,7 +43,7 @@ export function HomePage() {
   );
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex min-h-full min-w-0 flex-col">
 
       {/* ── Hero: Now Playing ── */}
       <div className="-mx-4 -mt-6 flex-shrink-0 border-b border-divider/[0.4] sm:-mx-6 sm:-mt-6 lg:-mx-10 lg:-mt-10">
@@ -127,13 +127,13 @@ export function HomePage() {
       </div>
 
       {/* ── 2-col layout ── */}
-      <div className="grid flex-1 gap-5 pt-5 lg:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid min-w-0 flex-1 gap-5 pt-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
 
         {/* Left column */}
-        <div className="flex flex-col gap-3.5">
+        <div className="flex min-w-0 flex-col gap-3.5">
 
           {/* Recent Stories */}
-          <div className="rounded-[10px] border border-divider/[0.45] bg-app px-[18px] py-[15px]">
+          <div className="min-w-0 rounded-[10px] border border-divider/[0.45] bg-app px-[18px] py-[15px]">
             <div className="mb-2.5 flex items-center justify-between">
               <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/20">
                 Recent Stories
@@ -156,26 +156,26 @@ export function HomePage() {
                       key={story.id}
                       to={`/stories/${story.id}`}
                       className={cn(
-                        "flex items-center justify-between rounded-[7px] px-2.5 py-2 transition hover:bg-white/[0.03]",
+                        "flex min-w-0 items-center justify-between gap-2 overflow-hidden rounded-[7px] px-2.5 py-2 transition hover:bg-white/[0.03]",
                         isFirst ? "bg-panel-muted" : "",
                       )}
                     >
-                      <div className="flex min-w-0 items-center gap-2.5">
+                      <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
                         <span
                           className={cn(
-                            "truncate text-xs font-semibold",
+                            "block min-w-0 flex-1 truncate text-xs font-semibold",
                             isFirst ? "text-ink" : "text-ink-muted",
                           )}
                         >
                           {story.title}
                         </span>
                         {universe && (
-                          <span className="flex-shrink-0 text-[10px] text-white/22">
+                          <span className="hidden max-w-[35%] shrink-0 truncate text-[10px] text-white/22 sm:block">
                             {universe.name}
                           </span>
                         )}
                       </div>
-                      <span className="ml-3 flex-shrink-0 text-[10px] text-white/18">
+                      <span className="ml-1 hidden shrink-0 whitespace-nowrap text-[10px] text-white/18 sm:block">
                         {formatRelativeTime(story.updatedAt)}
                       </span>
                     </Link>
@@ -288,7 +288,7 @@ export function HomePage() {
         </div>
 
         {/* Right column */}
-        <div className="flex flex-col gap-3.5">
+        <div className="flex min-w-0 flex-col gap-3.5">
 
           {/* Characters */}
           <div className="rounded-[10px] border border-divider/[0.45] bg-app px-[18px] py-[15px]">
