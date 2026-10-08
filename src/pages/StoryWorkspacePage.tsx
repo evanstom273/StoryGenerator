@@ -9,9 +9,7 @@ import { GuidedChapterProgressBar } from "../components/story/GuidedChapterProgr
 import { StoryWorkspaceViewportPortal } from "../components/story/StoryWorkspaceViewportPortal";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
 import { GenerationFailureModal } from "../components/story/GenerationFailureModal";
-import { MetaChatOverlay } from "../components/story/MetaChatOverlay";
 import { StoryIndexDrawer } from "../components/story/StoryIndexDrawer";
-import { META_CHAT_OPEN_STORAGE_KEY } from "../lib/jobNotifications";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
@@ -301,7 +299,6 @@ export function StoryWorkspacePage() {
   const [isGeneratingAssist, setIsGeneratingAssist] = useState(false);
   const [assistError, setAssistError] = useState<string | null>(null);
   const [manualMode, setManualMode] = useState(false);
-  const [metaChatOpen, setMetaChatOpen] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [assistantEditMessage, setAssistantEditMessage] = useState<StoryMessage | null>(null);
   const [assistantEditContent, setAssistantEditContent] = useState("");
@@ -356,7 +353,6 @@ export function StoryWorkspacePage() {
     setIsGeneratingAssist(false);
     setAssistError(null);
     setManualMode(false);
-    setMetaChatOpen(false);
     setAssistantEditMessage(null);
     setAssistantEditContent("");
     setAssistantEditError(null);
@@ -432,15 +428,7 @@ export function StoryWorkspacePage() {
     return () => window.removeEventListener(STORY_NAVIGATION_EVENT, handleJump);
   }, [messages, storyId]);
 
-  useEffect(() => {
-    if (!storyId) return;
-    try {
-      if (localStorage.getItem(META_CHAT_OPEN_STORAGE_KEY) === storyId) {
-        localStorage.removeItem(META_CHAT_OPEN_STORAGE_KEY);
-        setMetaChatOpen(true);
-      }
-    } catch {}
-  }, [storyId]);
+
 
   useEffect(() => {
     if (!readerMode) {
@@ -547,7 +535,6 @@ export function StoryWorkspacePage() {
     !readerMode &&
     !storyIndexOpen &&
     !storySettingsOpen &&
-    !metaChatOpen &&
     !showGuidedPlanModal &&
     !generationFailureOpen &&
     !assistantEditMessage &&
@@ -1727,13 +1714,6 @@ export function StoryWorkspacePage() {
       </Panel>
       ) : null}
 
-      {storyId && metaChatOpen ? (
-        <MetaChatOverlay
-          open={metaChatOpen}
-          storyId={storyId}
-          onClose={() => setMetaChatOpen(false)}
-        />
-      ) : null}
       {storyId ? (
         <StoryIndexDrawer
           open={storyIndexOpen}
