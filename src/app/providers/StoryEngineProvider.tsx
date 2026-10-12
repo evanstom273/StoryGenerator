@@ -931,7 +931,7 @@ function buildLightSceneRewritePrompt(args: {
 		`Target length: ${args.target.minWords}-${args.target.maxWords} words.`,
 		"Keep character voice and only the essential beats.",
 		"Do not reintroduce unchanged environments or participants.",
-		"Character authenticity is the highest priority. Keep relationships and speech patterns consistent.",
+		"Keep each character recognisable through their judgement, relationships, and speech, without exaggerating their best-known traits.",
 		"Not every character needs to speak; keep participation natural.",
 		"Never speak for the player character. Do not generate suggested player lines or options.",
 		"Preserve explicit player-declared outcomes as canon. Add fallout, cost, or reaction instead of contradicting them.",
