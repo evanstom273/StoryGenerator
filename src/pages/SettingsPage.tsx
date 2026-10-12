@@ -18,8 +18,9 @@ import {
 } from "../app/versioning/designDocumentExport";
 import { useTheme } from "../app/theming/ThemeContext";
 import { resolveMaxConcurrentBackgroundTasks } from "../lib/backgroundTasks";
-import type { AIModelRole, AIProviderType, AISettings, MaxConcurrentBackgroundTasks, IndexingCadence } from "../types/models";
+import type { AIModelRole, AIProviderType, AISettings, MaxConcurrentBackgroundTasks, IndexingCadence, ThinkingLevelPreference } from "../types/models";
 import { getAIModelForRole, getProviderModels, getValidModel } from "../lib/ai/models";
+import { isThinkingLevelPreference, THINKING_LEVEL_OPTIONS } from "../lib/ai/storyThinking";
 import { downloadFile } from "../lib/download";
 import {
 	AUTO_BACKUP_INTERVAL_OPTIONS_HOURS,
@@ -184,6 +185,9 @@ export function SettingsPage() {
   const [indexingCadence, setIndexingCadence] = useState<IndexingCadence>(
     aiSettings?.indexingCadence ?? "every_5_messages",
   );
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelPreference>(
+    aiSettings?.thinkingLevel ?? "auto",
+  );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -240,6 +244,7 @@ export function SettingsPage() {
       resolveMaxConcurrentBackgroundTasks(aiSettings?.maxConcurrentBackgroundTasks),
     );
     setIndexingCadence(aiSettings?.indexingCadence ?? "every_5_messages");
+    setThinkingLevel(aiSettings?.thinkingLevel ?? "auto");
   }, [aiSettings]);
 
   function setProviderRoleModel(role: AIModelRole, provider: AIProviderType, model: string) {
@@ -416,6 +421,7 @@ export function SettingsPage() {
         creationModels: roleModels.creation,
         maxConcurrentBackgroundTasks,
         indexingCadence,
+        thinkingLevel,
       });
       setOpenaiKeyInput("");
       setGeminiKeyInput("");
@@ -933,6 +939,34 @@ export function SettingsPage() {
                     </SelectInput>
                   </Field>
                 ))}
+                {provider.id === "gemini" ? (
+                  <Field
+                    label="Thinking Level"
+                    hint="Story generation and MetaChat"
+                    help="How much Gemini reasons before writing. Higher levels can follow complex plots more carefully but are slower and use more tokens. Auto uses StoryEngine's tuned defaults. Stories can override this in their own AI settings. Quick jobs like titles, character concepts and indexing always use Auto."
+                  >
+                    <SelectInput
+                      value={thinkingLevel}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        if (!isThinkingLevelPreference(next)) return;
+                        setThinkingLevel(next);
+                        void saveAISettings({
+                          activeProviderType,
+                          thinkingLevel: next,
+                          defaultModels: roleModels.story,
+                          indexingModels: roleModels.indexing,
+                          metachatModels: roleModels.metachat,
+                          creationModels: roleModels.creation,
+                        }).catch(() => {});
+                      }}
+                    >
+                      {THINKING_LEVEL_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </SelectInput>
+                  </Field>
+                ) : null}
                 <Field
                   label="API Key"
                   hint={provider.configured ? "Saved locally" : "Required"}

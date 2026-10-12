@@ -1,5 +1,6 @@
 import type { AIProvider, AIChatMessage } from "./types";
 import type { GeminiThinkingSettings } from "./geminiThinking";
+import { resolveGeminiThinkingFallback } from "./geminiThinking";
 import { resolveGeminiMatureFictionSafetySettings, type GeminiSafetySetting } from "./geminiSafety";
 import { normalizeAIError, AIError, looksLikeSafetyRefusal } from "./errors";
 import { buildMatureFictionPolicyBlock } from "./matureFictionPolicy";
@@ -502,18 +503,28 @@ export function createGeminiProvider(): AIProvider {
       }
     },
     async generateResponse({ apiKey, model, messages, maxTokens, temperature, jsonMode, thinking, geminiMatureFictionMode, timeoutMs, idleTimeoutMs, signal, onChunk }) {
-      const content = await callGenerateContent(apiKey, model, messages, {
-        timeoutMs,
-        idleTimeoutMs,
-        signal,
-        maxTokens,
-        temperature,
-        jsonMode,
-        thinking,
-        matureFictionMode: geminiMatureFictionMode,
-        onChunk,
-      });
-      return { content };
+      let requestThinking = thinking;
+      for (;;) {
+        try {
+          const content = await callGenerateContent(apiKey, model, messages, {
+            timeoutMs,
+            idleTimeoutMs,
+            signal,
+            maxTokens,
+            temperature,
+            jsonMode,
+            thinking: requestThinking,
+            matureFictionMode: geminiMatureFictionMode,
+            onChunk,
+          });
+          return { content };
+        } catch (error) {
+          // Models differ in which thinking levels they accept; step up instead of failing.
+          const fallback = resolveGeminiThinkingFallback(model, requestThinking, error);
+          if (!fallback) throw error;
+          requestThinking = fallback.thinking;
+        }
+      }
     },
     async generateSummary({ apiKey, model, storyTitle, messages, existingSummary, timeoutMs, signal }) {
       const summaryInstruction = [

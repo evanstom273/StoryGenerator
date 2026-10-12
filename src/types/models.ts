@@ -260,6 +260,9 @@ export interface StoryChapter {
 
 export type AIModelRole = "story" | "metachat" | "creation" | "indexing";
 
+/** Gemini reasoning depth. "auto" keeps StoryEngine's per-task defaults. */
+export type ThinkingLevelPreference = "auto" | "minimal" | "low" | "medium" | "high";
+
 export type IndexingCadence =
   | "every_message"
   | "every_5_messages"
@@ -280,6 +283,8 @@ export interface AISettings {
   /** Character/universe generation and related creation tools */
   creationModels?: Partial<Record<AIProviderType, string>>;
   indexingCadence?: IndexingCadence;
+  /** Gemini thinking level for story generation and MetaChat; stories can override it. */
+  thinkingLevel?: ThinkingLevelPreference;
   /** Max simultaneous long-running background tasks. */
   maxConcurrentBackgroundTasks?: MaxConcurrentBackgroundTasks;
   createdAt: Timestamp;
@@ -291,6 +296,8 @@ export interface StoryAIConfig {
   storyId: EntityId;
   providerType: AIProviderType;
   model?: string;
+  /** Unset inherits the global thinking level from Settings. */
+  thinkingLevel?: ThinkingLevelPreference;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

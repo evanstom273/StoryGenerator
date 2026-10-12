@@ -5,6 +5,7 @@ import {
   getModelStreamConfig,
 } from "../../lib/ai/models";
 import { classifyAIGenerationError } from "../../lib/ai/errors";
+import { resolveGeminiThinkingForPreference } from "../../lib/ai/geminiThinking";
 import { extractFirstJsonObject } from "../../lib/ai/json";
 import type { AISettings } from "../../types/models";
 import type { AIChatMessage, AIProvider } from "../../lib/ai/types";
@@ -48,6 +49,7 @@ export function createResponseGenerator(
     signal: AbortSignal,
     jsonMode: boolean,
     maxTokens: number,
+    applyThinkingLevel = false,
   ) {
     const settings = await getSettings();
     if (!settings)
@@ -63,6 +65,10 @@ export function createResponseGenerator(
       getProviderDefaultModel(type);
     const provider = providerFactory(type);
     const config = getModelStreamConfig(model);
+    const thinking =
+      applyThinkingLevel && type === "gemini"
+        ? resolveGeminiThinkingForPreference(model, settings.thinkingLevel, "default")
+        : undefined;
     for (let attempt = 1; ; attempt++) {
       signal.throwIfAborted();
       try {
@@ -72,6 +78,7 @@ export function createResponseGenerator(
           messages,
           jsonMode,
           maxTokens,
+          thinking,
           signal,
           timeoutMs: config.totalTimeoutMs,
         });
@@ -137,6 +144,7 @@ export function createResponseGenerator(
         signal,
         true,
         context.intent === "review" ? 16384 : 8192,
+        true,
       );
       const raw = extractFirstJsonObject(content);
       if (!raw)

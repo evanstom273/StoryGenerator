@@ -5,6 +5,7 @@ import {
 	extractGeminiGenerateContentResponse,
 	extractGeminiResponseText,
 } from "../ai/geminiProvider";
+import { resetLearnedGeminiThinkingSupport } from "../ai/geminiThinking";
 
 describe("extractGeminiResponseText", () => {
 	it("prefers non-thought parts", () => {
@@ -252,5 +253,68 @@ describe("looksLikeSafetyRefusal", () => {
 		"IMAGE_PROHIBITED_CONTENT",
 	])("recognizes Gemini prohibited-content variant %s", (message) => {
 		expect(looksLikeSafetyRefusal(message)).toBe(true);
+	});
+});
+
+describe("Gemini thinking level fallback", () => {
+	beforeEach(() => {
+		vi.stubGlobal("window", globalThis);
+		resetLearnedGeminiThinkingSupport();
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+		resetLearnedGeminiThinkingSupport();
+	});
+
+	const unsupportedMinimal = () =>
+		new Response(
+			JSON.stringify({
+				error: {
+					message: "Thinking level MINIMAL is not supported for this model. Please retry with other thinking level.",
+				},
+			}),
+			{ status: 400, headers: { "Content-Type": "application/json" } },
+		);
+	const ok = () =>
+		new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "The Harbor Job" }] } }] }), {
+			status: 200,
+			headers: { "Content-Type": "application/json" },
+		});
+	const sentThinking = (fetchMock: ReturnType<typeof vi.fn>, call: number) =>
+		JSON.parse(String((fetchMock.mock.calls[call]?.[1] as RequestInit).body)).generationConfig?.thinkingConfig;
+
+	it("steps up to the next thinking level when Gemini rejects one, and remembers it", async () => {
+		const fetchMock = vi.fn().mockResolvedValueOnce(unsupportedMinimal()).mockResolvedValue(ok());
+		vi.stubGlobal("fetch", fetchMock);
+		const request = {
+			apiKey: "test-key",
+			model: "gemini-3.9-flash",
+			messages: [{ role: "user" as const, content: "Title please" }],
+			thinking: { thinkingLevel: "minimal" as const },
+		};
+
+		await expect(createGeminiProvider().generateResponse(request)).resolves.toEqual({ content: "The Harbor Job" });
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(sentThinking(fetchMock, 0)).toEqual({ thinkingLevel: "minimal" });
+		expect(sentThinking(fetchMock, 1)).toEqual({ thinkingLevel: "low" });
+	});
+
+	it("does not retry unrelated request errors", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ error: { message: "Invalid argument." } }), { status: 400 }),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			createGeminiProvider().generateResponse({
+				apiKey: "test-key",
+				model: "gemini-3.9-flash",
+				messages: [{ role: "user", content: "x" }],
+				thinking: { thinkingLevel: "minimal" },
+			}),
+		).rejects.toThrow("Invalid argument.");
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 });
