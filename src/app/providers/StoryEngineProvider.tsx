@@ -35,6 +35,7 @@ import { createEntityId } from "../../lib/ids";
 import { createInheritedStoryIndex } from "../../lib/storyInheritance";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { resolveGeminiMinimalThinkingSettings, resolveGeminiStoryThinkingSettings } from "../../lib/ai/geminiThinking";
+import { resolveStoryThinkingLevel, withStoryThinkingLevel } from "../../lib/ai/storyThinking";
 import {
   buildStoryChatContext,
 } from "../../lib/ai/contextBuilder";
@@ -238,6 +239,7 @@ import type {
   StorageStatus,
   Story,
   StoryAIConfig,
+  ThinkingLevelPreference,
   StoryEngineBackup,
   StoryDraft,
   IndexingCadence,
@@ -457,6 +459,7 @@ interface StoryEngineContextValue {
     creationModels?: Partial<Record<AIProviderType, string>>;
     maxConcurrentBackgroundTasks?: 1 | 2 | 3 | 4 | 5;
     indexingCadence?: IndexingCadence;
+    thinkingLevel?: ThinkingLevelPreference;
   }) => Promise<AISettings>;
   validateAIConnection: (providerType?: AIProviderType) => Promise<void>;
   getStoryAIConfig: (storyId: string) => Promise<StoryAIConfig | null>;
@@ -464,6 +467,8 @@ interface StoryEngineContextValue {
     storyId: string;
     providerType: AIProviderType;
     model?: string;
+    /** Omit to keep the current value; "inherit" follows the global setting. */
+    thinkingLevel?: ThinkingLevelPreference | "inherit";
   }) => Promise<StoryAIConfig>;
   listUniverseImports: (universeId: string) => Promise<UniverseImport[]>;
   saveUniverseImport: (next: Omit<UniverseImport, "id">) => Promise<UniverseImport>;
@@ -3048,7 +3053,11 @@ export function StoryEngineProvider({
 
           const providerType = storyConfig?.providerType ?? settings.activeProviderType;
           const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
-          const provider = createAIProvider(providerType);
+          const provider = withStoryThinkingLevel(
+            createAIProvider(providerType),
+            providerType,
+            resolveStoryThinkingLevel(storyConfig, settings),
+          );
           const guidedStartedAtMs = Date.now();
 
           setGuidedGenerationStatus(
@@ -4421,7 +4430,11 @@ export function StoryEngineProvider({
 
         const providerType = storyConfig?.providerType ?? settings.activeProviderType;
         const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
-        const provider = createAIProvider(providerType);
+        const provider = withStoryThinkingLevel(
+          createAIProvider(providerType),
+          providerType,
+          resolveStoryThinkingLevel(storyConfig, settings),
+        );
         const traceId = makeGenerationAuditTraceId("story");
         const adultContentMode = resolveAdultContentMode(story);
         const redactSensitiveContent = adultContentMode === "explicit_consensual_adults";
@@ -5271,6 +5284,7 @@ export function StoryEngineProvider({
         );
         const indexingCadence =
           next.indexingCadence ?? current?.indexingCadence ?? "every_5_messages";
+        const thinkingLevel = next.thinkingLevel ?? current?.thinkingLevel ?? "auto";
 
         const settings: AISettings = {
           id: "ai-settings",
@@ -5282,6 +5296,7 @@ export function StoryEngineProvider({
           creationModels,
           maxConcurrentBackgroundTasks,
           indexingCadence,
+          thinkingLevel,
           createdAt,
           updatedAt: now,
         };
@@ -5314,6 +5329,12 @@ export function StoryEngineProvider({
           storyId: next.storyId,
           providerType: next.providerType,
           model: next.model?.trim() || undefined,
+          thinkingLevel:
+            next.thinkingLevel === undefined
+              ? existing?.thinkingLevel
+              : next.thinkingLevel === "inherit"
+                ? undefined
+                : next.thinkingLevel,
           createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         };
@@ -5983,7 +6004,11 @@ export function StoryEngineProvider({
 
         const providerType = storyConfig?.providerType ?? settings.activeProviderType;
         const { apiKey, model } = await resolveAIProfile(providerType, storyConfig?.model, "story");
-        const provider = createAIProvider(providerType);
+        const provider = withStoryThinkingLevel(
+          createAIProvider(providerType),
+          providerType,
+          resolveStoryThinkingLevel(storyConfig, settings),
+        );
         const adultContentProviderCapability = getAdultContentProviderCapability(
           providerType,
           adultContentMode,

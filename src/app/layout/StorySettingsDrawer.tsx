@@ -11,6 +11,8 @@ import {
 } from "../../lib/exportFilename";
 import { ImportedCharactersPicker } from "../../components/story/ImportedCharactersPicker";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
+import { getInheritedThinkingLevelLabel, isThinkingLevelPreference, THINKING_LEVEL_OPTIONS } from "../../lib/ai/storyThinking";
+import type { ThinkingLevelPreference } from "../../types/models";
 import { resolveVisibleProvider, shouldShowProviderPicker } from "../../lib/ai/providerConfig";
 import { ProviderSelect } from "../../components/settings/ProviderSelect";
 import { serializeStoryExport, serializeStoryTranscriptMarkdown } from "../../lib/storyExport";
@@ -147,6 +149,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const [fields, setFields] = useState({ title: story?.title ?? "", adultContentMode: resolveAdultContentMode(story), accentThemeKey: (story?.accentThemeKey ?? null) as AccentThemeKey | null, accentThemeCustom: story?.accentThemeCustom ?? themes.custom.accent, importedCharacterIds: normalizeStoryImportedCharacterIds(story?.importedCharacterIds) });
   const [providerType, setProviderType] = useState(() => resolveVisibleProvider(aiSettings?.activeProviderType));
   const [model, setModel] = useState(() => aiSettings?.defaultModels?.[resolveVisibleProvider(aiSettings?.activeProviderType)] ?? getProviderDefaultModel(resolveVisibleProvider(aiSettings?.activeProviderType)));
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelPreference | "inherit">("inherit");
   const [exportStage, setExportStage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -183,6 +186,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
       const provider = resolveVisibleProvider(config?.providerType ?? aiSettings?.activeProviderType);
       setProviderType(provider);
       setModel(config?.model?.trim() || aiSettings?.defaultModels?.[provider]?.trim() || getProviderDefaultModel(provider));
+      setThinkingLevel(config?.thinkingLevel ?? "inherit");
     }).catch(() => {});
   }, [story, aiSettings, getStoryAIConfig]);
 
@@ -201,7 +205,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
     event.preventDefault();
     if (!story) return;
     setSavingAI(true); setError(null);
-    try { await saveStoryAIConfig({ storyId: story.id, providerType, model }); setNotice("AI settings saved."); }
+    try { await saveStoryAIConfig({ storyId: story.id, providerType, model, thinkingLevel }); setNotice("AI settings saved."); }
     catch (e) { setError(e instanceof Error ? e.message : "Unable to save AI settings."); }
     finally { setSavingAI(false); }
   }
@@ -341,6 +345,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
             <form className="space-y-3" onSubmit={saveAI}>
               {shouldShowProviderPicker() ? <ProviderSelect value={providerType} onChange={(event) => setProviderType(event.target.value as typeof providerType)} /> : null}
               <select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={model} onChange={(e) => setModel(e.target.value)}>{getProviderModels(providerType).map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select>
+              {providerType === "gemini" ? <label className="block space-y-2"><FieldLabel label="Thinking level" help="How much Gemini reasons before writing this story's scenes. Higher is slower but can track complex plots more carefully." labelClassName="text-xs text-ink-muted" /><select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={thinkingLevel} onChange={(e) => { const value = e.target.value; if (value === "inherit" || isThinkingLevelPreference(value)) setThinkingLevel(value); }}><option value="inherit">{getInheritedThinkingLevelLabel(aiSettings?.thinkingLevel)}</option>{THINKING_LEVEL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
               <Button type="submit" className="w-full" disabled={savingAI}>{savingAI ? "Saving…" : "Save AI Settings"}</Button>
             </form>
           </Section>

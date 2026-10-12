@@ -10,8 +10,10 @@ import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import type {
   AIProviderType,
   PlayerCharacterDraft,
+  ThinkingLevelPreference,
 } from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
+import { getInheritedThinkingLevelLabel, isThinkingLevelPreference, THINKING_LEVEL_OPTIONS } from "../lib/ai/storyThinking";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
 import { ImportedCharactersPicker } from "../components/story/ImportedCharactersPicker";
 import { resolveUpcomingChapterLabels } from "../lib/guidedChapterGeneration/chapterLabels";
@@ -101,6 +103,7 @@ export function StoryCreatePage() {
       aiSettings?.defaultModels?.[provider] ?? getProviderDefaultModel(provider)
     );
   });
+  const [storyThinkingLevel, setStoryThinkingLevel] = useState<ThinkingLevelPreference | "inherit">("inherit");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [storyHistoryEnabled, setStoryHistoryEnabled] = useState(false);
@@ -282,6 +285,7 @@ export function StoryCreatePage() {
         storyId: story.id,
         providerType: storyProviderType,
         model: storyModel,
+        thinkingLevel: storyThinkingLevel,
       }).catch(() => null);
 
       navigate(`/stories/${story.id}`);
@@ -910,6 +914,26 @@ export function StoryCreatePage() {
                   </SelectInput>
                 </Field>
               </div>
+              {storyProviderType === "gemini" ? (
+                <div className="lg:col-span-2">
+                  <Field label="Thinking Level" help="How much Gemini reasons before writing this story's scenes. Higher levels are slower but can track complex plots more carefully. Defaults to your Settings choice.">
+                    <SelectInput
+                      value={storyThinkingLevel}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (value === "inherit" || isThinkingLevelPreference(value)) {
+                          setStoryThinkingLevel(value);
+                        }
+                      }}
+                    >
+                      <option value="inherit">{getInheritedThinkingLevelLabel(aiSettings?.thinkingLevel)}</option>
+                      {THINKING_LEVEL_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </SelectInput>
+                  </Field>
+                </div>
+              ) : null}
             </div>
             <p className="mt-4 text-sm leading-7 text-ink-muted">
               Configure your API key and default model in Settings. This story can
