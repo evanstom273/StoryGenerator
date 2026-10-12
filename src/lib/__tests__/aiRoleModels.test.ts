@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAIModelForRole } from "../ai/models";
+import { getAIModelForRole, getModelStreamConfig, getValidModel } from "../ai/models";
 import type { AISettings } from "../../types/models";
 
 const settings: AISettings = {
@@ -25,5 +25,18 @@ describe("getAIModelForRole", () => {
 	it("uses a provider default for MetaChat without inheriting the Director model", () => {
 		expect(getAIModelForRole({ ...settings, defaultModels: { gemini: "director-only-model" } }, "gemini", "metachat")).toBe("gemini-2.5-flash");
     expect(getAIModelForRole(settings, "gemini", "story")).toBe("gemini-2.5-flash");
+	});
+
+	it("keeps Gemini 3.8 Flash for story, creation and MetaChat roles", () => {
+		const gemini38: AISettings = {
+			...settings,
+			defaultModels: { gemini: "gemini-3.8-flash" },
+			metachatModels: { gemini: "gemini-3.8-flash" },
+			creationModels: { gemini: "gemini-3.8-flash" },
+		};
+		for (const role of ["story", "metachat", "creation"] as const) {
+			expect(getValidModel("gemini", getAIModelForRole(gemini38, "gemini", role))).toBe("gemini-3.8-flash");
+		}
+		expect(getModelStreamConfig("gemini-3.8-flash").totalTimeoutMs).toBe(300_000);
 	});
 });
