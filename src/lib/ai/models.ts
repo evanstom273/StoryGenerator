@@ -16,6 +16,7 @@ const PROVIDER_MODELS: Record<AIProviderType, ProviderModelOption[]> = {
     { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
     { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
     { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
+    { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
     { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
   ],
   anthropic: [
@@ -98,6 +99,7 @@ export interface ModelStreamConfig {
 const MODEL_STREAM_CONFIG: Partial<Record<string, ModelStreamConfig>> = {
   "gemini-3.1-pro-preview": { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
   "gemini-3.6-flash":       { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
+  "gemini-3.8-flash":       { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
   "gemini-2.5-pro":         { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
   "gemini-2.5-flash":       { idleTimeoutMs: 30_000, totalTimeoutMs: 120_000, maxAttempts: 3 },
   "gemini-3.5-flash":       { idleTimeoutMs: 30_000, totalTimeoutMs: 120_000, maxAttempts: 3 },
@@ -130,6 +132,7 @@ export interface IndexingRequestConfig {
 const INDEXING_REQUEST_CONFIG: Partial<Record<string, IndexingRequestConfig>> = {
   "gemini-3.1-pro-preview": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
   "gemini-3.6-flash": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
+  "gemini-3.8-flash": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
   "gemini-3.5-flash": { timeoutMs: 120_000, maxAttempts: 5, maxTokens: 8_192 },
   "gemini-2.5-pro": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
   "gemini-2.5-flash": { timeoutMs: 120_000, maxAttempts: 5, maxTokens: 8_192 },
