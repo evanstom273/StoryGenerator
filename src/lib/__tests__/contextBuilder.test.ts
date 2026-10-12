@@ -181,6 +181,7 @@ describe("contextBuilder latest player turn authority", () => {
       role: "user",
       content: [
         "Player (Allie) turn:",
+        "Writing reminder: Continue naturally, preserving established facts without imitating previous phrasing or gestures. Let participation follow the scene rather than automatically giving every present character a line.",
         "AUTHORITATIVE LATEST TURN: Everything below is already canon and is the exact current scene state. Continue from its immediate next beat only; do not replace, reinterpret, skip past, or fast-forward beyond it.",
         "SCENE HANDOFF RULE: Treat the final physical position, location, activity, possessions, and sensory state explicitly established in this player turn as binding at the instant your reply begins. Do not relocate characters, complete a pending transition, equip/use an item, start travel, or assume an intermediate action happened unless this player turn already established it.",
         "If earlier Director-controlled prose was moving toward a future beat, that future beat is not permission to jump there after the player resumes control. The newest player turn supersedes that momentum. React to what the player just did first and advance only the immediate surrounding beat.",
@@ -197,9 +198,8 @@ describe("contextBuilder scene grammar", () => {
         message.role === "system" && message.content.startsWith("Scene Direction"),
     )?.content;
 
-    expect(sceneDirection).toContain(
-      'Morgan: *She leans back in her chair.* "Do you think she knows?',
-    );
+    expect(sceneDirection).toContain('Example: Morgan: "Do you think she knows?"');
+    expect(sceneDirection).toContain('Morgan: *She drops the file on the desk.* "Dialogue."');
     expect(sceneDirection).toContain(
       "Narrator: *The refrigerator hums. Neither of them reaches for their coffee.*",
     );
