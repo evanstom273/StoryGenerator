@@ -594,6 +594,33 @@ function isConfidentBareActionVerbOpening(inner: string) {
 	);
 }
 
+const THEY_IRREGULAR_VERBS: Record<string, string> = { is: "are", was: "were", has: "have", does: "do" };
+
+function normalizeSubjectToken(token: string): "He" | "She" | "They" {
+	const lower = token.toLowerCase();
+	return lower === "he" ? "He" : lower === "she" ? "She" : "They";
+}
+
+/** Verb form agreeing with the subject: "She walks", but "They walk". */
+function verbForSubject(subject: "He" | "She" | "They", verb: string) {
+	if (subject !== "They") {
+		return conjugateThirdPersonSingular(verb);
+	}
+	const lower = verb.toLowerCase();
+	if (THEY_IRREGULAR_VERBS[lower]) {
+		return THEY_IRREGULAR_VERBS[lower];
+	}
+	if (CONFIDENT_BARE_ACTION_VERBS.has(lower)) {
+		return lower;
+	}
+	// Only de-conjugate recognised action verbs so words like "always" stay intact.
+	const base = [...actionVerbBaseCandidates(lower)].find(
+		(candidate) =>
+			CONFIDENT_BARE_ACTION_VERBS.has(candidate) && conjugateThirdPersonSingular(candidate) === lower,
+	);
+	return base ?? lower;
+}
+
 function alignSelfPossessivesForSubject(inner: string, pronoun: "He" | "She" | "They") {
 	if (pronoun === "They") {
 		return inner;
@@ -606,7 +633,16 @@ function alignSelfPossessivesForSubject(inner: string, pronoun: "He" | "She" | "
 		.replace(/\bthem\b/gi, objectPronoun);
 }
 
-function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" | null) {
+/**
+ * `pronounIsKnown` is true only when the pronoun comes from the player identity or
+ * recorded character data. Guessed pronouns may fill in a missing subject but must
+ * never overwrite a subject the model already wrote.
+ */
+function normalizeActionBeatInner(
+	beat: string,
+	pronoun: "He" | "She" | "They" | null,
+	pronounIsKnown = true,
+) {
 	const originalInner = beat.replace(/^\*+|\*+$/g, "").trim();
 	let inner = originalInner;
 	if (!inner) {
@@ -616,11 +652,12 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 	// Only repair a genuinely bare verb opening. Subject-, possessive-, determiner-,
 	// and sentence-led beats are already authored prose and must remain untouched.
 	if (/^(?:He|She|They)\b/i.test(inner)) {
+		// Garbled "She hers eyes trace…" becomes "Her eyes trace…".
 		const malformedPossessive = inner.match(/^(He|She|They)\s+(hers|his|theirs)\s+(.+)$/i);
 		if (malformedPossessive?.[1] && malformedPossessive[2] && malformedPossessive[3]) {
-			const possessive = malformedPossessive[2].toLowerCase() === "his" ? "his" :
-				malformedPossessive[2].toLowerCase() === "theirs" ? "their" : "her";
-			return `*${malformedPossessive[1]} lets ${possessive} ${malformedPossessive[3]}*`;
+			const possessive = malformedPossessive[2].toLowerCase() === "his" ? "His" :
+				malformedPossessive[2].toLowerCase() === "theirs" ? "Their" : "Her";
+			return `*${possessive} ${malformedPossessive[3]}*`;
 		}
 		const malformedVerb = inner.match(/^(He|She|They)\s+(gentlies|smile,s)\b\s*(.*)$/i);
 		if (malformedVerb?.[1] && malformedVerb[2]) {
@@ -628,17 +665,18 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 			if (malformedVerb[2].toLowerCase() === "gentlies") {
 				const [verb, ...tail] = (malformedVerb[3] ?? "").split(/\s+/).filter(Boolean);
 				const normalizedTail = tail.length ? ` ${tail.join(" ")}` : "";
-				return `*${subject} gently ${verb ? conjugateThirdPersonSingular(verb) : ""}${normalizedTail}*`;
+				const subjectPronoun = normalizeSubjectToken(subject);
+				return `*${subject} gently ${verb ? verbForSubject(subjectPronoun, verb) : ""}${normalizedTail}*`;
 			}
-			return `*${subject} smiles${malformedVerb[3] ? ` ${malformedVerb[3]}` : ""}*`;
+			return `*${subject} ${verbForSubject(normalizeSubjectToken(subject), "smile")}${malformedVerb[3] ? ` ${malformedVerb[3]}` : ""}*`;
 		}
-		if (pronoun) {
+		if (pronoun && pronounIsKnown) {
 			const subject = inner.match(/^(He|She|They)\b/i)?.[1];
 			if (subject && subject.toLowerCase() !== pronoun.toLowerCase()) {
 				const corrected = `${pronoun}${inner.slice(subject.length)}`;
 				const correctedMatch = corrected.match(/^(He|She|They)\s+([A-Za-z][A-Za-z'-]*)(\b[\s\S]*)$/i);
 				if (correctedMatch?.[2]) {
-					const verb = conjugateThirdPersonSingular(correctedMatch[2]);
+					const verb = verbForSubject(pronoun, correctedMatch[2]);
 					return `*${alignSelfPossessivesForSubject(`${pronoun} ${verb}${correctedMatch[3]}`, pronoun)}*`;
 				}
 				return `*${alignSelfPossessivesForSubject(corrected, pronoun)}*`;
@@ -646,7 +684,7 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 		}
 		const subjectMatch = inner.match(/^(He|She|They)\s+([A-Za-z][A-Za-z'-]*)(\b[\s\S]*)$/i);
 		if (subjectMatch?.[1] && subjectMatch[2]) {
-			const normalizedVerb = conjugateThirdPersonSingular(subjectMatch[2]);
+			const normalizedVerb = verbForSubject(normalizeSubjectToken(subjectMatch[1]), subjectMatch[2]);
 			if (normalizedVerb !== subjectMatch[2].toLowerCase()) {
 				return `*${subjectMatch[1]} ${normalizedVerb}${subjectMatch[3]}*`;
 			}
@@ -654,12 +692,6 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 		return `*${originalInner}*`;
 	}
 	if (/^(?:His|Her|Their)\b/i.test(inner) || /^(?:A|An|The)\b/i.test(inner)) {
-		const possessiveMatch = inner.match(/^(His|Her|Their)\s+(eyes|gaze|hands?|fingers?|breath|voice)\b\s*(.*)$/i);
-		if (pronoun && possessiveMatch?.[1] && possessiveMatch[2]) {
-			const possessive = pronoun === "She" ? "her" : pronoun === "He" ? "his" : "their";
-			const tail = possessiveMatch[3] ? ` ${possessiveMatch[3]}` : "";
-			return `*${pronoun} lets ${possessive} ${possessiveMatch[2]}${tail}*`;
-		}
 		return `*${originalInner}*`;
 	}
 	if (!isConfidentBareActionVerbOpening(inner)) {
@@ -670,7 +702,7 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 	if (pronoun) {
 		inner = alignSelfPossessivesForSubject(inner, pronoun);
 	}
-	if (!/[.!?â€¦]$/.test(inner)) {
+	if (!/[.!?…]$/.test(inner)) {
 		inner = `${inner}.`;
 	}
 
@@ -681,14 +713,16 @@ function normalizeActionBeatInner(beat: string, pronoun: "He" | "She" | "They" |
 	const [firstWord, ...restWords] = inner.split(/\s+/);
 	const firstToken = firstWord ?? "";
 	const remainder = restWords.join(" ");
-	const normalizedVerb = conjugateThirdPersonSingular(firstToken);
+	const normalizedVerb = verbForSubject(pronoun, firstToken);
 	const normalizedRest = remainder ? `${normalizedVerb} ${remainder}` : normalizedVerb;
 	return `*${pronoun} ${normalizedRest}*`;
 }
 
+type ResolvedActionPronoun = { pronoun: "He" | "She" | "They"; known: boolean };
+
 function normalizeActionBeatsInSpeakerRemainder(
 	remainder: string,
-	resolvePronoun: (beatText: string) => "He" | "She" | "They" | null,
+	resolvePronoun: (beatText: string) => ResolvedActionPronoun,
 ) {
 	const wrappedRemainder = wrapBareActionProseInUnquotedText(remainder);
 	let rebuilt = "";
@@ -700,8 +734,8 @@ function normalizeActionBeatsInSpeakerRemainder(
 		}
 
 		rebuilt += region.text.replace(/\*[^*]+\*/g, (beat) => {
-			const pronoun = resolvePronoun(beat);
-			return normalizeActionBeatInner(beat, pronoun);
+			const { pronoun, known } = resolvePronoun(beat);
+			return normalizeActionBeatInner(beat, pronoun, known);
 		});
 	}
 
@@ -782,15 +816,16 @@ function resolveSpeakerActionPronoun(
 		playerIdentity?: PlayerTranscriptIdentity | null;
 		forcePlayerPronouns?: boolean;
 	},
-): "He" | "She" | "They" {
+): ResolvedActionPronoun {
+	const known = (pronoun: "He" | "She" | "They"): ResolvedActionPronoun => ({ pronoun, known: true });
 	const identity = opts?.playerIdentity;
 	if (identity && speakerLabelRefersToPlayer(speakerLabel, identity)) {
 		if (identity.pronouns?.trim()) {
-			return resolveSubjectPronoun(identity.pronouns);
+			return known(resolveSubjectPronoun(identity.pronouns));
 		}
 		const fromPlayerGender = lookupPlayerSubjectPronoun(identity);
 		if (fromPlayerGender) {
-			return fromPlayerGender;
+			return known(fromPlayerGender);
 		}
 	}
 
@@ -811,34 +846,30 @@ function resolveSpeakerActionPronoun(
 		legacyPlayerLabels.has(normalizedSpeaker.toLowerCase());
 
 	if (isPlayerSpeaker && opts?.playerPronouns?.trim()) {
-		return resolveSubjectPronoun(opts.playerPronouns);
+		return known(resolveSubjectPronoun(opts.playerPronouns));
 	}
 
 	if (isPlayerSpeaker && identity?.pronouns?.trim()) {
-		return resolveSubjectPronoun(identity.pronouns);
+		return known(resolveSubjectPronoun(identity.pronouns));
 	}
 
-	const fromStoryState = lookupCharacterSubjectPronoun(speakerLabel, opts?.characterGenders);
-	if (fromStoryState) {
-		return fromStoryState;
+	const fromCharacterData = lookupCharacterSubjectPronoun(speakerLabel, opts?.characterGenders);
+	if (fromCharacterData) {
+		return known(fromCharacterData);
 	}
 
-	if (isPlayerSpeaker || opts?.forcePlayerPronouns) {
-		if (identity?.pronouns?.trim()) {
-			return resolveSubjectPronoun(identity.pronouns);
-		}
+	// Player pronouns only ever apply to the player's own lines, never to other characters.
+	if (isPlayerSpeaker) {
 		const fromPlayerGender = identity ? lookupPlayerSubjectPronoun(identity) : null;
 		if (fromPlayerGender) {
-			return fromPlayerGender;
+			return known(fromPlayerGender);
+		}
+		if (opts?.forcePlayerPronouns) {
+			return { pronoun: "They", known: false };
 		}
 	}
 
-	if (opts?.forcePlayerPronouns) {
-		return "They";
-	}
-
-	const inferred = resolveSubjectPronounFromActionBeat(beatText);
-	return inferred ?? "They";
+	return { pronoun: resolveSubjectPronounFromActionBeat(beatText) ?? "They", known: false };
 }
 
 function collectLegacyPlayerSpeakerLabels(identity: PlayerTranscriptIdentity): Set<string> {

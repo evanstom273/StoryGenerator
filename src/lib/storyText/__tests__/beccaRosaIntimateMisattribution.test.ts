@@ -102,7 +102,8 @@ describe("Becca/Rosa intimate speaker misattribution", () => {
 			},
 		);
 
-		expect(normalized).toContain("*She lets her eyes trace");
+		expect(normalized).toContain("*Her eyes trace");
+		expect(normalized).not.toContain("lets her eyes");
 		expect(normalized).not.toMatch(/\bhers eyes\b/i);
 	});
 });

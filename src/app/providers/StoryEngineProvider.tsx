@@ -1339,12 +1339,16 @@ function applyStoryLocalIdentityToSavedAssistantText(args: {
 	playerIdentity: EffectivePlayerIdentity;
 	storyStateData: StoryStateData | StoryStateDataV2 | null;
 	transcriptText?: string | null;
+	storyIndexCharacters?: StoryIndex["characters"] | null;
+	importedCharacters?: PlayerCharacter[] | null;
 }): string {
 	const characterGenders = buildCharacterGenderHintsFromStoryState(args.storyStateData, {
 		playerName: args.playerCharacter.name,
 		playerAliases: args.playerCharacter.aliases,
 		playerGender: args.playerCharacter.gender,
 		playerPronouns: args.playerIdentity.pronouns,
+		storyIndexCharacters: args.storyIndexCharacters,
+		importedCharacters: args.importedCharacters,
 	});
 	const identity = buildPlayerTranscriptIdentityFromStoryContext({
 		character: args.playerCharacter,
@@ -4732,6 +4736,8 @@ export function StoryEngineProvider({
           playerAliases: playerCharacter.aliases,
           playerGender: playerCharacter.gender,
           playerPronouns: playerIdentity.pronouns,
+          storyIndexCharacters: storyIndex?.characters,
+          importedCharacters: importedStoryCharacters,
         });
 
         const validateCandidate = (initialText: string) =>
@@ -4753,6 +4759,8 @@ export function StoryEngineProvider({
                 playerIdentity,
                 storyStateData: parsedStoryStateForIdentity,
                 transcriptText: `${transcriptRepairContext}\n\n${text}`,
+                storyIndexCharacters: storyIndex?.characters,
+                importedCharacters: importedStoryCharacters,
               }),
             hiddenDialoguePattern: hiddenDialogueInferencePattern,
             knownTies: normalizePlayerCharacterKnownTies(playerCharacter.knownTies),
@@ -6555,6 +6563,8 @@ export function StoryEngineProvider({
             playerAliases: playerCharacter.aliases,
             playerGender: playerCharacter.gender,
             playerPronouns: playerIdentity.pronouns,
+            storyIndexCharacters: storyIndex?.characters,
+            importedCharacters: importedStoryCharacters,
           });
 
           const validateCandidate = (initialText: string) =>
@@ -6577,6 +6587,8 @@ export function StoryEngineProvider({
                   playerIdentity,
                   storyStateData: parsedStoryStateForIdentity,
                   transcriptText: `${transcriptRepairContext}\n\n${text}`,
+                  storyIndexCharacters: storyIndex?.characters,
+                  importedCharacters: importedStoryCharacters,
                 }),
               hiddenDialoguePattern: hiddenDialogueInferencePattern,
               knownTies: normalizePlayerCharacterKnownTies(playerCharacter.knownTies),
