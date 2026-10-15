@@ -1,4 +1,4 @@
-import type { StoryStateData, StoryStateDataV2 } from "../../types/models";
+import type { PlayerCharacter, StoryIndexCharacter, StoryStateData, StoryStateDataV2 } from "../../types/models";
 
 export type CharacterGenderHint = "male" | "female";
 export type CharacterGenderMap = Record<string, CharacterGenderHint>;
@@ -76,6 +76,10 @@ export function buildCharacterGenderHintsFromStoryState(
     playerAliases?: string[] | null;
     playerGender?: string | null;
     playerPronouns?: string | null;
+    /** Current story-established pronouns from the Story Index; outrank older sources. */
+    storyIndexCharacters?: ReadonlyArray<Pick<StoryIndexCharacter, "canonicalName" | "aliases" | "pronouns">> | null;
+    /** Library characters imported into the story; their sheets are the lowest-priority source. */
+    importedCharacters?: ReadonlyArray<Pick<PlayerCharacter, "name" | "aliases" | "gender" | "pronouns">> | null;
   },
 ): CharacterGenderMap {
   const hints: CharacterGenderMap = {};
@@ -93,6 +97,16 @@ export function buildCharacterGenderHintsFromStoryState(
 
   if (playerGender && options?.playerName?.trim()) {
     applyGenderHint(hints, options.playerName.trim(), playerGender);
+  }
+
+  const isPlayerName = (names: string[]) =>
+    names.some((name) => playerIdentityLabels.has(normalizeCharacterKey(name)));
+
+  for (const character of options?.importedCharacters ?? []) {
+    const names = [character.name, ...(character.aliases ?? [])].filter((name) => Boolean(name?.trim()));
+    const gender = inferCharacterGenderHint(character.gender, character.pronouns);
+    if (!gender || isPlayerName(names)) continue;
+    for (const name of names) applyGenderHint(hints, name, gender);
   }
 
   for (const [canonicalKey, entry] of Object.entries(
@@ -122,6 +136,13 @@ export function buildCharacterGenderHintsFromStoryState(
     ].filter((name): name is string => Boolean(name?.trim()))) {
       applyGenderHint(hints, name, gender);
     }
+  }
+
+  for (const character of options?.storyIndexCharacters ?? []) {
+    const names = [character.canonicalName, ...(character.aliases ?? [])].filter((name) => Boolean(name?.trim()));
+    const gender = inferCharacterGenderHint(null, character.pronouns);
+    if (!gender || isPlayerName(names)) continue;
+    for (const name of names) applyGenderHint(hints, name, gender);
   }
 
   return hints;

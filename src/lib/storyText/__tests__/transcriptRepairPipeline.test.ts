@@ -136,7 +136,7 @@ describe("transcriptRepairPipeline", () => {
 			pronouns: "she/her",
 			hasInStoryTransition: true,
 		});
-		expect(repaired).toContain('Lyra: *She lets her fingers close around Lyra\'s wrist.* "Come closer."');
+		expect(repaired).toContain('Lyra: *Her fingers close around Lyra\'s wrist.* "Come closer."');
 		expect(repaired).not.toMatch(/^Jamie:/m);
 		expect(repairedAgain).toBe(repaired);
 	});
