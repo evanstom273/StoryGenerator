@@ -83,6 +83,20 @@ export function storyHasGeneratedScenes(messages: StoryMessage[]): boolean {
   return messages.some((message) => message.role === "assistant");
 }
 
+export type AssistMode = "director" | "player";
+
+/**
+ * What the assist button should write. The user's draft wins: a Director: draft is
+ * continued as a Director note, any other draft as the player's own turn. Only an
+ * empty composer falls back to the story state (Director once scenes exist).
+ */
+export function resolveAssistMode(messages: StoryMessage[], draft?: string | null): AssistMode {
+  const trimmed = draft?.trim() ?? "";
+  if (/^Director:/i.test(trimmed)) return "director";
+  if (trimmed) return "player";
+  return storyHasGeneratedScenes(messages) ? "director" : "player";
+}
+
 function buildAssistUniverseInfo({
   universe,
   story,
