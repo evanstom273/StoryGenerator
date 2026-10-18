@@ -47,7 +47,15 @@ export function ImportedCharactersPicker({
 	getPlayerCharactersForUniverse,
 	getUniverseById,
 	getPlayerCharacterById,
+	selectedHeading = "Imported",
+	helpText = "Imported characters are added to AI context only. They are not auto-spawned into scenes.",
+	emptyText = "No imported characters selected yet.",
+	noUniverseText = "Select a universe first to browse importable library characters.",
 }: {
+	selectedHeading?: string;
+	helpText?: string;
+	emptyText?: string;
+	noUniverseText?: string;
 	selectedIds: string[];
 	onChange: (nextIds: string[]) => void;
 	universeIds: string[];
@@ -74,6 +82,12 @@ export function ImportedCharactersPicker({
 			selectedIds
 				.map((id) => getPlayerCharacterById(id))
 				.filter((character): character is PlayerCharacter => Boolean(character)),
+		[getPlayerCharacterById, selectedIds],
+	);
+
+	// Selected IDs that no longer resolve (deleted sheet, or links carried in from an import).
+	const missingIds = useMemo(
+		() => selectedIds.filter((id) => !getPlayerCharacterById(id)),
 		[getPlayerCharacterById, selectedIds],
 	);
 
@@ -122,9 +136,7 @@ export function ImportedCharactersPicker({
 
 	if (!universeIds.length) {
 		return (
-			<p className="text-sm text-ink-muted">
-				Select a universe first to browse importable library characters.
-			</p>
+			<p className="text-sm text-ink-muted">{noUniverseText}</p>
 		);
 	}
 
@@ -137,14 +149,12 @@ export function ImportedCharactersPicker({
 					placeholder="Search library characters…"
 					onChange={(event) => setSearch(event.target.value)}
 				/>
-				<p className="text-[11px] text-ink-muted">
-					Imported characters are added to AI context only. They are not auto-spawned into scenes.
-				</p>
+				<p className="text-[11px] text-ink-muted">{helpText}</p>
 			</div>
 
-			{selectedCharacters.length ? (
+			{selectedCharacters.length || missingIds.length ? (
 				<div className="space-y-2">
-					<p className="text-xs uppercase tracking-[0.18em] text-ink-muted">Imported</p>
+					<p className="text-xs uppercase tracking-[0.18em] text-ink-muted">{selectedHeading}</p>
 					<div className="space-y-2">
 						{selectedCharacters.map((character) => {
 							const universeName = getUniverseById(character.universeId)?.name ?? "Unknown universe";
@@ -178,10 +188,30 @@ export function ImportedCharactersPicker({
 								</Panel>
 							);
 						})}
+						{missingIds.map((id) => (
+							<Panel key={id} variant="flat" className="p-3">
+								<div className="flex items-center gap-3">
+									<div className="min-w-0 flex-1">
+										<h4 className="text-sm font-semibold text-ink-muted">Missing sheet</h4>
+										<p className="mt-1 truncate text-xs text-ink-muted">
+											This character sheet no longer exists ({id}).
+										</p>
+									</div>
+									<button
+										type="button"
+										disabled={disabled}
+										className="shrink-0 rounded-[8px] border border-divider px-2.5 py-1.5 text-xs font-medium text-ink-soft transition hover:bg-panel-muted disabled:cursor-not-allowed disabled:opacity-50"
+										onClick={() => removeCharacter(id)}
+									>
+										Remove
+									</button>
+								</div>
+							</Panel>
+						))}
 					</div>
 				</div>
 			) : (
-				<p className="text-sm text-ink-muted">No imported characters selected yet.</p>
+				<p className="text-sm text-ink-muted">{emptyText}</p>
 			)}
 
 			<div className="space-y-2">

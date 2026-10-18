@@ -125,6 +125,8 @@ export interface PlayerCharacter {
   name: string;
   aliases?: string[];
   knownTies?: string[];
+  /** IDs of other character sheets this sheet refers to; no limit. */
+  linkedCharacterIds?: EntityId[];
   age: string;
   gender: string;
   species: string;
@@ -494,6 +496,7 @@ export interface PlayerCharacterDraft {
   name: string;
   aliases?: string[];
   knownTies?: string[];
+  linkedCharacterIds?: EntityId[];
   age: string;
   gender: string;
   species: string;

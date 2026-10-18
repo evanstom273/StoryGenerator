@@ -184,6 +184,8 @@ export interface BuildStoryChatContextInput {
   };
   playerStateHintOverride?: string | null;
   importedStoryCharacters?: PlayerCharacter[];
+  /** Pre-formatted sheets linked (by ID) from the player and imported characters. */
+  linkedCharactersBlock?: string | null;
   /** When set, used for prompt identity instead of re-resolving from recentMessages alone. */
   playerIdentity?: EffectivePlayerIdentity;
   /** Used to describe explicit-mode compatibility without changing provider safeguards. */
@@ -209,6 +211,7 @@ export function buildStoryChatContext({
   guidedChapterContext,
   playerStateHintOverride,
   importedStoryCharacters = [],
+  linkedCharactersBlock,
   playerIdentity: playerIdentityOverride,
   providerType,
   resolvedParticipants,
@@ -592,6 +595,9 @@ export function buildStoryChatContext({
     { role: "system", content: `Imported Lore\n\n${importedLore}` },
     ...(importedCharactersBlock
       ? [{ role: "system" as const, content: `Imported Story Characters\n\n${importedCharactersBlock}` }]
+      : []),
+    ...(linkedCharactersBlock?.trim()
+      ? [{ role: "system" as const, content: `Linked Character Sheets\n\n${linkedCharactersBlock.trim()}` }]
       : []),
     ...(indexedMemoryBlock
       ? [{ role: "system" as const, content: `Indexed Story Memory (derived continuity facts, not a style reference; never overrides primary canon or transcript)\n\n${indexedMemoryBlock}` }]

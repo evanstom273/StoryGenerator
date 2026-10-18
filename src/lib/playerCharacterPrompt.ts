@@ -84,6 +84,24 @@ export function normalizePlayerCharacterKnownTies(value: unknown): string[] {
 	return knownTies;
 }
 
+/** Trimmed, de-duplicated sheet IDs with the sheet's own ID removed. Deliberately uncapped. */
+export function normalizeLinkedCharacterIds(value: unknown, selfId?: string | null): string[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+
+	const ids: string[] = [];
+	const seen = new Set<string>();
+	for (const item of value) {
+		if (typeof item !== "string") continue;
+		const id = item.trim();
+		if (!id || id === selfId || seen.has(id)) continue;
+		seen.add(id);
+		ids.push(id);
+	}
+	return ids;
+}
+
 export function formatPlayerCharacterKnownTiesForPrompt(
 	character: Pick<PlayerCharacter, "knownTies">,
 ): string | null {
@@ -109,16 +127,26 @@ export function formatCharacterKnownTiesConstraint(
 	].join("\n");
 }
 
-export function formatAntiCanonSprawlGuidance(hasKnownTies: boolean): string {
+export function formatAntiCanonSprawlGuidance(hasKnownTies: boolean, hasLinkedSheets = false): string {
+	const allowed = [hasKnownTies ? "Known ties" : "", hasLinkedSheets ? "Linked character sheets" : ""]
+		.filter(Boolean)
+		.join(" or ");
 	return [
 		"Universe canon characters:",
 		"- Imported lore may describe a large cast. Do not reference every famous character from the setting.",
-		"- Do not assume the player character knows, works with, or is related to the main ensemble unless listed in Known ties or clearly implied by the Character Concept.",
+		`- Do not assume the player character knows, works with, or is related to the main ensemble unless listed in ${allowed || "Known ties"} or clearly implied by the Character Concept.`,
 		"- Prefer original hooks, everyday life, and off-screen connections over roping in the full main cast.",
-		hasKnownTies
-			? "- Only the Known ties listed above may be named. Do not add extra canon characters beyond those ties and any people explicitly named in the Character Concept."
-			: "- No Known ties were specified. Do not name-drop major canon characters unless the Character Concept explicitly names them (for example, parents or mentors).",
-	].join("\n");
+		hasLinkedSheets
+			? `- Only people in the ${allowed} may be named. Do not add extra canon characters beyond those and any people explicitly named in the Character Concept.`
+			: hasKnownTies
+				? "- Only the Known ties listed above may be named. Do not add extra canon characters beyond those ties and any people explicitly named in the Character Concept."
+				: "- No Known ties were specified. Do not name-drop major canon characters unless the Character Concept explicitly names them (for example, parents or mentors).",
+		hasLinkedSheets
+			? "- Linked character sheets are the exact people this character relates to. Keep every detail about them consistent with their sheet, and use them where relevant; you do not need to mention all of them."
+			: "",
+	]
+		.filter(Boolean)
+		.join("\n");
 }
 
 /** True when the label is just the full legal name or one of its name tokens (e.g. James from James Peralta). */

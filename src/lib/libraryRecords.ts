@@ -14,6 +14,7 @@ import {
 import {
   normalizePlayerCharacterAliases,
   normalizePlayerCharacterKnownTies,
+  normalizeLinkedCharacterIds,
 } from "./playerCharacterPrompt";
 
 function applyUniverseIdsFromDraft<
@@ -99,14 +100,21 @@ export function updateUniverseRecord(
   return nextUniverse;
 }
 
+function optionalIds(ids: string[]) {
+  return ids.length ? ids : undefined;
+}
+
 export function createCharacterRecord(
   draft: PlayerCharacterDraft,
 ): PlayerCharacter {
+  const id = createEntityId("player-character");
+  const linkedCharacterIds = normalizeLinkedCharacterIds(draft.linkedCharacterIds, id);
   const nextCharacter = applyUniverseIdsFromDraft(draft, {
-    id: createEntityId("player-character"),
+    id,
     name: draft.name.trim(),
     aliases: normalizePlayerCharacterAliases(draft.aliases),
     knownTies: normalizePlayerCharacterKnownTies(draft.knownTies),
+    ...(linkedCharacterIds.length ? { linkedCharacterIds } : {}),
     age: draft.age.trim(),
     gender: draft.gender.trim(),
     species: draft.species?.trim() ?? "",
@@ -134,6 +142,13 @@ export function updateCharacterRecord(
     name: draft.name.trim(),
     aliases: normalizePlayerCharacterAliases(draft.aliases),
     knownTies: normalizePlayerCharacterKnownTies(draft.knownTies),
+    // Partial updates (e.g. MetaChat) omit the field and keep existing links.
+    linkedCharacterIds: optionalIds(
+      normalizeLinkedCharacterIds(
+        draft.linkedCharacterIds ?? currentCharacter.linkedCharacterIds,
+        currentCharacter.id,
+      ),
+    ),
     age: draft.age.trim(),
     gender: draft.gender.trim(),
     species: draft.species?.trim() ?? "",
