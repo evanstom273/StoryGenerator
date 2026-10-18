@@ -50,6 +50,8 @@ export interface ProcessIndexingBatchParams {
   apiKey?: string;
   model: string;
   signal?: AbortSignal;
+  /** Pre-story canon (player sheet, linked sheets, universe); see buildIndexingSetupContext. */
+  setupContext?: string | null;
 }
 
 export function normalizeNameKey(name: string): string {
@@ -259,6 +261,7 @@ export function buildIndexingPrompt(params: {
   existingCharacters: StoryIndexCharacter[];
   existingRelationships: StoryIndexRelationship[];
   newMessages: StoryMessage[];
+  setupContext?: string | null;
 }): string {
   const {
     storyTitle,
@@ -268,6 +271,7 @@ export function buildIndexingPrompt(params: {
     existingCharacters,
     existingRelationships,
     newMessages,
+    setupContext,
   } = params;
 
   const charactersList = existingCharacters.length
@@ -308,6 +312,20 @@ export function buildIndexingPrompt(params: {
     "- When identityUpdate is present, use the character's CURRENT preferred name and pronouns throughout character and relationship text. Keep former names as aliases.",
     "- If matching an existing character listed below, specify their existing ID in matchedId.",
     "",
+    ...(setupContext?.trim()
+      ? [
+          "### Story Setup (authoritative pre-story canon):",
+          setupContext.trim(),
+          "",
+          "### Using the Story Setup (Strict):",
+          "- Facts stated in the Story Setup (family ties, marriages, roles, occupations, history) are established canon from before the transcript began, as authoritative as the transcript. The transcript overrides them only where it explicitly changes something.",
+          "- 'Canonize conservatively' applies to inferences drawn from the transcript, not to facts the Story Setup states. Do not downgrade a stated relationship into a vaguer one because a scene has not restated it.",
+          "- For characters who have appeared in the transcript, record relationships established by the Story Setup with their specific nature (for example 'father and son', 'mother and son', 'married partners', 'family chef and household'), never vague labels such as 'guardian dynamic', 'household member', or 'household authority figure'. Use Story Setup roles in character descriptions.",
+          "- When a transcript character matches a Story Setup sheet or a well-known canon character, use their full name (for example from the sheet) as the canonical name and keep the short name as an alias.",
+          "- Do not create character or relationship records for Story Setup characters who have not yet appeared in the transcript.",
+          "",
+        ]
+      : []),
     "### Existing Chapter Summary for this Chapter:",
     existingChapterSummary
       ? existingChapterSummary
@@ -733,6 +751,7 @@ export async function processIndexingBatch(
     existingCharacters: existingIndex?.characters ?? [],
     existingRelationships: existingIndex?.relationships ?? [],
     newMessages: messages,
+    setupContext: params.setupContext,
   });
 
   const generateExtractionResponse = (repairInstruction?: string) =>

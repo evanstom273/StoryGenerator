@@ -63,9 +63,9 @@ export function formatLinkedCharacterSheetsForPrompt(
 			(alias) => alias.toLowerCase() !== character.name.trim().toLowerCase(),
 		);
 		const identity = [
-			character.pronouns.trim() ? `pronouns ${character.pronouns.trim()}` : "",
-			character.gender.trim(),
-			character.age.trim() ? `age ${character.age.trim()}` : "",
+			character.pronouns?.trim() ? `pronouns ${character.pronouns.trim()}` : "",
+			character.gender?.trim() ?? "",
+			character.age?.trim() ? `age ${character.age.trim()}` : "",
 			character.species?.trim() ?? "",
 		].filter(Boolean);
 		const universe = options?.universeNameById?.(character.universeId);

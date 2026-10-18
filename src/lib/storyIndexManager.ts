@@ -9,6 +9,7 @@ import type {
 import type { StoryEngineRepository } from "./repository";
 import type { AIProvider } from "./ai/types";
 import { processIndexingBatch } from "./ai/storyIndexingPipeline";
+import { buildIndexingSetupContext } from "./ai/indexingSetupContext";
 import { sortByTimestampAsc } from "./dates";
 import { createInheritedStoryIndex } from "./storyInheritance";
 
@@ -143,6 +144,18 @@ export interface IndexManagerUpdateParams {
   onProgress?: (processedChapters: number, totalChapters: number) => void;
 }
 
+async function loadIndexingSetupContext(
+  repository: StoryEngineRepository,
+  story: Story,
+  playerCharacter: PlayerCharacter,
+) {
+  const [allCharacters, universe] = await Promise.all([
+    repository.listPlayerCharacters(),
+    repository.getUniverse(story.universeId),
+  ]);
+  return buildIndexingSetupContext({ story, playerCharacter, allCharacters, universe });
+}
+
 /**
  * Updates the story index to the current position by indexing all pending messages.
  * Idempotent and atomic.
@@ -184,6 +197,7 @@ export async function updateStoryIndexToCurrent(
   }
 
   const groups = groupMessagesByChapter(pendingMessages, existingChapters, allMessages);
+  const setupContext = await loadIndexingSetupContext(repository, story, playerCharacter);
   let currentIndex: StoryIndex = existingIndex ?? {
     id: `story-index:${storyId}`,
     storyId,
@@ -211,6 +225,7 @@ export async function updateStoryIndexToCurrent(
       apiKey,
       model,
       signal,
+      setupContext,
     });
 
     processedCount += 1;
@@ -271,6 +286,7 @@ export async function rebuildFullStoryIndex(
   }
 
   const groups = groupMessagesByChapter(allMessages, existingChapters);
+  const setupContext = await loadIndexingSetupContext(repository, story, playerCharacter);
 
   // A sequel rebuild starts from its parent's index, then reconstructs only
   // this story's contribution. Standalone stories still start completely clean.
@@ -293,6 +309,7 @@ export async function rebuildFullStoryIndex(
       apiKey,
       model,
       signal,
+      setupContext,
     });
 
     processedCount += 1;

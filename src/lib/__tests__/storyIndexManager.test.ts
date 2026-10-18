@@ -23,6 +23,7 @@ function createMockRepository(initialData?: {
   storyIndex?: StoryIndex | null;
   story?: Story;
   playerCharacter?: PlayerCharacter;
+  extraCharacters?: PlayerCharacter[];
 }): StoryEngineRepository {
   let messages = [...(initialData?.messages ?? [])];
   let chapters = [...(initialData?.chapters ?? [])];
@@ -42,9 +43,18 @@ function createMockRepository(initialData?: {
     updatedAt: "2026-01-01T00:00:00Z",
   };
 
+  const extraCharacters: PlayerCharacter[] = initialData?.extraCharacters ?? [];
   return {
     async getStory(id: string) {
       return id === story.id ? story : null;
+    },
+    async listPlayerCharacters() {
+      return [playerCharacter, ...extraCharacters];
+    },
+    async getUniverse(id: string) {
+      return id === "universe-1"
+        ? { id, name: "Brooklyn 99", mode: "referenced", description: "" }
+        : null;
     },
     async getPlayerCharacter(id: string) {
       return id === playerCharacter.id ? playerCharacter : null;
@@ -557,5 +567,74 @@ describe("storyIndexManager", () => {
       // Player character preserved
       expect(await repository.getPlayerCharacter("player-1")).toBeDefined();
     });
+  });
+});
+
+describe("indexing receives the story setup", () => {
+  const sheet = (id: string, name: string, extra: Partial<PlayerCharacter> = {}) =>
+    ({
+      id,
+      name,
+      aliases: [],
+      age: "",
+      gender: "",
+      species: "",
+      pronouns: "",
+      appearance: "",
+      personality: "",
+      background: "",
+      goals: "",
+      notes: "",
+      universeId: "universe-1",
+      createdAt: "2026-01-01T00:00:00Z",
+      ...extra,
+    }) as PlayerCharacter;
+
+  const jamie = sheet("player-1", "Jamie Diaz", {
+    pronouns: "he/him",
+    background: "Raised in the Diaz household by his parents, Jason and Rosa.",
+    linkedCharacterIds: ["pc-jason"],
+  });
+  const jason = sheet("pc-jason", "Jason Diaz", { background: "Tech founder, married to Rosa, Jamie's father." });
+  const messages: StoryMessage[] = [
+    { id: "m1", storyId: "story-1", role: "assistant", content: 'Jason: "Is Jamie still out?"', timestamp: "2026-01-01T01:00:00Z" },
+  ];
+  const extraction = JSON.stringify({ chapterSummary: "Breakfast.", characters: [], relationships: [] });
+
+  function capturingProvider(prompts: string[]): AIProvider {
+    return {
+      async generateResponse(request) {
+        prompts.push(request.messages.map((message) => message.content).join("\n"));
+        return { content: extraction };
+      },
+      async generateSummary() {
+        return "";
+      },
+      async validateConnection() {},
+    } as AIProvider;
+  }
+
+  it.each([
+    ["incremental update", updateStoryIndexToCurrent],
+    ["full rebuild", rebuildFullStoryIndex],
+  ] as const)("passes the player sheet, linked sheets and universe to the %s", async (_label, run) => {
+    const prompts: string[] = [];
+    const repository = createMockRepository({ messages, playerCharacter: jamie, extraCharacters: [jason] });
+    await run({
+      storyId: "story-1",
+      repository,
+      playerCharacter: jamie,
+      story: (await repository.getStory("story-1"))!,
+      provider: capturingProvider(prompts),
+      model: "test",
+    });
+
+    const prompt = prompts.join("\n");
+    expect(prompt).toContain("### Story Setup (authoritative pre-story canon):");
+    expect(prompt).toContain("his parents, Jason and Rosa");
+    expect(prompt).toContain("Sheet ID: pc-jason");
+    expect(prompt).toContain("Jamie's father");
+    expect(prompt).toContain("Universe: Brooklyn 99 (an established fictional universe)");
+    expect(prompt).toContain("never vague labels such as 'guardian dynamic'");
   });
 });
