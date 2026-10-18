@@ -48,7 +48,7 @@ import {
 } from "../../lib/storyIndexManager";
 import { getValidModel, getAIModelForRole, getCharacterConceptRequestConfig, getIndexingRequestConfig, getModelStreamConfig, getStoryStreamIdleTimeoutMs } from "../../lib/ai/models";
 import { getSceneWordTarget, inferSceneDepth } from "../../lib/ai/sceneSizing";
-import { buildDirectorAssistContext, buildPlayerAssistContext, storyHasGeneratedScenes } from "../../lib/ai/playerAssistContext";
+import { buildDirectorAssistContext, buildPlayerAssistContext, resolveAssistMode } from "../../lib/ai/playerAssistContext";
 import { formatDirectorAssistContinuation, formatDirectorAssistOutput } from "../../lib/ai/playerAssist";
 import {
   buildCharacterGeneratorSystemPrompt,
@@ -5468,8 +5468,8 @@ export function StoryEngineProvider({
         const sortedMessages = sortByTimestampAsc(refreshedMessages);
         const existingText = opts?.existingText;
         const existingTrimmed = existingText?.trim() ?? "";
-        const useDirectorAssist =
-          storyHasGeneratedScenes(sortedMessages) || /^\s*Director:/i.test(existingTrimmed);
+        // The user's draft decides the mode; story state only matters for an empty composer.
+        const useDirectorAssist = resolveAssistMode(sortedMessages, existingTrimmed) === "director";
         const recentMessages = useDirectorAssist
           ? sortedMessages
           : sortedMessages.slice(-30);

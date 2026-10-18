@@ -19,7 +19,7 @@ import { cn } from "../utils/cn";
 import { useTheme } from "../app/theming/ThemeContext";
 import { type AccentThemeKey, isAccentThemeKey } from "../app/theming/themes";
 import { appendAdditiveText } from "../lib/ai/additiveJoin";
-import { storyHasGeneratedScenes } from "../lib/ai/playerAssistContext";
+import { resolveAssistMode } from "../lib/ai/playerAssistContext";
 import { formatDirectorNoteComposerHint } from "../lib/storyText/directorSyntax";
 import { parseSlashParticipateCommand } from "../lib/storyText/directorIntent";
 import { normalizePlayerCharacterAliases, resolveEffectivePlayerIdentity } from "../lib/playerCharacterPrompt";
@@ -162,7 +162,6 @@ export function StoryWorkspacePage() {
     () => (story ? getMessagesForStory(story.id) : []),
     [getMessagesForStory, story],
   );
-  const assistDefaultsToDirector = useMemo(() => storyHasGeneratedScenes(messages), [messages]);
   const [storyStateJson, setStoryStateJson] = useState<string | null>(null);
   const playerIdentity = useMemo(() => {
     if (!playerCharacter) {
@@ -241,6 +240,10 @@ export function StoryWorkspacePage() {
   const [isSavingMessage, setIsSavingMessage] = useState(false);
   const [showGuidedPlanModal, setShowGuidedPlanModal] = useState(false);
   const [chatInput, setChatInput] = useState("");
+  const assistDefaultsToDirector = useMemo(
+    () => resolveAssistMode(messages, chatInput) === "director",
+    [messages, chatInput],
+  );
   const [chatError, setChatError] = useState<string | null>(null);
   const [generationFailure, setGenerationFailure] = useState<GenerationFailure | null>(null);
   const [generationFailureOpen, setGenerationFailureOpen] = useState(false);

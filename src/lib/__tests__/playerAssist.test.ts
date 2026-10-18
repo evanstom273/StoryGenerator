@@ -2,12 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
 	buildDirectorAssistContinuationRequest,
 	buildDirectorAssistRequest,
+	buildPlayerAssistContinuationRequest,
+	buildPlayerAssistRequest,
+	DIRECTOR_ASSIST_PACING_GUIDANCE,
+	PLAYER_ASSIST_PACING_GUIDANCE,
 	formatDirectorAssistContinuation,
 	formatDirectorAssistOutput,
 } from "../ai/playerAssist";
 import {
 	buildDirectorAssistContext,
 	buildPlayerAssistContext,
+	resolveAssistMode,
 	storyHasGeneratedScenes,
 } from "../ai/playerAssistContext";
 import type { PlayerCharacter, Story, StoryMessage, Universe } from "../../types/models";
@@ -190,5 +195,54 @@ describe("buildPlayerAssistContext", () => {
 
 		expect(transcriptMessages.length).toBe(30);
 		expect(context.at(-1)?.content).toContain("Player Assist request:");
+	});
+});
+
+describe("resolveAssistMode", () => {
+	const midStory = [userMessage("Hi", "1"), assistantMessage('Morgan: "Hey."', "2")];
+
+	it("lets the user's draft decide the mode mid-story", () => {
+		expect(resolveAssistMode(midStory, 'Alex: "Hey, I need to tell you something."')).toBe("player");
+		expect(resolveAssistMode(midStory, "*I put the file down.*")).toBe("player");
+		expect(resolveAssistMode(midStory, "Director: *Morgan hesitates.")).toBe("director");
+		expect(resolveAssistMode(midStory, "  director: *Morgan")).toBe("director");
+	});
+
+	it("falls back to story state only for an empty composer", () => {
+		expect(resolveAssistMode(midStory, "")).toBe("director");
+		expect(resolveAssistMode(midStory, "   ")).toBe("director");
+		expect(resolveAssistMode([userMessage("Hi", "1")], undefined)).toBe("player");
+	});
+
+	it("continues a player draft as the player's own turn, not a Director note", () => {
+		const draft = 'Alex: "Hey, I need to tell you something."';
+		const context = buildPlayerAssistContext({
+			universe,
+			story,
+			playerCharacter,
+			imports: [],
+			summaries: [],
+			recentMessages: midStory,
+			existingText: draft,
+		});
+		const request = context.at(-1)?.content ?? "";
+		expect(request).toContain("Continue the player's next message");
+		expect(request).toContain(draft);
+		expect(request).not.toContain("Director staging note");
+	});
+});
+
+describe("assist pacing", () => {
+	it("tells Director Assist to take one step instead of resolving open threads", () => {
+		expect(buildDirectorAssistRequest("Alex")).toContain(DIRECTOR_ASSIST_PACING_GUIDANCE);
+		expect(buildDirectorAssistContinuationRequest("Director: *Morgan")).toContain(DIRECTOR_ASSIST_PACING_GUIDANCE);
+		expect(DIRECTOR_ASSIST_PACING_GUIDANCE).toContain("not the resolution");
+	});
+
+	it("tells Player Assist not to fix every problem in one turn", () => {
+		expect(buildPlayerAssistRequest("Alex")).toContain(PLAYER_ASSIST_PACING_GUIDANCE);
+		const continuation = buildPlayerAssistContinuationRequest("Alex", 'Alex: "Hey');
+		expect(continuation).toContain(PLAYER_ASSIST_PACING_GUIDANCE);
+		expect(continuation).toContain("same voice, perspective, and person");
 	});
 });
