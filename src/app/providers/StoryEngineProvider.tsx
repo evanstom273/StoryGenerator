@@ -181,6 +181,11 @@ import {
 } from "../../lib/storyText/continueMode";
 import { buildCharacterGenderHintsFromStoryState } from "../../lib/ai/characterGenderHints";
 import {
+  formatLinkedCharacterSheetsForPrompt,
+  remapLinkedCharacterIds,
+  resolveLinkedCharacterSheets,
+} from "../../lib/characterLinks";
+import {
 	isBackgroundTaskJob,
 	resolveMaxConcurrentBackgroundTasks,
 	getNextBackgroundTaskQueueOrder,
@@ -198,6 +203,7 @@ import {
   formatCharacterKnownTiesConstraint,
   formatAntiCanonSprawlGuidance,
   normalizePlayerCharacterKnownTies,
+  normalizeLinkedCharacterIds,
   buildPlayerNameForValidation,
   formatPlayerCharacterOwnershipRulesForRewrite,
   formatPlayerCharacterPronounAndNamingRules,
@@ -1908,6 +1914,13 @@ function mergePlayerCharacterFillEmpty(
       }
       return normalizePlayerCharacterKnownTies(candidate.knownTies);
     })(),
+    linkedCharacterIds: (() => {
+      const merged = normalizeLinkedCharacterIds(
+        [...(winner.linkedCharacterIds ?? []), ...(candidate.linkedCharacterIds ?? [])],
+        winner.id,
+      );
+      return merged.length ? merged : undefined;
+    })(),
     notes: isBlank(winner.notes) ? candidate.notes : winner.notes,
   };
 }
@@ -2770,12 +2783,41 @@ export function StoryEngineProvider({
   const getStoryImportedCharacterContext = useCallback(
     (story: Story) => {
       const importedStoryCharacters = resolveStoryImportedCharacters(story, playerCharacters);
+      const storyPlayerCharacter = playerCharacters.find(
+        (character) => character.id === story.playerCharacterId,
+      );
+      // Sheets linked from the player and imported characters, minus any already in the prompt.
+      const linkedStoryCharacters = resolveLinkedCharacterSheets(
+        [...(storyPlayerCharacter ? [storyPlayerCharacter] : []), ...importedStoryCharacters],
+        playerCharacters,
+      );
       return {
         importedStoryCharacters,
+        linkedStoryCharactersBlock: formatLinkedCharacterSheetsForPrompt(linkedStoryCharacters, {
+          maxFieldChars: 700,
+          universeNameById: (id) => universes.find((universe) => universe.id === id)?.name,
+        }),
         universeImportedCharacters: buildStoryImportedCharacterAllowlist(story, playerCharacters),
       };
     },
-    [playerCharacters],
+    [playerCharacters, universes],
+  );
+
+  /** Full linked-sheet context for the character generators, which write the background itself. */
+  const formatDraftLinkedCharacterSheets = useCallback(
+    (draft?: Partial<Pick<PlayerCharacterDraft, "name" | "linkedCharacterIds">> | null) => {
+      if (!draft?.linkedCharacterIds?.length) return null;
+      const source = {
+        id: "",
+        name: draft.name ?? "",
+        linkedCharacterIds: draft.linkedCharacterIds,
+      } as PlayerCharacter;
+      return formatLinkedCharacterSheetsForPrompt(
+        resolveLinkedCharacterSheets([source], playerCharacters),
+        { universeNameById: (id) => universes.find((universe) => universe.id === id)?.name },
+      );
+    },
+    [playerCharacters, universes],
   );
 
   const runDeepIndexProcess = useCallback(
@@ -3879,6 +3921,15 @@ export function StoryEngineProvider({
             mergedDuplicates += 1;
             await repository.deletePlayerCharacter(loser.id);
           }
+
+          // Links to a merged-away duplicate now point at the surviving sheet.
+          const remaining = await repository.listPlayerCharacters();
+          for (const character of remapLinkedCharacterIds(
+            remaining,
+            new Map([...losingIds].map((id) => [id, mergedWinner.id] as const)),
+          )) {
+            await repository.savePlayerCharacter(character);
+          }
         }
 
         await hydrate(false);
@@ -3935,6 +3986,12 @@ export function StoryEngineProvider({
         if (reason) return { ok: false, reason };
 
         await repository.deletePlayerCharacter(id);
+        for (const character of remapLinkedCharacterIds(
+          await repository.listPlayerCharacters(),
+          new Map([[id, null]]),
+        )) {
+          await repository.savePlayerCharacter(character);
+        }
         await hydrate(false);
 
         return { ok: true };
@@ -4465,7 +4522,7 @@ export function StoryEngineProvider({
           previousMessage,
           latestPriorUserMessage,
         );
-        const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
+        const { importedStoryCharacters, linkedStoryCharactersBlock } = getStoryImportedCharacterContext(story);
         const {
           parsedStoryState: parsedStoryStateForIdentity,
           playerIdentity,
@@ -4501,6 +4558,7 @@ export function StoryEngineProvider({
             allowDirectedPlayerControl,
             directorIntent: previousMessage.directorIntent ?? null,
             importedStoryCharacters,
+            linkedCharactersBlock: linkedStoryCharactersBlock,
             playerIdentity,
             resolvedParticipants,
           }),
@@ -5509,6 +5567,7 @@ export function StoryEngineProvider({
         ) as PlayerCharacterField[];
 
         const knownTies = normalizePlayerCharacterKnownTies(existing?.knownTies);
+        const linkedCharactersBlock = formatDraftLinkedCharacterSheets(existing);
         const systemPrompt = buildCharacterGeneratorSystemPrompt({
           universe,
           importedLoreText,
@@ -5530,7 +5589,8 @@ export function StoryEngineProvider({
               )
             : undefined,
           knownTiesConstraint: formatCharacterKnownTiesConstraint(existing),
-          antiCanonSprawlGuidance: formatAntiCanonSprawlGuidance(knownTies.length > 0),
+          antiCanonSprawlGuidance: formatAntiCanonSprawlGuidance(knownTies.length > 0, Boolean(linkedCharactersBlock)),
+          linkedCharactersBlock,
         });
 
         let response: GenerateResponseResult;
@@ -5712,13 +5772,15 @@ export function StoryEngineProvider({
 
         const previousConcept = existing?.characterConcept?.trim() || undefined;
         const knownTies = normalizePlayerCharacterKnownTies(existing?.knownTies);
+        const linkedCharactersBlock = formatDraftLinkedCharacterSheets(existing);
         const systemPrompt = buildCharacterConceptGeneratorSystemPrompt({
           universe,
           importedLoreText,
           existing: buildCharacterConceptConstraintsFromDraft(existing),
           aliasConstraint: formatCharacterConceptAliasesConstraint(existing),
           knownTiesConstraint: formatCharacterKnownTiesConstraint(existing),
-          antiCanonSprawlGuidance: formatAntiCanonSprawlGuidance(knownTies.length > 0),
+          antiCanonSprawlGuidance: formatAntiCanonSprawlGuidance(knownTies.length > 0, Boolean(linkedCharactersBlock)),
+          linkedCharactersBlock,
           previousConcept,
         });
         const requestConfig = getCharacterConceptRequestConfig(model);
@@ -6126,7 +6188,7 @@ export function StoryEngineProvider({
           if (adultContentProviderCapability === "unsupported") {
             throw new Error(formatUnsupportedExplicitProviderMessage(providerType));
           }
-          const { importedStoryCharacters } = getStoryImportedCharacterContext(story);
+          const { importedStoryCharacters, linkedStoryCharactersBlock } = getStoryImportedCharacterContext(story);
 
           const { participants: resolvedParticipants, speakerRegistry } =
             resolveStoryGenerationParticipants({
@@ -6165,6 +6227,7 @@ export function StoryEngineProvider({
               guidedDirectedScene: opts?.guidedDirectedScene ?? false,
               guidedChapterContext: opts?.guidedChapterContext,
               importedStoryCharacters,
+              linkedCharactersBlock: linkedStoryCharactersBlock,
               playerIdentity,
               resolvedParticipants,
             }),
@@ -6330,6 +6393,7 @@ export function StoryEngineProvider({
                     guidedDirectedScene: opts?.guidedDirectedScene ?? false,
                     guidedChapterContext: opts?.guidedChapterContext,
                     importedStoryCharacters,
+                    linkedCharactersBlock: linkedStoryCharactersBlock,
                     playerIdentity,
                     resolvedParticipants,
                   }),
@@ -6786,6 +6850,7 @@ export function StoryEngineProvider({
     universes,
     getNormalizedAISettings,
     getStoryImportedCharacterContext,
+    formatDraftLinkedCharacterSheets,
     resolveAIProfile,
     developerBugs,
     developerFeatureRequests,

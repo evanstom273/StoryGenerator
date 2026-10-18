@@ -9,13 +9,19 @@ import { SparklesIcon } from "../components/icons";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import type { PlayerCharacterDraft } from "../types/models";
 import { parseUniverseIdsParam } from "../lib/universeIds";
-import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } from "../lib/playerCharacterPrompt";
+import {
+  normalizeLinkedCharacterIds,
+  normalizePlayerCharacterAliases,
+  normalizePlayerCharacterKnownTies,
+} from "../lib/playerCharacterPrompt";
+import { ImportedCharactersPicker } from "../components/story/ImportedCharactersPicker";
 import { useDebouncedEffect } from "../lib/useDebouncedEffect";
 
 const initialFormState: PlayerCharacterDraft = {
   name: "",
   aliases: [],
   knownTies: [],
+  linkedCharacterIds: [],
   age: "",
   gender: "",
   species: "",
@@ -38,6 +44,8 @@ export function PlayerCharacterFormPage() {
     generatePlayerCharacterDraft,
     generatePlayerCharacterConcept,
     getPlayerCharacterById,
+    getPlayerCharactersForUniverse,
+    getUniverseById,
     updatePlayerCharacter,
     universes,
   } = useStoryEngine();
@@ -76,6 +84,10 @@ export function PlayerCharacterFormPage() {
       name: existingCharacter.name,
       aliases: normalizePlayerCharacterAliases(existingCharacter.aliases),
       knownTies: normalizePlayerCharacterKnownTies(existingCharacter.knownTies),
+      linkedCharacterIds: normalizeLinkedCharacterIds(
+        existingCharacter.linkedCharacterIds,
+        existingCharacter.id,
+      ),
       age: existingCharacter.age,
       gender: existingCharacter.gender,
       species: existingCharacter.species ?? "",
@@ -114,6 +126,7 @@ export function PlayerCharacterFormPage() {
       formState.name,
       formState.aliases?.join("|"),
       formState.knownTies?.join("|"),
+      formState.linkedCharacterIds?.join("|"),
       formState.age,
       formState.gender,
       formState.species,
@@ -394,6 +407,38 @@ export function PlayerCharacterFormPage() {
                   knownTies,
                 }))
               }
+            />
+          </Field>
+
+          <Field
+            label="Linked characters"
+            hint="Optional, no limit"
+            help="Link the exact character sheets this character's background, relationships and personality refer to. The AI uses those sheets for context, so it knows which version of a character you mean rather than guessing from the name."
+          >
+            <ImportedCharactersPicker
+              selectedIds={formState.linkedCharacterIds ?? []}
+              onChange={(linkedCharacterIds) =>
+                setFormState((currentState) => ({
+                  ...currentState,
+                  linkedCharacterIds,
+                }))
+              }
+              universeIds={
+                formState.universeIds?.length
+                  ? formState.universeIds
+                  : formState.universeId
+                    ? [formState.universeId]
+                    : []
+              }
+              excludeCharacterId={existingCharacter?.id}
+              disabled={isGenerating || isSubmitting}
+              getPlayerCharactersForUniverse={getPlayerCharactersForUniverse}
+              getUniverseById={getUniverseById}
+              getPlayerCharacterById={getPlayerCharacterById}
+              selectedHeading="Linked"
+              helpText="Linked sheets give the AI context when writing this character and in every story they appear in. They are never added to scenes automatically."
+              emptyText="No linked characters yet."
+              noUniverseText="Select a universe first to browse characters you can link."
             />
           </Field>
 

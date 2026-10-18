@@ -7,7 +7,11 @@ import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { formatDate } from "../lib/dates";
 import { getUniverseIds } from "../lib/universeIds";
-import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } from "../lib/playerCharacterPrompt";
+import {
+  normalizeLinkedCharacterIds,
+  normalizePlayerCharacterAliases,
+  normalizePlayerCharacterKnownTies,
+} from "../lib/playerCharacterPrompt";
 
 export function PlayerCharacterDetailPage() {
   const { characterId } = useParams();
@@ -120,6 +124,23 @@ export function PlayerCharacterDetailPage() {
                   <dt className="text-[11px] text-ink-muted">Known ties</dt>
                   <dd className="text-right text-[13px] text-ink-soft">
                     {normalizePlayerCharacterKnownTies(activeCharacter.knownTies).join("; ")}
+                  </dd>
+                </div>
+              ) : null}
+              {normalizeLinkedCharacterIds(activeCharacter.linkedCharacterIds, activeCharacter.id).length ? (
+                <div className="flex items-start justify-between gap-4 py-2.5">
+                  <dt className="text-[11px] text-ink-muted">Linked characters</dt>
+                  <dd className="flex flex-wrap justify-end gap-x-2 gap-y-1 text-right text-[13px] text-ink-soft">
+                    {normalizeLinkedCharacterIds(activeCharacter.linkedCharacterIds, activeCharacter.id).map((id) => {
+                      const linked = getPlayerCharacterById(id);
+                      return linked ? (
+                        <Link key={id} to={`/player-characters/${id}`} className="text-accent-soft hover:underline">
+                          {linked.name}
+                        </Link>
+                      ) : (
+                        <span key={id} className="text-ink-muted">Missing sheet</span>
+                      );
+                    })}
                   </dd>
                 </div>
               ) : null}
