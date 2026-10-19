@@ -21,6 +21,8 @@ interface StoryMessageBubbleProps {
   onRegenerate?: (message: StoryMessage) => void;
   isLatestAssistant?: boolean;
   onDelete: (message: StoryMessage) => void;
+  /** Start a new linked story that copies everything up to and including this message. */
+  onBranch?: (message: StoryMessage) => void;
   highlighted?: boolean;
 }
 
@@ -163,6 +165,7 @@ export function StoryMessageBubble({
   onRegenerate,
   isLatestAssistant,
   onDelete,
+  onBranch,
   highlighted,
 }: StoryMessageBubbleProps) {
   const effectiveLegalName = playerLegalName?.trim() || playerCharacterName;
@@ -243,6 +246,11 @@ export function StoryMessageBubble({
         {message.role === "assistant" && isLatestAssistant && onRegenerate ? (
           <Button size="sm" variant="ghost" onClick={() => onRegenerate(message)}>
             Regenerate
+          </Button>
+        ) : null}
+        {onBranch ? (
+          <Button size="sm" variant="ghost" onClick={() => onBranch(message)}>
+            Branch
           </Button>
         ) : null}
         <Button size="sm" variant="ghost" onClick={() => onDelete(message)}>

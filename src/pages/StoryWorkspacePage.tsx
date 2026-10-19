@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { Field, SelectInput, TextAreaInput, TextInput } from "../components/forms/Fields";
@@ -147,6 +147,7 @@ export function StoryWorkspacePage() {
     editAssistantMessage,
     selectAssistantMessageCandidate,
     generatePlayerAssistMessage,
+    createBranch,
     regenerateLastAssistantMessage,
     sendChatMessage,
     setMessageDirectorIntent,
@@ -163,6 +164,32 @@ export function StoryWorkspacePage() {
     [getMessagesForStory, story],
   );
   const [storyStateJson, setStoryStateJson] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const [branchFromMessage, setBranchFromMessage] = useState<StoryMessage | null>(null);
+  const [branchTitle, setBranchTitle] = useState("");
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
+
+  function openBranchDialog(message: StoryMessage) {
+    setBranchFromMessage(message);
+    setBranchTitle(story ? `${story.title} (branch)` : "");
+    setBranchError(null);
+  }
+
+  async function handleCreateBranch() {
+    if (!story || !branchFromMessage) return;
+    setIsCreatingBranch(true);
+    setBranchError(null);
+    try {
+      const branch = await createBranch(story.id, branchFromMessage.id, branchTitle);
+      setBranchFromMessage(null);
+      navigate(`/stories/${branch.id}`);
+    } catch (error) {
+      setBranchError(error instanceof Error ? error.message : "Unable to create the branch.");
+    } finally {
+      setIsCreatingBranch(false);
+    }
+  }
   const playerIdentity = useMemo(() => {
     if (!playerCharacter) {
       return null;
@@ -1089,6 +1116,53 @@ export function StoryWorkspacePage() {
 
   return (
     <div className="flex min-h-[72vh] flex-col pb-28 lg:pb-14">
+      {branchFromMessage ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-app/80 p-4"
+          onClick={() => !isCreatingBranch && setBranchFromMessage(null)}
+        >
+          <Panel
+            variant="flat"
+            padding="lg"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="branch-story-title"
+            className="w-full max-w-md"
+            onClick={(event: React.MouseEvent) => event.stopPropagation()}
+          >
+            <div id="branch-story-title" className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+              Branch story
+            </div>
+            <p className="mt-3 text-sm leading-6 text-ink-muted">
+              Creates a new story with everything up to and including this message, so you can take it in a
+              different direction. The original story stays exactly as it is. The branch rebuilds its own
+              Story Index in the background.
+            </p>
+            <div className="mt-4">
+              <Field label="Branch title">
+                <TextInput
+                  value={branchTitle}
+                  autoFocus
+                  disabled={isCreatingBranch}
+                  onChange={(event) => setBranchTitle(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && branchTitle.trim()) void handleCreateBranch();
+                  }}
+                />
+              </Field>
+            </div>
+            {branchError ? <div className="mt-3 rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{branchError}</div> : null}
+            <div className="mt-4 flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setBranchFromMessage(null)} disabled={isCreatingBranch}>
+                Cancel
+              </Button>
+              <Button onClick={() => void handleCreateBranch()} disabled={isCreatingBranch || !branchTitle.trim()}>
+                {isCreatingBranch ? "Creating…" : "Create Branch"}
+              </Button>
+            </div>
+          </Panel>
+        </div>
+      ) : null}
       <GenerationFailureModal
         open={generationFailureOpen}
         failure={generationFailure}
@@ -1321,6 +1395,7 @@ export function StoryWorkspacePage() {
                       onRegenerate={handleRegenerateLastAssistant}
                       isLatestAssistant={message.id === latestAssistantMessage?.id}
                       onDelete={handleDeleteMessage}
+                      onBranch={openBranchDialog}
                       highlighted={highlightedMessageId === message.id}
                     />,
                   );
@@ -1339,6 +1414,7 @@ export function StoryWorkspacePage() {
               chapters={storyChapters}
               highlightedMessageId={highlightedMessageId}
               resolvedParticipants={resolvedParticipants}
+              onBranchFromChapter={readerMode ? undefined : openBranchDialog}
               className={[
                 readerMode ? "pb-8" : "",
                 textSize === "sm"

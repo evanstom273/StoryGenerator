@@ -10,6 +10,7 @@ import type { StoryEngineRepository } from "./repository";
 import type { AIProvider } from "./ai/types";
 import { processIndexingBatch } from "./ai/storyIndexingPipeline";
 import { buildIndexingSetupContext } from "./ai/indexingSetupContext";
+import { resolveIndexInheritanceParentId } from "./storyBranching";
 import { sortByTimestampAsc } from "./dates";
 import { createInheritedStoryIndex } from "./storyInheritance";
 
@@ -256,18 +257,20 @@ export async function rebuildFullStoryIndex(
     onProgress,
   } = params;
 
+  // Branches are copies, not sequels: they inherit only what their original inherited.
+  const inheritanceParentId = await resolveIndexInheritanceParentId(story, (id) => repository.getStory(id));
   const [allMessages, existingChapters, parentIndex, parentStory] = await Promise.all([
     repository.listStoryMessages(storyId),
     repository.listStoryChapters(storyId),
-    story.parentStoryId ? repository.getStoryIndex(story.parentStoryId) : Promise.resolve(null),
-    story.parentStoryId ? repository.getStory(story.parentStoryId) : Promise.resolve(null),
+    inheritanceParentId ? repository.getStoryIndex(inheritanceParentId) : Promise.resolve(null),
+    inheritanceParentId ? repository.getStory(inheritanceParentId) : Promise.resolve(null),
   ]);
 
   const freshIndex = (): StoryIndex =>
-    parentIndex && story.parentStoryId
+    parentIndex && inheritanceParentId
       ? createInheritedStoryIndex({
           parentIndex,
-          parentStoryId: story.parentStoryId,
+          parentStoryId: inheritanceParentId,
           parentStoryTitle: parentStory?.title ?? "Previous Story",
           childStoryId: storyId,
         })
