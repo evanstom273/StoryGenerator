@@ -264,7 +264,7 @@ function storyMatchesStatus(story: Story, storyStatus: LibrarySearchStoryStatus)
 	return !story.isArchived;
 }
 
-function storyMatchesFeatures(story: Story, storyFeatures: LibrarySearchStoryFeatures) {
+export function storyMatchesFeatures(story: Story, storyFeatures: LibrarySearchStoryFeatures) {
 	switch (storyFeatures) {
 		case "all":
 			return true;
@@ -280,6 +280,10 @@ function storyMatchesFeatures(story: Story, storyFeatures: LibrarySearchStoryFea
 			return Boolean(story.guidedGenerationMeta?.historyChapterCount);
 		case "no-guided-history":
 			return !story.guidedGenerationMeta?.historyChapterCount;
+		case "sequel":
+			return story.lineageKind === "sequel" || (Boolean(story.parentStoryId) && !story.lineageKind);
+		case "branch":
+			return story.lineageKind === "branch";
 		default:
 			return true;
 	}

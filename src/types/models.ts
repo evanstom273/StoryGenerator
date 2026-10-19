@@ -184,6 +184,8 @@ export interface Story {
   /** Story lineage. Sequels inherit indexed continuity from their parent story. */
   parentStoryId?: EntityId;
   lineageKind?: "sequel" | "branch";
+  /** For branches: the original story's message the branch was cut at (inclusive). */
+  branchedFromMessageId?: EntityId;
   guidedGenerationMeta?: {
     historyChapterCount?: number;
     historyDividerMessageId?: string;

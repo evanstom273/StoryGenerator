@@ -146,6 +146,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
   const { aiSettings, getStoryById, getUniverseById, getPlayerCharacterById, getPlayerCharactersForUniverse, exportStory, promoteStoryPlayerCharacter, cleanupDuplicatePlayerCharacters, createSequel, updateStory, deleteStory, getStoryAIConfig, saveStoryAIConfig, dismissJobNotice, jobNotice } = useStoryEngine();
   const story = storyId ? getStoryById(storyId) : undefined;
   const playerCharacter = story ? getPlayerCharacterById(story.playerCharacterId) : undefined;
+  const parentStory = story?.parentStoryId ? getStoryById(story.parentStoryId) : undefined;
   const [fields, setFields] = useState({ title: story?.title ?? "", adultContentMode: resolveAdultContentMode(story), accentThemeKey: (story?.accentThemeKey ?? null) as AccentThemeKey | null, accentThemeCustom: story?.accentThemeCustom ?? themes.custom.accent, importedCharacterIds: normalizeStoryImportedCharacterIds(story?.importedCharacterIds) });
   const [providerType, setProviderType] = useState(() => resolveVisibleProvider(aiSettings?.activeProviderType));
   const [model, setModel] = useState(() => aiSettings?.defaultModels?.[resolveVisibleProvider(aiSettings?.activeProviderType)] ?? getProviderDefaultModel(resolveVisibleProvider(aiSettings?.activeProviderType)));
@@ -330,6 +331,14 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
         {story ? <>
           <Section title="Edit Story" description="Title and imported cast" icon="edit" onOpen={scrollSectionIntoView}>
             <form className="space-y-3" onSubmit={saveDetails}>
+              {parentStory ? (
+                <p className="text-xs text-ink-muted">
+                  {story.lineageKind === "branch" ? "Branched from" : "Sequel to"}{" "}
+                  <button type="button" className="font-medium text-accent-soft hover:underline" onClick={() => { setStorySettingsOpen(false); navigate(`/stories/${parentStory.id}`); }}>
+                    {parentStory.title}
+                  </button>
+                </p>
+              ) : null}
               <label className="block space-y-2"><FieldLabel label="Title" help="Shown in your library and story header." labelClassName="text-xs text-ink-muted" /><input className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={fields.title} onChange={(e) => setFields((current) => ({ ...current, title: e.target.value }))} /></label>
               <div><FieldLabel label="Imported Characters" help="Library characters available to the story." labelClassName="text-xs text-ink-muted" /><ImportedCharactersPicker selectedIds={fields.importedCharacterIds} excludeCharacterId={story.playerCharacterId} universeIds={getUniverseIds(story)} getPlayerCharactersForUniverse={getPlayerCharactersForUniverse} getUniverseById={getUniverseById} getPlayerCharacterById={getPlayerCharacterById} onChange={(ids) => setFields((current) => ({ ...current, importedCharacterIds: ids }))} /></div>
               <Button type="submit" className="w-full" disabled={saving}>{saving ? "Saving…" : "Save Story"}</Button>
@@ -360,6 +369,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
           <Section title="Create Sequel" description="Continue with inherited Story State" icon="sequel" onOpen={scrollSectionIntoView}>
             <div className="space-y-3">
               <FieldLabel label="Sequel title" help="Creates a new story that inherits this story's indexed chapters, characters, relationships, and ending state. This story is not modified." labelClassName="text-xs text-ink-muted" />
+              <p className="text-xs text-ink-muted">To explore a different direction from a specific point instead, use Branch on any message or chapter header.</p>
               <input className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={sequelTitle} onChange={(e) => setSequelTitle(e.target.value)} placeholder="Name the sequel" />
               <Button className="w-full" onClick={() => void createStorySequel()} disabled={creatingSequel || !sequelTitle.trim()}>{creatingSequel ? "Creating…" : "Create Sequel"}</Button>
             </div>

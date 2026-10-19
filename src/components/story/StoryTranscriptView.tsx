@@ -23,6 +23,8 @@ type StoryTranscriptViewProps = {
   highlightedMessageId?: string | null;
   /** Retained for callers; assistant speaker styling is never identity-derived. */
   resolvedParticipants?: readonly ResolvedSceneParticipant[];
+  /** Shows a Branch action on chapter-start headers. */
+  onBranchFromChapter?: (message: StoryMessage) => void;
 };
 
 type SpeakerKind =
@@ -177,6 +179,7 @@ export function StoryTranscriptView({
   chapters,
   className,
   highlightedMessageId,
+  onBranchFromChapter,
 }: StoryTranscriptViewProps) {
   const effectiveSceneName = playerSceneName?.trim() || playerCharacterName;
   const chapterEndByMessageId = new Map<string, string>();
@@ -221,6 +224,16 @@ export function StoryTranscriptView({
               <div className="flex flex-wrap items-center justify-center gap-3">
                 <span>{chapterBoundary.label}</span>
                 <ChapterPlanButton setup={message.guidedChapterSetup} />
+                {onBranchFromChapter ? (
+                  <button
+                    type="button"
+                    className="rounded-full border border-accent/25 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-accent-soft transition hover:bg-accent/10"
+                    title="Start a new story from the beginning of this chapter"
+                    onClick={() => onBranchFromChapter(message)}
+                  >
+                    Branch from here
+                  </button>
+                ) : null}
               </div>
             </div>
           );

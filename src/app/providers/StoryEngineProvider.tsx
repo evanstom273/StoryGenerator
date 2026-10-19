@@ -32,6 +32,7 @@ import {
   sortByUpdatedAtDesc,
 } from "../../lib/dates";
 import { createEntityId } from "../../lib/ids";
+import { buildBranchRecords } from "../../lib/storyBranching";
 import { createInheritedStoryIndex } from "../../lib/storyInheritance";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { resolveGeminiMinimalThinkingSettings, resolveGeminiStoryThinkingSettings } from "../../lib/ai/geminiThinking";
@@ -361,6 +362,8 @@ interface StoryEngineContextValue {
   deletePlayerCharacter: (id: string) => Promise<GuardedDeleteResult>;
   createStory: (draft: StoryDraft) => Promise<Story>;
   createSequel: (parentStoryId: string, title: string) => Promise<Story>;
+  /** Copies the story up to and including `fromMessageId` into a new linked story. */
+  createBranch: (storyId: string, fromMessageId: string, title: string) => Promise<Story>;
   updateStory: (id: string, patch: Partial<StoryDraft>) => Promise<Story | null>;
   deleteStory: (id: string) => Promise<void>;
   deleteAllStories: () => Promise<void>;
@@ -4157,6 +4160,67 @@ export function StoryEngineProvider({
 
         await hydrate(false);
         return nextStory;
+      },
+      async createBranch(sourceStoryId, fromMessageId, title) {
+        if (!title.trim()) {
+          throw new Error("Enter a title for the branch.");
+        }
+
+        const sourceStory = await repository.getStory(sourceStoryId);
+        if (!sourceStory) {
+          throw new Error("The story to branch from could not be found.");
+        }
+
+        const [sourceMessages, sourceChapters, sourceState, sourceAIConfig] = await Promise.all([
+          repository.listStoryMessages(sourceStoryId),
+          repository.listStoryChapters(sourceStoryId),
+          repository.getStoryState(sourceStoryId),
+          repository.getStoryAIConfig(sourceStoryId),
+        ]);
+
+        const now = new Date().toISOString();
+        const storyId = createEntityId("story");
+        const branch = buildBranchRecords({
+          story: sourceStory,
+          messages: sourceMessages,
+          chapters: sourceChapters,
+          state: sourceState ? safeParseStoryStateData(sourceState.stateJson) : null,
+          fromMessageId,
+          newStoryId: storyId,
+          title,
+          now,
+        });
+
+        await repository.saveStory(branch.story);
+        for (const message of branch.messages) {
+          await repository.saveStoryMessage(message);
+        }
+        for (const chapter of branch.chapters) {
+          await repository.saveStoryChapter(chapter);
+        }
+        if (branch.state) {
+          await repository.saveStoryState({
+            id: `story-state:${storyId}`,
+            storyId,
+            stateJson: JSON.stringify(branch.state),
+            updatedAt: now,
+          });
+        }
+        if (sourceAIConfig) {
+          await repository.saveStoryAIConfig({
+            ...sourceAIConfig,
+            id: createEntityId("story-ai-config"),
+            storyId,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        await hydrate(false);
+        // Memory is rebuilt from the branch's own transcript so nothing after the
+        // branch point leaks in. Without an AI provider it can be re-indexed later.
+        void fullReindexStory(storyId).catch(() => {});
+        return branch.story;
       },
       async updateStory(id, patch) {
         const currentStory = await repository.getStory(id);
