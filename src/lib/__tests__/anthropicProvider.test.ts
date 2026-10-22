@@ -22,7 +22,7 @@ function jsonResponse(body: unknown, status = 200) {
 	return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-function sseResponse(chunks: string[]) {
+function sseResponse(chunks: string[], end: { stopReason?: string; stopDetails?: unknown } = {}) {
 	const events: Array<[string, unknown]> = [
 		["message_start", { type: "message_start", message: { ...message(""), content: [], stop_reason: null } }],
 		["content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }],
@@ -31,7 +31,14 @@ function sseResponse(chunks: string[]) {
 				["content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } }] as [string, unknown],
 		),
 		["content_block_stop", { type: "content_block_stop", index: 0 }],
-		["message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 5 } }],
+		[
+			"message_delta",
+			{
+				type: "message_delta",
+				delta: { stop_reason: end.stopReason ?? "end_turn", stop_sequence: null, stop_details: end.stopDetails ?? null },
+				usage: { output_tokens: 5 },
+			},
+		],
 		["message_stop", { type: "message_stop" }],
 	];
 	const body = events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join("");
@@ -91,17 +98,21 @@ describe("Anthropic provider", () => {
 		expect(body).not.toHaveProperty("top_k");
 	});
 
-	it("uses a non-streaming default cap when the caller gives none", async () => {
-		const fetchMock = vi.fn().mockResolvedValue(jsonResponse(message("Title")));
+	it("streams internally for callers without onChunk, with the non-live default cap", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(sseResponse(['{"chapterSummary":', '"Breakfast."}']));
 		vi.stubGlobal("fetch", fetchMock);
-		await createAnthropicProvider().generateResponse({ ...base });
-		expect(sentBody(fetchMock).max_tokens).toBe(16000);
+		const result = await createAnthropicProvider().generateResponse({ ...base });
+		expect(result.content).toBe('{"chapterSummary":"Breakfast."}');
+		expect(sentBody(fetchMock)).toMatchObject({ stream: true, max_tokens: 16000 });
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	it("turns a refusal stop reason into a safety refusal", async () => {
 		vi.stubGlobal(
 			"fetch",
-			vi.fn().mockResolvedValue(jsonResponse(message("", "refusal", { type: "refusal", category: "cyber", explanation: "x" }))),
+			vi.fn().mockResolvedValue(
+				sseResponse([], { stopReason: "refusal", stopDetails: { type: "refusal", category: "cyber", explanation: "x" } }),
+			),
 		);
 		const error = await createAnthropicProvider().generateResponse({ ...base }).catch((caught) => caught);
 		expect(error).toBeInstanceOf(AIError);
@@ -120,7 +131,7 @@ describe("Anthropic provider", () => {
 	});
 
 	it("keeps thinking off and the output small when validating a key", async () => {
-		const fetchMock = vi.fn().mockResolvedValue(jsonResponse(message("OK")));
+		const fetchMock = vi.fn().mockResolvedValue(sseResponse(["OK"]));
 		vi.stubGlobal("fetch", fetchMock);
 		await createAnthropicProvider().validateConnection("sk-ant-test", "claude-haiku-5-5");
 		expect(sentBody(fetchMock)).toMatchObject({ max_tokens: 16, thinking: { type: "disabled" } });
