@@ -13,6 +13,7 @@ import type {
   ThinkingLevelPreference,
 } from "../types/models";
 import { getProviderDefaultModel, getProviderModels } from "../lib/ai/models";
+import { providerSupportsThinkingLevel } from "../lib/ai/geminiThinking";
 import { getInheritedThinkingLevelLabel, isThinkingLevelPreference, THINKING_LEVEL_OPTIONS } from "../lib/ai/storyThinking";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
 import { ImportedCharactersPicker } from "../components/story/ImportedCharactersPicker";
@@ -914,9 +915,9 @@ export function StoryCreatePage() {
                   </SelectInput>
                 </Field>
               </div>
-              {storyProviderType === "gemini" ? (
+              {providerSupportsThinkingLevel(storyProviderType) ? (
                 <div className="lg:col-span-2">
-                  <Field label="Thinking Level" help="How much Gemini reasons before writing this story's scenes. Higher levels are slower but can track complex plots more carefully. Defaults to your Settings choice.">
+                  <Field label="Thinking Level" help="How much the AI reasons before writing this story's scenes. Higher levels are slower but can track complex plots more carefully. Defaults to your Settings choice.">
                     <SelectInput
                       value={storyThinkingLevel}
                       onChange={(event) => {

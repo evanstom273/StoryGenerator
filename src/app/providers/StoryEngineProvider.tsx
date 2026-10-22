@@ -35,7 +35,8 @@ import { createEntityId } from "../../lib/ids";
 import { buildBranchRecords } from "../../lib/storyBranching";
 import { createInheritedStoryIndex } from "../../lib/storyInheritance";
 import { createAIProvider } from "../../lib/ai/providerFactory";
-import { resolveGeminiMinimalThinkingSettings, resolveGeminiStoryThinkingSettings } from "../../lib/ai/geminiThinking";
+import { resolveProviderThinkingSettings } from "../../lib/ai/geminiThinking";
+import { getProviderLabel } from "../../lib/ai/providerConfig";
 import { resolveStoryThinkingLevel, withStoryThinkingLevel } from "../../lib/ai/storyThinking";
 import {
   buildStoryChatContext,
@@ -785,11 +786,7 @@ async function generateResponseWithRetry(params: {
   const indexingConfig = !isStreaming ? getIndexingRequestConfig(params.model) : null;
   const thinking =
     params.thinking ??
-    (params.providerType === "gemini"
-      ? isStreaming
-        ? resolveGeminiStoryThinkingSettings(params.model)
-        : resolveGeminiMinimalThinkingSettings(params.model)
-      : undefined);
+    resolveProviderThinkingSettings(params.providerType, params.model, isStreaming ? "story" : "minimal");
   const maxAttempts =
     streamConfig?.maxAttempts ?? params.maxAttempts ?? indexingConfig?.maxAttempts ?? AI_MAX_ATTEMPTS;
   const requestTimeoutMs =
@@ -1243,12 +1240,12 @@ function formatUnsupportedExplicitProviderMessage(providerType: AIProviderType) 
 }
 
 function formatExplicitProviderRefusalMessage(providerType: AIProviderType) {
-  const providerName = providerType === "gemini" ? "Gemini" : providerType;
+  const providerName = getProviderLabel(providerType as AIProviderType);
   return `${providerName} filtered this explicit consensual-adult fiction request. Provider safeguards cannot be overridden. Your Director/player turn is still saved, and no invalid assistant scene was saved. You can retry, switch to mature non-graphic mode, edit/continue manually, or choose a configured provider/model whose policies permit the request.`;
 }
 
 function formatContentMinimizedFallbackRefusalMessage(providerType: AIProviderType) {
-  const providerName = providerType === "gemini" ? "Gemini" : providerType;
+  const providerName = getProviderLabel(providerType as AIProviderType);
   return `${providerName} filtered the explicit request and also declined a separate mature non-graphic continuation fallback. Provider safeguards cannot be overridden. Your Director/player turn is still saved, and no invalid assistant scene was saved.`;
 }
 
@@ -2310,6 +2307,8 @@ export function StoryEngineProvider({
             throw new Error("Set a Gemini API key in Settings before generating scenes.");
           case "openrouter":
             throw new Error("Set an OpenRouter API key in Settings before generating scenes.");
+          case "anthropic":
+            throw new Error("Set an Anthropic API key in Settings before generating scenes.");
           case "openai":
           default:
             throw new Error("Set an OpenAI API key in Settings before generating scenes.");
@@ -5793,9 +5792,7 @@ export function StoryEngineProvider({
             maxTokens: 80,
             temperature: 0.95,
             thinking:
-              providerType === "gemini"
-                ? resolveGeminiMinimalThinkingSettings(model)
-                : undefined,
+              resolveProviderThinkingSettings(providerType, model, "minimal"),
             timeoutMs: 30_000,
             maxAttempts: 2,
           });
@@ -5866,9 +5863,7 @@ export function StoryEngineProvider({
               maxTokens: requestConfig.maxTokens,
               temperature: 0.95,
               thinking:
-                providerType === "gemini"
-                  ? resolveGeminiMinimalThinkingSettings(model)
-                  : undefined,
+                resolveProviderThinkingSettings(providerType, model, "minimal"),
               timeoutMs: requestConfig.timeoutMs,
               maxAttempts: requestConfig.maxAttempts,
             });

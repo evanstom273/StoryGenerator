@@ -5,7 +5,7 @@ import {
   getModelStreamConfig,
 } from "../../lib/ai/models";
 import { classifyAIGenerationError } from "../../lib/ai/errors";
-import { resolveGeminiThinkingForPreference } from "../../lib/ai/geminiThinking";
+import { resolveProviderThinkingSettings } from "../../lib/ai/geminiThinking";
 import { extractFirstJsonObject } from "../../lib/ai/json";
 import type { AISettings } from "../../types/models";
 import type { AIChatMessage, AIProvider } from "../../lib/ai/types";
@@ -66,8 +66,8 @@ export function createResponseGenerator(
     const provider = providerFactory(type);
     const config = getModelStreamConfig(model);
     const thinking =
-      applyThinkingLevel && type === "gemini"
-        ? resolveGeminiThinkingForPreference(model, settings.thinkingLevel, "default")
+      applyThinkingLevel
+        ? resolveProviderThinkingSettings(type, model, "default", settings.thinkingLevel)
         : undefined;
     for (let attempt = 1; ; attempt++) {
       signal.throwIfAborted();

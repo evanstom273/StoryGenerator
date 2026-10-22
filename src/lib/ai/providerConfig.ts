@@ -11,7 +11,7 @@ export const ALL_AI_PROVIDERS: AIProviderType[] = [
 /**
  * Providers shown in UI pickers. Restore `ALL_AI_PROVIDERS` here to re-enable the full list.
  */
-export const VISIBLE_AI_PROVIDERS: AIProviderType[] = ["gemini"];
+export const VISIBLE_AI_PROVIDERS: AIProviderType[] = ["gemini", "anthropic"];
 
 export const DEFAULT_VISIBLE_AI_PROVIDER: AIProviderType =
 	VISIBLE_AI_PROVIDERS[0] ?? "gemini";

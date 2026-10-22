@@ -146,3 +146,37 @@ export function resolveGeminiThinkingFallback(
 export function resetLearnedGeminiThinkingSupport() {
 	learnedUnsupportedLevels.clear();
 }
+
+/** Providers whose thinking depth StoryEngine controls (the Thinking Level setting). */
+export function providerSupportsThinkingLevel(providerType: string): boolean {
+	return providerType === "gemini" || providerType === "anthropic";
+}
+
+/**
+ * Provider-neutral thinking settings for a request. `purpose` matches the task:
+ * "story" for streamed prose, "minimal" for short tasks (titles, concepts,
+ * indexing JSON), "default" where the model's own default is fine (MetaChat).
+ * Short tasks always use the tuned default; the user's preference applies to
+ * story and default requests. Claude receives the same levels as Gemini 3 Flash,
+ * which the Anthropic provider maps to thinking/effort.
+ */
+export function resolveProviderThinkingSettings(
+	providerType: string,
+	model: string,
+	purpose: "story" | "minimal" | "default",
+	preference?: ThinkingLevelPreference,
+): GeminiThinkingSettings | undefined {
+	if (providerType === "gemini") {
+		if (purpose === "minimal") return resolveGeminiMinimalThinkingSettings(model);
+		return resolveGeminiThinkingForPreference(model, preference, purpose);
+	}
+	if (providerType === "anthropic") {
+		if (purpose !== "minimal" && preference && preference !== "auto") {
+			return { thinkingLevel: preference };
+		}
+		if (purpose === "story") return { thinkingLevel: "low" };
+		if (purpose === "minimal") return { thinkingLevel: "minimal" };
+		return undefined;
+	}
+	return undefined;
+}

@@ -20,6 +20,7 @@ const PROVIDER_MODELS: Record<AIProviderType, ProviderModelOption[]> = {
     { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
   ],
   anthropic: [
+    { id: "claude-haiku-5-5", label: "Claude Haiku 5.5" },
     { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
     { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
     { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
@@ -52,7 +53,7 @@ const DEFAULT_MODEL: Record<AIProviderType, string> = {
   openai: "gpt-4o",
   gemini: "gemini-2.5-flash",
   openrouter: "openai/gpt-oss-20b:free",
-  anthropic: "claude-sonnet-4-6",
+  anthropic: "claude-haiku-5-5",
 };
 
 export function getProviderModels(providerType: AIProviderType) {
@@ -103,6 +104,7 @@ const MODEL_STREAM_CONFIG: Partial<Record<string, ModelStreamConfig>> = {
   "gemini-2.5-pro":         { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
   "gemini-2.5-flash":       { idleTimeoutMs: 30_000, totalTimeoutMs: 120_000, maxAttempts: 3 },
   "gemini-3.5-flash":       { idleTimeoutMs: 30_000, totalTimeoutMs: 120_000, maxAttempts: 3 },
+  "claude-haiku-5-5":       { idleTimeoutMs: 60_000, totalTimeoutMs: 300_000, maxAttempts: 5 },
 };
 
 const DEFAULT_STREAM_CONFIG: ModelStreamConfig = {
@@ -136,6 +138,7 @@ const INDEXING_REQUEST_CONFIG: Partial<Record<string, IndexingRequestConfig>> = 
   "gemini-3.5-flash": { timeoutMs: 120_000, maxAttempts: 5, maxTokens: 8_192 },
   "gemini-2.5-pro": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
   "gemini-2.5-flash": { timeoutMs: 120_000, maxAttempts: 5, maxTokens: 8_192 },
+  "claude-haiku-5-5": { timeoutMs: 300_000, maxAttempts: 5, maxTokens: 16_384 },
 };
 
 const DEFAULT_INDEXING_CONFIG: IndexingRequestConfig = {

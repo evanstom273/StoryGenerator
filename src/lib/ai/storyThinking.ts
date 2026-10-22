@@ -1,5 +1,5 @@
 import type { AIProviderType, AISettings, StoryAIConfig, ThinkingLevelPreference } from "../../types/models";
-import { resolveGeminiThinkingForPreference } from "./geminiThinking";
+import { providerSupportsThinkingLevel, resolveProviderThinkingSettings } from "./geminiThinking";
 import type { AIProvider } from "./types";
 
 /**
@@ -11,7 +11,7 @@ export function withStoryThinkingLevel(
   providerType: AIProviderType,
   preference: ThinkingLevelPreference | undefined,
 ): AIProvider {
-  if (providerType !== "gemini" || !preference || preference === "auto") {
+  if (!providerSupportsThinkingLevel(providerType) || !preference || preference === "auto") {
     return provider;
   }
   return {
@@ -19,7 +19,7 @@ export function withStoryThinkingLevel(
     generateResponse: (request) =>
       provider.generateResponse(
         request.onChunk
-          ? { ...request, thinking: resolveGeminiThinkingForPreference(request.model, preference, "story") }
+          ? { ...request, thinking: resolveProviderThinkingSettings(providerType, request.model, "story", preference) }
           : request,
       ),
   };
