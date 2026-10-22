@@ -11,6 +11,7 @@ import {
 } from "../../lib/exportFilename";
 import { ImportedCharactersPicker } from "../../components/story/ImportedCharactersPicker";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
+import { providerSupportsThinkingLevel } from "../../lib/ai/geminiThinking";
 import { getInheritedThinkingLevelLabel, isThinkingLevelPreference, THINKING_LEVEL_OPTIONS } from "../../lib/ai/storyThinking";
 import type { ThinkingLevelPreference } from "../../types/models";
 import { resolveVisibleProvider, shouldShowProviderPicker } from "../../lib/ai/providerConfig";
@@ -354,7 +355,7 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
             <form className="space-y-3" onSubmit={saveAI}>
               {shouldShowProviderPicker() ? <ProviderSelect value={providerType} onChange={(event) => setProviderType(event.target.value as typeof providerType)} /> : null}
               <select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={model} onChange={(e) => setModel(e.target.value)}>{getProviderModels(providerType).map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select>
-              {providerType === "gemini" ? <label className="block space-y-2"><FieldLabel label="Thinking level" help="How much Gemini reasons before writing this story's scenes. Higher is slower but can track complex plots more carefully." labelClassName="text-xs text-ink-muted" /><select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={thinkingLevel} onChange={(e) => { const value = e.target.value; if (value === "inherit" || isThinkingLevelPreference(value)) setThinkingLevel(value); }}><option value="inherit">{getInheritedThinkingLevelLabel(aiSettings?.thinkingLevel)}</option>{THINKING_LEVEL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
+              {providerSupportsThinkingLevel(providerType) ? <label className="block space-y-2"><FieldLabel label="Thinking level" help="How much the AI reasons before writing this story's scenes. Higher is slower but can track complex plots more carefully." labelClassName="text-xs text-ink-muted" /><select className="w-full rounded-[8px] border border-divider bg-panel-muted/50 px-3 py-2.5 text-sm text-ink" value={thinkingLevel} onChange={(e) => { const value = e.target.value; if (value === "inherit" || isThinkingLevelPreference(value)) setThinkingLevel(value); }}><option value="inherit">{getInheritedThinkingLevelLabel(aiSettings?.thinkingLevel)}</option>{THINKING_LEVEL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
               <Button type="submit" className="w-full" disabled={savingAI}>{savingAI ? "Saving…" : "Save AI Settings"}</Button>
             </form>
           </Section>

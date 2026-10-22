@@ -310,6 +310,9 @@ export function getCharacterGeneratorProviderHint(providerType: AIProviderType) 
   if (providerType === "gemini") {
     return "Gemini: follow the strict JSON-only requirement.";
   }
+  if (providerType === "anthropic") {
+    return "Claude: follow the strict JSON-only requirement.";
+  }
 
   return "OpenAI: follow the strict JSON-only requirement.";
 }

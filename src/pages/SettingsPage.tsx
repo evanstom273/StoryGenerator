@@ -939,34 +939,6 @@ export function SettingsPage() {
                     </SelectInput>
                   </Field>
                 ))}
-                {provider.id === "gemini" ? (
-                  <Field
-                    label="Thinking Level"
-                    hint="Story generation and MetaChat"
-                    help="How much Gemini reasons before writing. Higher levels can follow complex plots more carefully but are slower and use more tokens. Auto uses StoryEngine's tuned defaults. Stories can override this in their own AI settings. Quick jobs like titles, character concepts and indexing always use Auto."
-                  >
-                    <SelectInput
-                      value={thinkingLevel}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        if (!isThinkingLevelPreference(next)) return;
-                        setThinkingLevel(next);
-                        void saveAISettings({
-                          activeProviderType,
-                          thinkingLevel: next,
-                          defaultModels: roleModels.story,
-                          indexingModels: roleModels.indexing,
-                          metachatModels: roleModels.metachat,
-                          creationModels: roleModels.creation,
-                        }).catch(() => {});
-                      }}
-                    >
-                      {THINKING_LEVEL_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </SelectInput>
-                  </Field>
-                ) : null}
                 <Field
                   label="API Key"
                   hint={provider.configured ? "Saved locally" : "Required"}
@@ -983,6 +955,42 @@ export function SettingsPage() {
               </div>
             </Panel>
           ))}
+
+          {isProviderVisible("gemini") || isProviderVisible("anthropic") ? (
+            <Panel variant="flat">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+                Thinking
+              </div>
+              <div className="mt-3">
+                <Field
+                  label="Thinking Level"
+                  hint="Gemini and Claude · story generation and MetaChat"
+                  help="How much the AI reasons before writing (Gemini thinking level, Claude effort). Higher levels can follow complex plots more carefully but are slower and use more tokens. Auto uses StoryEngine's tuned defaults. Stories can override this in their own AI settings. Quick jobs like titles, character concepts and indexing always use Auto."
+                >
+                  <SelectInput
+                    value={thinkingLevel}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (!isThinkingLevelPreference(next)) return;
+                      setThinkingLevel(next);
+                      void saveAISettings({
+                        activeProviderType,
+                        thinkingLevel: next,
+                        defaultModels: roleModels.story,
+                        indexingModels: roleModels.indexing,
+                        metachatModels: roleModels.metachat,
+                        creationModels: roleModels.creation,
+                      }).catch(() => {});
+                    }}
+                  >
+                    {THINKING_LEVEL_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </SelectInput>
+                </Field>
+              </div>
+            </Panel>
+          ) : null}
 
           <Panel variant="flat">
             <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
