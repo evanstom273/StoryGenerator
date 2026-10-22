@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AIError } from "../errors";
 import {
   matchExistingCharacter,
   buildRelationshipPairKey,
@@ -15,7 +16,7 @@ import type {
   StoryIndexRelationship,
   StoryMessage,
 } from "../../../types/models";
-import type { AIProvider, GenerateResponseResult } from "../types";
+import type { AIProvider, GenerateResponseRequest, GenerateResponseResult } from "../types";
 
 function makeMockProvider(responseJson: string): AIProvider {
   return {
@@ -575,5 +576,86 @@ describe("storyIndexingPipeline", () => {
       expect(index2.characters.filter((c) => c.canonicalName === "Guinevere").length).toBe(1);
       expect(index2.chapterSummaries[0].sourceMessageIds).toEqual(["msg-1"]);
     });
+  });
+});
+
+describe("processIndexingBatch request limits and retries", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const okJson = JSON.stringify({ chapterSummary: "Jamie meets his dad.", characters: [], relationships: [] });
+
+  function scriptedProvider(outcomes: Array<Error | string>) {
+    const requests: GenerateResponseRequest[] = [];
+    const provider: AIProvider = {
+      async generateResponse(params): Promise<GenerateResponseResult> {
+        requests.push(params);
+        const next = outcomes[Math.min(requests.length - 1, outcomes.length - 1)];
+        if (next instanceof Error) throw next;
+        return { content: next, finishReason: "stop" };
+      },
+      async generateStream(): Promise<AsyncIterable<string>> {
+        async function* gen() {
+          yield "";
+        }
+        return gen();
+      },
+      async validateConnection() {
+        return true;
+      },
+    };
+    return { provider, requests };
+  }
+
+  function run(provider: AIProvider, model: string) {
+    return processIndexingBatch({
+      story: mockStory,
+      playerCharacter: mockPlayerCharacter,
+      chapterLabel: "Chapter 1",
+      messages: [{ id: "msg-1", storyId: "story-1", role: "user", content: "Hello", timestamp: "1" }],
+      existingIndex: null,
+      provider,
+      model,
+    });
+  }
+
+  const timeout = () => new AIError("timeout", "The request timed out.");
+
+  it.each([
+    ["claude-haiku-5-5", 300_000, 16_384],
+    ["gemini-2.5-flash", 120_000, 8_192],
+  ])("gives %s its indexing time and token budget", async (model, timeoutMs, maxTokens) => {
+    const { provider, requests } = scriptedProvider([okJson]);
+    await run(provider, model);
+    expect(requests[0]).toMatchObject({ timeoutMs, maxTokens, jsonMode: true });
+  });
+
+  it("retries a timed-out extraction and then succeeds", async () => {
+    vi.useFakeTimers();
+    const { provider, requests } = scriptedProvider([timeout(), okJson]);
+    const pending = run(provider, "claude-haiku-5-5");
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    expect(requests).toHaveLength(2);
+    expect(result.chapterSummaries[0]?.summary).toBe("Jamie meets his dad.");
+  });
+
+  it("does not retry a safety refusal", async () => {
+    const { provider, requests } = scriptedProvider([
+      new AIError("safety_refusal", "Declined.", 200, { retryable: false, kind: "safety" }),
+    ]);
+    await expect(run(provider, "claude-haiku-5-5")).rejects.toMatchObject({ code: "safety_refusal" });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("gives up after three timed-out attempts", async () => {
+    vi.useFakeTimers();
+    const { provider, requests } = scriptedProvider([timeout()]);
+    const pending = run(provider, "claude-haiku-5-5");
+    const assertion = expect(pending).rejects.toMatchObject({ code: "timeout" });
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(requests).toHaveLength(3);
   });
 });

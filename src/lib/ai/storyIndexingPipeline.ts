@@ -10,6 +10,25 @@ import type {
 } from "../../types/models";
 import type { AIProvider } from "./types";
 import { createEntityId } from "../ids";
+import { classifyAIGenerationError } from "./errors";
+import { getIndexingRequestConfig } from "./models";
+
+/** Attempts per extraction for transient failures (timeouts, overload, rate limits). */
+const MAX_EXTRACTION_ATTEMPTS = 3;
+
+function waitBeforeRetry(attempt: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, Math.min(4_000, attempt * 1_000));
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Cancelled", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 export interface IndexingExtractionCharacter {
   name: string;
@@ -754,7 +773,12 @@ export async function processIndexingBatch(
     setupContext: params.setupContext,
   });
 
-  const generateExtractionResponse = (repairInstruction?: string) =>
+  // Extraction is the heaviest request in the app: use the model's indexing time and
+  // output limits instead of the provider's 45 s default, and retry transient failures.
+  const requestConfig = getIndexingRequestConfig(model);
+  const maxAttempts = Math.min(requestConfig.maxAttempts, MAX_EXTRACTION_ATTEMPTS);
+
+  const requestExtraction = (repairInstruction?: string) =>
     provider.generateResponse({
       apiKey: apiKey || "",
       model,
@@ -772,10 +796,24 @@ export async function processIndexingBatch(
         },
       ],
       temperature: repairInstruction ? 0 : 0.2,
-      maxTokens: 8000,
+      maxTokens: requestConfig.maxTokens,
+      timeoutMs: requestConfig.timeoutMs,
       jsonMode: true,
       signal,
     });
+
+  const generateExtractionResponse = async (repairInstruction?: string) => {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await requestExtraction(repairInstruction);
+      } catch (error) {
+        if (signal?.aborted || attempt >= maxAttempts || !classifyAIGenerationError(error).retryable) {
+          throw error;
+        }
+        await waitBeforeRetry(attempt, signal);
+      }
+    }
+  };
 
   let response = await generateExtractionResponse();
   let extraction: IndexingExtractionResponse;

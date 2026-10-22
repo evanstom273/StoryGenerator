@@ -132,30 +132,34 @@ async function callMessages(
 	const requestOptions = { signal: controller.signal };
 
 	try {
-		if (opts?.onChunk) {
-			let streamAccumulated = "";
-			let idleTimer: number | null = null;
-			const resetIdleTimer = () => {
-				if (idleTimer !== null) window.clearTimeout(idleTimer);
-				idleTimer = window.setTimeout(() => controller.abort(), opts.idleTimeoutMs ?? 30_000);
-			};
-			try {
-				const stream = client.messages.stream(params, requestOptions);
+		// Always stream: long jobs (indexing JSON, MetaChat reviews) are watched by the idle
+		// timer instead of one silent wait, as recommended for high max_tokens requests.
+		let streamAccumulated = "";
+		let idleTimer: number | null = null;
+		const resetIdleTimer = () => {
+			if (idleTimer !== null) window.clearTimeout(idleTimer);
+			idleTimer = window.setTimeout(() => controller.abort(), opts?.idleTimeoutMs ?? 60_000);
+		};
+		try {
+			const stream = client.messages.stream(params, requestOptions);
+			resetIdleTimer();
+			for await (const event of stream) {
 				resetIdleTimer();
-				for await (const event of stream) {
-					resetIdleTimer();
-					if (event.type === "content_block_delta" && event.delta.type === "text_delta" && event.delta.text) {
-						opts.onChunk(event.delta.text);
-						streamAccumulated += event.delta.text;
-					}
+				if (event.type === "content_block_delta" && event.delta.type === "text_delta" && event.delta.text) {
+					opts?.onChunk?.(event.delta.text);
+					streamAccumulated += event.delta.text;
 				}
-				return assertUsableMessage(await stream.finalMessage(), streamAccumulated);
-			} catch (streamErr) {
-				if (streamAccumulated !== "" || streamErr instanceof AIError || controller.signal.aborted) throw streamErr;
-				// No chunks delivered — fall through to the non-streaming path, as before.
-			} finally {
-				if (idleTimer !== null) window.clearTimeout(idleTimer);
 			}
+			const message = await stream.finalMessage();
+			return assertUsableMessage(message, opts?.onChunk ? streamAccumulated : textOf(message));
+		} catch (streamErr) {
+			// Live-streaming callers keep the old safety net: if the stream failed before any
+			// text arrived, try once without streaming.
+			if (!opts?.onChunk || streamAccumulated !== "" || streamErr instanceof AIError || controller.signal.aborted) {
+				throw streamErr;
+			}
+		} finally {
+			if (idleTimer !== null) window.clearTimeout(idleTimer);
 		}
 
 		const message = await client.messages.create(params, requestOptions);
