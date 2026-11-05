@@ -430,3 +430,26 @@ export function getMessagesForChapterStartingAt(messages: StoryMessage[], startM
 
 	return sorted.slice(fromIndex);
 }
+
+/**
+ * The chapter boundary a message should carry after its text is edited. Headings
+ * are re-read from the new text so a renamed chapter shows its new label; an edit
+ * that no longer reads as a heading keeps the old boundary rather than silently
+ * removing a chapter (deleting the message does that).
+ */
+export function resolveEditedChapterBoundary(params: {
+  previous: StoryMessage["chapterBoundary"];
+  role: StoryMessage["role"];
+  content: string;
+  /** Author directives and continue instructions never mark chapters. */
+  isInstruction?: boolean;
+}): StoryMessage["chapterBoundary"] {
+  if (params.role === "assistant" || params.isInstruction) {
+    return undefined;
+  }
+  const detected = detectChapterBoundary(params.content);
+  if (detected.detected && detected.kind && detected.label) {
+    return { kind: detected.kind, label: detected.label };
+  }
+  return params.previous?.kind && params.previous.label?.trim() ? params.previous : undefined;
+}
