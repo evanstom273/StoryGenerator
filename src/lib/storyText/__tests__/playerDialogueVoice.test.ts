@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+	analyzeMisattributedPlayerSpeakerLine,
+	dialogueIsUserAuthored,
 	dialogueLooksLikePlayerVoice,
 	speakerLineLooksLikeMisattributedPlayer,
 } from "../playerDialogueVoice";
@@ -145,5 +147,23 @@ describe("bullpen speaker repair", () => {
 		expect(result.text).toContain("Amy:");
 		expect(result.text).toContain("Rosa:");
 		expect(result.text).toMatch(/Rebecca:\s+\*picks up her mug/i);
+	});
+
+	it("keeps ordinary \"Name is\" speech and sung lyrics under the player label", () => {
+		for (const line of [
+			'Jamie: *switches songs.* "This Romeo is bleeding, but you can\'t see his blood."',
+			'Jamie: "Mac is such an idiot."',
+			'Jamie: "James was right about the cones."',
+		]) {
+			expect(speakerLineLooksLikeMisattributedPlayer(line, "Jamie Peralta")).toBe(false);
+		}
+	});
+
+	it("never flags dialogue the user scripted for the player", () => {
+		const line = 'Jamie: *grins at Jamie\'s reflection.* "Jamie is a genius, honestly."';
+		expect(speakerLineLooksLikeMisattributedPlayer(line, "Jamie Peralta")).toBe(true);
+		const scripted = { authoredText: 'Director: Jamie mutters ("Jamie is a genius, honestly") to himself.' };
+		expect(analyzeMisattributedPlayerSpeakerLine('Jamie: "Jamie is a genius, honestly."', "Jamie Peralta", scripted)).toBeNull();
+		expect(dialogueIsUserAuthored("Jamie is a genius, honestly.", "Director: something else entirely")).toBe(false);
 	});
 });

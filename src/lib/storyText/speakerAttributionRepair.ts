@@ -89,6 +89,8 @@ export function repairMisattributedPlayerSpeakerLabels(
 		playerName: string;
 		knownTies?: string[] | null;
 		transcriptText?: string | null;
+		/** The user's own turn; dialogue it scripts for the player keeps the player label. */
+		authoredText?: string | null;
 	},
 ): { text: string; repaired: boolean; repairedCount: number } {
 	const playerName = args.playerName.trim();
@@ -101,7 +103,7 @@ export function repairMisattributedPlayerSpeakerLabels(
 	let repairedCount = 0;
 
 	const repairedLines = lines.map((line) => {
-		if (!speakerLineLooksLikeMisattributedPlayer(line, playerName)) {
+		if (!speakerLineLooksLikeMisattributedPlayer(line, playerName, { authoredText: args.authoredText })) {
 			return line;
 		}
 

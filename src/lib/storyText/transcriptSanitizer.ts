@@ -1366,7 +1366,8 @@ export function validateAssistantTranscriptForSave(args: {
 
 	// Without scene identity evidence, generic repair can infer owners from the
 	// broken output itself. Preserve the raw attribution failure instead.
-	const rawSpeakerAttribution = analyzeSpeakerAttributionIssues(args.text, playerName);
+	const authoredAttribution = { authoredText: latestUserMessage };
+	const rawSpeakerAttribution = analyzeSpeakerAttributionIssues(args.text, playerName, authoredAttribution);
 	if (rawSpeakerAttribution.needsRewrite && !hasContextualSpeakerRepairEvidence) {
 		return {
 			valid: false,
@@ -1405,7 +1406,7 @@ export function validateAssistantTranscriptForSave(args: {
 		};
 	}
 
-	const preparedSpeakerAttribution = analyzeSpeakerAttributionIssues(preparedText, playerName);
+	const preparedSpeakerAttribution = analyzeSpeakerAttributionIssues(preparedText, playerName, authoredAttribution);
 	if (preparedSpeakerAttribution.needsRewrite) {
 		return {
 			valid: false,
