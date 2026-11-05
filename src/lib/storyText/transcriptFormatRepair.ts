@@ -8,6 +8,7 @@ import {
 import {
 	analyzeMisattributedPlayerSpeakerLine,
 	type PlayerSpeakerMisattributionEvidence,
+	type PlayerSpeakerMisattributionOptions,
 } from "./playerDialogueVoice";
 
 export type TranscriptFormatRepairOptions = {
@@ -243,6 +244,7 @@ export type SpeakerAttributionAnalysis = {
 export function analyzeSpeakerAttributionIssues(
 	text: string,
 	playerName?: string | null,
+	options?: PlayerSpeakerMisattributionOptions,
 ): SpeakerAttributionAnalysis {
 	const issues: SpeakerAttributionIssue[] = [];
 	const lines = normalizeNewlines(text).split("\n");
@@ -275,7 +277,7 @@ export function analyzeSpeakerAttributionIssues(
 		}
 
 		if (playerName?.trim()) {
-			const misattribution = analyzeMisattributedPlayerSpeakerLine(line, playerName);
+			const misattribution = analyzeMisattributedPlayerSpeakerLine(line, playerName, options);
 			if (misattribution) {
 				issues.push({
 					kind: "misattributed_player",

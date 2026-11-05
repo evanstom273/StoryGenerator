@@ -106,6 +106,7 @@ export function repairAssistantTranscript(
 			playerName: identity.legalName,
 			knownTies: identity.knownTies,
 			transcriptText: normalized,
+			authoredText: options.latestUserMessage,
 		});
 		normalized = speakerRepair.text;
 	}

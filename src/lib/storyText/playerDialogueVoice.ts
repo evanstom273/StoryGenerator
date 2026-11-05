@@ -166,33 +166,19 @@ export function dialogueLooksAddressedToPlayer(dialogue: string, playerName: str
 	);
 }
 
-const MISATTRIBUTED_DIALOGUE_SUBJECT_STOPWORDS = new Set([
-	"where",
-	"what",
-	"how",
-	"why",
-	"when",
-	"who",
-	"which",
-	"there",
-	"here",
-	"it",
-	"this",
-	"that",
-]);
-
-export function dialogueMentionsAnotherNamedSubject(dialogue: string, playerVariants: Set<string>) {
-	const properSubject = dialogue.match(/\b([A-Z][a-zA-Z''-]+)\s+(?:is|was|are|were)\b/);
-	if (!properSubject?.[1]) {
-		return false;
+/** A capitalised "Name is/was" subject that is a shortened form of one of the player's names. */
+function dialogueNamesPlayerByNickname(dialogue: string, playerName: string, playerVariants: Set<string>) {
+	const nameParts = getPlayerNameVariants(playerName)
+		.flatMap((variant) => variant.toLowerCase().split(/\s+/))
+		.filter((part) => part.length >= 4);
+	for (const match of dialogue.matchAll(/\b([A-Z][a-zA-Z'-]{2,})\s+(?:is|was|are|were)\b/g)) {
+		const subject = normalizeSceneSpeakerLabel(match[1] ?? "").toLowerCase();
+		if (!subject || playerVariants.has(subject)) continue;
+		if (nameParts.some((part) => part !== subject && part.includes(subject))) {
+			return true;
+		}
 	}
-
-	const subject = normalizeSceneSpeakerLabel(properSubject[1]).toLowerCase();
-	if (MISATTRIBUTED_DIALOGUE_SUBJECT_STOPWORDS.has(subject)) {
-		return false;
-	}
-
-	return !playerVariants.has(subject);
+	return false;
 }
 
 export function dialogueAddressesAddresseeWithoutSpeakerFirstPerson(dialogue: string) {
@@ -285,7 +271,7 @@ export type PlayerSpeakerMisattributionEvidence =
 	| "dialogue_player_name_address"
 	| "dialogue_player_second_person_address"
 	| "dialogue_speaker_voice_conflict"
-	| "dialogue_other_named_subject";
+	| "dialogue_player_nickname_subject";
 
 export type PlayerSpeakerMisattributionAnalysis = {
 	currentSpeaker: string;
@@ -300,9 +286,40 @@ export type PlayerSpeakerMisattributionAnalysis = {
  * The returned metadata deliberately contains no dialogue or action excerpts so
  * callers can surface it in privacy-safe validation diagnostics.
  */
+function normalizeForAuthoredMatch(text: string) {
+	return text
+		.toLowerCase()
+		.replace(/[\u2018\u2019]/g, "'")
+		.replace(/[^a-z0-9']+/g, " ")
+		.trim();
+}
+
+/**
+ * True when the quoted dialogue reproduces words the user wrote in their own turn
+ * (a Director note or player message): every clause of three or more words appears
+ * there verbatim. The user scripted it, so the player label is intended.
+ */
+export function dialogueIsUserAuthored(dialogue: string, authoredText: string | null | undefined) {
+	const authored = authoredText ? normalizeForAuthoredMatch(authoredText) : "";
+	if (!authored) {
+		return false;
+	}
+	const clauses = dialogue
+		.split(/[.,!?;:\u2026\u2014()-]+/)
+		.map(normalizeForAuthoredMatch)
+		.filter((clause) => clause.split(" ").length >= 3);
+	return clauses.length > 0 && clauses.every((clause) => ` ${authored} `.includes(` ${clause} `));
+}
+
+export type PlayerSpeakerMisattributionOptions = {
+	/** The user's own turn; dialogue it scripts for the player is never misattributed. */
+	authoredText?: string | null;
+};
+
 export function analyzeMisattributedPlayerSpeakerLine(
 	line: string,
 	playerName: string,
+	options?: PlayerSpeakerMisattributionOptions,
 ): PlayerSpeakerMisattributionAnalysis | null {
 	const trimmed = line.trim();
 	const speakerMatch = trimmed.match(/^([^\n:]{1,64}):\s*(.*)$/);
@@ -349,7 +366,7 @@ export function analyzeMisattributedPlayerSpeakerLine(
 	}
 
 	const dialogue = extractQuotedDialogue(content);
-	if (!dialogue) {
+	if (!dialogue || dialogueIsUserAuthored(dialogue, options?.authoredText)) {
 		return null;
 	}
 
@@ -389,22 +406,27 @@ export function analyzeMisattributedPlayerSpeakerLine(
 		};
 	}
 
-	if (!dialogueHasFirstPersonVoice(dialogue)) {
-		if (dialogueMentionsAnotherNamedSubject(dialogue, playerVariants)) {
-			return {
-				currentSpeaker: speaker,
-				evidence: "dialogue_other_named_subject",
-				confidence: "medium",
-				reason: "player-labelled dialogue identifies another named subject",
-			};
-		}
+	// "Name is..." without first person is ordinary speech ("Mac is such an idiot",
+	// a song lyric). It only counts when the name looks like an unlisted nickname of
+	// the player ("Becca is back" from Rebecca), i.e. someone else talking about them.
+	if (!dialogueHasFirstPersonVoice(dialogue) && dialogueNamesPlayerByNickname(dialogue, playerName, playerVariants)) {
+		return {
+			currentSpeaker: speaker,
+			evidence: "dialogue_player_nickname_subject",
+			confidence: "medium",
+			reason: "player-labelled dialogue talks about the player by a nickname",
+		};
 	}
 
 	return null;
 }
 
-export function speakerLineLooksLikeMisattributedPlayer(line: string, playerName: string) {
-	return analyzeMisattributedPlayerSpeakerLine(line, playerName) !== null;
+export function speakerLineLooksLikeMisattributedPlayer(
+	line: string,
+	playerName: string,
+	options?: PlayerSpeakerMisattributionOptions,
+) {
+	return analyzeMisattributedPlayerSpeakerLine(line, playerName, options) !== null;
 }
 
 export function stripMisattributedPlayerSpeakerLabel(line: string, playerName: string) {
