@@ -4,6 +4,7 @@ import {
   countGeneratedChapters,
   getLatestChapterStartMessage,
   resolveChapterHeaderElement,
+  resolveEditedChapterBoundary,
 } from "../chapterNavigation";
 
 function makeMessage(
@@ -190,5 +191,36 @@ describe("chapterNavigation", () => {
     ];
 
     expect(getLatestChapterStartMessage(messages, chapters)?.id).toBe("m5");
+  });
+});
+
+describe("resolveEditedChapterBoundary", () => {
+  it("takes the new label when a chapter heading is renamed", () => {
+    expect(
+      resolveEditedChapterBoundary({
+        previous: { kind: "start", label: "Chapter III" },
+        role: "system",
+        content: "Chapter III: The Party.",
+      }),
+    ).toEqual({ kind: "start", label: "Chapter III: The Party" });
+  });
+
+  it("keeps the existing chapter when the edit no longer reads as a heading", () => {
+    const previous = { kind: "start" as const, label: "Chapter II" };
+    expect(resolveEditedChapterBoundary({ previous, role: "user", content: "Two weeks later" })).toEqual(previous);
+  });
+
+  it("never gives assistant prose or instructions a boundary", () => {
+    expect(resolveEditedChapterBoundary({ previous: undefined, role: "assistant", content: "Chapter IV" })).toBeUndefined();
+    expect(
+      resolveEditedChapterBoundary({ previous: undefined, role: "user", content: "Chapter IV", isInstruction: true }),
+    ).toBeUndefined();
+  });
+
+  it("marks a plain message edited into a heading", () => {
+    expect(resolveEditedChapterBoundary({ previous: undefined, role: "user", content: "Chapter IV" })).toEqual({
+      kind: "start",
+      label: "Chapter IV",
+    });
   });
 });

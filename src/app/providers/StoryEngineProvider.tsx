@@ -195,6 +195,7 @@ import {
 	sortQueuedBackgroundTasks,
 } from "../../lib/backgroundTasks";
 import { detectChapterBoundary } from "../../lib/storyText/chapterDetection";
+import { resolveEditedChapterBoundary } from "../../lib/storyText/chapterNavigation";
 import {
   formatHumanNovelistProseGuidance,
 } from "../../lib/storyProseGuidance";
@@ -1764,6 +1765,53 @@ function resolveStoredOrDetectedChapterBoundary(message: StoryMessage) {
     } satisfies StoryMessage["chapterBoundary"];
   }
   return null;
+}
+
+/**
+ * Carries a renamed chapter heading through to the stored chapter records (chapter
+ * navigation, end markers, index labels). Returns whether the label changed, so the
+ * Story Index can pick up the new name even while the chapter is still open.
+ */
+async function renameChapterRecordsForEditedHeading(params: {
+  repository: StoryEngineRepository;
+  message: StoryMessage;
+  previous: StoryMessage["chapterBoundary"];
+}) {
+  const { repository, message, previous } = params;
+  const next = message.chapterBoundary;
+  if (
+    !previous?.label?.trim() ||
+    !next?.label?.trim() ||
+    previous.kind !== next.kind ||
+    normalizeChapterLabelKey(previous.label) === normalizeChapterLabelKey(next.label) ||
+    next.label === "The End" ||
+    previous.label === "The End"
+  ) {
+    return false;
+  }
+  const oldKey = normalizeChapterLabelKey(previous.label);
+  const chapters = await repository.listStoryChapters(message.storyId);
+  const renamed = chapters.filter((chapter) =>
+    next.kind === "start"
+      ? normalizeChapterLabelKey(chapter.label) === oldKey
+      : chapter.endsAtMessageId === message.id,
+  );
+  await Promise.all(renamed.map((chapter) => repository.saveStoryChapter({ ...chapter, label: next.label })));
+
+  if (next.kind === "start") {
+    // The chapter's own end marker stores the label too; rename it up to the next chapter start.
+    const sorted = sortByTimestampAsc(await repository.listStoryMessages(message.storyId));
+    const endMarkers: StoryMessage[] = [];
+    for (const later of sorted.slice(sorted.findIndex((item) => item.id === message.id) + 1)) {
+      const boundary = later.chapterBoundary;
+      if (boundary?.kind === "start") break;
+      if (boundary?.kind === "end" && normalizeChapterLabelKey(boundary.label) === oldKey) {
+        endMarkers.push({ ...later, chapterBoundary: { kind: "end", label: next.label } });
+      }
+    }
+    await Promise.all(endMarkers.map((marker) => repository.saveStoryMessage(marker)));
+  }
+  return true;
 }
 
 function deriveStoryChaptersFromTranscript(params: {
@@ -4444,13 +4492,24 @@ export function StoryEngineProvider({
                   undefined
               : draft.directorIntent ?? currentMessage.directorIntent,
           authorDirective,
+          chapterBoundary: resolveEditedChapterBoundary({
+            previous: currentMessage.chapterBoundary,
+            role: draft.role,
+            content: (prefix?.strippedContent ?? draft.content).trim(),
+            isInstruction: Boolean(authorDirective) || isContinueInstruction,
+          }),
           editedAt: draft.editedAt ?? currentMessage.editedAt,
           regeneratedAt: draft.regeneratedAt ?? currentMessage.regeneratedAt,
           revision: draft.revision ?? currentMessage.revision,
         };
 
         await repository.saveStoryMessage(nextMessage);
-        if (authorDirective || currentMessage.authorDirective) {
+        const chapterRenamed = await renameChapterRecordsForEditedHeading({
+          repository,
+          message: nextMessage,
+          previous: currentMessage.chapterBoundary ?? resolveStoredOrDetectedChapterBoundary(currentMessage) ?? undefined,
+        });
+        if (authorDirective || currentMessage.authorDirective || chapterRenamed) {
           await syncAuthorDirectiveStateForStory(currentMessage.storyId);
           void runDeepIndexProcess(currentMessage.storyId, { trigger: "auto", incremental: true }).catch(() => undefined);
         }
