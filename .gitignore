@@ -7,3 +7,10 @@ dist
 playwright-report/
 test-results/
 dev-dist/
+
+# Local caches, debug output and attachments (never commit)
+.npm-cache/
+.dbg/
+.dev-studio/
+.dev-server.err
+*.err
