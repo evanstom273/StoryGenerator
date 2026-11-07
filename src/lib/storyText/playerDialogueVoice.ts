@@ -1,0 +1,450 @@
+import { normalizeSceneSpeakerLabel } from "./speakerLabels";
+
+function escapeRegex(value: string) {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function getPlayerNameVariants(playerName: string) {
+	const trimmed = playerName.trim();
+	if (!trimmed) {
+		return [];
+	}
+
+	const tokens = trimmed.split(/\s+/).filter(Boolean);
+	const firstToken = tokens[0] ?? "";
+	const lastToken = tokens.length > 1 ? tokens[tokens.length - 1] : "";
+	const variants = new Set<string>();
+	variants.add(trimmed);
+	if (firstToken.length >= 2) {
+		variants.add(firstToken);
+	}
+	if (lastToken.length >= 2) {
+		variants.add(lastToken);
+	}
+
+	for (const match of trimmed.matchAll(/"([^"]{2,64})"/g)) {
+		const value = match[1]?.trim() ?? "";
+		if (value) {
+			variants.add(value);
+		}
+	}
+
+	for (const match of trimmed.matchAll(/\(([^)]{2,64})\)/g)) {
+		const value = match[1]?.trim() ?? "";
+		if (value) {
+			variants.add(value);
+		}
+	}
+
+	return Array.from(variants);
+}
+
+export function extractQuotedDialogue(line: string) {
+	return Array.from(line.matchAll(/"([^"]+)"/g))
+		.map((match) => match[1]?.trim() ?? "")
+		.filter(Boolean)
+		.join(" ");
+}
+
+function playerVariantPattern(variants: string[]) {
+	return variants
+		.filter((variant) => variant.length >= 2)
+		.map((variant) => escapeRegex(variant))
+		.join("|");
+}
+
+/** First-person speech strongly suggests the labeled speaker is talking. */
+export function dialogueHasFirstPersonVoice(dialogue: string) {
+	return /\b(?:I|I'm|I've|I'd|I'll|my|myself|me)\b/i.test(dialogue.trim());
+}
+
+/** The player is referenced in third person — someone else is speaking. */
+export function dialogueReferencesPlayerInThirdPerson(dialogue: string, playerName: string) {
+	const trimmed = dialogue.trim();
+	if (!trimmed) {
+		return false;
+	}
+
+	const variants = getPlayerNameVariants(playerName);
+	for (const variant of variants) {
+		const escaped = escapeRegex(variant);
+		if (new RegExp(`(?:^|[\\s—-])${escaped}\\s+is\\b`, "i").test(trimmed)) {
+			return true;
+		}
+		if (new RegExp(`\\b${escaped}\\s+is\\b`, "i").test(trimmed)) {
+			return true;
+		}
+		if (new RegExp(`\\b${escaped}\\s+(?:Stare|stare|glare)\\b`, "i").test(trimmed)) {
+			return true;
+		}
+	}
+
+	if (!dialogueHasFirstPersonVoice(trimmed) && /\b(?:she|her)\b/i.test(trimmed)) {
+		if (/\b(?:was|were|slipped|thought|handled|is|are)\b/i.test(trimmed)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/** Dialogue uses second-person address aimed at the player. */
+export function dialogueAddressesPlayerBySecondPerson(dialogue: string) {
+	const trimmed = dialogue.trim();
+	if (!trimmed || !/\byou\b/i.test(trimmed)) {
+		return false;
+	}
+
+	if (/\byou\s+(?:two|three|four|five|all|both|guys|folks|officers|detectives)\b/i.test(trimmed)) {
+		return false;
+	}
+
+	if (/\b(?:missed|see|glad|welcome)\s+you\b/i.test(trimmed)) {
+		return true;
+	}
+
+	if (/\byou\s+take\s+your\s+time\b/i.test(trimmed) && /\bmake\s+me\s+wait\b/i.test(trimmed)) {
+		return true;
+	}
+
+	if (/\b(?:get|come)\s+over\s+here\b/i.test(trimmed) && /\b(?:drag|pull)\s+you\b/i.test(trimmed)) {
+		return true;
+	}
+
+	if (/\b(?:drag|pull|yank)\s+you\b/i.test(trimmed) && dialogueHasFirstPersonVoice(trimmed)) {
+		return true;
+	}
+
+	return /\byou\b.{0,48}\b(?:were|are|was|slipped|thought|looked|handled|came|did)\b/i.test(trimmed);
+}
+
+/** Dialogue uses a player name variant as the addressee — not titles like Captain. */
+export function dialogueAddressesPlayerByName(dialogue: string, playerName: string) {
+	const trimmed = dialogue.trim();
+	if (!trimmed) {
+		return false;
+	}
+
+	const variants = getPlayerNameVariants(playerName);
+	const pattern = playerVariantPattern(variants);
+	if (!pattern) {
+		return false;
+	}
+
+	if (new RegExp(`,\\s*(?:${pattern})\\b`, "i").test(trimmed)) {
+		return true;
+	}
+
+	if (new RegExp(`\\b(?:hey|hi|hello)\\s+(?:${pattern})\\b`, "i").test(trimmed)) {
+		return true;
+	}
+
+	if (
+		/\b(?:missed|see|glad|welcome)\s+you\b/i.test(trimmed) &&
+		variants.some((variant) => new RegExp(`\\b${escapeRegex(variant)}\\b`, "i").test(trimmed))
+	) {
+		return true;
+	}
+
+	if (
+		/\byou\b/i.test(trimmed) &&
+		!/\byou\s+(?:two|three|four|five|all|both|guys|folks|officers|detectives)\b/i.test(trimmed) &&
+		/\byou\b.{0,48}\b(?:were|are|was|slipped|thought|looked|handled|came|did)\b/i.test(trimmed)
+	) {
+		return variants.some((variant) => new RegExp(`,\\s*${escapeRegex(variant)}\\b`, "i").test(trimmed));
+	}
+
+	return false;
+}
+
+/** @deprecated use dialogueAddressesPlayerByName or dialogueReferencesPlayerInThirdPerson */
+export function dialogueLooksAddressedToPlayer(dialogue: string, playerName: string) {
+	return (
+		dialogueAddressesPlayerByName(dialogue, playerName) ||
+		dialogueAddressesPlayerBySecondPerson(dialogue) ||
+		dialogueReferencesPlayerInThirdPerson(dialogue, playerName)
+	);
+}
+
+/** A capitalised "Name is/was" subject that is a shortened form of one of the player's names. */
+function dialogueNamesPlayerByNickname(dialogue: string, playerName: string, playerVariants: Set<string>) {
+	const nameParts = getPlayerNameVariants(playerName)
+		.flatMap((variant) => variant.toLowerCase().split(/\s+/))
+		.filter((part) => part.length >= 4);
+	for (const match of dialogue.matchAll(/\b([A-Z][a-zA-Z'-]{2,})\s+(?:is|was|are|were)\b/g)) {
+		const subject = normalizeSceneSpeakerLabel(match[1] ?? "").toLowerCase();
+		if (!subject || playerVariants.has(subject)) continue;
+		if (nameParts.some((part) => part !== subject && part.includes(subject))) {
+			return true;
+		}
+	}
+	return false;
+}
+
+export function dialogueAddressesAddresseeWithoutSpeakerFirstPerson(dialogue: string) {
+	const trimmed = dialogue.trim();
+	if (!trimmed || dialogueHasFirstPersonVoice(trimmed)) {
+		return false;
+	}
+
+	if (/^you\b/i.test(trimmed)) {
+		return true;
+	}
+
+	if (/\byou(?:'re|\s+are|\s+were|\s+look|\s+seem|\s+appear)\b/i.test(trimmed)) {
+		return true;
+	}
+
+	if (/\b(?:stop|bring|get|come|wait)\b/i.test(trimmed)) {
+		return true;
+	}
+
+	return false;
+}
+
+export function speakerContentReferencesPlayerNamePossessive(content: string, playerName: string) {
+	const variants = getPlayerNameVariants(playerName);
+	return variants.some((variant) =>
+		new RegExp(`\\b${escapeRegex(variant)}'s\\b`, "i").test(content),
+	);
+}
+
+export function speakerContentReferencesPlayerNameAsObject(content: string, playerName: string) {
+	const actionMatch = content.match(/\*([^*]+)\*/);
+	if (!actionMatch?.[1]) {
+		return false;
+	}
+
+	const action = actionMatch[1].trim();
+	if (!action || !/\b(?:she|he|they)\b/i.test(action)) {
+		return false;
+	}
+
+	const variants = getPlayerNameVariants(playerName).filter((variant) => variant.length >= 2);
+	const namePattern = variants.map((variant) => escapeRegex(variant)).join("|");
+	if (!namePattern) {
+		return false;
+	}
+
+	return new RegExp(
+		`\\b(?:pull(?:s)?|push(?:es)?|draw(?:s)?|drag(?:s)?|yank(?:s)?|grab(?:s)?|grip(?:s)?|tug(?:s)?|guide(?:s)?|lead(?:s)?|bring(?:s)?|lift(?:s)?|carry(?:ies)?|hold(?:s)?|pin(?:s)?|press(?:es)?|shove(?:s)?|nudge(?:s)?|steer(?:s)?)\\b[\\s\\S]{0,96}\\b(?:${namePattern})\\b(?!'s)`,
+		"i",
+	).test(action);
+}
+
+export function speakerActionLooksLikeMisattributedPlayer(content: string, playerName: string) {
+	const actionMatch = content.match(/\*([^*]+)\*/);
+	if (!actionMatch?.[1]) {
+		return false;
+	}
+
+	const action = actionMatch[1].trim();
+	if (!action) {
+		return false;
+	}
+
+	const playerVariants = getPlayerNameVariants(playerName);
+	const possessivePattern = playerVariants
+		.filter((variant) => variant.length >= 2)
+		.map((variant) => `${escapeRegex(variant)}'s`)
+		.join("|");
+	if (!possessivePattern) {
+		return false;
+	}
+
+	const touchesPlayerBody = new RegExp(
+		`\\b(?:reach(?:es)?|trace(?:s)?|touch(?:es)?|slide(?:s)?|run(?:s)?|brush(?:es)?|grab(?:s)?|grip(?:s)?|cup(?:s)?|pinch(?:es)?|come(?:s)?|place(?:s)?|step(?:s)?|fingers?)\\b[\\s\\S]{0,96}\\b(?:${possessivePattern})\\b`,
+		"i",
+	).test(action);
+	if (!touchesPlayerBody) {
+		return false;
+	}
+
+	return /\b(?:she|he|they)\b/i.test(action);
+}
+
+export type PlayerSpeakerMisattributionEvidence =
+	| "action_player_name_possessive"
+	| "action_player_name_object"
+	| "action_targets_player_body"
+	| "dialogue_player_third_person_reference"
+	| "dialogue_player_name_address"
+	| "dialogue_player_second_person_address"
+	| "dialogue_speaker_voice_conflict"
+	| "dialogue_player_nickname_subject";
+
+export type PlayerSpeakerMisattributionAnalysis = {
+	currentSpeaker: string;
+	evidence: PlayerSpeakerMisattributionEvidence;
+	confidence: "high" | "medium";
+	reason: string;
+};
+
+/**
+ * Explain why a player-labelled line appears to belong to another speaker.
+ *
+ * The returned metadata deliberately contains no dialogue or action excerpts so
+ * callers can surface it in privacy-safe validation diagnostics.
+ */
+function normalizeForAuthoredMatch(text: string) {
+	return text
+		.toLowerCase()
+		.replace(/[\u2018\u2019]/g, "'")
+		.replace(/[^a-z0-9']+/g, " ")
+		.trim();
+}
+
+/**
+ * True when the quoted dialogue reproduces words the user wrote in their own turn
+ * (a Director note or player message): every clause of three or more words appears
+ * there verbatim. The user scripted it, so the player label is intended.
+ */
+export function dialogueIsUserAuthored(dialogue: string, authoredText: string | null | undefined) {
+	const authored = authoredText ? normalizeForAuthoredMatch(authoredText) : "";
+	if (!authored) {
+		return false;
+	}
+	const clauses = dialogue
+		.split(/[.,!?;:\u2026\u2014()-]+/)
+		.map(normalizeForAuthoredMatch)
+		.filter((clause) => clause.split(" ").length >= 3);
+	return clauses.length > 0 && clauses.every((clause) => ` ${authored} `.includes(` ${clause} `));
+}
+
+export type PlayerSpeakerMisattributionOptions = {
+	/** The user's own turn; dialogue it scripts for the player is never misattributed. */
+	authoredText?: string | null;
+};
+
+export function analyzeMisattributedPlayerSpeakerLine(
+	line: string,
+	playerName: string,
+	options?: PlayerSpeakerMisattributionOptions,
+): PlayerSpeakerMisattributionAnalysis | null {
+	const trimmed = line.trim();
+	const speakerMatch = trimmed.match(/^([^\n:]{1,64}):\s*(.*)$/);
+	if (!speakerMatch?.[1] || !speakerMatch[2]) {
+		return null;
+	}
+
+	const speaker = normalizeSceneSpeakerLabel(speakerMatch[1].trim());
+	const playerVariants = new Set(
+		getPlayerNameVariants(playerName).map((variant) =>
+			normalizeSceneSpeakerLabel(variant).toLowerCase(),
+		),
+	);
+	if (!playerVariants.has(speaker.toLowerCase())) {
+		return null;
+	}
+
+	const content = speakerMatch[2];
+	if (speakerContentReferencesPlayerNamePossessive(content, playerName)) {
+		return {
+			currentSpeaker: speaker,
+			evidence: "action_player_name_possessive",
+			confidence: "high",
+			reason: "player-labelled action refers to the player by possessive name",
+		};
+	}
+
+	if (speakerContentReferencesPlayerNameAsObject(content, playerName)) {
+		return {
+			currentSpeaker: speaker,
+			evidence: "action_player_name_object",
+			confidence: "high",
+			reason: "player-labelled action targets the player by name",
+		};
+	}
+
+	if (speakerActionLooksLikeMisattributedPlayer(content, playerName)) {
+		return {
+			currentSpeaker: speaker,
+			evidence: "action_targets_player_body",
+			confidence: "high",
+			reason: "player-labelled action targets the player's body",
+		};
+	}
+
+	const dialogue = extractQuotedDialogue(content);
+	if (!dialogue || dialogueIsUserAuthored(dialogue, options?.authoredText)) {
+		return null;
+	}
+
+	if (dialogueReferencesPlayerInThirdPerson(dialogue, playerName)) {
+		return {
+			currentSpeaker: speaker,
+			evidence: "dialogue_player_third_person_reference",
+			confidence: "high",
+			reason: "player-labelled dialogue refers to the player in third person",
+		};
+	}
+
+	if (dialogueAddressesPlayerByName(dialogue, playerName)) {
+		return {
+			currentSpeaker: speaker,
+			evidence: "dialogue_player_name_address",
+			confidence: "high",
+			reason: "player-labelled dialogue addresses the player by name",
+		};
+	}
+
+	if (dialogueAddressesPlayerBySecondPerson(dialogue)) {
+		return {
+			currentSpeaker: speaker,
+			evidence: "dialogue_player_second_person_address",
+			confidence: "medium",
+			reason: "player-labelled dialogue contains a player-directed second-person pattern",
+		};
+	}
+
+	if (/\b(?:precision|detective)\b.*\bmy ass\b/i.test(dialogue)) {
+		return {
+			currentSpeaker: speaker,
+			evidence: "dialogue_speaker_voice_conflict",
+			confidence: "medium",
+			reason: "player-labelled dialogue conflicts with the player's speaker voice",
+		};
+	}
+
+	// "Name is..." without first person is ordinary speech ("Mac is such an idiot",
+	// a song lyric). It only counts when the name looks like an unlisted nickname of
+	// the player ("Becca is back" from Rebecca), i.e. someone else talking about them.
+	if (!dialogueHasFirstPersonVoice(dialogue) && dialogueNamesPlayerByNickname(dialogue, playerName, playerVariants)) {
+		return {
+			currentSpeaker: speaker,
+			evidence: "dialogue_player_nickname_subject",
+			confidence: "medium",
+			reason: "player-labelled dialogue talks about the player by a nickname",
+		};
+	}
+
+	return null;
+}
+
+export function speakerLineLooksLikeMisattributedPlayer(
+	line: string,
+	playerName: string,
+	options?: PlayerSpeakerMisattributionOptions,
+) {
+	return analyzeMisattributedPlayerSpeakerLine(line, playerName, options) !== null;
+}
+
+export function stripMisattributedPlayerSpeakerLabel(line: string, playerName: string) {
+	if (!speakerLineLooksLikeMisattributedPlayer(line, playerName)) {
+		return line;
+	}
+
+	const remainder = line.trim().replace(/^[^\n:]{1,64}:\s*/, "");
+	return remainder.trim();
+}
+
+export function countMisattributedPlayerSpeakerLines(text: string, playerName?: string | null) {
+	if (!playerName?.trim()) {
+		return 0;
+	}
+
+	return text
+		.replace(/\r\n/g, "\n")
+		.split("\n")
+		.filter((line) => speakerLineLooksLikeMisattributedPlayer(line, playerName)).length;
+}

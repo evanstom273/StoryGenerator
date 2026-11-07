@@ -1,0 +1,1553 @@
+import { useEffect, useMemo, useState } from "react";
+import { strToU8, zipSync } from "fflate";
+import { useSearchParams } from "react-router-dom";
+import { cn } from "../utils/cn";
+import { PageHeader } from "../components/PageHeader";
+import { DatabaseIcon } from "../components/icons";
+import { Badge } from "../components/ui/Badge";
+import { Field, FieldLabel, SelectInput, TextInput } from "../components/forms/Fields";
+import { Button } from "../components/ui/Button";
+import { Panel } from "../components/ui/Panel";
+import { useStoryEngine } from "../app/providers/StoryEngineProvider";
+import { UI_PREFS_KEYS, readStoredTextSize, writeStoredTextSize } from "../app/ui/UiPrefsContext";
+import { useChangelog } from "../app/versioning/ChangelogContext";
+import { APP_NAME, APP_VERSION } from "../app/versioning/version";
+import {
+	exportDesignDocument,
+	type DesignDocumentExportFormat,
+} from "../app/versioning/designDocumentExport";
+import { useTheme } from "../app/theming/ThemeContext";
+import { resolveMaxConcurrentBackgroundTasks } from "../lib/backgroundTasks";
+import type { AIModelRole, AIProviderType, AISettings, MaxConcurrentBackgroundTasks, IndexingCadence, ThinkingLevelPreference } from "../types/models";
+import { getAIModelForRole, getProviderModels, getValidModel } from "../lib/ai/models";
+import { isThinkingLevelPreference, THINKING_LEVEL_OPTIONS } from "../lib/ai/storyThinking";
+import { downloadFile } from "../lib/download";
+import {
+	AUTO_BACKUP_INTERVAL_OPTIONS_HOURS,
+	formatNextAutoBackupLabel,
+	getAutoBackupScheduleState,
+	readAutoBackupIntervalHours,
+	readAutoBackupLastRunAt,
+	writeAutoBackupIntervalHours,
+	type AutoBackupIntervalHours,
+	type AutoBackupScheduleState,
+} from "../lib/autoBackupSchedule";
+import {
+	AUTO_BACKUP_KEEP_LATEST,
+	listAutoBackupRecords,
+	type AutoBackupRecord,
+} from "../lib/autoBackupStorage";
+import { serializeStoryExport, serializeStoryTranscriptMarkdown } from "../lib/storyExport";
+import { formatDateTime } from "../lib/dates";
+import { useDebouncedEffect } from "../lib/useDebouncedEffect";
+import { TutorialSettingsTab } from "../components/settings/TutorialSettingsTab";
+import { ThemePicker } from "../components/settings/ThemePicker";
+import { ProviderSelect } from "../components/settings/ProviderSelect";
+import {
+	ALL_AI_PROVIDERS,
+	DEFAULT_VISIBLE_AI_PROVIDER,
+	isProviderVisible,
+	resolveVisibleProvider,
+	shouldShowProviderPicker,
+} from "../lib/ai/providerConfig";
+
+const AI_PROVIDERS: AIProviderType[] = ALL_AI_PROVIDERS;
+
+const MODEL_ROLE_OPTIONS = [
+  {
+    role: "story" as const,
+    label: "Story Model",
+    hint: "Story generation, Director replies, Continue, guided chapters, and Story History",
+    help: "Used for live play: chat replies, Director beats, Continue, guided chapters, and Story History generation.",
+  },
+  {
+    role: "indexing" as const,
+    label: "Story Indexing Model",
+    hint: "Detailed chapter summaries, canonical characters, and relationship extraction",
+    help: "Powers background and manual story indexing to extract grounded narrative memory.",
+  },
+  {
+    role: "metachat" as const,
+    label: "MetaChat Model",
+    hint: "MetaChat only",
+    help: "Powers MetaChat — out-of-character planning and questions without changing the story transcript.",
+  },
+  {
+    role: "creation" as const,
+    label: "Character & Universe Generation Model",
+    hint: "Player character generation, universe generation, and related creation tools",
+    help: "Drafts player characters, universe blueprints, and other creation-tool outputs.",
+  },
+] as const;
+
+type ProviderModelMap = Record<AIProviderType, string>;
+type RoleModelMaps = Record<AIModelRole, ProviderModelMap>;
+
+function buildRoleModelMaps(settings: AISettings | null): RoleModelMaps {
+  const fallback: AISettings = {
+    id: "ai-settings",
+    activeProviderType: DEFAULT_VISIBLE_AI_PROVIDER,
+    apiKeys: {},
+    defaultModels: {},
+    createdAt: "",
+    updatedAt: "",
+  };
+  const source = settings ?? fallback;
+
+  const readRole = (role: AIModelRole): ProviderModelMap =>
+    Object.fromEntries(
+      AI_PROVIDERS.map((provider) => [
+        provider,
+        getValidModel(provider, getAIModelForRole(source, provider, role)),
+      ]),
+    ) as ProviderModelMap;
+
+  return {
+    story: readRole("story"),
+    metachat: readRole("metachat"),
+    indexing: readRole("indexing"),
+    creation: readRole("creation"),
+  };
+}
+
+function roleModelMapsEqual(left: RoleModelMaps, right: RoleModelMaps) {
+  return MODEL_ROLE_OPTIONS.every(({ role }) =>
+    AI_PROVIDERS.every((provider) => left[role][provider] === right[role][provider]),
+  );
+}
+
+function sanitizeFileStem(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function readSelectedFileAsText(file: File) {
+  if (typeof file.text === "function") {
+    return await file.text();
+  }
+
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      reject(new Error("Unable to read the selected file."));
+    };
+
+    reader.onload = () => {
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    };
+
+    reader.readAsText(file);
+  });
+}
+
+export function SettingsPage() {
+  const [searchParams] = useSearchParams();
+  const {
+    aiSettings,
+    saveAISettings,
+    storageStatus,
+    validateAIConnection,
+    universes,
+    playerCharacters,
+    stories,
+    exportStory,
+    exportUniverse,
+    exportPlayerCharacter,
+    refreshStoryState,
+    importUniverseExport,
+    importPlayerCharacterExport,
+    importStoryExport,
+    exportWorkspaceBackup,
+    importWorkspaceBackup,
+    deleteAllStories,
+    deleteAllPlayerCharacters,
+    deleteAllUniverses,
+  } = useStoryEngine();
+
+  const { openChangelog, openChangelogHistory } = useChangelog();
+  const { themeKey, setThemeKey, theme, customAccent, setCustomAccent } = useTheme();
+  const [customAccentError, setCustomAccentError] = useState<string | null>(null);
+  const [activeProviderType, setActiveProviderType] = useState<AIProviderType>(
+    resolveVisibleProvider(aiSettings?.activeProviderType),
+  );
+  const [roleModels, setRoleModels] = useState<RoleModelMaps>(() => buildRoleModelMaps(aiSettings ?? null));
+  const [openaiKeyInput, setOpenaiKeyInput] = useState("");
+  const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [openrouterKeyInput, setOpenrouterKeyInput] = useState("");
+  const [anthropicKeyInput, setAnthropicKeyInput] = useState("");
+  const [maxConcurrentBackgroundTasks, setMaxConcurrentBackgroundTasks] =
+    useState<MaxConcurrentBackgroundTasks>(
+      resolveMaxConcurrentBackgroundTasks(aiSettings?.maxConcurrentBackgroundTasks),
+    );
+  const [indexingCadence, setIndexingCadence] = useState<IndexingCadence>(
+    aiSettings?.indexingCadence ?? "every_5_messages",
+  );
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelPreference>(
+    aiSettings?.thinkingLevel ?? "auto",
+  );
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [backupFile, setBackupFile] = useState<File | null>(null);
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [autoBackups, setAutoBackups] = useState<AutoBackupRecord[]>([]);
+  const [backupIntervalHours, setBackupIntervalHours] = useState<AutoBackupIntervalHours>(() =>
+    readAutoBackupIntervalHours(),
+  );
+  const [autoBackupSchedule, setAutoBackupSchedule] = useState<AutoBackupScheduleState>(() =>
+    getAutoBackupScheduleState(),
+  );
+  const [itemExportType, setItemExportType] = useState<
+    "universe" | "playerCharacter" | "story"
+  >("story");
+  const [itemExportUniverseId, setItemExportUniverseId] = useState<string>("");
+  const [itemExportCharacterIds, setItemExportCharacterIds] = useState<string[]>([]);
+  const [itemExportStoryIds, setItemExportStoryIds] = useState<string[]>([]);
+  const [itemExportStoryFormat, setItemExportStoryFormat] = useState<
+    "json" | "story-markdown" | "markdown" | "txt" | "pdf"
+  >("json");
+  const [itemExportStatus, setItemExportStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (themeKey !== "custom") {
+      return;
+    }
+    setCustomAccentError(null);
+  }, [customAccent, themeKey]);
+  const [itemExportError, setItemExportError] = useState<string | null>(null);
+  const [itemImportType, setItemImportType] = useState<
+    "universe" | "playerCharacter" | "story"
+  >("story");
+  const [itemImportFile, setItemImportFile] = useState<File | null>(null);
+  const [itemImportUniverseId, setItemImportUniverseId] = useState<string>("");
+  const [itemImportStatus, setItemImportStatus] = useState<string | null>(null);
+  const [itemImportError, setItemImportError] = useState<string | null>(null);
+  const [textSize, setTextSize] = useState<"sm" | "md" | "lg" | "xl">(() =>
+    readStoredTextSize(UI_PREFS_KEYS.textSize, "md"),
+  );
+  const [versionCopyStatus, setVersionCopyStatus] = useState<string | null>(null);
+  const [designDocExportStatus, setDesignDocExportStatus] = useState<string | null>(null);
+  const [deleteStoriesConfirm, setDeleteStoriesConfirm] = useState("");
+  const [deleteCharactersConfirm, setDeleteCharactersConfirm] = useState("");
+  const [deleteUniversesConfirm, setDeleteUniversesConfirm] = useState("");
+  const [dangerZoneLoading, setDangerZoneLoading] = useState<"stories" | "characters" | "universes" | null>(null);
+
+  useEffect(() => {
+    setActiveProviderType(resolveVisibleProvider(aiSettings?.activeProviderType));
+    setRoleModels(buildRoleModelMaps(aiSettings ?? null));
+    setMaxConcurrentBackgroundTasks(
+      resolveMaxConcurrentBackgroundTasks(aiSettings?.maxConcurrentBackgroundTasks),
+    );
+    setIndexingCadence(aiSettings?.indexingCadence ?? "every_5_messages");
+    setThinkingLevel(aiSettings?.thinkingLevel ?? "auto");
+  }, [aiSettings]);
+
+  function setProviderRoleModel(role: AIModelRole, provider: AIProviderType, model: string) {
+    setRoleModels((current) => ({
+      ...current,
+      [role]: {
+        ...current[role],
+        [provider]: model,
+      },
+    }));
+  }
+
+  useEffect(() => {
+    writeStoredTextSize(UI_PREFS_KEYS.textSize, textSize);
+  }, [textSize]);
+
+  async function handleCopyVersionInformation() {
+    const platform = await (async () => {
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        return Capacitor.getPlatform();
+      } catch {
+        return "web";
+      }
+    })();
+
+    const text = `${APP_NAME} v${APP_VERSION}\nPlatform: ${platform}\nUser Agent: ${navigator.userAgent}`;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setVersionCopyStatus("Copied to clipboard.");
+    } catch {
+      window.prompt("Copy version info:", text);
+      setVersionCopyStatus("Copy prompt opened.");
+    }
+  }
+
+  async function handleExportDesignDocument(format: DesignDocumentExportFormat) {
+    try {
+      await exportDesignDocument({ format });
+      setDesignDocExportStatus(`Downloaded ${format.toUpperCase()} design document.`);
+    } catch (error) {
+      setDesignDocExportStatus(
+        error instanceof Error ? error.message : "Could not export the design document.",
+      );
+    }
+    setTimeout(() => setDesignDocExportStatus(null), 4000);
+  }
+
+  useEffect(() => {
+    if (!itemExportUniverseId && universes[0]?.id) {
+      setItemExportUniverseId(universes[0].id);
+    }
+    if (!itemImportUniverseId && universes[0]?.id) {
+      setItemImportUniverseId(universes[0].id);
+    }
+  }, [
+    itemExportUniverseId,
+    itemImportUniverseId,
+    universes,
+    playerCharacters,
+    stories,
+  ]);
+
+  useDebouncedEffect(
+    () => {
+      if (!aiSettings || isSaving) {
+        return;
+      }
+
+      if (
+        activeProviderType === aiSettings.activeProviderType &&
+        roleModelMapsEqual(roleModels, buildRoleModelMaps(aiSettings))
+      ) {
+        return;
+      }
+
+      void saveAISettings({
+        activeProviderType,
+        defaultModels: roleModels.story,
+        indexingModels: roleModels.indexing,
+        metachatModels: roleModels.metachat,
+        creationModels: roleModels.creation,
+        indexingCadence,
+      }).catch(() => {});
+    },
+    800,
+    [aiSettings, isSaving, activeProviderType, roleModels, indexingCadence],
+  );
+
+  useDebouncedEffect(
+    () => {
+      if (isSaving) {
+        return;
+      }
+
+      const openaiKey = openaiKeyInput.trim();
+      const geminiKey = geminiKeyInput.trim();
+      const openrouterKey = openrouterKeyInput.trim();
+      const anthropicKey = anthropicKeyInput.trim();
+
+      if (!openaiKey && !geminiKey && !openrouterKey && !anthropicKey) {
+        return;
+      }
+
+      void saveAISettings({
+        activeProviderType,
+        apiKeys: {
+          openai: openaiKey ? openaiKey : undefined,
+          gemini: geminiKey ? geminiKey : undefined,
+          openrouter: openrouterKey ? openrouterKey : undefined,
+          anthropic: anthropicKey ? anthropicKey : undefined,
+        },
+        defaultModels: roleModels.story,
+        indexingModels: roleModels.indexing,
+        metachatModels: roleModels.metachat,
+        creationModels: roleModels.creation,
+        indexingCadence,
+      })
+        .then(() => {
+          setOpenaiKeyInput("");
+          setGeminiKeyInput("");
+          setOpenrouterKeyInput("");
+          setAnthropicKeyInput("");
+          setStatusMessage("AI settings saved locally.");
+        })
+        .catch((error) => {
+          setErrorMessage(
+            error instanceof Error ? error.message : "Unable to save AI settings.",
+          );
+        });
+    },
+    900,
+    [
+      isSaving,
+      activeProviderType,
+      roleModels,
+      openaiKeyInput,
+      geminiKeyInput,
+      openrouterKeyInput,
+      anthropicKeyInput,
+    ],
+  );
+
+  const openaiConfigured = Boolean(aiSettings?.apiKeys?.openai?.trim());
+  const geminiConfigured = Boolean(aiSettings?.apiKeys?.gemini?.trim());
+  const openrouterConfigured = Boolean(aiSettings?.apiKeys?.openrouter?.trim());
+  const anthropicConfigured = Boolean(aiSettings?.apiKeys?.anthropic?.trim());
+  const providerBadge = useMemo(() => {
+    if (!openaiConfigured && !geminiConfigured && !openrouterConfigured && !anthropicConfigured) {
+      return <Badge variant="warning">Not configured</Badge>;
+    }
+
+    return <Badge variant="accent">Configured</Badge>;
+  }, [anthropicConfigured, geminiConfigured, openaiConfigured, openrouterConfigured]);
+
+  async function handleSave() {
+    setIsSaving(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      await saveAISettings({
+        activeProviderType,
+        apiKeys: {
+          openai: openaiKeyInput.trim() ? openaiKeyInput : undefined,
+          gemini: geminiKeyInput.trim() ? geminiKeyInput : undefined,
+          openrouter: openrouterKeyInput.trim() ? openrouterKeyInput : undefined,
+          anthropic: anthropicKeyInput.trim() ? anthropicKeyInput : undefined,
+        },
+        defaultModels: roleModels.story,
+        indexingModels: roleModels.indexing,
+        metachatModels: roleModels.metachat,
+        creationModels: roleModels.creation,
+        maxConcurrentBackgroundTasks,
+        indexingCadence,
+        thinkingLevel,
+      });
+      setOpenaiKeyInput("");
+      setGeminiKeyInput("");
+      setOpenrouterKeyInput("");
+      setAnthropicKeyInput("");
+      setStatusMessage("AI settings saved locally.");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to save AI settings.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleValidate() {
+    setIsValidating(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      await validateAIConnection(activeProviderType);
+      setStatusMessage("AI provider connection validated.");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to validate connection.",
+      );
+    } finally {
+      setIsValidating(false);
+    }
+  }
+
+  async function handleExportBackup() {
+    setBackupStatus(null);
+    setBackupError(null);
+
+    try {
+      const backup = await exportWorkspaceBackup();
+      const content = JSON.stringify(backup, null, 2);
+      await downloadFile("story-engine-backup.json", content, "application/json");
+      setBackupStatus("Backup exported.");
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : "Unable to export backup.");
+    }
+  }
+
+  async function handleExportItem() {
+    setItemExportStatus(null);
+    setItemExportError(null);
+
+    try {
+      if (itemExportType === "universe") {
+        if (!itemExportUniverseId) throw new Error("Select a universe first.");
+        const bundle = await exportUniverse(itemExportUniverseId);
+        if (!bundle) throw new Error("Unable to assemble export data for this universe.");
+        const filename = `${sanitizeFileStem(bundle.universe.name) || "story-engine-universe"}.json`;
+        await downloadFile(filename, JSON.stringify(bundle, null, 2), "application/json");
+        setItemExportStatus("Universe exported.");
+        return;
+      }
+
+      if (itemExportType === "playerCharacter") {
+        if (!itemExportCharacterIds.length) throw new Error("Select at least one player character.");
+        const files: Record<string, Uint8Array> = {};
+        const usedNames = new Set<string>();
+        for (const characterId of itemExportCharacterIds) {
+          const bundle = await exportPlayerCharacter(characterId);
+          if (!bundle) throw new Error("Unable to assemble export data for one of the selected player characters.");
+          const baseStem = sanitizeFileStem(bundle.playerCharacter.name) || "story-engine-character";
+          let stem = baseStem;
+          let suffix = 2;
+          while (usedNames.has(`${stem}.json`)) stem = `${baseStem}-${suffix++}`;
+          const filename = `${stem}.json`;
+          usedNames.add(filename);
+          files[filename] = strToU8(JSON.stringify(bundle, null, 2));
+        }
+        if (itemExportCharacterIds.length === 1) {
+          const [filename, bytes] = Object.entries(files)[0]!;
+          await downloadFile(filename, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, "application/json");
+          setItemExportStatus("Player character exported.");
+        } else {
+          await downloadFile(
+            `story-engine-characters-${itemExportCharacterIds.length}.zip`,
+            zipSync(files, { level: 6 }),
+            "application/zip",
+          );
+          setItemExportStatus(`${itemExportCharacterIds.length} player characters exported as ZIP.`);
+        }
+        return;
+      }
+
+      if (!itemExportStoryIds.length) throw new Error("Select at least one story.");
+      const files: Record<string, Uint8Array> = {};
+      const usedNames = new Set<string>();
+      for (const storyId of itemExportStoryIds) {
+        try { await refreshStoryState(storyId); } catch {}
+        const bundle = await exportStory(storyId);
+        if (!bundle) throw new Error("Unable to assemble export data for one of the selected stories.");
+        const baseStem = sanitizeFileStem(bundle.story.title) || "story-engine-story";
+        const extension =
+          itemExportStoryFormat === "json" ? "json"
+          : itemExportStoryFormat === "story-markdown" || itemExportStoryFormat === "markdown" ? "md"
+          : itemExportStoryFormat === "pdf" ? "pdf"
+          : "txt";
+        let stem = baseStem;
+        let suffix = 2;
+        let filename =
+          itemExportStoryFormat === "story-markdown"
+            ? `${stem}-story.md`
+            : `${stem}.${extension}`;
+        while (usedNames.has(filename)) {
+          stem = `${baseStem}-${suffix++}`;
+          filename =
+            itemExportStoryFormat === "story-markdown"
+              ? `${stem}-story.md`
+              : `${stem}.${extension}`;
+        }
+        usedNames.add(filename);
+        const content =
+          itemExportStoryFormat === "story-markdown"
+            ? serializeStoryTranscriptMarkdown(bundle)
+            : serializeStoryExport(bundle, itemExportStoryFormat).content;
+        files[filename] = new Uint8Array(await new Blob([content]).arrayBuffer());
+      }
+
+      if (itemExportStoryIds.length === 1) {
+        const [filename, bytes] = Object.entries(files)[0]!;
+        const mimeType =
+          itemExportStoryFormat === "json" ? "application/json"
+          : itemExportStoryFormat === "story-markdown" || itemExportStoryFormat === "markdown" ? "text/markdown"
+          : itemExportStoryFormat === "pdf" ? "application/pdf"
+          : "text/plain";
+        await downloadFile(filename, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, mimeType);
+        setItemExportStatus("Story exported.");
+      } else {
+        await downloadFile(
+          `story-engine-stories-${itemExportStoryIds.length}.zip`,
+          zipSync(files, { level: 6 }),
+          "application/zip",
+        );
+        setItemExportStatus(`${itemExportStoryIds.length} stories exported as ZIP.`);
+      }
+    } catch (error) {
+      setItemExportError(error instanceof Error ? error.message : "Unable to export item.");
+    }
+  }
+
+  async function handleImportItem() {
+    setItemImportStatus(null);
+    setItemImportError(null);
+
+    try {
+      if (!itemImportFile) {
+        throw new Error("Select a JSON file first.");
+      }
+
+      const text = await readSelectedFileAsText(itemImportFile);
+      const parsed = JSON.parse(text);
+
+      if (itemImportType === "universe") {
+        if (
+          parsed?.exportVersion !== 1 ||
+          (parsed?.type !== "universe" && parsed?.type !== "universe_pack")
+        ) {
+          throw new Error("This file is not a supported universe export.");
+        }
+
+        const result = await importUniverseExport(parsed);
+        setItemImportStatus(`Universe imported. (${result.universeId})`);
+        return;
+      }
+
+      if (itemImportType === "playerCharacter") {
+        if (parsed?.exportVersion !== 1 || parsed?.type !== "playerCharacter") {
+          throw new Error("This file is not a supported player character export.");
+        }
+
+        if (!itemImportUniverseId) {
+          throw new Error("Select a target universe first.");
+        }
+
+        const result = await importPlayerCharacterExport(parsed, {
+          universeId: itemImportUniverseId,
+        });
+        setItemImportStatus(`Player character imported. (${result.characterId})`);
+        return;
+      }
+
+      const hasStoryBundle =
+        parsed &&
+        typeof parsed.exportedAt === "string" &&
+        parsed.story &&
+        parsed.universe &&
+        parsed.playerCharacter &&
+        Array.isArray(parsed.messages);
+
+      if (!hasStoryBundle) {
+        throw new Error("This file is not a supported story export.");
+      }
+
+      const result = await importStoryExport(parsed);
+      setItemImportStatus(`Story imported. (${result.storyId})`);
+    } catch (error) {
+      setItemImportError(error instanceof Error ? error.message : "Unable to import item.");
+    }
+  }
+
+  async function handleImportBackup() {
+    if (!backupFile) {
+      setBackupError("Select a backup file first.");
+      return;
+    }
+
+    setBackupStatus(null);
+    setBackupError(null);
+
+    try {
+      const text = await readSelectedFileAsText(backupFile);
+      const parsed = JSON.parse(text);
+      await importWorkspaceBackup(parsed, { mode: "merge", conflict: "skip" });
+      setBackupStatus("Backup imported (merged). Reloading...");
+      window.location.reload();
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : "Unable to import backup.");
+    }
+  }
+
+  async function handleReplaceBackup() {
+    if (!backupFile) {
+      setBackupError("Select a backup file first.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Replace all current local data (universes, stories, characters, messages, settings) with this backup? Continue?",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setBackupStatus(null);
+    setBackupError(null);
+
+    try {
+      const text = await readSelectedFileAsText(backupFile);
+      const parsed = JSON.parse(text);
+      await importWorkspaceBackup(parsed, { mode: "replace" });
+      setBackupStatus("Backup imported (replaced). Reloading...");
+      window.location.reload();
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : "Unable to import backup.");
+    }
+  }
+
+  const [activeTab, setActiveTab] = useState<
+    "theme" | "ai" | "data" | "storage" | "tutorial"
+  >("theme");
+
+  useEffect(() => {
+    if (activeTab !== "data") {
+      return;
+    }
+
+    void listAutoBackupRecords()
+      .then((records) => setAutoBackups(records))
+      .catch(() => setAutoBackups([]));
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "data") {
+      return;
+    }
+
+    setAutoBackupSchedule(getAutoBackupScheduleState());
+
+    const intervalId = window.setInterval(() => {
+      setAutoBackupSchedule(getAutoBackupScheduleState());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeTab, backupIntervalHours]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "tutorial") {
+      setActiveTab("tutorial");
+    }
+  }, [searchParams]);
+
+  const tabs = [
+    { id: "theme" as const, label: "Theme" },
+    { id: "ai" as const, label: "AI" },
+    { id: "data" as const, label: "Data" },
+    { id: "storage" as const, label: "Storage" },
+    { id: "tutorial" as const, label: "Tutorial" },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Settings"
+        title="Settings"
+        description="Configure your AI provider, theme, local workspace, and learn how the app works."
+      />
+
+      {/* Tab bar */}
+      <div className="-mx-4 flex overflow-x-auto border-b border-divider/[0.3] px-4 md:mx-0 md:px-0">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              "flex-shrink-0 px-5 py-3 text-[12px] font-semibold transition",
+              activeTab === tab.id
+                ? "border-b-2 border-accent text-ink"
+                : "border-b-2 border-transparent text-white/30 hover:text-white/50",
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Theme tab */}
+      {activeTab === "theme" && (
+        <div className="space-y-5">
+          <Panel variant="flat">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">App accent</div>
+              <Badge variant="accent">{theme.name}</Badge>
+            </div>
+            <div className="mt-4">
+              <ThemePicker
+                selectedKey={themeKey}
+                customAccent={customAccent}
+                onSelectKey={(key) => {
+                  setThemeKey(key);
+                  setCustomAccentError(null);
+                }}
+                onCustomAccentChange={(value) => {
+                  const applied = setCustomAccent(value);
+                  setCustomAccentError(applied ? null : "Enter a valid hex colour (#RRGGBB).");
+                }}
+              />
+            </div>
+            {customAccentError ? (
+              <div className="mt-3 rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
+                {customAccentError}
+              </div>
+            ) : null}
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="flex items-center justify-between gap-3">
+              <FieldLabel
+                label="Text size"
+                help="Scales readable text across the app. Stored locally on this device."
+                labelClassName="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft"
+              />
+            </div>
+            <div className="mt-3">
+              <Field label="">
+                <SelectInput
+                  value={textSize}
+                  onChange={(event) => setTextSize(event.target.value as "sm" | "md" | "lg" | "xl")}
+                >
+                  <option value="sm">Small</option>
+                  <option value="md">Default</option>
+                  <option value="lg">Large</option>
+                  <option value="xl">Extra Large</option>
+                </SelectInput>
+              </Field>
+            </div>
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Version</div>
+              <button type="button" onClick={openChangelog} className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
+                <Badge variant="accent">v{APP_VERSION}</Badge>
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" onClick={openChangelog}>Changelog</Button>
+              <Button variant="secondary" size="sm" onClick={openChangelogHistory}>Full History</Button>
+              <Button variant="secondary" size="sm" onClick={handleCopyVersionInformation}>Copy Version Info</Button>
+            </div>
+            {versionCopyStatus ? (
+              <div className="mt-3 rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-[13px] text-ink-muted">
+                {versionCopyStatus}
+              </div>
+            ) : null}
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+              Design Document
+            </div>
+            <p className="mt-2 text-[13px] leading-6 text-ink-muted">
+              The complete technical architecture and design reference for Story Engine â€” architecture,
+              data models, AI pipeline, story text rules, and more.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" onClick={() => void handleExportDesignDocument("markdown")}>
+                Download Markdown
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => void handleExportDesignDocument("txt")}>
+                Download TXT
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => void handleExportDesignDocument("pdf")}>
+                Download PDF
+              </Button>
+            </div>
+            {designDocExportStatus ? (
+              <div className="mt-3 rounded-[8px] border border-divider/[0.4] bg-panel-muted/50 px-3.5 py-3 text-[13px] text-ink-muted">
+                {designDocExportStatus}
+              </div>
+            ) : null}
+          </Panel>
+        </div>
+      )}
+
+      {/* AI tab */}
+      {activeTab === "ai" && (
+        <div className="space-y-4">
+          <Panel variant="flat">
+            {shouldShowProviderPicker() ? (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <FieldLabel
+                    label="Active Provider"
+                    help="Default AI service for new stories. Each story can override provider and model in its settings."
+                    labelClassName="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft"
+                  />
+                  {providerBadge}
+                </div>
+                <div className="mt-3">
+                  <ProviderSelect
+                    value={activeProviderType}
+                    onChange={(event) => setActiveProviderType(event.target.value as AIProviderType)}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <FieldLabel
+                  label="AI Provider"
+                  help="Story Engine currently uses Gemini for AI generation."
+                  labelClassName="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft"
+                />
+                {providerBadge}
+              </div>
+            )}
+          </Panel>
+
+          {(
+            [
+              {
+                id: "openai" as const,
+                label: "OpenAI",
+                configured: openaiConfigured,
+                keyInput: openaiKeyInput,
+                setKeyInput: setOpenaiKeyInput,
+                placeholder: "sk-...",
+              },
+              {
+                id: "gemini" as const,
+                label: "Gemini",
+                configured: geminiConfigured,
+                keyInput: geminiKeyInput,
+                setKeyInput: setGeminiKeyInput,
+                placeholder: "AIza...",
+              },
+              {
+                id: "openrouter" as const,
+                label: "OpenRouter",
+                configured: openrouterConfigured,
+                keyInput: openrouterKeyInput,
+                setKeyInput: setOpenrouterKeyInput,
+                placeholder: "sk-or-...",
+              },
+              {
+                id: "anthropic" as const,
+                label: "Anthropic",
+                configured: anthropicConfigured,
+                keyInput: anthropicKeyInput,
+                setKeyInput: setAnthropicKeyInput,
+                placeholder: "sk-ant-...",
+              },
+            ] as const
+          )
+            .filter((provider) => isProviderVisible(provider.id))
+            .map((provider) => (
+            <Panel variant="flat" key={provider.id}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">{provider.label}</div>
+                <Badge variant={provider.configured ? "accent" : "warning"}>
+                  {provider.configured ? "Key saved" : "No key"}
+                </Badge>
+              </div>
+              <div className="mt-3 space-y-3">
+                {MODEL_ROLE_OPTIONS.map(({ role, label, hint, help }) => (
+                  <Field key={role} label={label} hint={hint} help={help}>
+                    <SelectInput
+                      value={roleModels[role][provider.id]}
+                      onChange={(event) =>
+                        setProviderRoleModel(role, provider.id, event.target.value)
+                      }
+                    >
+                      {getProviderModels(provider.id).map((model) => (
+                        <option key={model.id} value={model.id}>{model.label}</option>
+                      ))}
+                    </SelectInput>
+                  </Field>
+                ))}
+                <Field
+                  label="API Key"
+                  hint={provider.configured ? "Saved locally" : "Required"}
+                  help="Stored only on this device. Required before the AI can generate story content."
+                >
+                  <TextInput
+                    type="password"
+                    value={provider.keyInput}
+                    onChange={(event) => provider.setKeyInput(event.target.value)}
+                    placeholder={provider.configured ? "Enter a new key to replace" : provider.placeholder}
+                    autoComplete="off"
+                  />
+                </Field>
+              </div>
+            </Panel>
+          ))}
+
+          {isProviderVisible("gemini") || isProviderVisible("anthropic") ? (
+            <Panel variant="flat">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+                Thinking
+              </div>
+              <div className="mt-3">
+                <Field
+                  label="Thinking Level"
+                  hint="Gemini and Claude · story generation and MetaChat"
+                  help="How much the AI reasons before writing (Gemini thinking level, Claude effort). Higher levels can follow complex plots more carefully but are slower and use more tokens. Auto uses StoryEngine's tuned defaults. Stories can override this in their own AI settings. Quick jobs like titles, character concepts and indexing always use Auto."
+                >
+                  <SelectInput
+                    value={thinkingLevel}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (!isThinkingLevelPreference(next)) return;
+                      setThinkingLevel(next);
+                      void saveAISettings({
+                        activeProviderType,
+                        thinkingLevel: next,
+                        defaultModels: roleModels.story,
+                        indexingModels: roleModels.indexing,
+                        metachatModels: roleModels.metachat,
+                        creationModels: roleModels.creation,
+                      }).catch(() => {});
+                    }}
+                  >
+                    {THINKING_LEVEL_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </SelectInput>
+                </Field>
+              </div>
+            </Panel>
+          ) : null}
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+              Story Indexing
+            </div>
+            <div className="mt-3">
+              <Field
+                label="Automatic Indexing Cadence"
+                hint="Controls when pending story messages are automatically indexed."
+                help="Choose how frequently StoryEngine automatically extracts and grounds canonical memory (chapter summaries, characters, relationships) from new story messages."
+              >
+                <SelectInput
+                  value={indexingCadence}
+                  onChange={(event) => {
+                    const nextCadence = event.target.value as IndexingCadence;
+                    setIndexingCadence(nextCadence);
+                    void saveAISettings({
+                      activeProviderType,
+                      indexingCadence: nextCadence,
+                      defaultModels: roleModels.story,
+                      indexingModels: roleModels.indexing,
+                      metachatModels: roleModels.metachat,
+                      creationModels: roleModels.creation,
+                    }).catch(() => {});
+                  }}
+                >
+                  <option value="every_message">After every message</option>
+                  <option value="every_5_messages">Every 5 messages</option>
+                  <option value="every_10_messages">Every 10 messages</option>
+                  <option value="every_15_messages">Every 15 messages</option>
+                  <option value="every_20_messages">Every 20 messages</option>
+                  <option value="every_chapter">After every chapter</option>
+                </SelectInput>
+              </Field>
+            </div>
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+              Background Tasks
+            </div>
+            <div className="mt-3">
+              <Field
+                label="Maximum Concurrent Background Tasks"
+                hint="Long-running story indexing jobs use this queue."
+                help="Lower values reduce API load; higher values finish queued jobs sooner when you run several at once."
+              >
+                <SelectInput
+                  value={String(maxConcurrentBackgroundTasks)}
+                  onChange={(event) =>
+                    setMaxConcurrentBackgroundTasks(
+                      Number(event.target.value) as MaxConcurrentBackgroundTasks,
+                    )
+                  }
+                >
+                  <option value="1">1</option>
+                  <option value="2">2 (Recommended)</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </SelectInput>
+              </Field>
+            </div>
+          </Panel>
+
+          {statusMessage ? (
+            <div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">
+              {statusMessage}
+            </div>
+          ) : null}
+          {errorMessage ? (
+            <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">
+              {errorMessage}
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
+            <Button variant="secondary" onClick={handleValidate} disabled={isValidating}>
+              {isValidating ? "Validating..." : "Validate Connection"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Data tab */}
+      {activeTab === "data" && (
+        <div className="space-y-5">
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Backup & Restore</div>
+            <p className="mt-2 text-[13px] leading-6 text-ink-muted">
+              Export a portable JSON backup of your entire local workspace.
+            </p>
+            <div className="mt-3 space-y-3">
+              <Button variant="secondary" onClick={handleExportBackup}>Export Backup</Button>
+              <div className="space-y-2 border-t border-divider/[0.3] pt-3">
+                <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Import Backup</div>
+                <input
+                  type="file"
+                  className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-[8px] file:border-0 file:bg-white/[0.06] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
+                  onChange={(event) => setBackupFile(event.target.files?.[0] ?? null)}
+                />
+                <div className="text-[11px] text-ink-muted">
+                  Android file pickers can mislabel JSON files â€” file filtering is disabled. The app validates contents during import.
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="ghost" onClick={handleImportBackup} disabled={!backupFile}>
+                    Import (Merge)
+                  </Button>
+                  <Button variant="secondary" onClick={handleReplaceBackup} disabled={!backupFile}>
+                    Import (Replace All)
+                  </Button>
+                </div>
+              </div>
+              {backupStatus ? (
+                <div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">{backupStatus}</div>
+              ) : null}
+              {backupError ? (
+                <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">{backupError}</div>
+              ) : null}
+            </div>
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">
+              Automatic Backups
+            </div>
+            <p className="mt-2 text-[13px] leading-6 text-ink-muted">
+              When your workspace changes, an automatic backup runs on your chosen schedule. On
+              Android you get a share prompt; on web/PWA the app keeps the last five copies locally
+              and triggers a download so you can save the file.
+            </p>
+            <div className="mt-4 space-y-3">
+              <Field
+                label="Backup interval"
+                help="How often an automatic backup runs after workspace changes. On Android you get a share prompt; on web/PWA the file downloads."
+              >
+                <SelectInput
+                  value={String(backupIntervalHours)}
+                  onChange={(event) => {
+                    const hours = Number(event.target.value);
+                    if (!AUTO_BACKUP_INTERVAL_OPTIONS_HOURS.includes(hours as AutoBackupIntervalHours)) {
+                      return;
+                    }
+                    writeAutoBackupIntervalHours(hours as AutoBackupIntervalHours);
+                    setBackupIntervalHours(hours as AutoBackupIntervalHours);
+                    setAutoBackupSchedule(getAutoBackupScheduleState());
+                  }}
+                >
+                  {AUTO_BACKUP_INTERVAL_OPTIONS_HOURS.map((hours) => (
+                    <option key={hours} value={hours}>
+                      Every {hours} hours
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+              <div className="rounded-[8px] border border-divider/[0.35] bg-panel-muted/40 px-3.5 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
+                  Next automatic backup
+                </div>
+                <div className="mt-1 text-[13px] font-medium text-ink-soft">
+                  {formatNextAutoBackupLabel(autoBackupSchedule)}
+                </div>
+                <div className="mt-2 text-[11px] text-ink-muted">
+                  {autoBackups.length} of {AUTO_BACKUP_KEEP_LATEST} stored locally
+                </div>
+                {readAutoBackupLastRunAt() ? (
+                  <div className="mt-1 text-[11px] text-ink-muted">
+                    Last automatic backup:{" "}
+                    {formatDateTime(new Date(readAutoBackupLastRunAt()!).toISOString())}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            {autoBackups.length ? (
+              <div className="mt-4 space-y-2">
+                {autoBackups.map((record) => (
+                  <div
+                    key={record.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-divider/[0.35] bg-panel-muted/40 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-ink-soft">{record.id}</div>
+                      <div className="text-[11px] text-ink-muted">
+                        {formatDateTime(record.createdAt)}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        void downloadFile(record.id, record.json, "application/json").catch(() => null)
+                      }
+                    >
+                      Download
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-[13px] text-ink-muted">No automatic backups stored yet.</p>
+            )}
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Export Item</div>
+            <div className="mt-3 space-y-3">
+              <Field
+                label="Type"
+                help="What kind of item to export â€” a full story (with format options), a universe, or a player character."
+              >
+                <SelectInput
+                  value={itemExportType}
+                  onChange={(event) => setItemExportType(event.target.value as "universe" | "playerCharacter" | "story")}
+                >
+                  <option value="story">Story</option>
+                  <option value="universe">Universe</option>
+                  <option value="playerCharacter">Player Character</option>
+                </SelectInput>
+              </Field>
+              {itemExportType === "universe" ? (
+                <Field
+                  label="Universe"
+                  help="Exports the universe definition and imported lore text as JSON."
+                >
+                  <SelectInput value={itemExportUniverseId} onChange={(event) => setItemExportUniverseId(event.target.value)}>
+                    {universes.length ? universes.map((u) => <option key={u.id} value={u.id}>{u.name}</option>) : <option value="">No universes</option>}
+                  </SelectInput>
+                </Field>
+              ) : itemExportType === "playerCharacter" ? (
+                <Field
+                  label="Player Character"
+                  help="Select one or more character sheets. Multiple selections are packaged into a ZIP."
+                >
+                  {playerCharacters.length ? (
+                    <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                      {playerCharacters.map((character) => {
+                        const selected = itemExportCharacterIds.includes(character.id);
+                        const details = [
+                          character.age ? `Age ${character.age}` : "",
+                          character.gender?.trim() ?? "",
+                          character.pronouns?.trim() ?? "",
+                        ].filter(Boolean).join(" · ");
+                        const concept = character.characterConcept?.trim() || "No character concept written yet.";
+                        return (
+                          <button
+                            key={character.id}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => setItemExportCharacterIds((current) =>
+                              selected ? current.filter((id) => id !== character.id) : [...current, character.id]
+                            )}
+                            className={cn(
+                              "w-full rounded-[10px] border px-4 py-3 text-left transition",
+                              selected
+                                ? "border-accent/50 bg-accent/[0.10]"
+                                : "border-divider/[0.45] bg-panel-muted/40 hover:border-accent/[0.35] hover:bg-panel-muted/70",
+                            )}
+                          >
+                            <span className="block text-sm font-semibold text-ink">{character.name}</span>
+                            {details ? <span className="mt-1 block text-xs font-medium text-accent-soft">{details}</span> : null}
+                            <span className="mt-1.5 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{concept}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/40 px-4 py-3 text-sm text-ink-muted">No player characters</div>
+                  )}
+                  <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-ink-muted">
+                    <span>{itemExportCharacterIds.length} selected</span>
+                    <div className="flex gap-2">
+                      <button type="button" className="hover:text-ink" onClick={() => setItemExportCharacterIds(playerCharacters.map((character) => character.id))}>Select all</button>
+                      <button type="button" className="hover:text-ink" onClick={() => setItemExportCharacterIds([])}>Clear</button>
+                    </div>
+                  </div>
+                </Field>
+              ) : (
+                <>
+                  <Field
+                    label="Story"
+                    help="Pick one or more saved stories. Multiple selections are packaged into a ZIP."
+                  >
+                    {stories.length ? (
+                      <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+                        {stories.map((story) => {
+                          const selected = itemExportStoryIds.includes(story.id);
+                          const universe = universes.find((entry) => entry.id === story.universeId);
+                          const character = playerCharacters.find((entry) => entry.id === story.playerCharacterId);
+                          const details = [universe?.name, character?.name ? `Player: ${character.name}` : ""].filter(Boolean).join(" · ");
+                          const summary = story.currentSummary?.trim() || story.openingPrompt?.trim() || "No story summary written yet.";
+                          return (
+                            <button
+                              key={story.id}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => setItemExportStoryIds((current) =>
+                                selected ? current.filter((id) => id !== story.id) : [...current, story.id]
+                              )}
+                              className={cn(
+                                "w-full rounded-[10px] border px-4 py-3 text-left transition",
+                                selected
+                                  ? "border-accent/50 bg-accent/[0.10]"
+                                  : "border-divider/[0.45] bg-panel-muted/40 hover:border-accent/[0.35] hover:bg-panel-muted/70",
+                              )}
+                            >
+                              <span className="block text-sm font-semibold text-ink">{story.title}</span>
+                              {details ? <span className="mt-1 block text-xs font-medium text-accent-soft">{details}</span> : null}
+                              <span className="mt-1.5 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{summary}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-[10px] border border-divider/[0.45] bg-panel-muted/40 px-4 py-3 text-sm text-ink-muted">No stories</div>
+                    )}
+                    <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-ink-muted">
+                      <span>{itemExportStoryIds.length} selected</span>
+                      <div className="flex gap-2">
+                        <button type="button" className="hover:text-ink" onClick={() => setItemExportStoryIds(stories.map((story) => story.id))}>Select all</button>
+                        <button type="button" className="hover:text-ink" onClick={() => setItemExportStoryIds([])}>Clear</button>
+                      </div>
+                    </div>
+                  </Field>
+                  <Field
+                    label="Format"
+                    help="Story Markdown is transcript-only. JSON and the archive formats include full story metadata."
+                  >
+                    <SelectInput value={itemExportStoryFormat} onChange={(event) => setItemExportStoryFormat(event.target.value as "json" | "story-markdown" | "markdown" | "txt" | "pdf")}>
+                      <option value="json">JSON</option>
+                      <option value="story-markdown">Story Markdown (transcript only)</option>
+                      <option value="markdown">Markdown archive</option>
+                      <option value="txt">TXT</option>
+                      <option value="pdf">PDF</option>
+                    </SelectInput>
+                  </Field>
+                </>
+              )}
+              <Button
+                variant="secondary"
+                onClick={handleExportItem}
+                disabled={
+                  itemExportType === "universe"
+                    ? !universes.length
+                    : itemExportType === "playerCharacter"
+                      ? !itemExportCharacterIds.length
+                      : !itemExportStoryIds.length
+                }
+              >
+                {itemExportType === "universe"
+                  ? "Export"
+                  : itemExportType === "playerCharacter"
+                    ? `Export selected (${itemExportCharacterIds.length})`
+                    : `Export selected (${itemExportStoryIds.length})`}
+              </Button>
+              {itemExportStatus ? <div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">{itemExportStatus}</div> : null}
+              {itemExportError ? <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">{itemExportError}</div> : null}
+            </div>
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Import Item</div>
+            <div className="mt-3 space-y-3">
+              <Field
+                label="Type"
+                help="JSON export type must match the file you are importing. Imports always create new records."
+              >
+                <SelectInput value={itemImportType} onChange={(event) => setItemImportType(event.target.value as "universe" | "playerCharacter" | "story")}>
+                  <option value="story">Story JSON</option>
+                  <option value="universe">Universe JSON</option>
+                  <option value="playerCharacter">Player Character JSON</option>
+                </SelectInput>
+              </Field>
+              <input
+                type="file"
+                className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-[8px] file:border-0 file:bg-white/[0.06] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-ink hover:file:bg-white/[0.09]"
+                onChange={(event) => setItemImportFile(event.target.files?.[0] ?? null)}
+              />
+              <div className="text-[11px] text-ink-muted">Imports always create new IDs and never overwrite existing data.</div>
+              {itemImportType === "playerCharacter" ? (
+                <Field
+                  label="Target Universe"
+                  help="Imported characters are attached to this universe. Required because character JSON does not include universe membership."
+                >
+                  <SelectInput value={itemImportUniverseId} onChange={(event) => setItemImportUniverseId(event.target.value)}>
+                    {universes.length ? universes.map((u) => <option key={u.id} value={u.id}>{u.name}</option>) : <option value="">No universes</option>}
+                  </SelectInput>
+                </Field>
+              ) : null}
+              <Button variant="secondary" onClick={handleImportItem} disabled={!itemImportFile || (itemImportType === "playerCharacter" && !universes.length)}>
+                Import
+              </Button>
+              {itemImportStatus ? <div className="rounded-[8px] border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-200">{itemImportStatus}</div> : null}
+              {itemImportError ? <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/10 px-3.5 py-3 text-sm text-rose-200">{itemImportError}</div> : null}
+            </div>
+          </Panel>
+        </div>
+      )}
+
+      {/* Storage tab */}
+      {activeTab === "storage" && (
+        <div className="space-y-4">
+          <Panel variant="flat">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-accent-soft">Storage Status</div>
+              <Badge variant={storageStatus.ready ? "success" : "warning"}>
+                {storageStatus.ready ? "Ready" : "Attention needed"}
+              </Badge>
+            </div>
+            <div className="mt-3 flex items-center gap-2.5 text-accent-soft">
+              <DatabaseIcon className="h-4 w-4" />
+              <span className="text-[13px]">{storageStatus.driver}</span>
+            </div>
+            <dl className="mt-3 divide-y divide-divider/[0.3]">
+              {[
+                { label: "Universes", value: storageStatus.universesCount },
+                { label: "Player Characters", value: storageStatus.playerCharactersCount },
+                { label: "Stories", value: storageStatus.storiesCount },
+                { label: "Messages", value: storageStatus.messagesCount },
+                { label: "Total Records", value: storageStatus.totalRecords },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center justify-between gap-4 py-2.5">
+                  <dt className="text-[11px] text-ink-muted">{label}</dt>
+                  <dd className="text-[13px] text-ink-soft">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            {storageStatus.errorMessage ? (
+              <div className="mt-3 rounded-[8px] border border-amber-300/20 bg-amber-300/10 px-3.5 py-3 text-sm text-amber-100">
+                {storageStatus.errorMessage}
+              </div>
+            ) : null}
+          </Panel>
+
+          <Panel variant="flat">
+            <div className="text-[9px] font-bold uppercase tracking-[0.22em] text-rose-400/70">Danger Zone</div>
+            <div className="mt-3 space-y-3">
+              {/* Delete All Stories */}
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/5 px-4 py-4 space-y-3">
+                <div>
+                  <div className="font-semibold text-sm text-ink">Delete All Stories</div>
+                  <div className="text-xs text-ink-muted mt-0.5">
+                    Delete {stories.filter((story) => !story.isFavorite).length} {stories.filter((story) => !story.isFavorite).length === 1 ? "story" : "stories"}?
+                    {stories.some((story) => story.isFavorite) ? ` ${stories.filter((story) => story.isFavorite).length} favorited ${stories.filter((story) => story.isFavorite).length === 1 ? "story is" : "stories are"} protected and will be preserved.` : ""}
+                  </div>
+                </div>
+                <ul className="text-xs text-ink-muted space-y-0.5 list-disc list-inside">
+                  <li>Stories and chapters</li>
+                  <li>Messages and transcripts</li>
+                  <li>RP data, HP, money and events</li>
+                  <li>Relationships and timelines</li>
+                </ul>
+                <div className="text-xs text-ink-muted">
+                  Type <span className="font-mono font-semibold text-ink">DELETE STORIES</span> to continue.
+                </div>
+                <input
+                  className="w-full rounded-[6px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-rose-400/40 focus:ring-2 focus:ring-rose-400/10"
+                  value={deleteStoriesConfirm}
+                  onChange={(e) => setDeleteStoriesConfirm(e.target.value)}
+                  placeholder="Type DELETE STORIES"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full border-rose-400/30 text-rose-300 hover:bg-rose-400/10 disabled:opacity-40"
+                  disabled={deleteStoriesConfirm !== "DELETE STORIES" || dangerZoneLoading !== null}
+                  onClick={async () => {
+                    setDangerZoneLoading("stories");
+                    try { await deleteAllStories(); } finally {
+                      setDangerZoneLoading(null);
+                      setDeleteStoriesConfirm("");
+                    }
+                  }}
+                >
+                  {dangerZoneLoading === "stories" ? "Deletingâ€¦" : "Delete All Stories"}
+                </Button>
+              </div>
+
+              {/* Delete All Characters */}
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/5 px-4 py-4 space-y-3">
+                <div>
+                  <div className="font-semibold text-sm text-ink">Delete All Characters</div>
+                  <div className="text-xs text-ink-muted mt-0.5">Delete {storageStatus.playerCharactersCount} {storageStatus.playerCharactersCount === 1 ? "character" : "characters"}?</div>
+                </div>
+                <div className="text-xs text-ink-muted">This may affect stories that reference these characters.</div>
+                <div className="text-xs text-ink-muted">
+                  Type <span className="font-mono font-semibold text-ink">DELETE CHARACTERS</span> to continue.
+                </div>
+                <input
+                  className="w-full rounded-[6px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-rose-400/40 focus:ring-2 focus:ring-rose-400/10"
+                  value={deleteCharactersConfirm}
+                  onChange={(e) => setDeleteCharactersConfirm(e.target.value)}
+                  placeholder="Type DELETE CHARACTERS"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full border-rose-400/30 text-rose-300 hover:bg-rose-400/10 disabled:opacity-40"
+                  disabled={deleteCharactersConfirm !== "DELETE CHARACTERS" || dangerZoneLoading !== null}
+                  onClick={async () => {
+                    setDangerZoneLoading("characters");
+                    try { await deleteAllPlayerCharacters(); } finally {
+                      setDangerZoneLoading(null);
+                      setDeleteCharactersConfirm("");
+                    }
+                  }}
+                >
+                  {dangerZoneLoading === "characters" ? "Deletingâ€¦" : "Delete All Characters"}
+                </Button>
+              </div>
+
+              {/* Delete All Universes */}
+              <div className="rounded-[8px] border border-rose-400/20 bg-rose-400/5 px-4 py-4 space-y-3">
+                <div>
+                  <div className="font-semibold text-sm text-ink">Delete All Universes</div>
+                  <div className="text-xs text-ink-muted mt-0.5">Delete {storageStatus.universesCount} {storageStatus.universesCount === 1 ? "universe" : "universes"}?</div>
+                </div>
+                <div className="text-xs text-ink-muted">Stories will remain, but universe-specific lore and settings will be lost.</div>
+                <div className="text-xs text-ink-muted">
+                  Type <span className="font-mono font-semibold text-ink">DELETE UNIVERSES</span> to continue.
+                </div>
+                <input
+                  className="w-full rounded-[6px] border border-divider bg-panel-muted/50 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-rose-400/40 focus:ring-2 focus:ring-rose-400/10"
+                  value={deleteUniversesConfirm}
+                  onChange={(e) => setDeleteUniversesConfirm(e.target.value)}
+                  placeholder="Type DELETE UNIVERSES"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full border-rose-400/30 text-rose-300 hover:bg-rose-400/10 disabled:opacity-40"
+                  disabled={deleteUniversesConfirm !== "DELETE UNIVERSES" || dangerZoneLoading !== null}
+                  onClick={async () => {
+                    setDangerZoneLoading("universes");
+                    try { await deleteAllUniverses(); } finally {
+                      setDangerZoneLoading(null);
+                      setDeleteUniversesConfirm("");
+                    }
+                  }}
+                >
+                  {dangerZoneLoading === "universes" ? "Deletingâ€¦" : "Delete All Universes"}
+                </Button>
+              </div>
+            </div>
+          </Panel>
+        </div>
+      )}
+
+      {activeTab === "tutorial" && <TutorialSettingsTab />}
+
+    </div>
+  );
+}
