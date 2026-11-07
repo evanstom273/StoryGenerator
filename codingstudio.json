@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "StoryGenerator",
+  "language": "gdscript",
+  "languageVersion": "4.4",
+  "compiler": {
+    "indent": "tab",
+    "indentSize": 4,
+    "header": true,
+    "comments": true
+  }
+}
