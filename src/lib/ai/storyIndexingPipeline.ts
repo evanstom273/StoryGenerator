@@ -181,7 +181,7 @@ export function parseAndValidateIndexingExtraction(
   let parsed: unknown = null;
 
   // 1. Check markdown code block first (e.g. "Here is the extraction:\n```json ... ```")
-  const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const codeBlockMatch = jsonText.match(/\x60\x60\x60(?:json)?\s*([\s\S]*?)\s*\x60\x60\x60/i);
   if (codeBlockMatch && codeBlockMatch[1]?.trim()) {
     parsed = sanitizeAndParseJson(codeBlockMatch[1].trim());
   }
@@ -189,9 +189,9 @@ export function parseAndValidateIndexingExtraction(
   // 2. Direct cleaned attempt
   if (!parsed) {
     const cleaned = jsonText
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/i, "")
+      .replace(/^\x60\x60\x60json\s*/i, "")
+      .replace(/^\x60\x60\x60\s*/i, "")
+      .replace(/\s*\x60\x60\x60$/i, "")
       .trim();
     parsed = sanitizeAndParseJson(cleaned);
   }

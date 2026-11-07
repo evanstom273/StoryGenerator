@@ -528,7 +528,7 @@ function stripMarkdownArtifacts(text: string) {
     }
   }
 
-  const italicPattern = /(^|[\s([{"'`])_([^\n_]{1,4000})_(?=$|[\s)\]}",.'`!?])/g;
+  const italicPattern = /(^|[\s([{"'\x60])_([^\n_]{1,4000})_(?=$|[\s)\]}",.'\x60!?])/g;
   const italicUpdated = next.replace(italicPattern, "$1$2");
   if (italicUpdated !== next) {
     changed = true;
@@ -814,7 +814,7 @@ function stripReasoningPreamble(text: string): string {
     }
 
     // Backtick spans containing checklist content — strip the whole line
-    if (/`[^`]*(->\s*[Cc]hecked|No narrator|No PC control)[^`]*`/.test(trimmed)) {
+    if (/\x60[^\x60]*(->\s*[Cc]hecked|No narrator|No PC control)[^\x60]*\x60/.test(trimmed)) {
       continue;
     }
 
