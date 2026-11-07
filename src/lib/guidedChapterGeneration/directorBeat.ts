@@ -50,8 +50,8 @@ function extractDirectorBeatField(content: string): string | null {
 	}
 
 	const stripped = trimmed
-		.replace(/^```(?:json)?\s*/i, "")
-		.replace(/\s*```$/i, "")
+		.replace(/^\x60\x60\x60(?:json)?\s*/i, "")
+		.replace(/\s*\x60\x60\x60$/i, "")
 		.trim();
 
 	if (!stripped.startsWith("{")) {

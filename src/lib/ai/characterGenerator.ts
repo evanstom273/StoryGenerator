@@ -146,8 +146,8 @@ function buildUniverseContextBlock(universe: Universe, importedLoreText?: string
 export function normalizeGeneratedCharacterConcept(text: string) {
 	const trimmed = text
 		.trim()
-		.replace(/^```(?:\w+)?\s*/i, "")
-		.replace(/\s*```$/i, "")
+		.replace(/^\x60\x60\x60(?:\w+)?\s*/i, "")
+		.replace(/\s*\x60\x60\x60$/i, "")
 		.trim();
 	if (
 		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
