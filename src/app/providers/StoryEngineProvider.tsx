@@ -33,6 +33,7 @@ import {
 } from "../../lib/dates";
 import { createEntityId } from "../../lib/ids";
 import { buildBranchRecords } from "../../lib/storyBranching";
+import { buildPlayerCharacterSwap } from "../../lib/storyPlayerCharacterSwap";
 import { createInheritedStoryIndex } from "../../lib/storyInheritance";
 import { createAIProvider } from "../../lib/ai/providerFactory";
 import { resolveProviderThinkingSettings } from "../../lib/ai/geminiThinking";
@@ -353,6 +354,8 @@ interface StoryEngineContextValue {
   deleteUniverse: (id: string) => Promise<GuardedDeleteResult>;
   createPlayerCharacter: (draft: PlayerCharacterDraft) => Promise<PlayerCharacter>;
   promoteStoryPlayerCharacter: (storyId: string) => Promise<PlayerCharacter>;
+  /** Switches the story to another library sheet; the transcript is kept and memory rebuilt. */
+  changeStoryPlayerCharacter: (storyId: string, playerCharacterId: string) => Promise<Story>;
   cleanupDuplicatePlayerCharacters: () => Promise<{
     mergedDuplicates: number;
     updatedStories: number;
@@ -3897,6 +3900,34 @@ export function StoryEngineProvider({
         await hydrate(false);
 
         return promoted;
+      },
+      async changeStoryPlayerCharacter(storyId, playerCharacterId) {
+        const [story, nextCharacter, storyState] = await Promise.all([
+          repository.getStory(storyId),
+          repository.getPlayerCharacter(playerCharacterId),
+          repository.getStoryState(storyId),
+        ]);
+        if (!story) {
+          throw new Error("Story not found.");
+        }
+        if (!nextCharacter) {
+          throw new Error("That character sheet could not be found.");
+        }
+        await assertStoryWritable(storyId);
+
+        const now = new Date().toISOString();
+        const currentState = storyState ? safeParseStoryStateData(storyState.stateJson) : null;
+        const swap = buildPlayerCharacterSwap({ story, state: currentState, nextCharacter, now });
+        await repository.saveStory(swap.story);
+        if (storyState && swap.state !== currentState) {
+          await repository.saveStoryState({ ...storyState, stateJson: JSON.stringify(swap.state), updatedAt: now });
+        }
+
+        await hydrate(false);
+        // Memory was built around the previous sheet; rebuild it from the new sheet and
+        // the unchanged transcript. Without an AI provider it can be re-indexed later.
+        void fullReindexStory(storyId).catch(() => {});
+        return swap.story;
       },
       async cleanupDuplicatePlayerCharacters() {
         const [allCharacters, allStories] = await Promise.all([

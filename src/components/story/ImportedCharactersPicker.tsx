@@ -3,6 +3,7 @@ import type { PlayerCharacter } from "../../types/models";
 import { TextInput } from "../forms/Fields";
 import { Badge } from "../ui/Badge";
 import { Panel } from "../ui/Panel";
+import { CharacterPreviewButton } from "../characters/CharacterSheetPreview";
 
 function getCharacterInitials(name: string) {
 	const tokens = name.trim().split(/\s+/).filter(Boolean);
@@ -176,6 +177,7 @@ export function ImportedCharactersPicker({
 												{getCharacterConcept(character)}
 											</p>
 										</div>
+										<CharacterPreviewButton character={character} />
 										<button
 											type="button"
 											disabled={disabled}
@@ -221,30 +223,32 @@ export function ImportedCharactersPicker({
 						{filteredCharacters.map((character) => {
 							const universeName = getUniverseById(character.universeId)?.name ?? "Unknown universe";
 							return (
-								<button
-									key={character.id}
-									type="button"
-									disabled={disabled}
-									className="flex w-full items-start gap-3 rounded-[10px] border border-divider/[0.45] bg-panel-muted/40 px-3 py-3 text-left transition hover:border-accent/[0.35] hover:bg-panel-muted/70 disabled:cursor-not-allowed disabled:opacity-50"
-									onClick={() => addCharacter(character.id)}
-								>
-									<CharacterAvatar name={character.name} />
-									<span className="min-w-0 flex-1">
-										<span className="flex flex-wrap items-center gap-2">
-											<span className="text-sm font-semibold text-ink">{character.name}</span>
-											<Badge>{universeName}</Badge>
-										</span>
-										{getCharacterDetails(character) ? (
-											<span className="mt-1 block text-xs font-medium text-accent-soft">
-												{getCharacterDetails(character)}
+								<div key={character.id} className="relative">
+									<button
+										type="button"
+										disabled={disabled}
+										className="flex w-full items-start gap-3 rounded-[10px] border border-divider/[0.45] bg-panel-muted/40 py-3 pl-3 pr-28 text-left transition hover:border-accent/[0.35] hover:bg-panel-muted/70 disabled:cursor-not-allowed disabled:opacity-50"
+										onClick={() => addCharacter(character.id)}
+									>
+										<CharacterAvatar name={character.name} />
+										<span className="min-w-0 flex-1">
+											<span className="flex flex-wrap items-center gap-2">
+												<span className="text-sm font-semibold text-ink">{character.name}</span>
+												<Badge>{universeName}</Badge>
 											</span>
-										) : null}
-										<span className="mt-1 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
-											{getCharacterConcept(character)}
+											{getCharacterDetails(character) ? (
+												<span className="mt-1 block text-xs font-medium text-accent-soft">
+													{getCharacterDetails(character)}
+												</span>
+											) : null}
+											<span className="mt-1 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+												{getCharacterConcept(character)}
+											</span>
 										</span>
-									</span>
-									<span className="shrink-0 text-xs font-medium text-accent-soft">Add</span>
-								</button>
+										<span className="shrink-0 text-xs font-medium text-accent-soft">Add</span>
+									</button>
+									<CharacterPreviewButton character={character} className="absolute right-3 top-3" />
+								</div>
 							);
 						})}
 					</div>
