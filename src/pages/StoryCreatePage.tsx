@@ -17,6 +17,7 @@ import { providerSupportsThinkingLevel } from "../lib/ai/geminiThinking";
 import { getInheritedThinkingLevelLabel, isThinkingLevelPreference, THINKING_LEVEL_OPTIONS } from "../lib/ai/storyThinking";
 import { GuidedChapterPlanModal } from "../components/story/GuidedChapterPlanModal";
 import { ImportedCharactersPicker } from "../components/story/ImportedCharactersPicker";
+import { CharacterPreviewButton } from "../components/characters/CharacterSheetPreview";
 import { resolveUpcomingChapterLabels } from "../lib/guidedChapterGeneration/chapterLabels";
 import { normalizeStoryImportedCharacterIds } from "../lib/storyImportedCharacters";
 import { normalizePlayerCharacterAliases, normalizePlayerCharacterKnownTies } from "../lib/playerCharacterPrompt";
@@ -579,30 +580,32 @@ export function StoryCreatePage() {
                     const concept = character.characterConcept?.trim() || "No character concept written yet.";
 
                     return (
-                      <button
-                        key={character.id}
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() =>
-                          setFormState((currentState) => ({
-                            ...currentState,
-                            playerCharacterId: character.id,
-                          }))
-                        }
-                        className={`w-full rounded-[10px] border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                          selected
-                            ? "border-accent/50 bg-accent/[0.10]"
-                            : "border-divider/[0.45] bg-panel-muted/40 hover:border-accent/[0.35] hover:bg-panel-muted/70"
-                        }`}
-                      >
-                        <span className="block text-sm font-semibold text-ink">{character.name}</span>
-                        {details ? (
-                          <span className="mt-1 block text-xs font-medium text-accent-soft">{details}</span>
-                        ) : null}
-                        <span className="mt-1.5 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
-                          {concept}
-                        </span>
-                      </button>
+                      <div key={character.id} className="relative">
+                        <button
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() =>
+                            setFormState((currentState) => ({
+                              ...currentState,
+                              playerCharacterId: character.id,
+                            }))
+                          }
+                          className={`w-full rounded-[10px] border py-3 pl-4 pr-28 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                            selected
+                              ? "border-accent/50 bg-accent/[0.10]"
+                              : "border-divider/[0.45] bg-panel-muted/40 hover:border-accent/[0.35] hover:bg-panel-muted/70"
+                          }`}
+                        >
+                          <span className="block text-sm font-semibold text-ink">{character.name}</span>
+                          {details ? (
+                            <span className="mt-1 block text-xs font-medium text-accent-soft">{details}</span>
+                          ) : null}
+                          <span className="mt-1.5 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                            {concept}
+                          </span>
+                        </button>
+                        <CharacterPreviewButton character={character} className="absolute right-3 top-3" />
+                      </div>
                     );
                   })}
                 </div>

@@ -7,11 +7,7 @@ import { Panel } from "../components/ui/Panel";
 import { useStoryEngine } from "../app/providers/StoryEngineProvider";
 import { formatDate } from "../lib/dates";
 import { getUniverseIds } from "../lib/universeIds";
-import {
-  normalizeLinkedCharacterIds,
-  normalizePlayerCharacterAliases,
-  normalizePlayerCharacterKnownTies,
-} from "../lib/playerCharacterPrompt";
+import { PlayerCharacterSheetView } from "../components/characters/PlayerCharacterSheetView";
 
 export function PlayerCharacterDetailPage() {
   const { characterId } = useParams();
@@ -53,7 +49,6 @@ export function PlayerCharacterDetailPage() {
   }
 
   const activeCharacter = character;
-  const universeLabel = linkedUniverses.map((universe) => universe.name).join(", ");
 
   async function handleDelete() {
     const confirmed = window.confirm(
@@ -98,68 +93,16 @@ export function PlayerCharacterDetailPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="space-y-5">
           <Panel variant="flat">
-            <dl className="divide-y divide-divider/[0.3]">
-              <div className="flex items-center justify-between gap-4 py-2.5">
-                <dt className="text-[11px] text-ink-muted">Universes</dt>
-                <dd className="text-[13px] text-ink-soft">{universeLabel}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-4 py-2.5">
-                <dt className="text-[11px] text-ink-muted">Age</dt>
-                <dd className="text-[13px] text-ink-soft">{activeCharacter.age || "Not specified"}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-4 py-2.5">
-                <dt className="text-[11px] text-ink-muted">Species</dt>
-                <dd className="text-[13px] text-ink-soft">{activeCharacter.species || "Not specified"}</dd>
-              </div>
-              {normalizePlayerCharacterAliases(activeCharacter.aliases).length ? (
-                <div className="flex items-center justify-between gap-4 py-2.5">
-                  <dt className="text-[11px] text-ink-muted">Aliases</dt>
-                  <dd className="text-right text-[13px] text-ink-soft">
-                    {normalizePlayerCharacterAliases(activeCharacter.aliases).join(", ")}
-                  </dd>
-                </div>
-              ) : null}
-              {normalizePlayerCharacterKnownTies(activeCharacter.knownTies).length ? (
-                <div className="flex items-center justify-between gap-4 py-2.5">
-                  <dt className="text-[11px] text-ink-muted">Known ties</dt>
-                  <dd className="text-right text-[13px] text-ink-soft">
-                    {normalizePlayerCharacterKnownTies(activeCharacter.knownTies).join("; ")}
-                  </dd>
-                </div>
-              ) : null}
-              {normalizeLinkedCharacterIds(activeCharacter.linkedCharacterIds, activeCharacter.id).length ? (
-                <div className="flex items-start justify-between gap-4 py-2.5">
-                  <dt className="text-[11px] text-ink-muted">Linked characters</dt>
-                  <dd className="flex flex-wrap justify-end gap-x-2 gap-y-1 text-right text-[13px] text-ink-soft">
-                    {normalizeLinkedCharacterIds(activeCharacter.linkedCharacterIds, activeCharacter.id).map((id) => {
-                      const linked = getPlayerCharacterById(id);
-                      return linked ? (
-                        <Link key={id} to={`/player-characters/${id}`} className="text-accent-soft hover:underline">
-                          {linked.name}
-                        </Link>
-                      ) : (
-                        <span key={id} className="text-ink-muted">Missing sheet</span>
-                      );
-                    })}
-                  </dd>
-                </div>
-              ) : null}
-            </dl>
-            <div className="mt-4 space-y-4">
-              {[
-                { label: "Appearance", value: activeCharacter.appearance },
-                { label: "Personality", value: activeCharacter.personality },
-                { label: "Background", value: activeCharacter.background },
-                { label: "Notes", value: activeCharacter.notes },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-ink-muted">{label}</div>
-                  <div className="mt-1.5 whitespace-pre-wrap text-[13px] leading-6 text-ink-soft">
-                    {value || "Not specified"}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <PlayerCharacterSheetView
+              character={activeCharacter}
+              universeNames={linkedUniverses.map((universe) => universe.name)}
+              getPlayerCharacterById={getPlayerCharacterById}
+              renderLinkedCharacter={(linked) => (
+                <Link to={`/player-characters/${linked.id}`} className="text-accent-soft hover:underline">
+                  {linked.name}
+                </Link>
+              )}
+            />
           </Panel>
 
           <Panel variant="flat">

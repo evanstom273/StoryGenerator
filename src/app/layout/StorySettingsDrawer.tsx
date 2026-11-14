@@ -10,6 +10,7 @@ import {
   createStoryTranscriptMarkdownFilename,
 } from "../../lib/exportFilename";
 import { ImportedCharactersPicker } from "../../components/story/ImportedCharactersPicker";
+import { StoryPlayerCharacterSwitcher } from "../../components/story/StoryPlayerCharacterSwitcher";
 import { getProviderDefaultModel, getProviderModels } from "../../lib/ai/models";
 import { providerSupportsThinkingLevel } from "../../lib/ai/geminiThinking";
 import { getInheritedThinkingLevelLabel, isThinkingLevelPreference, THINKING_LEVEL_OPTIONS } from "../../lib/ai/storyThinking";
@@ -31,6 +32,7 @@ import { cn } from "../../utils/cn";
 
 type SettingsSectionIcon =
   | "edit"
+  | "character"
   | "accent"
   | "content"
   | "ai"
@@ -53,6 +55,8 @@ function SettingsSectionIcon({ name }: { name: SettingsSectionIcon }) {
   switch (name) {
     case "edit":
       return <svg {...commonProps}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>;
+    case "character":
+      return <svg {...commonProps}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>;
     case "accent":
       return <svg {...commonProps}><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18c1.7 0 2.4-1 1.7-2.1-.7-1.2.1-2.4 1.4-2.4H18a3 3 0 0 0 3-3A10.5 10.5 0 0 0 12 3Z" /><circle cx="8.5" cy="9" r=".8" /><circle cx="12" cy="7" r=".8" /><circle cx="15.5" cy="9.5" r=".8" /></svg>;
     case "content":
@@ -344,6 +348,9 @@ export function StorySettingsDrawer({ storyId }: { storyId?: string }) {
               <div><FieldLabel label="Imported Characters" help="Library characters available to the story." labelClassName="text-xs text-ink-muted" /><ImportedCharactersPicker selectedIds={fields.importedCharacterIds} excludeCharacterId={story.playerCharacterId} universeIds={getUniverseIds(story)} getPlayerCharactersForUniverse={getPlayerCharactersForUniverse} getUniverseById={getUniverseById} getPlayerCharacterById={getPlayerCharacterById} onChange={(ids) => setFields((current) => ({ ...current, importedCharacterIds: ids }))} /></div>
               <Button type="submit" className="w-full" disabled={saving}>{saving ? "Saving…" : "Save Story"}</Button>
             </form>
+          </Section>
+          <Section title="Player Character" description="Whose story this is" icon="character" onOpen={scrollSectionIntoView}>
+            <StoryPlayerCharacterSwitcher story={story} onNotice={setNotice} onError={setError} />
           </Section>
           <Section title="Story accent" description="Colour styling for this story" icon="accent" onOpen={scrollSectionIntoView}>
             <ThemePicker accentOnly allowAppDefault appDefaultSelected={!fields.accentThemeKey} selectedKey={fields.accentThemeKey ?? "ruby"} customAccent={fields.accentThemeCustom} onSelectAppDefault={() => setFields((current) => ({ ...current, accentThemeKey: null }))} onSelectKey={(key) => isAccentThemeKey(key) && setFields((current) => ({ ...current, accentThemeKey: key }))} onCustomAccentChange={(value) => setFields((current) => ({ ...current, accentThemeCustom: value, accentThemeKey: "custom" }))} />

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CharacterPreviewButton } from "../components/characters/CharacterSheetPreview";
 import { strToU8, zipSync } from "fflate";
 import { useSearchParams } from "react-router-dom";
 import { cn } from "../utils/cn";
@@ -1237,24 +1238,26 @@ export function SettingsPage() {
                         ].filter(Boolean).join(" · ");
                         const concept = character.characterConcept?.trim() || "No character concept written yet.";
                         return (
-                          <button
-                            key={character.id}
-                            type="button"
-                            aria-pressed={selected}
-                            onClick={() => setItemExportCharacterIds((current) =>
-                              selected ? current.filter((id) => id !== character.id) : [...current, character.id]
-                            )}
-                            className={cn(
-                              "w-full rounded-[10px] border px-4 py-3 text-left transition",
-                              selected
-                                ? "border-accent/50 bg-accent/[0.10]"
-                                : "border-divider/[0.45] bg-panel-muted/40 hover:border-accent/[0.35] hover:bg-panel-muted/70",
-                            )}
-                          >
-                            <span className="block text-sm font-semibold text-ink">{character.name}</span>
-                            {details ? <span className="mt-1 block text-xs font-medium text-accent-soft">{details}</span> : null}
-                            <span className="mt-1.5 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{concept}</span>
-                          </button>
+                          <div key={character.id} className="relative">
+                            <button
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => setItemExportCharacterIds((current) =>
+                                selected ? current.filter((id) => id !== character.id) : [...current, character.id]
+                              )}
+                              className={cn(
+                                "w-full rounded-[10px] border py-3 pl-4 pr-28 text-left transition",
+                                selected
+                                  ? "border-accent/50 bg-accent/[0.10]"
+                                  : "border-divider/[0.45] bg-panel-muted/40 hover:border-accent/[0.35] hover:bg-panel-muted/70",
+                              )}
+                            >
+                              <span className="block text-sm font-semibold text-ink">{character.name}</span>
+                              {details ? <span className="mt-1 block text-xs font-medium text-accent-soft">{details}</span> : null}
+                              <span className="mt-1.5 block overflow-hidden text-xs leading-5 text-ink-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{concept}</span>
+                            </button>
+                            <CharacterPreviewButton character={character} className="absolute right-3 top-3" />
+                          </div>
                         );
                       })}
                     </div>
