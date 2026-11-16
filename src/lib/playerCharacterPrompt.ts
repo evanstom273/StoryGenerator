@@ -631,7 +631,7 @@ export function formatPlayerCharacterOwnershipRulesForRewrite(
 		`Player character pronouns: ${pronouns || "unspecified"}. Gender: ${character.gender.trim() || "unspecified"}. Species: ${(character.species ?? "").trim() || "unspecified"}. Age: ${character.age.trim() || "unspecified"}.`,
 		formatPlayerCharacterPronounAndNamingRules(character, preferredName, pronouns),
 		allowDirectedPlayerControl
-			? "- Because this was triggered by a Director note, player-character dialogue/actions are allowed in this one rewrite when required by the direction."
+			? "- Because this was triggered by a Director note, write the player character's dialogue and actions in this one rewrite wherever the direction involves them."
 			: "- Never write dialogue/actions/thoughts/decisions for the player character.",
 		allowDirectedPlayerControl
 			? "- Use the preferred scene name in any player-character speaker header."
