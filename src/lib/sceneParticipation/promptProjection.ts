@@ -108,7 +108,7 @@ export function formatResolvedParticipationPrompt(
 		"Active participation registry (apply this semantically, not just syntactically):",
 		`- Player character: ${formatIdentity(player)}.`,
 		allowDirectedPlayerControl
-			? "- This directed turn may control the player character, but every Name: block must still belong to the person acting and speaking in it."
+			? "- This directed turn controls the player character too, but every Name: block must still belong to the person acting and speaking in it."
 			: "- Never emit a player-character Name: block on this turn; other characters may address or physically interact with the player only when their resolved capabilities allow it.",
 		`- Non-player participants established in the current scene: ${eligible}.`,
 		dialogueOnly.length

@@ -282,6 +282,34 @@ describe("narrative quality prompt structure", () => {
     expect(allText(context).length).toBeLessThanOrEqual(BASELINE_CHARS[kind].total);
   });
 
+  it("tells Director turns to give the player character dialogue, and keeps normal turns hands-off", () => {
+    const turn = (kind: "player" | "director" | "continue", priorDirector = false) =>
+      allText(
+        buildStoryChatContext({
+          universe: customUniverse,
+          story,
+          playerCharacter: player,
+          imports: [],
+          recentMessages: [],
+          latestUserMessage: "Jamie bites into the pancake and gags.",
+          latestUserMessageSpeakerType: kind,
+          allowDirectedPlayerControl: priorDirector,
+        }),
+      );
+    const directed = turn("director");
+    expect(directed).toContain("write their actions and spoken dialogue in their own voice");
+    expect(directed).toContain("Do not leave them silent while others talk");
+    expect(directed).not.toContain("Focus on canon characters, NPCs, and narration");
+    expect(directed).not.toMatch(/may temporarily control all characters/);
+
+    expect(turn("continue", true)).toContain("Do not leave them silent while others talk");
+
+    const playerTurn = turn("player");
+    expect(playerTurn).toContain("Focus on canon characters, NPCs, and narration");
+    expect(playerTurn).not.toContain("Do not leave them silent while others talk");
+    expect(playerTurn).toContain("Never move, speak for, think for, feel for, or act on behalf of the player character.");
+  });
+
   it("drops the duplicated voice-performance directives that encouraged caricature", () => {
     const direction = sceneDirection(build(scenarios[0]!));
     expect(direction).not.toContain("Character authenticity is the highest priority");

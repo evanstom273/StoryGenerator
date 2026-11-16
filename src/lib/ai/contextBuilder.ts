@@ -231,6 +231,8 @@ export function buildStoryChatContext({
   const latestMessageIsContinueNote = latestUserMessageSpeakerType === "continue";
   const guidedDirectedContinue =
     latestMessageIsContinueNote && (allowDirectedPlayerControl || guidedDirectedScene);
+  // Director-controlled turns, where the player character is written like any other character.
+  const directedPlayerTurn = latestMessageIsDirectorNote || guidedDirectedContinue;
   const sceneDepth: SceneDepth = guidedChapterContext
     ? "standard"
     : latestMessageIsContinueNote
@@ -432,7 +434,9 @@ export function buildStoryChatContext({
         ? "Director intent: the player has requested a scene cut/transition. Treat this as permission to transition scenes cleanly without re-litigating the previous beat."
         : "",
       formatNarrativeCraftGuidance(),
-      "Do not generate suggested player lines or options unless explicitly asked via Player Assist. Focus on canon characters, NPCs, and narration.",
+      directedPlayerTurn
+        ? "Directed turn: when the Director note involves the player character, write their actions and spoken dialogue in their own voice, under their name. Do not leave them silent while others talk unless they cannot speak."
+        : "Do not generate suggested player lines or options unless explicitly asked via Player Assist. Focus on canon characters, NPCs, and narration.",
       "Let the story move through what the characters want and do, discoveries, and consequences, but never remove player agency.",
       latestMessageIsContinueNote
         ? "Latest-turn rule: the newest user message is a Continue note, not protagonist dialogue. Continue the current scene from the immediate next beat instead of waiting for a fresh player action."
@@ -444,19 +448,19 @@ export function buildStoryChatContext({
         ? "Do not reset the scene, summarize what just happened, or demand placeholder input. Extend the moment organically."
         : "",
       latestMessageIsContinueNote && allowDirectedPlayerControl
-        ? "Latest-turn rule: the newest user message is a Continue note following a Director note. Keep extending the current directed scene, and you may temporarily continue controlling all characters, including the player character, for this reply only."
+        ? "Latest-turn rule: the newest user message is a Continue note following a Director note. Keep extending the current directed scene, and keep controlling all characters, including the player character's actions and dialogue, for this reply only."
         : "",
       latestMessageIsContinueNote && allowDirectedPlayerControl
         ? "Treat the earlier Director note as still active for this one continuation reply. The Continue note itself is not dialogue, but it does authorize the directed scene to keep playing out naturally."
         : "",
       guidedDirectedContinue
-        ? "Latest-turn rule: guided chapter generation is extending the current directed scene. Keep the scene moving naturally and you may temporarily control all characters, including the player character, for this reply only."
+        ? "Latest-turn rule: guided chapter generation is extending the current directed scene. Keep the scene moving naturally and control all characters, including the player character's actions and dialogue, for this reply only."
         : "",
       latestMessageIsDirectorNote
-        ? "Latest-turn rule: the newest user message is a Director note, not protagonist dialogue. Treat it as staging guidance for this reply only. You may temporarily control all characters, including the player character, when needed to realize the directed scene. The resulting scene becomes canon; the Director note itself does not."
+        ? "Latest-turn rule: the newest user message is a Director note, not protagonist dialogue. Treat it as staging guidance for this reply only. For this reply you control all characters, including the player character's actions and dialogue, to realize the directed scene. The resulting scene becomes canon; the Director note itself does not."
         : "Never move, speak for, think for, feel for, or act on behalf of the player character.",
       latestMessageIsDirectorNote || guidedDirectedContinue
-        ? "When following a Director note, keep the player character's behavior consistent with canon, current scene state, and established relationships even if you temporarily control them for the directed scene."
+        ? "While you control the player character, keep them consistent with canon, the current scene, and their established relationships."
         : "Never introduce the player character into the scene unless the transcript/story state or the player's latest message established them there. Do not narrate the player character arriving, acting, speaking, thinking, or reacting. Do not imply the player character is physically present through ambient details (sounds, shadows, movements) if the player has established they are elsewhere.",
       latestMessageIsDirectorNote || guidedDirectedContinue
         ? "Once this directed reply is complete, normal player control resumes on the next user turn."
