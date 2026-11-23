@@ -59,7 +59,11 @@ export function dialogueHasFirstPersonVoice(dialogue: string) {
 }
 
 /** The player is referenced in third person — someone else is speaking. */
-export function dialogueReferencesPlayerInThirdPerson(dialogue: string, playerName: string) {
+export function dialogueReferencesPlayerInThirdPerson(
+	dialogue: string,
+	playerName: string,
+	options?: { includePronounFallback?: boolean },
+) {
 	const trimmed = dialogue.trim();
 	if (!trimmed) {
 		return false;
@@ -79,7 +83,9 @@ export function dialogueReferencesPlayerInThirdPerson(dialogue: string, playerNa
 		}
 	}
 
-	if (!dialogueHasFirstPersonVoice(trimmed) && /\b(?:she|her)\b/i.test(trimmed)) {
+	// Weak guess: "she/her ... is" without "I" is often someone else talking about the
+	// player, but just as often the player talking about someone else.
+	if (options?.includePronounFallback !== false && !dialogueHasFirstPersonVoice(trimmed) && /\b(?:she|her)\b/i.test(trimmed)) {
 		if (/\b(?:was|were|slipped|thought|handled|is|are)\b/i.test(trimmed)) {
 			return true;
 		}
@@ -314,6 +320,12 @@ export function dialogueIsUserAuthored(dialogue: string, authoredText: string | 
 export type PlayerSpeakerMisattributionOptions = {
 	/** The user's own turn; dialogue it scripts for the player is never misattributed. */
 	authoredText?: string | null;
+	/**
+	 * A Director-controlled turn, where the player character legitimately speaks to
+	 * and about others. Only the reliable name-based checks apply; the loose
+	 * pronoun and second-person guesses would reject ordinary player dialogue.
+	 */
+	directedTurn?: boolean;
 };
 
 export function analyzeMisattributedPlayerSpeakerLine(
@@ -370,7 +382,8 @@ export function analyzeMisattributedPlayerSpeakerLine(
 		return null;
 	}
 
-	if (dialogueReferencesPlayerInThirdPerson(dialogue, playerName)) {
+	const directedTurn = Boolean(options?.directedTurn);
+	if (dialogueReferencesPlayerInThirdPerson(dialogue, playerName, { includePronounFallback: !directedTurn })) {
 		return {
 			currentSpeaker: speaker,
 			evidence: "dialogue_player_third_person_reference",
@@ -386,6 +399,10 @@ export function analyzeMisattributedPlayerSpeakerLine(
 			confidence: "high",
 			reason: "player-labelled dialogue addresses the player by name",
 		};
+	}
+
+	if (directedTurn) {
+		return null;
 	}
 
 	if (dialogueAddressesPlayerBySecondPerson(dialogue)) {

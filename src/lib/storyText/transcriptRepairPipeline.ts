@@ -19,6 +19,8 @@ import {
 export type TranscriptRepairOptions = {
 	identity: PlayerTranscriptIdentity;
 	latestUserMessage?: string | null;
+	/** Director-controlled turn; see PlayerSpeakerMisattributionOptions.directedTurn. */
+	directedTurn?: boolean;
 	applyActionBeatFormatting?: boolean;
 	repairSpeakerAttribution?: boolean;
 	resolvedParticipants?: readonly ResolvedSceneParticipant[] | null;
@@ -107,6 +109,7 @@ export function repairAssistantTranscript(
 			knownTies: identity.knownTies,
 			transcriptText: normalized,
 			authoredText: options.latestUserMessage,
+			directedTurn: options.directedTurn,
 		});
 		normalized = speakerRepair.text;
 	}

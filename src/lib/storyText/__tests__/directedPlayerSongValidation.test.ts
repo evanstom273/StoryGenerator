@@ -30,3 +30,47 @@ describe("Director-scripted player songs", () => {
 		expect(result.text).toContain('Jamie: *He switches songs without looking up.* "This Romeo is bleeding');
 	});
 });
+
+const BABY_NOTE = `Director: *Jamie explains, ("It tells us that Mommy's got got a baby growing inside of her, like how you were before you were born bug. You're gonna be a big sister..."). Lyra stares at them, processing the words, while Sophie and the rest of the family watch her reaction with bated breath.*`;
+
+const BABY_REPLY = `Jamie: *He crouches so he's level with her, holding up the scan.* "It means Mommy's got a baby growing in her tummy, just like you were before you were born, bug. You're gonna be a big sister."
+
+Narrator: *Lyra stares at the grainy picture, her mouth slightly open.*
+
+Sophie: *She squeezes Jamie's arm, watching her daughter.* "Take your time, sweetheart."`;
+
+describe("Director-controlled player dialogue", () => {
+	const base = {
+		text: BABY_REPLY,
+		playerName: "Jamie Peralta",
+		playerSceneName: "Jamie",
+		playerPronouns: "he/him",
+		characterGenders: { jamie: "male", lyra: "female", sophie: "female" },
+		latestUserMessage: BABY_NOTE,
+		hiddenDialoguePattern: /\byou said\b/i,
+		knownTies: ["Lyra", "Sophie"],
+	} as const;
+
+	it("accepts the player talking to and about others on a Director turn", () => {
+		const result = validateAssistantTranscriptForSave({ ...base, allowDirectedPlayerControl: true });
+		expect(result.speakerAttributionIssues).toEqual([]);
+		expect(result.valid).toBe(true);
+		expect(result.text).toContain('Jamie: *He crouches');
+	});
+
+	it("still applies the loose checks when the player was not under Director control", () => {
+		const result = validateAssistantTranscriptForSave({ ...base, allowDirectedPlayerControl: false });
+		expect(result.valid).toBe(false);
+	});
+
+	it("still rejects a player line that talks about the player by name on a Director turn", () => {
+		const result = validateAssistantTranscriptForSave({
+			...base,
+			text: `Jamie: *He grins at the table.* "Jamie is going to be the best big brother ever, honestly."`,
+			allowDirectedPlayerControl: true,
+		});
+		expect(result.speakerAttributionIssues.map((issue) => issue.evidence)).toContain(
+			"dialogue_player_third_person_reference",
+		);
+	});
+});
