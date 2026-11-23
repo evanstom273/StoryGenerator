@@ -1247,6 +1247,7 @@ export function prevalidateAssistantTranscript(args: {
 	playerAliases?: string[] | null;
 	repairSpeakerAttribution?: boolean;
 	resolvedParticipants?: readonly ResolvedSceneParticipant[] | null;
+	directedTurn?: boolean;
 }) {
 	const transcriptText = args.transcriptText ?? args.latestUserMessage ?? args.text;
 	const identity = buildSanitizerPlayerIdentity({
@@ -1275,6 +1276,7 @@ export function prevalidateAssistantTranscript(args: {
 	const prepared = repairAssistantTranscript(args.text, {
 		identity,
 		latestUserMessage: args.latestUserMessage,
+		directedTurn: args.directedTurn,
 		repairSpeakerAttribution: args.repairSpeakerAttribution,
 		resolvedParticipants: args.resolvedParticipants,
 	});
@@ -1366,7 +1368,10 @@ export function validateAssistantTranscriptForSave(args: {
 
 	// Without scene identity evidence, generic repair can infer owners from the
 	// broken output itself. Preserve the raw attribution failure instead.
-	const authoredAttribution = { authoredText: latestUserMessage };
+	const authoredAttribution = {
+		authoredText: latestUserMessage,
+		directedTurn: Boolean(args.allowDirectedPlayerControl),
+	};
 	const rawSpeakerAttribution = analyzeSpeakerAttributionIssues(args.text, playerName, authoredAttribution);
 	if (rawSpeakerAttribution.needsRewrite && !hasContextualSpeakerRepairEvidence) {
 		return {
@@ -1393,6 +1398,7 @@ export function validateAssistantTranscriptForSave(args: {
 				transcriptText: args.transcriptText ?? latestUserMessage,
 				repairSpeakerAttribution: args.repairSpeakerAttribution,
 				resolvedParticipants: args.resolvedParticipants,
+				directedTurn: Boolean(args.allowDirectedPlayerControl),
 			});
 
 	if (!isSubstantialTranscriptText(preparedText)) {
